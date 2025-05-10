@@ -1,0 +1,168 @@
+import { useForm } from 'react-hook-form';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { useState, useCallback } from 'react';
+import dynamic from 'next/dynamic';
+import { UploadCloud, X, Languages } from 'lucide-react';
+import { useLanguageStore } from '@/lib/stores/language-store';
+
+// Динамическая загрузка компонента карты
+const MapWithNoSSR = dynamic(
+  () => import('@/components/ui/map').then((mod) => mod.Map),
+  { ssr: false }
+);
+
+
+
+export function CreateRestaurantForm({ 
+  onSubmit, 
+  onCancel 
+}: { 
+  onSubmit: (values: any) => void;
+  onCancel: () => void;
+}) {
+  const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | undefined>(undefined);
+  const [isUploading, setIsUploading] = useState(false);
+  const { language } = useLanguageStore();
+
+  const { register, handleSubmit, setValue, formState: { errors } } = useForm({
+    defaultValues: {
+      title: '',
+      address: '',
+      description: '',
+      latitude: '',
+      longitude: ''
+    }
+  });
+
+  const translations = {
+    ru: {
+      title: 'Название *',
+      address: 'Адрес *',
+      description: 'Описание',
+      location: 'Выберите местоположение на карте *',
+      selectedLocation: 'Выбрано',
+      selectLocationError: 'Пожалуйста, выберите местоположение на карте',
+      cancel: 'Отмена',
+      create: 'Создать',
+      uploading: 'Загрузка...',
+      requiredField: 'Обязательное поле',
+      language: 'Язык'
+    },
+    en: {
+      title: 'Name *',
+      address: 'Address *',
+      description: 'Description',
+      location: 'Select location on map *',
+      selectedLocation: 'Selected',
+      selectLocationError: 'Please select location on map',
+      cancel: 'Cancel',
+      create: 'Create',
+      uploading: 'Uploading...',
+      requiredField: 'Required field',
+      language: 'Language'
+    },
+    ka: {
+      title: 'სახელი *',
+      address: 'მისამართი *',
+      description: 'აღწერა',
+      location: 'აირჩიეთ მდებარეობა რუკაზე *',
+      selectedLocation: 'არჩეული',
+      selectLocationError: 'გთხოვთ აირჩიოთ მდებარეობა რუკაზე',
+      cancel: 'გაუქმება',
+      create: 'შექმნა',
+      uploading: 'იტვირთება...',
+      requiredField: 'სავალდებულო ველი',
+      language: 'ენა'
+    }
+  };
+
+  const t = translations[language];
+
+  const handleMapClick = (lat: number, lng: number) => {
+    setCoordinates({ lat, lng });
+    setValue('latitude', lat.toString());
+    setValue('longitude', lng.toString());
+  };
+
+  const onSubmitHandler = handleSubmit(async (data) => {
+    try {
+      setIsUploading(true);
+      await onSubmit({
+        ...data,
+        images: [
+          'https://example.com/photo1.jpg',
+          'https://example.com/photo2.jpg'
+        ],
+        latitude: coordinates?.lat.toString(),
+        longitude: coordinates?.lng.toString()
+      });
+    } catch (error) {
+      console.error('Ошибка при создании ресторана:', error);
+    } finally {
+      setIsUploading(false);
+    }
+  });
+
+  return (
+    <form onSubmit={onSubmitHandler} className="space-y-4">
+      {/* Form Fields */}
+      <div>
+        <Label htmlFor="title" className="mb-4">{t.title}</Label>
+        <Input
+          id="title"
+          {...register('title', { required: t.requiredField })}
+        />
+        {errors.title && <p className="text-red-500 text-sm">{errors.title.message}</p>}
+      </div>
+
+      <div>
+        <Label htmlFor="address" className="mb-4">{t.address}</Label>
+        <Input
+          id="address"
+          {...register('address', { required: t.requiredField })}
+        />
+        {errors.address && <p className="text-red-500 text-sm">{errors.address.message}</p>}
+      </div>
+
+      <div>
+        <Label htmlFor="description" className="mb-4">{t.description}</Label>
+        <Textarea
+          id="description"
+          {...register('description')}
+          rows={7}
+        />
+      </div>
+
+      <div>
+        <Label className="mb-4">{t.location}</Label>
+        <div className="h-[400px] w-full rounded-md overflow-hidden border">
+          <MapWithNoSSR 
+            onMapClick={handleMapClick} 
+            initialCenter={coordinates}
+          />
+        </div>
+        {coordinates ? (
+          <p className="text-sm mt-2">
+            {t.selectedLocation}: {coordinates.lat.toFixed(6)}, {coordinates.lng.toFixed(6)}
+          </p>
+        ) : (
+          <p className="text-sm text-red-500 mt-2">{t.selectLocationError}</p>
+        )}
+        <input type="hidden" {...register('latitude', { required: true })} />
+        <input type="hidden" {...register('longitude', { required: true })} />
+      </div>
+
+      <div className="flex justify-end space-x-2 pt-2">
+        <Button variant="outline" type="button" onClick={onCancel}>
+          {t.cancel}
+        </Button>
+        <Button type="submit" disabled={isUploading}>
+          {isUploading ? t.uploading : t.create}
+        </Button>
+      </div>
+    </form>
+  );
+}
