@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { UserService } from './user.service';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -175,7 +176,21 @@ export const ShiftService = {
     const { data } = await api.put(`/shifts/${shiftId}/status`, dto);
     return data;
   },
-
+  async addUserToShiftByEmail(shiftId: string, dto: { email: string }): Promise<Shift> {
+    // First get the user by email
+    const user = await UserService.getByEmail(dto.email);
+    
+    if (!user) {
+      throw new Error('User not found');
+    }
+    
+    // Then add the user to the shift
+    const { data } = await api.post(`/shifts/${shiftId}/users`, { 
+      userId: user.id
+    });
+    
+    return data;
+  },
   // Добавить пользователя в смену
   async addUserToShift(shiftId: string, dto: ManageShiftUserDto): Promise<Shift> {
     const { data } = await api.post(`/shifts/${shiftId}/users`, dto);

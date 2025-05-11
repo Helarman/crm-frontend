@@ -10,6 +10,17 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, ShoppingCart, DollarSign, Users, User } from 'lucide-react';
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { AccessCheck } from '@/components/AccessCheck';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { useState } from 'react';
+import { ShiftService } from '@/lib/api/shift.service';
+import { toast } from 'sonner';
 
 const translations = {
   ru: {
@@ -39,7 +50,15 @@ const translations = {
     admin: 'Администратор',
     manager: 'Менеджер',
     waiter: 'Официант',
-    chef: 'Повар'
+    chef: 'Повар',
+    addStaff: 'Добавить персонал',
+    emailPlaceholder: 'Введите email пользователя',
+    add: 'Добавить',
+    adding: 'Добавление...',
+    success: 'Успех',
+    userAddedSuccessfully: 'Пользователь успешно добавлен в смену',
+    error: 'Ошибка',
+    somethingWentWrong: 'Что-то пошло не так'
   },
   ka: {
     shiftStats: 'ცვლის სტატისტიკა',
@@ -68,7 +87,15 @@ const translations = {
     admin: 'ადმინისტრატორი',
     manager: 'მენეჯერი',
     waiter: 'ოფიციანტი',
-    chef: 'მზარეული'
+    chef: 'მზარეული',
+    addStaff: 'პერსონალის დამატება',
+    emailPlaceholder: 'შეიყვანეთ მომხმარებლის ელ.ფოსტა',
+    add: 'დამატება',
+    adding: 'დამატება...',
+    success: 'წარმატება',
+    userAddedSuccessfully: 'მომხმარებელი წარმატებით დაემატა ცვლაში',
+    error: 'შეცდომა',
+    somethingWentWrong: 'რაღაც შეცდომა მოხდა'
   }
 };
 
@@ -139,8 +166,34 @@ export default function ShiftStatsPage() {
   const { language } = useLanguageStore();
   const t = translations[language];
 
-  const { data: shift, isLoading: isLoadingShift } = useShift(id as string);
-  const { data: staff, isLoading: isLoadingStaff } = useShiftUsers(id as string);
+  const { data: shift, isLoading: isLoadingShift, mutate: mutateShift } = useShift(id as string);
+  const { data: staff, isLoading: isLoadingStaff, mutate: mutateStaff } = useShiftUsers(id as string);
+
+  const [email, setEmail] = useState('');
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isAddingUser, setIsAddingUser] = useState(false);
+
+
+
+  const handleAddUser = async () => {
+    if (!email) return;
+
+    setIsAddingUser(true);
+    try {
+      await ShiftService.addUserToShiftByEmail(id as string, { email });
+      toast.success(t.userAddedSuccessfully);
+      mutateShift();
+      mutateStaff();
+      setEmail('');
+      setIsDialogOpen(false);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : t.somethingWentWrong
+      );
+    } finally {
+      setIsAddingUser(false);
+    }
+  };
 
   if (isLoadingShift) {
     return (
@@ -246,7 +299,36 @@ export default function ShiftStatsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>{t.staff}</CardTitle>
+              <div className="flex justify-between items-center">
+                <CardTitle>{t.staff}</CardTitle>
+                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button size="sm" variant="outline">
+                      {t.addStaff}
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>{t.addStaff}</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <Input
+                        type="email"
+                        placeholder={t.emailPlaceholder}
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                      />
+                      <Button
+                        onClick={handleAddUser}
+                        disabled={isAddingUser || !email}
+                        className="w-full"
+                      >
+                        {isAddingUser ? t.adding : t.add}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </CardHeader>
             <CardContent>
               {isLoadingStaff ? (
