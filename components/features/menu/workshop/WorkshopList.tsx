@@ -13,6 +13,7 @@ export const WorkshopList = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentWorkshopId, setCurrentWorkshopId] = useState<string | null | undefined>(null);
   const [formData, setFormData] = useState<WorkshopDto>({
+    id: '',
     name: '',
   });
 
@@ -52,7 +53,7 @@ export const WorkshopList = () => {
   };
 
   const openAddModal = () => {
-    setFormData({ name: '' });
+    setFormData({ name: '' , id: ''});
     setCurrentWorkshopId(null);
     setIsModalOpen(true);
   };
@@ -61,6 +62,7 @@ export const WorkshopList = () => {
     setCurrentWorkshopId(workshop.id);
     setFormData({
       name: workshop.name,
+      id: workshop.id
     });
     setIsModalOpen(true);
   };
