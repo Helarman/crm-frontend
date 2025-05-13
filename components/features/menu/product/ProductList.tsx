@@ -1,3 +1,4 @@
+// ProductList.tsx
 import { useState, useEffect } from 'react';
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { ProductService } from '@/lib/api/product.service';
@@ -10,6 +11,9 @@ import { ProductFilters } from './ProductFilters';
 import { ProductTable } from './ProductTable';
 import { ProductModal } from './ProductModal';
 import { ProductPreviewCard } from './ProductPreviewCard';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useDebounce } from '@/lib/hooks/useDebounce';
+import { toast } from 'sonner';
 
 const ALL_CATEGORIES_VALUE = "all-categories";
 const ALL_RESTAURANTS_VALUE = "all-restaurants";
@@ -22,20 +26,12 @@ export const ProductList = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentProductId, setCurrentProductId] = useState<string | null>(null);
-  const [hoveredProduct, setHoveredProduct] = useState<any>(null);
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    price: 0,
-    ingredients: '',
-    images: [''],
-    categoryId: '',
-  });
-  const [selectedAdditives, setSelectedAdditives] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORIES_VALUE);
   const [selectedRestaurant, setSelectedRestaurant] = useState(ALL_RESTAURANTS_VALUE);
   const [restaurants, setRestaurants] = useState<any[]>([]);
+  
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   useEffect(() => {
     fetchData();
@@ -45,14 +41,21 @@ export const ProductList = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const [productsData, categoriesData, additivesData] = await Promise.all([
+      const [productsData, categoriesData] = await Promise.all([
         ProductService.getAll(),
         CategoryService.getAll(),
-        AdditiveService.getAll().catch(() => []),
       ]);
       setProducts(productsData);
       setCategories(categoriesData);
-      setAdditives(additivesData || []);
+      
+      // Загружаем добавки только если они нужны для модального окна
+      try {
+        const additivesData = await AdditiveService.getAll();
+        setAdditives(additivesData || []);
+      } catch (error) {
+        console.error('Error loading additives:', error);
+        setAdditives([]);
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -71,7 +74,7 @@ export const ProductList = () => {
   };
 
   const filteredProducts = products.filter(product => {
-    const matchesSearch = product.title.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = product.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
     const matchesCategory = selectedCategory === ALL_CATEGORIES_VALUE || 
                           product.categoryId === selectedCategory;
     const matchesRestaurant = selectedRestaurant === ALL_RESTAURANTS_VALUE || 
@@ -81,39 +84,23 @@ export const ProductList = () => {
   });
 
   const openAddModal = () => {
-    setFormData({
-      title: '',
-      description: '',
-      price: 0,
-      ingredients: '',
-      images: [''],
-      categoryId: '',
-    });
-    setSelectedAdditives([]);
     setCurrentProductId(null);
     setIsModalOpen(true);
   };
 
   const openEditModal = (product: any) => {
     setCurrentProductId(product.id);
-    setFormData({
-      title: product.title,
-      description: product.description,
-      price: product.price,
-      ingredients: product.ingredients,
-      images: product.images.length ? product.images : [''],
-      categoryId: product.categoryId || '',
-    });
-    setSelectedAdditives(product.additives?.map((a: any) => a.id) || []);
     setIsModalOpen(true);
   };
 
   const handleDelete = async (id: string) => {
     try {
       await ProductService.delete(id);
+      toast.success(language === 'ru' ? 'Продукт удален' : 'პროდუქტი წაიშალა');
       fetchData();
     } catch (error) {
       console.error('Error deleting product:', error);
+      toast.error(language === 'ru' ? 'Ошибка удаления' : 'წაშლის შეცდომა');
     }
   };
 
@@ -122,9 +109,26 @@ export const ProductList = () => {
     setIsModalOpen(false);
   };
 
+  if (isLoading && !products.length) {
+    return (
+      <div className="p-4 space-y-4">
+        <div className="flex justify-between items-center">
+          <Skeleton className="h-8 w-32" />
+          <Skeleton className="h-10 w-40" />
+        </div>
+        <Skeleton className="h-12 w-full" />
+        <div className="space-y-2">
+          {[...Array(5)].map((_, i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-4">
-      <div className="flex justify-between items-center mb-4">
+    <div className="p-4 space-y-4">
+      <div className="flex justify-between items-center">
         <h2 className="text-xl font-semibold">
           {language === 'ru' ? 'Продукты' : 'პროდუქტები'}
         </h2>
@@ -148,31 +152,17 @@ export const ProductList = () => {
 
       <ProductTable
         products={filteredProducts}
-        isLoading={isLoading}
+        isLoading={isLoading && products.length > 0}
         language={language}
         onEdit={openEditModal}
         onDelete={handleDelete}
-        onHover={setHoveredProduct}
       />
 
-      {hoveredProduct && (
-        <ProductPreviewCard 
-          product={hoveredProduct}
-          language={language}
-        />
-      )}
-
       <ProductModal
+        productId={currentProductId}
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSubmitSuccess={handleSubmitSuccess}
-        productId={currentProductId}
-        formData={formData}
-        setFormData={setFormData}
-        selectedAdditives={selectedAdditives}
-        setSelectedAdditives={setSelectedAdditives}
-        categories={categories}
-        additives={additives}
         language={language}
       />
     </div>

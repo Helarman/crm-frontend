@@ -55,14 +55,14 @@ function Logo({ collapsed, toggleCollapse }: { collapsed: boolean, toggleCollaps
   const roleColor = ROLE_COLORS[user?.role as keyof typeof ROLE_COLORS] || 'text-gray-500 dark:text-gray-400'
 
   return (
-    <div className="h-16 border-b flex items-center bg-white dark:bg-gray-900 relative">
+    <div className="h-16 border-b flex items-center justify-center  bg-white dark:bg-gray-900 relative">  
       <button 
         onClick={toggleCollapse}
-        className={`absolute right-4 w-6 h-6 flex items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${
-          collapsed ? 'left-4 right-auto' : ''
+        className={`absolute right-4 w-7 h-7 flex items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${
+          collapsed ? 'left-auto right-auto' : ''
         }`}
       >
-        {collapsed ? <Menu className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        {collapsed ? <Menu className="w-7 h-7" /> : <Menu className="w-7 h-7" />}
       </button>
 
       <div className={`flex-1 flex justify-start ${collapsed ? 'ml-10' : ''}`}>
@@ -121,61 +121,61 @@ export default function Side() {
       { 
         name: t.home, 
         href: "/", 
-        icon: <LayoutDashboard className="w-5 h-5" />,
+        icon: <LayoutDashboard className="w-7 h-7" />,
         roles: ['NONE', 'STOREMAN', 'COURIER', 'COOK', 'CHEF', 'WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.orders, 
         href: "/orders", 
-        icon: <ClipboardList className="w-5 h-5" />,
+        icon: <ClipboardList className="w-7 h-7" />,
         roles: ['WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.kitchen, 
         href: "/kitchen", 
-        icon: <Utensils className="w-5 h-5" />,
+        icon: <Utensils className="w-7 h-7" />,
         roles: ['COOK', 'CHEF', 'MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.restaurants, 
         href: "/restaurants", 
-        icon: <Store className="w-5 h-5" />,
+        icon: <Store className="w-7 h-7" />,
         roles: ['MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.menu, 
         href: "/products", 
-        icon: <BookOpen className="w-5 h-5" />,
+        icon: <BookOpen className="w-7 h-7" />,
         roles: ['MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.staff, 
         href: "/staff", 
-        icon: <Users className="w-5 h-5" />,
+        icon: <Users className="w-7 h-7" />,
         roles: ['MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.shifts, 
         href: "/shifts", 
-        icon: <CalendarClock className="w-5 h-5" />,
+        icon: <CalendarClock className="w-7 h-7" />,
         roles: [/*'STOREMAN', 'COURIER', 'COOK', 'CHEF', 'WAITER', 'CASHIER', */'MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.discounts, 
         href: "/discounts", 
-        icon: <Tag className="w-5 h-5" />,
+        icon: <Tag className="w-7 h-7" />,
         roles: []
       },
       { 
         name: t.bonuses, 
         href: "/bonuses", 
-        icon: <TrendingUp className="w-5 h-5" />,
+        icon: <TrendingUp className="w-7 h-7" />,
         roles: []
       },
       { 
         name: t.analytics, 
         href: "/analytics", 
-        icon: <LineChart className="w-5 h-5" />,
+        icon: <LineChart className="w-7 h-7" />,
         roles: []
       },
     ]
@@ -197,10 +197,10 @@ export default function Side() {
     }
 
     return (
-      <div className={`bg-white dark:bg-gray-900 border-r flex flex-col h-screen sticky top-0 transition-all duration-300 ${collapsed ? 'w-16' : 'w-64'}`}>
+      <div className={`bg-white dark:bg-gray-900 border-r flex flex-col h-screen sticky top-0 transition-all duration-300 ${collapsed ? 'w-24' : 'w-80'}`}>
         <Logo collapsed={collapsed} toggleCollapse={toggleCollapse} />
       
-        <nav className="flex-1 px-2 py-6 overflow-y-auto">
+        <nav className="flex-1 px-2 py-6 overflow-y-auto text-xl">
           <ul className="space-y-1">
           {activeItems.map((item) => {
               const isActive = pathname === item.href
@@ -208,7 +208,7 @@ export default function Side() {
                 <li key={item.href}>
                   <Link
                     href={item.href}
-                    className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg transition-colors mx-1 ${
+                    className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg transition-colors mx-1  ${
                       isActive
                         ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-primary-foreground font-medium'
                         : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
@@ -252,24 +252,22 @@ export default function Side() {
           </ul>
         </nav>
       
-        <div className="p-2 border-t dark:border-gray-700 space-y-2">
-          {/* Theme Toggle */}
+        {/*<div className="p-2 border-t dark:border-gray-700 space-y-2">
           <button
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
             className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg transition-colors mx-1 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300`}
             title={collapsed ? t.theme : undefined}
           >
-            {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            {theme === 'dark' ? <Sun className="w-7 h-7" /> : <Moon className="w-7 h-7" />}
             {!collapsed && <span>{t.theme}</span>}
           </button>
 
-          {/* Language Toggle */}
           <button
             onClick={() => setLanguage(language === 'ru' ? 'ka' : 'ru')}
             className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg transition-colors mx-1 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300`}
             title={collapsed ? t.language : undefined}
           >
-            <Languages className="w-5 h-5" />
+            <Languages className="w-7 h-7" />
             {!collapsed && <span>{t.language}: {language === 'ru' ? 'Рус' : 'ქარ'}</span>}
           </button>
           
@@ -278,18 +276,18 @@ export default function Side() {
               className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 w-full px-3 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-red-500 dark:hover:text-red-400 transition-colors mx-1`}
               title={collapsed ? t.logout : undefined}
           >
-            <LogOut className="w-5 h-5" />
+            <LogOut className="w-7 h-7" />
             {!collapsed && (
               <span className="whitespace-nowrap">
                 {t.logout}
               </span>
             )}
           </button>
-          
+            
           {!collapsed && (
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-4 px-3">{t.version} 0.1.0</p>
           )}
-        </div>
+        </div>*/}
       </div>
     )
 }

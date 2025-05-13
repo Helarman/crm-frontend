@@ -103,84 +103,24 @@ function redirectToLogin() {
   }
 }
 
-interface AdditiveDto {
-  title: string;
-  price: number;
+
+export interface CustomerDto {
+  id: string;
+  phone: string;
 }
 
-export const AdditiveService = {
-  // Получение всех добавок
-  getAll: async (searchTerm?: string) => {
-    const { data } = await api.get('/additives', {
-      params: { searchTerm }
-    });
-    return data;
+export const CustomerService = {
+  getCustomerByPhone: async (phone: string): Promise<CustomerDto> => {
+   const { data } = await api.get<CustomerDto>(`/customer-verification/customer/${phone}`);
+      return data;
   },
 
-  // Получение добавки по ID
-  getById: async (id: string) => {
-    const { data } = await api.get(`/additives/${id}`);
-    return data;
-  },
-
-  // Создание новой добавки
-  create: async (dto: AdditiveDto) => {
-    const { data } = await api.post('/additives', dto);
-    return data;
-  },
-
-  // Обновление добавки
-  update: async (id: string, dto: Partial<AdditiveDto>) => {
-    const { data } = await api.patch(`/additives/${id}`, dto);
-    return data;
-  },
-
-  // Удаление добавки
-  delete: async (id: string) => {
-    const { data } = await api.delete(`/additives/${id}`);
-    return data;
-  },
-
-  // Получение всех добавок для конкретного продукта
-  getByProduct: async (productId: string) => {
-    const { data } = await api.get(`/additives/product/${productId}`);
-    return data;
-  },
-
-  // Добавление добавки к продукту
-  addToProduct: async (additiveId: string, productId: string) => {
-    const { data } = await api.post(
-      `/additives/${additiveId}/products/${productId}`
-    );
-    return data;
-  },
-
-  // Удаление добавки из продукта
-  removeFromProduct: async (additiveId: string, productId: string) => {
-    const { data } = await api.delete(
-      `/additives/${additiveId}/products/${productId}`
-    );
-    return data;
-  },
-
-  getProductAdditives: async (productId: string) => {
-    const { data } = await api.get(`/additives/product/${productId}`);
-    return data;
-  },
-
-  
-  updateProductAdditives: async (
-    productId: string,
-    additiveIds: string[]
-  ): Promise<Additive[]> => {
+ createCustomer: async (customerData: Omit<CustomerDto, 'id'>): Promise<CustomerDto> => {
     try {
-      const { data } = await api.put<Additive[]>(
-        `/additives/product/${productId}`,
-        { additiveIds }
-      );
+      const { data } = await api.post<CustomerDto>('/customer-verification/request-code', customerData);
       return data;
     } catch (error) {
-      console.error('Failed to update product additives:', error);
+      console.error('Failed to create customer:', error);
       throw error;
     }
   },

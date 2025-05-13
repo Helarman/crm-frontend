@@ -12,7 +12,28 @@ import { PaymentSelector } from '@/components/features/order/PaymentSelector'
 import { toast } from 'sonner'
 import { useAuth } from "@/lib/hooks/useAuth"
 import { useLanguageStore } from '@/lib/stores/language-store'
-import { Minus, Plus, Trash, ChevronLeft } from 'lucide-react'
+import { CustomerService } from '@/lib/api/customer.service'
+import { 
+  Minus, 
+  Plus, 
+  Trash, 
+  ChevronLeft,
+  Utensils,
+  ShoppingBag,
+  Truck,
+  GlassWater,
+  Store,
+  Clock,
+  Users,
+  MessageSquare,
+  MapPin,
+  CalendarClock,
+  Table,
+  Phone,
+  Smartphone,
+  Globe,
+  Tablet
+} from 'lucide-react'
 import {
   Select,
   SelectContent,
@@ -22,6 +43,12 @@ import {
 } from '@/components/ui/select'
 import { ShiftService } from '@/lib/api/shift.service'
 import { AccessCheck } from '@/components/AccessCheck'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Textarea } from '@/components/ui/textarea'
+import { format } from 'date-fns'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Switch } from '@/components/ui/switch'
+import { cn } from '@/lib/utils'
 
 interface OrderItem {
   productId: string
@@ -53,6 +80,11 @@ interface Product {
   additives: Additive[]
   description?: string
   descriptionGe?: string
+  restaurantPrices: {
+    restaurantId: string
+    price: number
+    isStopList: boolean
+  }[]
 }
 
 export interface Restaurant {
@@ -62,23 +94,112 @@ export interface Restaurant {
   categories: Category[]
 }
 
+const ORDER_TYPES = [
+  {
+    value: 'DINE_IN',
+    icon: Utensils,
+    titleRu: 'В зале',
+    titleGe: 'დარბაზში',
+    descriptionRu: 'Клиент будет есть в ресторане',
+    descriptionGe: 'კლიენტი რესტორანში ჭამს',
+    color: 'bg-blue-100 border-blue-300 hover:bg-blue-50'
+  },
+  {
+    value: 'TAKEAWAY',
+    icon: ShoppingBag,
+    titleRu: 'С собой',
+    titleGe: 'თვითმიტანი',
+    descriptionRu: 'Клиент заберет заказ сам',
+    descriptionGe: 'კლიენტი თვითონ წაიღებს შეკვეთას',
+    color: 'bg-green-100 border-green-300 hover:bg-green-50'
+  },
+  {
+    value: 'DELIVERY',
+    icon: Truck,
+    titleRu: 'Доставка',
+    titleGe: 'მიტანა',
+    descriptionRu: 'Доставка курьером',
+    descriptionGe: 'კურიერის მიტანა',
+    color: 'bg-purple-100 border-purple-300 hover:bg-purple-50'
+  },
+  {
+    value: 'BANQUET',
+    icon: GlassWater,
+    titleRu: 'Банкет',
+    titleGe: 'ბანკეტი',
+    descriptionRu: 'Групповое мероприятие',
+    descriptionGe: 'ჯგუფური ღონისძიება',
+    color: 'bg-amber-100 border-amber-300 hover:bg-amber-50'
+  }
+]
+
+const SOURCE_TYPES = [
+  {
+    value: 'PANEL',
+    icon: Tablet,
+    titleRu: 'Панель',
+    titleGe: 'პანელი',
+    color: 'bg-gray-100 border-gray-300 hover:bg-gray-50'
+  },
+  {
+    value: 'SITE',
+    icon: Globe,
+    titleRu: 'Сайт',
+    titleGe: 'საიტი',
+    color: 'bg-indigo-100 border-indigo-300 hover:bg-indigo-50'
+  },
+  {
+    value: 'MOBILE',
+    icon: Smartphone,
+    titleRu: 'Мобильное приложение',
+    titleGe: 'მობილური აპლიკაცია',
+    color: 'bg-teal-100 border-teal-300 hover:bg-teal-50'
+  }
+]
+
+interface OrderState {
+  restaurantId: string
+  items: OrderItem[]
+  payment: { method: 'CASH' | 'CARD', status: 'PAID' | 'UNPAID' }
+  type: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET'
+  source: 'PANEL' | 'SITE' | 'MOBILE'
+  comment: string
+  numberOfPeople: number
+  tableNumber: number
+  deliveryAddress: string
+  deliveryTime: string
+  deliveryNotes: string
+  customerId: string | null
+  customerPhone: string
+}
+
 export default function NewOrderPage() {
   const router = useRouter()
   const { user } = useAuth()
   const { language } = useLanguageStore()
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null)
-  const [order, setOrder] = useState({
+  const [order, setOrder] = useState<OrderState>({
     restaurantId: '',
-    items: [] as OrderItem[],
-    payment: { method: 'CASH' as any , status: 'PAID' as const },
-    type: 'DINE_IN' as const
+    items: [],
+    payment: { method: 'CASH', status: 'PAID' },
+    type: 'DINE_IN',
+    source: 'PANEL',
+    comment: '',
+    numberOfPeople: 1,
+    tableNumber: 0,
+    deliveryAddress: '',
+    deliveryTime: '',
+    deliveryNotes: '',
+    customerId: null,
+    customerPhone: ''
   })
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loadingState, setLoadingState] = useState<'initial' | 'loading' | 'success' | 'error'>('initial')
   const [activeShiftId, setActiveShiftId] = useState('')
+  const [isScheduled, setIsScheduled] = useState(false)
+  const [scheduledTime, setScheduledTime] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"))
 
-  // Инициализация ресторана
   useEffect(() => {
     if (!user) return
 
@@ -94,7 +215,6 @@ export default function NewOrderPage() {
     setLoadingState('loading')
   }, [user, language])
 
-  // Загрузка данных
   useEffect(() => {
     const fetchData = async () => {
       if (!selectedRestaurant?.id || loadingState !== 'loading') return
@@ -148,20 +268,27 @@ export default function NewOrderPage() {
     setLoadingState('loading')
   }
 
-  const total = order.items.reduce((sum, item) => {
-    const product = products.find(p => p.id === item.productId)
-    const productPrice = product?.price || 0
+  const calculateTotal = () => {
+    return order.items.reduce((sum, item) => {
+      const product = products.find(p => p.id === item.productId)
+      if (!product) return sum
 
-    const additivesPrice = (product?.additives || [])
-      .filter(a => item.additiveIds.includes(a.id))
-      .reduce((sum, a) => sum + a.price, 0)
+      const restaurantPrice = product.restaurantPrices?.find(
+        p => p.restaurantId === order.restaurantId
+      )
+      const productPrice = restaurantPrice?.price ?? product.price
 
-    return sum + (item.quantity * (productPrice + additivesPrice))
-  }, 0)
+      const additivesPrice = (product?.additives || [])
+        .filter(a => item.additiveIds.includes(a.id))
+        .reduce((sum, a) => sum + a.price, 0)
+
+      return sum + (item.quantity * (productPrice + additivesPrice))
+    }, 0)
+  }
 
   const handleSubmit = async () => {
     if (!activeShiftId) {
-      toast.error('В ресторане нет активных смен')
+      toast.error(language === 'ka' ? 'არ არის აქტიური ცვლა' : 'Нет активной смены')
       return
     }
     if (order.items.length === 0 || !selectedRestaurant) {
@@ -169,10 +296,25 @@ export default function NewOrderPage() {
       return
     }
 
+    if ((order.type === 'DINE_IN' || order.type === 'BANQUET') && !order.tableNumber) {
+      toast.error(language === 'ka' ? 'შეიყვანეთ სტოლის ნომერი' : 'Введите номер стола')
+      return
+    }
+
+    if (order.type === 'DELIVERY' && !order.deliveryAddress) {
+      toast.error(language === 'ka' ? 'შეიყვანეთ მისამართი' : 'Введите адрес доставки')
+      return
+    }
+
+    if (isScheduled && !scheduledTime) {
+      toast.error(language === 'ka' ? 'შეიყვანეთ დაგეგმილი დრო' : 'Введите запланированное время')
+      return
+    }
+
     try {
       const orderData = {
         ...order,
-        total,
+        total: calculateTotal(),
         shiftId: activeShiftId,
         items: order.items.map(item => ({
           productId: item.productId,
@@ -180,6 +322,10 @@ export default function NewOrderPage() {
           comment: item.comment || '',
           additiveIds: item.additiveIds
         })),
+        deliveryNotes: order.type === 'DELIVERY' 
+          ? `${order.comment || ''}\n${order.deliveryNotes || ''}`.trim()
+          : undefined,
+        scheduledAt: isScheduled ? scheduledTime : undefined
       }
 
       await OrderService.create(orderData)
@@ -189,6 +335,65 @@ export default function NewOrderPage() {
       console.error('Order creation error:', error)
       toast.error(language === 'ka' ? 'შეკვეთის შექმნის შეცდომა' : 'Ошибка при создании заказа')
     }
+  }
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value.replace(/\D/g, '')
+    let formattedValue = ''
+
+    if (!value) {
+      setOrder(prev => ({ ...prev, customerPhone: '' }))
+      return
+    }
+
+    if (value.length > 0) {
+      formattedValue += '+7 ('
+    }
+    if (value.length > 1) {
+      formattedValue += value.substring(1, 4)
+    }
+    if (value.length > 4) {
+      formattedValue += ') ' + value.substring(4, 7)
+    }
+    if (value.length > 7) {
+      formattedValue += '-' + value.substring(7, 9)
+    }
+    if (value.length > 9) {
+      formattedValue += '-' + value.substring(9, 11)
+    }
+
+    setOrder(prev => ({ ...prev, customerPhone: formattedValue }))
+  }
+
+  const handleFindCustomer = async () => {
+    if (!order.customerPhone) {
+      toast.error(language === 'ka' ? 'შეიყვანეთ ტელეფონის ნომერი' : 'Введите номер телефона')
+      return
+    }
+
+    try {
+      const phoneNumber = order.customerPhone.replace(/\D/g, '')
+      const customer = await CustomerService.getCustomerByPhone(phoneNumber)
+      
+      setOrder(prev => ({
+        ...prev,
+        customerId: customer.id,
+      }))
+      
+      toast.success(language === 'ka' 
+        ? 'კლიენტი წარმატებით მოიძებნა' 
+        : 'Клиент успешно найден')
+    } catch (error) {
+      console.error('Customer search error:', error)
+      setOrder(prev => ({ ...prev, customerId: null }))
+      toast.error(language === 'ka' 
+        ? 'კლიენტი არ მოიძებნა' 
+        : 'Клиент не найден')
+    }
+  }
+
+  const t = (text: string | undefined, textGe: string | undefined) => {
+    return language === 'ka' && textGe ? textGe : text || ''
   }
 
   if (!user) {
@@ -219,37 +424,231 @@ export default function NewOrderPage() {
 
   return (
     <AccessCheck allowedRoles={['WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR']}>
-      <div className="container py-6">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">{language === 'ka' ? 'ახალი შეკვეთა' : 'Новый заказ'}</h1>
-
-          {user?.restaurant && user.restaurant.length > 1 && (
-            <div className="flex items-center gap-2">
-              <Select
-                value={order.restaurantId}
-                onValueChange={handleRestaurantChange}
-              >
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder={language === 'ka' ? 'აირჩიეთ რესტორანი' : 'Выберите ресторан'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {user.restaurant.map((restaurant: Restaurant) => (
-                    <SelectItem key={restaurant.id} value={restaurant.id}>
-                      {restaurant.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+      <div className="container py-6 space-y-6">
+        <h1 className="text-2xl font-bold">{language === 'ka' ? 'ახალი შეკვეთა' : 'Новый заказ'}</h1>
+        
+        {/* Order Type Selection */}
+        <div className="mb-8 space-y-3">
+          <Label className="text-lg flex items-center gap-2">
+            <Utensils className="h-5 w-5" />
+            {language === 'ka' ? 'შეკვეთის ტიპი' : 'Тип заказа'}
+          </Label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {ORDER_TYPES.map((type) => {
+              const Icon = type.icon
+              return (
+                <button
+                  key={type.value}
+                  onClick={() => setOrder(prev => ({ ...prev, type: type.value as any }))}
+                  className={`p-4 border-2 rounded-lg flex flex-col items-center transition-all hover:scale-[1.02] active:scale-[0.98]
+                  ${order.type === type.value
+                      ? 'bg-primary text-primary-foreground border-primary shadow-lg'
+                      : 'hover:bg-accent shadow-sm hover:shadow-md'
+                    }`}
+                  title={language === 'ka' ? type.descriptionGe : type.descriptionRu}
+                >
+                  <Icon className="h-8 w-8 mb-2" />
+                  <span className="font-semibold">
+                    {language === 'ka' ? type.titleGe : type.titleRu}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         </div>
 
+        {/* Restaurant Selection */}
+        {user?.restaurant && user.restaurant.length > 1 && (
+          <div className="mb-6 space-y-2">
+            <Label className="flex items-center gap-2">
+              <Store className="h-5 w-5" />
+              {language === 'ka' ? 'რესტორანი' : 'Ресторан'}
+            </Label>
+            <Select
+              value={order.restaurantId}
+              onValueChange={handleRestaurantChange}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={language === 'ka' ? 'აირჩიეთ რესტორანი' : 'Выберите ресторан'} />
+              </SelectTrigger>
+              <SelectContent>
+                {user.restaurant.map((restaurant: Restaurant) => (
+                  <SelectItem key={restaurant.id} value={restaurant.id}>
+                    {restaurant.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Customer Phone */}
+        <div className="space-y-2">
+          <Label className="flex items-center gap-2">
+            <Phone className="h-5 w-5" />
+            {language === 'ka' ? 'ტელეფონის ნომერი' : 'Номер телефона'}
+          </Label>
+          <div className="flex gap-2">
+            <Input
+              placeholder="+7 (___) ___-__-__"
+              value={order.customerPhone}
+              onChange={handlePhoneChange}
+              maxLength={18}
+            />
+            <Button 
+              onClick={handleFindCustomer}
+              variant="secondary"
+            >
+              {language === 'ka' ? 'ძებნა' : 'Найти'}
+            </Button>
+          </div>
+          {order.customerId ? (
+            <p className="text-sm text-green-600">
+              {language === 'ka' ? 'კლიენტი ნაპოვნია' : 'Клиент найден'}
+            </p>
+          ) : order.customerPhone ? (
+            <p className="text-sm text-yellow-600">
+              {language === 'ka' ? 'კლიენტი არ არის ნაპოვნი' : 'Клиент не найден'}
+            </p>
+          ) : null}
+        </div>
+
+        {/* General Fields */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                {language === 'ka' ? 'მომხმარებლების რაოდენობა' : 'Количество посетителей'}
+              </Label>
+              <Input
+                type="number"
+                min="1"
+                value={order.numberOfPeople}
+                onChange={(e) => setOrder(prev => ({
+                  ...prev,
+                  numberOfPeople: parseInt(e.target.value) || 1
+                }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Table className="h-5 w-5" />
+                {language === 'ka' ? 'სტოლის ნომერი' : 'Номер стола'}
+              </Label>
+              <Input
+                disabled={order.type === 'TAKEAWAY' || order.type === 'DELIVERY'}
+                type="number"
+                min="0"
+                value={order.tableNumber}
+                onChange={(e) => setOrder(prev => ({
+                  ...prev,
+                  tableNumber: parseInt(e.target.value) || 0
+                }))}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2 md:col-span-2">
+            <Label className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              {language === 'ka' ? 'კომენტარი' : 'Комментарий'}
+            </Label>
+            <Textarea 
+              className="h-full min-h-[120px]" 
+              style={{ height: 'calc(2 * (2.5rem + 1px) + 1rem)' }}
+              value={order.comment}
+              onChange={(e) => setOrder(prev => ({
+                ...prev,
+                comment: e.target.value
+              }))}
+              placeholder={language === 'ka' ? 'დამატებითი ინფორმაცია' : 'Дополнительная информация'}
+            />
+          </div>
+        </div>
+
+        {/* Delivery Fields */}
+        {order.type === 'DELIVERY' && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <MapPin className="h-5 w-5" />
+                {language === 'ka' ? 'მისამართი' : 'Адрес доставки'}
+              </Label>
+              <Input
+                value={order.deliveryAddress}
+                onChange={(e) => setOrder(prev => ({
+                  ...prev,
+                  deliveryAddress: e.target.value
+                }))}
+                placeholder={language === 'ka' ? 'ქუჩა, სახლი, ბინა' : 'Улица, дом, квартира'}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                {language === 'ka' ? 'დრო მიტანისთვის' : 'Время доставки'}
+              </Label>
+              <Input
+                type="time"
+                value={order.deliveryTime}
+                onChange={(e) => setOrder(prev => ({
+                  ...prev,
+                  deliveryTime: e.target.value
+                }))}
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5" />
+                {language === 'ka' ? 'დამატებითი ინსტრუქციები' : 'Дополнительные инструкции'}
+              </Label>
+              <Textarea
+                value={order.deliveryNotes}
+                onChange={(e) => setOrder(prev => ({
+                  ...prev,
+                  deliveryNotes: e.target.value
+                }))}
+                placeholder={language === 'ka' ? 'მაგ. დარეკეთ შესვლამდე' : 'Например: Позвоните перед приездом'}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Scheduled Order */}
+        <div className="mb-6 p-4 border rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="scheduled-order"
+                checked={isScheduled}
+                onCheckedChange={(checked) => setIsScheduled(!!checked)}
+              />
+              <Label htmlFor="scheduled-order" className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                {language === 'ka' ? 'დაგეგმილი შეკვეთა' : 'Отложенный заказ'}
+              </Label>
+            </div>
+            <div className="w-64">
+              <Input
+                type="datetime-local"
+                disabled={!isScheduled}
+                value={scheduledTime}
+                onChange={(e) => setScheduledTime(e.target.value)}
+                min={format(new Date(), "yyyy-MM-dd'T'HH:mm")}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Product Selection */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             {categories.length > 0 && products.length > 0 ? (
               <ProductSelector
                 products={products}
                 categories={categories}
+                restaurantId={order.restaurantId}
                 onItemsChange={(items) => setOrder(prev => ({ ...prev, items }))}
                 language={language}
               />
@@ -261,26 +660,70 @@ export default function NewOrderPage() {
           </div>
 
           <div className="space-y-6">
-            <PaymentSelector
-              method={order.payment.method}
-              onChange={(method) => setOrder(prev => ({
-                ...prev,
-                payment: { ...prev.payment, method }
-              }))}
-              language={language}
-            />
+            <div className="p-4 border rounded-lg space-y-4">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                {language === 'ka' ? 'გადახდა' : 'Оплата'}
+              </h3>
+              <PaymentSelector
+                method={order.payment.method}
+                onChange={(method) => setOrder(prev => ({
+                  ...prev,
+                  payment: { ...prev.payment, method }
+                }))}
+                language={language}
+              />
+            </div>
 
-            <div className="p-4 border rounded-lg space-y-2">
-              <div className="flex justify-between">
-                <span>{language === 'ka' ? 'პროდუქტები:' : 'Товары:'}</span>
-                <span>{total.toFixed(2)} ₽</span>
-              </div>
-
-              {selectedRestaurant && (
-                <div className="pt-2 text-sm text-muted-foreground">
-                  {language === 'ka' ? 'რესტორანი:' : 'Ресторан:'} {selectedRestaurant.title}
+            <div className="p-4 border rounded-lg space-y-4">
+              <h3 className="text-lg font-bold">
+                {language === 'ka' ? 'შეკვეთის დეტალები' : 'Детали заказа'}
+              </h3>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    {language === 'ka' ? 'პროდუქტები:' : 'Товары:'}
+                  </span>
+                  <span className="font-medium">{calculateTotal().toFixed(2)} ₽</span>
                 </div>
-              )}
+                
+                {selectedRestaurant && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      {language === 'ka' ? 'რესტორანი:' : 'Ресторан:'}
+                    </span>
+                    <span className="font-medium">{selectedRestaurant.title}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    {language === 'ka' ? 'ტიპი:' : 'Тип:'}
+                  </span>
+                  <span className="font-medium">
+                    {ORDER_TYPES.find(t => t.value === order.type)?.[language === 'ka' ? 'titleGe' : 'titleRu']}
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    {language === 'ka' ? 'წყარო:' : 'Источник:'}
+                  </span>
+                  <span className="font-medium">
+                    {SOURCE_TYPES.find(t => t.value === order.source)?.[language === 'ka' ? 'titleGe' : 'titleRu']}
+                  </span>
+                </div>
+
+                {isScheduled && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      {language === 'ka' ? 'დაგეგმილი დრო:' : 'Запланировано на:'}
+                    </span>
+                    <span className="font-medium">
+                      {format(new Date(scheduledTime), "dd.MM.yyyy HH:mm")}
+                    </span>
+                  </div>
+                )}
+              </div>
 
               <Button
                 className="w-full mt-4"
@@ -296,25 +739,27 @@ export default function NewOrderPage() {
     </AccessCheck>
   )
 }
+interface ProductSelectorProps {
+  products: Product[]
+  categories: Category[]
+  restaurantId: string
+  onItemsChange: (items: OrderItem[]) => void
+  language: string
+}
 
 function ProductSelector({
   products,
   categories,
+  restaurantId,
   onItemsChange,
   language
-}: {
-  products: Product[]
-  categories: Category[]
-  onItemsChange: (items: OrderItem[]) => void
-  language: string
-}) {
+}: ProductSelectorProps) {
   const [items, setItems] = useState<OrderItem[]>([])
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [selectedAdditives, setSelectedAdditives] = useState<string[]>([])
   const [comment, setComment] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null)
 
-  // Функция для переключения добавок
   const toggleAdditive = (additiveId: string) => {
     setSelectedAdditives(prev =>
       prev.includes(additiveId)
@@ -331,14 +776,12 @@ function ProductSelector({
     ? products.filter(p => p.categoryId === selectedCategory.id)
     : products
 
-  // Сбрасываем выбор добавок при смене категории
   useEffect(() => {
     setSelectedProduct(null)
     setSelectedAdditives([])
     setComment('')
   }, [selectedCategory])
 
-  // Сбрасываем выбор добавок при смене продукта
   useEffect(() => {
     setSelectedAdditives([])
     setComment('')
@@ -346,6 +789,18 @@ function ProductSelector({
 
   const handleAddItem = () => {
     if (!selectedProduct) return
+
+    // Проверяем, не в стоп-листе ли продукт в этом ресторане
+    const isStopList = selectedProduct.restaurantPrices?.find(
+      p => p.restaurantId === restaurantId
+    )?.isStopList
+
+    if (isStopList) {
+      toast.error(language === 'ka' 
+        ? 'ეს პროდუქტი ამჟამად არ არის ხელმისაწვდომი' 
+        : 'Этот продукт временно недоступен')
+      return
+    }
 
     const newItem: OrderItem = {
       productId: selectedProduct.id,
@@ -381,7 +836,6 @@ function ProductSelector({
     <div className="space-y-6">
       <h2 className="text-xl font-bold">{language === 'ka' ? 'აირჩიეთ კერძები' : 'Выберите блюда'}</h2>
 
-      {/* Выбор категории - УЛУЧШЕННЫЕ КАРТОЧКИ */}
       {!selectedCategory ? (
         <div className="space-y-3">
           <Label className="text-lg">{language === 'ka' ? 'კატეგორიები' : 'Категории'}</Label>
@@ -393,7 +847,7 @@ function ProductSelector({
                 className="p-6 border-2 rounded-xl flex flex-col items-center hover:bg-accent transition-all 
                 hover:scale-[1.02] active:scale-[0.98] shadow-sm hover:shadow-md"
               >
-                <div className="text-2xl mb-3">🍽️</div>
+                <Store className="h-8 w-8 mb-3" />
                 <span className="font-semibold text-base text-center">
                   {t(category.title, category.titleGe)}
                 </span>
@@ -403,7 +857,6 @@ function ProductSelector({
         </div>
       ) : (
         <>
-          {/* Кнопка назад к категориям - УЛУЧШЕННАЯ */}
           <button
             onClick={() => setSelectedCategory(null)}
             className="flex items-center gap-1 text-base text-primary hover:text-primary/80 font-medium"
@@ -412,33 +865,40 @@ function ProductSelector({
             {language === 'ka' ? 'უკან კატეგორიებში' : 'Назад к категориям'}
           </button>
 
-          {/* Выбор продукта - УЛУЧШЕННЫЕ КАРТОЧКИ */}
           <div className="space-y-3">
             <Label className="text-lg">{language === 'ka' ? 'პროდუქტები' : 'Продукты'}</Label>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {filteredProducts.map(product => (
-                <button
-                  key={product.id}
-                  onClick={() => setSelectedProduct(product)}
-                  className={`p-6 border-2 rounded-xl flex flex-col items-center transition-all hover:scale-[1.02] active:scale-[0.98]
-                  ${selectedProduct?.id === product.id
-                      ? 'bg-primary text-primary-foreground border-primary shadow-lg'
-                      : 'hover:bg-accent shadow-sm hover:shadow-md'
-                    }`}
-                >
-                  <div className="text-2xl mb-3">🍕</div>
-                  <span className="font-semibold text-base text-center">
-                    {t(product.title, product.titleGe)}
-                  </span>
-                  <span className="text-base mt-2 font-bold">{product.price} ₽</span>
-                </button>
-              ))}
+              {filteredProducts.map(product => {
+                const restaurantPrice = product.restaurantPrices?.find(
+                  p => p.restaurantId === restaurantId
+                )
+                const displayPrice = restaurantPrice?.price
+                const isStopList = restaurantPrice?.isStopList ?? false
+
+                return (
+                  <button
+                    key={product.id}
+                    onClick={() => !isStopList && setSelectedProduct(product)}
+                    className={`p-6 border-2 rounded-xl flex flex-col items-center transition-all hover:scale-[1.02] active:scale-[0.98]
+                    ${selectedProduct?.id === product.id
+                        ? 'bg-primary text-primary-foreground border-primary shadow-lg'
+                        : 'hover:bg-accent shadow-sm hover:shadow-md'
+                      }`}
+                  >
+                    <Utensils className="h-8 w-8 mb-3" />
+                    <span className="font-semibold text-base text-center">
+                      {t(product.title, product.titleGe)}
+                    </span>
+                    <span className="text-base mt-2 font-bold">{displayPrice} ₽</span>
+                  </button> 
+                )
+              }
+            )}
             </div>
           </div>
         </>
       )}
 
-      {/* Выбор добавок - УЛУЧШЕННЫЙ */}
       {selectedProduct && selectedProduct.additives.length > 0 && (
         <div className="space-y-3">
           <Label className="text-lg">{language === 'ka' ? 'დამატებები' : 'Добавки'}</Label>
@@ -461,7 +921,6 @@ function ProductSelector({
         </div>
       )}
 
-      {/* Комментарий - УЛУЧШЕННЫЙ */}
       {selectedProduct && (
         <div className="space-y-3">
           <Label className="text-lg">{language === 'ka' ? 'კომენტარი' : 'Комментарий'}</Label>
@@ -469,12 +928,10 @@ function ProductSelector({
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder={language === 'ka' ? 'განსაკუთრებული სურვილები' : 'Особые пожелания'}
-            className="p-4 text-base border-2"
           />
         </div>
       )}
 
-      {/* Кнопка добавления в заказ - УЛУЧШЕННАЯ */}
       {selectedProduct && (
         <Button
           onClick={handleAddItem}
@@ -484,7 +941,6 @@ function ProductSelector({
         </Button>
       )}
 
-      {/* Текущий заказ - УЛУЧШЕННЫЙ */}
       <div className="mt-8 space-y-4">
         <h3 className="text-xl font-bold">{language === 'ka' ? 'მიმდინარე შეკვეთა' : 'Текущий заказ'}</h3>
         {items.length === 0 ? (

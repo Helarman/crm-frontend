@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/sonner"
 const inter = Inter({ subsets: ["latin"] });
 import { ThemeProvider } from "@/components/theme-provider"
 import { useTitle } from '@/lib/hooks/useTitle'
+import { VirtualKeyboard } from "@/components/features/Keyboard";
 
 export default function RootLayout({
   children,
@@ -27,6 +28,7 @@ export default function RootLayout({
               <div className="w-full bg-white dark:bg-gray-900">
                 {children}
               </div>
+              <VirtualKeyboard />
             </AuthInitializer>
 
           </ThemeProvider>

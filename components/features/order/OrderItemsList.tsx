@@ -45,31 +45,6 @@ export function OrderItemsList({ items, variant = 'default', compact = false }: 
               <span>{(item.product.price * item.quantity).toFixed(2)}{language === 'ru' ? '₽' : '₽'}</span>
             </div>
             
-            {variant === 'kitchen' && (
-              <div className="flex gap-1 mt-1">
-                <Button 
-                  variant={item.status === 'CREATED' ? 'default' : 'outline'} 
-                  size={"sm"}
-                  className="h-6 text-xs"
-                >
-                  {statusTranslations.CREATED[language]}
-                </Button>
-                <Button 
-                  variant={item.status === 'PREPARING' ? 'default' : 'outline'} 
-                  size={"sm"}
-                  className="h-6 text-xs"
-                >
-                  {statusTranslations.PREPARING[language]}
-                </Button>
-                <Button 
-                  variant={item.status === 'READY' ? 'default' : 'outline'} 
-                  size={"sm"}
-                  className="h-6 text-xs"
-                >
-                  {statusTranslations.READY[language]}
-                </Button>
-              </div>
-            )}
 
             {item.additives.length > 0 && (
               <ul className={cn("text-muted-foreground", compact ? "pl-2 text-[11px]" : "pl-3 text-xs")}>

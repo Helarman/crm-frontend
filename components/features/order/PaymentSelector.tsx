@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { useLanguageStore } from '@/lib/stores/language-store'
 
 // Типы
-type PaymentMethod = 'CASH' | 'CARD' | 'ONLINE'
+type PaymentMethod = 'CASH' | 'CARD'
 type OrderPayment = {
   method: PaymentMethod
   status: 'PAID' | 'PENDING'
@@ -25,7 +25,6 @@ export function PaymentSelector({
   const paymentMethods = [
     { id: 'CASH' as const, label: language === 'ru' ? 'Наличные' : 'ნაღდი' },
     { id: 'CARD' as const, label: language === 'ru' ? 'Карта' : 'ბარათი' },
-    { id: 'ONLINE' as const, label: language === 'ru' ? 'Онлайн' : 'ონლაინ' },
   ]
 
   return (

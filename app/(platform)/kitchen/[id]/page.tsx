@@ -11,11 +11,19 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import { OrderService, OrderItemStatus, OrderResponse, EnumOrderStatus } from '@/lib/api/order.service'
 import { toast } from 'sonner'
 import { AccessCheck } from '@/components/AccessCheck'
+import { Badge } from '@/components/ui/badge'
 
 type OrderItemWithStatus = {
   id: string
   product: {
     title: string
+    workshops:{
+      workshop:{
+        name: string
+        id: string
+      }
+      id: string
+    }[]
   }
   quantity: number
   additives: {
@@ -57,19 +65,22 @@ export default function KitchenOrderPage() {
         setItems(data.items.map(item => ({
           id: item.id,
           product: {
-            title: item.product.title || 'Без названия'
+            title: item.product.title || 'Без названия',
+            workshops: item.product.workshops,
           },
           quantity: item.quantity,
           additives: item.additives.map(add => ({
             title: add.name || 'Добавка'
           })),
           comment: item.comment,
+        
           currentStatus: item.status || 'CREATED',
-          assignedTo: item.chef ? {
-            id: item.chef.id,
-            name: item.chef.name || 'Повар'
+          assignedTo: item.user ? {
+            id: item.user.id,
+            name: item.user.name || 'Повар'
           } : null
         })))
+
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Неизвестная ошибка')
         toast.error('Не удалось загрузить заказ')
@@ -183,9 +194,20 @@ export default function KitchenOrderPage() {
       </Card>
     )
   }
+  const isAdmin = user.role == 'MANAGER' || user.role == 'SUPERVISOR'
+
+  const availableWorkshops = user.workshops.map((workshop : any) => workshop.workshopId)
+
+  const filteredItems =isAdmin ? items : items.filter(item => {
+    return item.product.workshops.some(workshop => 
+      availableWorkshops.includes(workshop.workshop.id)
+    );
+  });
+
 
   return (
     <AccessCheck allowedRoles={['COOK', 'CHEF', 'MANAGER', 'SUPERVISOR']}>
+    
       <div className="container mx-auto p-4 space-y-6">
         <Button 
           variant="outline" 
@@ -200,15 +222,26 @@ export default function KitchenOrderPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="md:col-span-2 p-4 space-y-4">
             <h2 className="text-lg font-semibold">Состав заказа</h2>
-            
+            {!filteredItems.length && (<h3>Нет блюд для приготовления</h3>)}
             <div className="space-y-4">
-              {items.map(item => (
+              {filteredItems.map(item => (
                 <Card key={item.id} className="p-4">  
+                   
                   <div className="flex justify-between items-start gap-4">
                     <div className="flex-1">
                       <h3 className="font-medium">
                         {item.product.title} × {item.quantity}
                       </h3>
+                        {item.product.workshops.map(workshop => (
+                            <Badge
+                              variant="outline"
+                              key={workshop.workshop.id}
+                            >
+                              {workshop.workshop.name}
+                            </Badge>
+                          )
+                        )}
+
                       {item.additives.length > 0 && (
                         <div className="text-sm text-muted-foreground mt-1">
                           Добавки: {item.additives.map(a => a.title).join(', ')}

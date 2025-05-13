@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { OrderCard } from '@/components/features/order/OrderCard'
-import type { OrderResponse } from '@/lib/api/order.service'
+import type { OrderItemDto, OrderResponse } from '@/lib/api/order.service'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRestaurantOrders } from '@/lib/hooks/useOrders'
@@ -19,11 +19,47 @@ import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import useSWRMutation from 'swr/mutation'
 import { Restaurant } from '../staff/StaffTable'
+import { Button } from '@/components/ui/button'
+import { Utensils, ShoppingBag, Truck, GlassWater } from 'lucide-react'
+
+const ORDER_TYPES = [
+  {
+    value: 'ALL',
+    label: 'Все',
+    icon: null,
+    color: 'bg-gray-100 hover:bg-gray-200'
+  },
+  {
+    value: 'DINE_IN',
+    label: 'В зале',
+    icon: Utensils,
+    color: 'bg-blue-100 hover:bg-blue-200'
+  },
+  {
+    value: 'TAKEAWAY',
+    label: 'Навынос',
+    icon: ShoppingBag,
+    color: 'bg-green-100 hover:bg-green-200'
+  },
+  {
+    value: 'DELIVERY',
+    label: 'Доставка',
+    icon: Truck,
+    color: 'bg-purple-100 hover:bg-purple-200'
+  },
+  {
+    value: 'BANQUET',
+    label: 'Банкет',
+    icon: GlassWater,
+    color: 'bg-amber-100 hover:bg-amber-200'
+  }
+]
 
 export function OrdersList() {
   const router = useRouter()
   const { user } = useAuth()
-  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>(user?.restaurant[0].id)
+  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>('')
+  const [selectedOrderType, setSelectedOrderType] = useState<string>('ALL')
   const { 
     data: orders = [], 
     isLoading: ordersLoading, 
@@ -31,17 +67,27 @@ export function OrdersList() {
     mutate 
   } = useRestaurantOrders(selectedRestaurantId)
 
-  // Сортируем заказы: сначала активные, затем завершенные/отмененные
-  const sortedOrders = [...orders].sort((a, b) => {
+  // Set first restaurant as default when user is loaded
+  useEffect(() => {
+    if (user?.restaurant?.length > 0) {
+      setSelectedRestaurantId(user.restaurant[0].id)
+    }
+  }, [user])
+
+  // Filter orders by selected type
+  const filteredOrders = selectedOrderType === 'ALL' 
+    ? orders 
+    : orders.filter((order : OrderItemDto) => order.type === selectedOrderType)
+
+  // Sort orders: active first, then completed/cancelled
+  const sortedOrders = [...filteredOrders].sort((a, b) => {
     const isACompletedOrCancelled = a.status === 'COMPLETED' || a.status === 'CANCELLED'
     const isBCompletedOrCancelled = b.status === 'COMPLETED' || b.status === 'CANCELLED'
 
-    // Если оба имеют одинаковый статус, сортируем по дате (новые сверху)
     if (isACompletedOrCancelled === isBCompletedOrCancelled) {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     }
     
-    // Активные заказы идут перед завершенными/отмененными
     return isACompletedOrCancelled ? 1 : -1
   })
 
@@ -64,12 +110,6 @@ export function OrdersList() {
       }
     }
   )
-
-  useEffect(() => {
-    if (user?.restaurants?.length > 0 && !selectedRestaurantId) {
-      setSelectedRestaurantId(user.restaurant[0].id)
-    }
-  }, [user, selectedRestaurantId])
 
   const handleStatusChange = (updatedOrder: OrderResponse) => {
     mutate((prevOrders: OrderResponse[] | undefined) => 
@@ -119,36 +159,52 @@ export function OrdersList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between gap-4">
-        <h2 className="text-xl font-semibold">Список заказов</h2>
-        
-        {user.restaurant.length > 1 && (
-          <Select
-            value={selectedRestaurantId}
-            onValueChange={setSelectedRestaurantId}
-          >
-            <SelectTrigger className="w-[280px]">
-              <SelectValue placeholder="Выберите ресторан" />
-            </SelectTrigger>
-            <SelectContent>
-              {user.restaurant.map((restaurant : Restaurant) => (
-                <SelectItem key={restaurant.id} value={restaurant.id}>
-                  {restaurant.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+      <div className="flex flex-col gap-4">
+        <div className="flex justify-between flex-col lg:flex-row items-center gap-4">
+          <h2 className="text-xl font-semibold">Список заказов</h2>
+           <div className="flex flex-wrap gap-2">
+          {ORDER_TYPES.map((type) => {
+            const Icon = type.icon
+            return (
+              <Button
+                key={type.value}
+                variant={selectedOrderType === type.value ? 'default' : 'outline'}
+                onClick={() => setSelectedOrderType(type.value)}
+              >
+                {Icon && <Icon className="h-5 w-5" />}
+                <span className="font-medium">{type.label}</span>
+              </Button>
+            )
+          })}
+        </div>
+          {user.restaurant.length > 1 && (
+            <Select
+              value={selectedRestaurantId}
+              onValueChange={setSelectedRestaurantId}
+            >
+              <SelectTrigger className="w-[280px]">
+                <SelectValue placeholder="Выберите ресторан" />
+              </SelectTrigger>
+              <SelectContent>
+                {user.restaurant.map((restaurant: Restaurant) => (
+                  <SelectItem key={restaurant.id} value={restaurant.id}>
+                    {restaurant.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
       </div>
 
       {sortedOrders.length === 0 ? (
         <Card className="p-6 text-center">
           <p className="text-muted-foreground">
-            Нет доступных заказов
+            Нет заказов по выбранному фильтру
           </p>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
           {sortedOrders.map(order => (
             <div 
               key={order.id}

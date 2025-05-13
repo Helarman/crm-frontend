@@ -6,10 +6,11 @@ import { CategoryList } from "@/components/features/menu/category/CategoryList";
 import { AdditiveList } from "@/components/features/menu/additive/AdditiveList";
 import { ProductList } from "@/components/features/menu/product/ProductList";
 import { AccessCheck } from '@/components/AccessCheck';
+import { WorkshopList } from '@/components/features/menu/workshop/WorkshopList';
 
 const MenuPage = () => {
   const { language } = useLanguageStore();
-  const [activeTab, setActiveTab] = useState<'menu' | 'additives' | 'categories'>('menu');
+  const [activeTab, setActiveTab] = useState<'menu' | 'additives' | 'categories' | 'workshops'>('menu');
 
   // Переводы
   const translations = {
@@ -43,6 +44,16 @@ const MenuPage = () => {
         ka: 'კატეგორიების შიგთავსი',
       },
     },
+    workshops: {
+      title: {
+        ru: 'Цехи',
+        ka: 'კატეგორიები',
+      },
+      content: {
+        ru: 'Содержимое цехов',
+        ka: 'კატეგორიების შიგთავსი',
+      },
+    },
   };
 
   return (
@@ -71,6 +82,12 @@ const MenuPage = () => {
           >
             {translations.categories.title[language]}
           </button>
+           <button
+            className={`py-2 px-4 ${activeTab === 'workshops' ? 'border-b-2 border-blue-500 font-medium' : ''}`}
+            onClick={() => setActiveTab('workshops')}
+          >
+            {translations.workshops.title[language]}
+          </button>
         </div>
 
         <div className="py-4">
@@ -87,6 +104,11 @@ const MenuPage = () => {
           {activeTab === 'categories' && (
             <div>
               <CategoryList />
+            </div>
+          )}
+          {activeTab === 'workshops' && (
+            <div>
+              <WorkshopList />
             </div>
           )}
         </div>

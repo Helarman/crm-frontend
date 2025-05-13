@@ -110,6 +110,7 @@ interface StaffTableProps {
   staff: StaffMember[]
   restaurants: Restaurant[]
   searchTerm: string
+  workshops: any
   selectedRestaurant: string
   selectedPosition: string
   onRefresh: () => Promise<void> // Изменили тип на асинхронную функцию
@@ -118,6 +119,7 @@ interface StaffTableProps {
 export function StaffTable({
   staff,
   restaurants,
+  workshops,
   searchTerm,
   selectedRestaurant,
   selectedPosition,
@@ -304,6 +306,7 @@ export function StaffTable({
           restaurants={restaurants}
           onSave={handleSaveChanges}
           onDelete={handleDelete}
+          workshops={workshops}
           isLoading={isLoading}
           isDeleting={isDeleting}
         />

@@ -6,15 +6,21 @@ import { Plus } from "lucide-react"
 import { useState, useEffect } from "react"
 import { UserService } from "@/lib/api/user.service"
 import { RestaurantService } from "@/lib/api/restaurant.service"
+import { WorkshopService } from "@/lib/api/workshop.service" // Добавляем импорт сервиса цехов
 import { StaffTable } from "@/components/features/staff/StaffTable"
 import { StaffFilter } from "@/components/features/staff/StaffFilter"
 import { UserRoles, StaffMember } from "@/components/features/staff/StaffTable"
-import { CreateStaffDialog } from "@/components/features/staff/CreateStaffDialog";
+import { CreateStaffDialog } from "@/components/features/staff/CreateStaffDialog"
 import { AccessCheck } from "@/components/AccessCheck"
 
 interface Restaurant {
   id: string;
   title: string;
+}
+
+interface Workshop {
+  id: string;
+  name: string;
 }
 
 export default function StaffManagementPage() {
@@ -24,6 +30,7 @@ export default function StaffManagementPage() {
   const { language } = useLanguageStore()
   const [staff, setStaff] = useState<StaffMember[]>([])
   const [restaurants, setRestaurants] = useState<Restaurant[]>([])
+  const [workshops, setWorkshops] = useState<Workshop[]>([]) // Добавляем состояние для цехов
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -32,25 +39,32 @@ export default function StaffManagementPage() {
   const [selectedRestaurant, setSelectedRestaurant] = useState(ALL_RESTAURANTS_VALUE)
   const [selectedPosition, setSelectedPosition] = useState<UserRoles | typeof ALL_POSITIONS_VALUE>(ALL_POSITIONS_VALUE)
 
-  // Загрузка данных персонала и ресторанов
+  // Загрузка данных персонала, ресторанов и цехов
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true)
 
-        // Загружаем сотрудников
-        const usersData = await UserService.getAll()
+        // Параллельная загрузка данных
+        const [usersData, restaurantsData, workshopsData] = await Promise.all([
+          UserService.getAll(),
+          RestaurantService.getAll(),
+          WorkshopService.getAll() // Загружаем цехи
+        ])
+
+        // Форматируем данные сотрудников
         const formattedStaff = usersData.map((user: any) => ({
           id: user.id,
           name: user.name,
           email: user.email,
           restaurant: user.restaurant,
+          workshops: user.workshops || [], // Добавляем цехи сотрудника
           position: user.role as UserRoles,
         }))
         setStaff(formattedStaff)
 
-        const restaurantsData = await RestaurantService.getAll()
         setRestaurants(restaurantsData)
+        setWorkshops(workshopsData) // Сохраняем цехи в состояние
 
       } catch (err) {
         console.error('Failed to load data:', err)
@@ -81,15 +95,30 @@ export default function StaffManagementPage() {
   const t = translations[language]
 
   const handleRefresh = async () => {
-    const freshData = await UserService.getAll()
-    const formattedStaff = freshData.map((user: any) => ({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      restaurant: user.restaurant,
-      position: user.role as UserRoles,
-    }))
-    setStaff(formattedStaff)
+    try {
+      setLoading(true)
+      const [freshUsers, freshWorkshops] = await Promise.all([
+        UserService.getAll(),
+        WorkshopService.getAll() // Обновляем список цехов
+      ])
+      
+      const formattedStaff = freshUsers.map((user: any) => ({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        restaurant: user.restaurant,
+        workshops: user.workshops || [],
+        position: user.role as UserRoles,
+      }))
+      
+      setStaff(formattedStaff)
+      setWorkshops(freshWorkshops)
+    } catch (err) {
+      console.error('Failed to refresh data:', err)
+      setError('Failed to refresh data')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -114,7 +143,8 @@ export default function StaffManagementPage() {
         <CreateStaffDialog
           open={isCreateDialogOpen}
           onOpenChange={setIsCreateDialogOpen}
-          onSuccess={handleRefresh} />
+          onSuccess={handleRefresh}
+        />
 
         <StaffFilter
           searchTerm={searchTerm}
@@ -127,6 +157,7 @@ export default function StaffManagementPage() {
         />
 
         <StaffTable
+          workshops={workshops} // Передаем цехи в таблицу
           staff={staff}
           restaurants={restaurants}
           searchTerm={searchTerm}

@@ -9,6 +9,8 @@ import { Card } from '@/components/ui/card'
 import { OrderResponse } from '@/lib/api/order.service'
 import { cn } from '@/lib/utils'
 import { useLanguageStore } from '@/lib/stores/language-store'
+import { Badge } from '@/components/ui/badge'
+import { format } from 'date-fns'
 
 const statusColors = {
   CREATED: 'border-l-amber-500 bg-amber-50',
@@ -40,6 +42,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
       statusColors[order.status],
       className
     )}>
+     
       <div className="absolute top-0 left-0 w-full h-1" />
       
       <div className="flex flex-col flex-grow pt-1">
@@ -52,10 +55,25 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
             compact={variant === 'kitchen'}
           />
           
+          {variant === 'default' && ( order.scheduledAt || order.customer ) ? (<div className=' border-t pt-2'>
           {order.customer && variant === 'default' && (
             <OrderCustomerInfo customer={order.customer} compact />
           )}
-
+            {order.scheduledAt &&
+              <Badge 
+              variant="outline"
+              className="flex items-center gap-1 px-2 py-1 rounded-md border text-sm font-medium"
+            >
+                  Отложено до
+                  <span className="text-sm">
+                    {format(new Date(order.scheduledAt), 'HH:mm')}
+                  </span>
+              </Badge>
+          }
+          </div>)
+          :
+          ''
+        }
           <div className="flex justify-between items-center border-t pt-2">
             <div className="font-medium text-sm">
               {language === 'ru' ? 'Итого:' : 'სულ:'}

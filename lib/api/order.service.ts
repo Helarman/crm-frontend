@@ -127,13 +127,14 @@ export enum OrderItemStatus {
 export interface OrderItemDto {
   id: string;
   title: string;
+  type?: string
   product: OrderItemProductDto;
   quantity: number;
   comment?: string;
   additives: OrderItemAdditiveDto[];
   totalPrice: number;
   status: any; // Добавляем статус для каждого блюда
-  chef?: { // Информация о поваре
+  user?: { // Информация о поваре
     id: string;
     name: string;
   };
@@ -162,6 +163,7 @@ export interface OrderItemProductDto {
   title: string;
   price: number;
   image?: string;
+  workshops: any
 }
 
 export interface OrderItemDto {
@@ -236,6 +238,9 @@ export interface UpdateOrderStatusDto {
 }
 
 export interface OrderResponse {
+  source: string
+  tableNumber?: string;
+  numberOfPeople?: string;
   id: string;
   number: number;
   status: EnumOrderStatus;

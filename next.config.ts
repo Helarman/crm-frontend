@@ -6,6 +6,6 @@ module.exports = {
     turbo: false // Отключаем Turbopack
   },
   images: {
-    domains: ['unpkg.com', 'placehold.co'],
+    domains: ['unpkg.com', 'placehold.co', 'res.cloudinary.com'],
   },
 }

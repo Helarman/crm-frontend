@@ -107,12 +107,9 @@ interface ProductDto {
   image?: string;
 }
 
-export const ProductService = {
-  // Получение всех продуктов
+  export const ProductService = {
   getAll: async (searchTerm?: string) => {
-    const { data } = await api.get('/products', {
-      params: { searchTerm }
-    });
+    const { data } = await api.get('/products', { params: { searchTerm } });
     return data;
   },
 
@@ -120,6 +117,7 @@ export const ProductService = {
     const { data } = await api.get(`/products/by-id/${id}`);
     return data;
   },
+
   create: async (dto: ProductDto) => {
     const { data } = await api.post('/products', dto);
     return data;
@@ -131,21 +129,46 @@ export const ProductService = {
   },
 
   delete: async (id: string) => {
-    const { data } = await api.delete(`/products/${id}`);
+    await api.delete(`/products/${id}`);
+  },
+ getByRestaurant: async (restaurantId: string) => {
+    const { data } = await api.get(`/restaurants/${restaurantId}/products`);
+    return data;
+  },
+  getRestaurants: async (productId: string) => {
+    const { data } = await api.get(`/products/${productId}/restaurants`);
+    return data;
+  },
+  updateRestaurants: async (productId: string, restaurantIds: string[]) => {
+    const { data } = await api.put(`/products/${productId}/restaurants`, { restaurantIds });
+    return data;
+  },
+
+  getRestaurantPrices: async (productId: string) => {
+    const { data } = await api.get(`/products/${productId}/prices`);
+    return data;
+  },
+
+  setRestaurantPrice: async (productId: string, restaurantId: string, price: number) => {
+    const { data } = await api.post(`/products/${productId}/prices`, { 
+      restaurantId, 
+      price 
+    });
+    return data;
+  },
+
+  getAdditives: async (productId: string) => {
+    const { data } = await api.get(`/products/${productId}/additives`);
+    return data;
+  },
+
+  updateAdditives: async (productId: string, additiveIds: string[]) => {
+    const { data } = await api.put(`/products/${productId}/additives`, { additiveIds });
     return data;
   },
 
   getByCategory: async (categoryId: string) => {
-    try {
-      const { data } = await api.get(`/categories/${categoryId}/products`);
-      return data;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  getByRestaurant: async (restaurantId: string) => {
-    const { data } = await api.get(`/restaurants/${restaurantId}/products`);
+    const { data } = await api.get(`/categories/${categoryId}/products`);
     return data;
-  }
+  },
 };
