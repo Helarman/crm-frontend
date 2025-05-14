@@ -50,6 +50,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import AddressInput from '@/components/features/order/AddressInput'
+import { DeliveryZoneService } from '@/lib/api/delivery-zone.service'
 
 interface OrderItem {
   productId: string
@@ -172,6 +173,12 @@ interface OrderState {
   deliveryNotes: string
   customerId: string | null
   customerPhone: string
+  deliveryZone?: {
+    id: string
+    title: string
+    price: number
+    minOrder?: number
+  } | null
 }
 
 export default function NewOrderPage() {
@@ -192,7 +199,8 @@ export default function NewOrderPage() {
     deliveryTime: '',
     deliveryNotes: '',
     customerId: null,
-    customerPhone: ''
+    customerPhone: '',
+    deliveryZone: null
   })
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -200,6 +208,7 @@ export default function NewOrderPage() {
   const [activeShiftId, setActiveShiftId] = useState('')
   const [isScheduled, setIsScheduled] = useState(false)
   const [scheduledTime, setScheduledTime] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"))
+  const [isCheckingDeliveryZone, setIsCheckingDeliveryZone] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -262,7 +271,8 @@ export default function NewOrderPage() {
     setOrder(prev => ({
       ...prev,
       restaurantId: restaurant.id,
-      items: []
+      items: [],
+      deliveryZone: null
     }))
     setProducts([])
     setCategories([])
@@ -270,7 +280,7 @@ export default function NewOrderPage() {
   }
 
   const calculateTotal = () => {
-    return order.items.reduce((sum, item) => {
+    const itemsTotal = order.items.reduce((sum, item) => {
       const product = products.find(p => p.id === item.productId)
       if (!product) return sum
 
@@ -285,6 +295,117 @@ export default function NewOrderPage() {
 
       return sum + (item.quantity * (productPrice + additivesPrice))
     }, 0)
+
+    const deliveryCost = order.type === 'DELIVERY' && order.deliveryZone && order.deliveryZone.price 
+      ? order.deliveryZone.price 
+      : 0
+
+
+    return itemsTotal + deliveryCost
+  }
+
+  const checkDeliveryZone = async (address: string) => {
+  
+    const token = 'e7a8d3897b07bb4631312ee1e8b376424c6667ea';
+    const url = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address';
+    if (!address || !selectedRestaurant) return
+    
+    setIsCheckingDeliveryZone(true)
+    
+    try {
+     const response = await fetch(url, {
+        method: 'POST',
+        mode: 'cors',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Token ${token}`,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ 
+          query: address, 
+          count: 1,
+          locations: [{ country: "*" }] // Опциональные параметры фильтрации
+        })
+      });
+
+      console.log(response)
+
+      if (!response.ok) {
+        throw new Error('Failed to geocode address')
+      }
+
+      const data = await response.json()
+      const firstSuggestion = data.suggestions?.[0]
+      
+      if (!firstSuggestion) {
+        throw new Error('Address not found')
+      }
+
+      const { geo_lat: lat, geo_lon: lng } = firstSuggestion.data
+      
+      if (!lat || !lng) {
+        throw new Error('Coordinates not found')
+      }
+
+      // Проверяем зону доставки
+      const deliveryZone = await DeliveryZoneService.findZoneForPoint(
+        selectedRestaurant.id,
+        parseFloat(lat),
+        parseFloat(lng)
+      )
+
+      if (!deliveryZone) {
+        toast.error(language === 'ka' 
+          ? 'მისამართი არ არის მიტანის ზონაში' 
+          : 'Адрес не входит в зону доставки')
+        setOrder(prev => ({ ...prev, deliveryZone: null }))
+        return
+      }
+
+      // Проверяем минимальный заказ
+      const itemsTotal = order.items.reduce((sum, item) => {
+        const product = products.find(p => p.id === item.productId)
+        if (!product) return sum
+
+        const restaurantPrice = product.restaurantPrices?.find(
+          p => p.restaurantId === order.restaurantId
+        )
+        const productPrice = restaurantPrice?.price ?? product.price
+
+        return sum + (item.quantity * productPrice)
+      }, 0)
+
+      if (deliveryZone.minOrder && itemsTotal < deliveryZone.minOrder) {
+        toast.error(language === 'ka' 
+          ? `მინიმალური შეკვეთა ამ ზონაში: ${deliveryZone.minOrder} ₽` 
+          : `Минимальный заказ для этой зоны: ${deliveryZone.minOrder} ₽`)
+        setOrder(prev => ({ ...prev, deliveryZone: null }))
+        return
+      }
+
+      setOrder(prev => ({
+        ...prev,
+        deliveryZone: {
+          id: deliveryZone.id,
+          title: deliveryZone.title,
+          price: deliveryZone.price,
+          minOrder: deliveryZone.minOrder
+        }
+      }))
+
+      toast.success(language === 'ka' 
+        ? `მიტანის ღირებულება: ${deliveryZone.price} ₽` 
+        : `Стоимость доставки: ${deliveryZone.price} ₽`)
+
+    } catch (error) {
+      console.error('Delivery zone check error:', error)
+      toast.error(language === 'ka' 
+        ? 'მიტანის ზონის განსაზღვრის შეცდომა' 
+        : 'Ошибка определения зоны доставки')
+      setOrder(prev => ({ ...prev, deliveryZone: null }))
+    } finally {
+      setIsCheckingDeliveryZone(false)
+    }
   }
 
   const handleSubmit = async () => {
@@ -302,9 +423,15 @@ export default function NewOrderPage() {
       return
     }
 
-    if (order.type === 'DELIVERY' && !order.deliveryAddress) {
-      toast.error(language === 'ka' ? 'შეიყვანეთ მისამართი' : 'Введите адрес доставки')
-      return
+    if (order.type === 'DELIVERY') {
+      if (!order.deliveryAddress) {
+        toast.error(language === 'ka' ? 'შეიყვანეთ მისამართი' : 'Введите адрес доставки')
+        return
+      }
+      if (!order.deliveryZone) {
+        toast.error(language === 'ka' ? 'გთხოვთ დაადასტუროთ მიტანის მისამართი' : 'Пожалуйста, подтвердите адрес доставки')
+        return
+      }
     }
 
     if (isScheduled && !scheduledTime) {
@@ -326,7 +453,9 @@ export default function NewOrderPage() {
         deliveryNotes: order.type === 'DELIVERY' 
           ? `${order.comment || ''}\n${order.deliveryNotes || ''}`.trim()
           : undefined,
-        scheduledAt: isScheduled ? scheduledTime : undefined
+        scheduledAt: isScheduled ? scheduledTime : undefined,
+        deliveryZoneId: order.type === 'DELIVERY' ? order.deliveryZone?.id : undefined,
+        deliveryPrice: order.type === 'DELIVERY' ? order.deliveryZone?.price : undefined
       }
 
       await OrderService.create(orderData)
@@ -440,7 +569,7 @@ export default function NewOrderPage() {
               return (
                 <button
                   key={type.value}
-                  onClick={() => setOrder(prev => ({ ...prev, type: type.value as any }))}
+                  onClick={() => setOrder(prev => ({ ...prev, type: type.value as any, deliveryZone: null }))}
                   className={`p-4 border-2 rounded-lg flex flex-col items-center transition-all hover:scale-[1.02] active:scale-[0.98]
                   ${order.type === type.value
                       ? 'bg-primary text-primary-foreground border-primary shadow-lg'
@@ -576,14 +705,23 @@ export default function NewOrderPage() {
                 <MapPin className="h-5 w-5" />
                 {language === 'ka' ? 'მისამართი' : 'Адрес доставки'}
               </Label>
-              <AddressInput
+                <AddressInput
                   value={order.deliveryAddress}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOrder(prev => ({
                     ...prev,
-                    deliveryAddress: e.target.value
+                    deliveryAddress: e.target.value,
+                    deliveryZone: null
                   }))}
                   language={language}
                 />
+               
+              {order.deliveryZone && (
+                <p className="text-sm text-green-600">
+                  {language === 'ka' 
+                    ? `მიტანის ზონა: ${order.deliveryZone.title}, ღირებულება: ${order.deliveryZone.price} ₽`
+                    : `Зона доставки: ${order.deliveryZone.title}, стоимость: ${order.deliveryZone.price} ₽`}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
@@ -684,9 +822,33 @@ export default function NewOrderPage() {
                   <span className="text-muted-foreground">
                     {language === 'ka' ? 'პროდუქტები:' : 'Товары:'}
                   </span>
-                  <span className="font-medium">{calculateTotal().toFixed(2)} ₽</span>
+                  <span className="font-medium">{(calculateTotal() - (order.deliveryZone?.price || 0)).toFixed(2)} ₽</span>
                 </div>
                 
+                {order.type === 'DELIVERY' && order.deliveryZone && (
+                  <><div className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      {language === 'ka' ? 'მიტანის ღირებულება:' : 'Стоимость доставки:'}
+                    </span>
+                    <span className="font-medium">{order.deliveryZone.price.toFixed(2)} ₽</span>
+                    
+                  </div>
+                  {order.deliveryZone && (
+                      <p className="text-sm text-muted-foreground">
+                        {language === 'ka' 
+                          ? `მიტანის ზონა: ${order.deliveryZone.title}`
+                          : `Зона доставки: ${order.deliveryZone.title}`}
+                      </p>
+                    )}</>
+                )}
+                
+                <div className="flex justify-between border-t pt-2">
+                  <span className="text-muted-foreground font-bold">
+                    {language === 'ka' ? 'სულ:' : 'Итого:'}
+                  </span>
+                  <span className="font-bold text-lg">{calculateTotal().toFixed(2)} ₽</span>
+                </div>
+
                 {selectedRestaurant && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">
@@ -705,15 +867,6 @@ export default function NewOrderPage() {
                   </span>
                 </div>
 
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">
-                    {language === 'ka' ? 'წყარო:' : 'Источник:'}
-                  </span>
-                  <span className="font-medium">
-                    {SOURCE_TYPES.find(t => t.value === order.source)?.[language === 'ka' ? 'titleGe' : 'titleRu']}
-                  </span>
-                </div>
-
                 {isScheduled && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">
@@ -725,11 +878,23 @@ export default function NewOrderPage() {
                   </div>
                 )}
               </div>
+              
+              {order.type === 'DELIVERY' && (<Button
+                  className='w-full' 
+                  onClick={() => checkDeliveryZone(order.deliveryAddress)}
+                  disabled={!order.deliveryAddress || isCheckingDeliveryZone}
+                  variant="secondary"
+                >
+                  {isCheckingDeliveryZone 
+                    ? language === 'ka' ? 'იტვირთება...' : 'Загрузка...'
+                    : language === 'ka' ? 'გამოთვალეთ მიწოდება' : 'Рассчитать доставку'}
+              </Button>)}
 
               <Button
-                className="w-full mt-4"
+                className="w-full"
                 onClick={handleSubmit}
-                disabled={order.items.length === 0 || !selectedRestaurant}
+                disabled={order.items.length === 0 || !selectedRestaurant || 
+                  (order.type === 'DELIVERY' && !order.deliveryZone)}
               >
                 {language === 'ka' ? 'შეკვეთის მომზადება' : 'Подготовить заказ'}
               </Button>
@@ -740,6 +905,7 @@ export default function NewOrderPage() {
     </AccessCheck>
   )
 }
+
 interface ProductSelectorProps {
   products: Product[]
   categories: Category[]

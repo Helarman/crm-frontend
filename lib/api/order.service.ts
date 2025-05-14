@@ -176,6 +176,7 @@ export interface OrderItemDto {
 }
 
 export interface PaymentDto {
+  id: string;
   method: EnumPaymentMethod;
   amount: number;
   status: string;
@@ -238,6 +239,7 @@ export interface UpdateOrderStatusDto {
 }
 
 export interface OrderResponse {
+  totalAmount: number
   source: string
   tableNumber?: string;
   numberOfPeople?: string;

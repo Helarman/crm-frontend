@@ -29,20 +29,16 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
   className?: string
 }) {
   const { language } = useLanguageStore()
-  const totalAmount = order.items.reduce(
-    (sum, item) => sum + (item.product.price * item.quantity) + 
-      item.additives.reduce((addSum, additive) => addSum + additive.price, 0),
-    0
-  )
+  const totalAmount = order.totalAmount
 
   return (
+    
     <Card className={cn(
       "flex flex-col h-full relative overflow-hidden",
       "border-l-4",
       statusColors[order.status],
       className
     )}>
-     
       <div className="absolute top-0 left-0 w-full h-1" />
       
       <div className="flex flex-col flex-grow pt-1">
@@ -84,7 +80,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
           </div>
 
           {variant === 'default' && order.payment && (
-            <OrderPaymentStatus payment={order.payment} compact />
+            <OrderPaymentStatus payment={order.payment} order={order} compact />
           )}
         </div>
       </div>

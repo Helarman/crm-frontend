@@ -32,6 +32,7 @@ export const navTranslations = {
     ru: {
       home: "Главная",
       orders: "Заказы",
+      dlivery: "Доставка",
       kitchen: "Кухня",
       restaurants: "Рестораны",
       menu: "Меню",
@@ -50,6 +51,7 @@ export const navTranslations = {
     ka: {
       home: "მთავარი",
       orders: "შეკვეთები",
+      dlivery: "მიწოდება  ",
       kitchen: "სამზარეულო",
       restaurants: "რესტორნები",
       menu: "მენიუ",

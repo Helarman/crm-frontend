@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge'
 import { PaymentDto } from '@/lib/api/order.service'
 import { cn } from '@/lib/utils'
 import { useLanguageStore } from '@/lib/stores/language-store'
+import { Button } from '@/components/ui/button'
+import Link from 'next/link'
 
 const paymentStatusTranslations = {
   PENDING: {
@@ -36,9 +38,10 @@ const paymentMethodTranslations = {
   }
 }
 
-export function OrderPaymentStatus({ payment, compact = false }: {
+export function OrderPaymentStatus({ payment, compact = false, order }: {
   payment: PaymentDto
   compact?: boolean
+  order: any
 }) {
   const { language } = useLanguageStore()
 
@@ -61,22 +64,33 @@ export function OrderPaymentStatus({ payment, compact = false }: {
   }[payment.status]
 
   return (
-    <div className={compact ? "space-y-1" : "space-y-2"}>
-      <h4 className={cn("font-medium flex items-center", compact ? "text-xs gap-1" : "text-sm gap-2")}>
-        <CreditCard className={compact ? "h-3 w-3" : "h-4 w-4"} />
-        {language === 'ru' ? 'Оплата' : 'გადახდა'}
-      </h4>
-      
-      <div className="flex items-center gap-2">
-        <Badge variant={paymentStatus?.variant} className={cn("gap-1", compact ? "px-2 py-0.5 text-xs" : "text-sm")}>
-          {paymentStatus?.icon}
-          {paymentStatus?.text}
-        </Badge>
+    <div className="space-y-1 flex justify-between">
+      <div className='space-y-1'>
+        <h4 className={cn("font-medium flex items-center", compact ? "text-xs gap-1" : "text-sm gap-2")}>
+          <CreditCard className={compact ? "h-3 w-3" : "h-4 w-4"} />
+          {language === 'ru' ? 'Оплата' : 'გადახდა'}
+        </h4>
         
-        <div className={compact ? "text-xs" : "text-sm"}>
-          {paymentMethodTranslations[payment.method][language]}
-          {payment.amount && ` • ${payment.amount.toFixed(2)}${language === 'ru' ? '₽' : '₽'}`}
+        <div className="flex items-center gap-2">
+          <Badge variant={paymentStatus?.variant} className={cn("gap-1", compact ? "px-2 py-0.5 text-xs" : "text-sm")}>
+            {paymentStatus?.icon}
+            {paymentStatus?.text}
+          </Badge>
+          
+          <div className={compact ? "text-xs" : "text-sm"}>
+            {paymentMethodTranslations[payment.method][language]}
+            {payment.amount && ` • ${payment.amount.toFixed(2)}${language === 'ru' ? '₽' : '₽'}`}
+          </div>
         </div>
+      </div>
+      
+      <div>
+       <Button size="sm" className="mt-2 bg-emerald-600 hover:bg-emerald-800">
+        <Link href={`/payments/${payment.id}`}>
+          Платеж
+        </Link>
+        
+      </Button>
       </div>
     </div>
   )

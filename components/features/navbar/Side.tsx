@@ -30,7 +30,8 @@ import {
   X,
   Moon,
   Sun,
-  Languages
+  Languages,
+  Truck
 } from 'lucide-react'
 
 const ROLE_COLORS = {
@@ -146,6 +147,12 @@ export default function Side() {
         name: t.menu, 
         href: "/products", 
         icon: <BookOpen className="w-7 h-7" />,
+        roles: ['MANAGER', 'SUPERVISOR']
+      },
+      { 
+        name: t.dlivery, 
+        href: "/delivery", 
+        icon: <Truck className="w-7 h-7" />,
         roles: ['MANAGER', 'SUPERVISOR']
       },
       { 
