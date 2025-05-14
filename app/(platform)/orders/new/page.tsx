@@ -49,6 +49,7 @@ import { format } from 'date-fns'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
+import AddressInput from '@/components/features/order/AddressInput'
 
 interface OrderItem {
   productId: string
@@ -160,7 +161,7 @@ const SOURCE_TYPES = [
 interface OrderState {
   restaurantId: string
   items: OrderItem[]
-  payment: { method: 'CASH' | 'CARD', status: 'PAID' | 'UNPAID' }
+  payment: { method: 'CASH' | 'CARD', status: 'PAID' | 'PENDING' }
   type: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET'
   source: 'PANEL' | 'SITE' | 'MOBILE'
   comment: string
@@ -181,7 +182,7 @@ export default function NewOrderPage() {
   const [order, setOrder] = useState<OrderState>({
     restaurantId: '',
     items: [],
-    payment: { method: 'CASH', status: 'PAID' },
+    payment: { method: 'CASH', status: 'PENDING' },
     type: 'DINE_IN',
     source: 'PANEL',
     comment: '',
@@ -575,14 +576,14 @@ export default function NewOrderPage() {
                 <MapPin className="h-5 w-5" />
                 {language === 'ka' ? 'მისამართი' : 'Адрес доставки'}
               </Label>
-              <Input
-                value={order.deliveryAddress}
-                onChange={(e) => setOrder(prev => ({
-                  ...prev,
-                  deliveryAddress: e.target.value
-                }))}
-                placeholder={language === 'ka' ? 'ქუჩა, სახლი, ბინა' : 'Улица, дом, квартира'}
-              />
+              <AddressInput
+                  value={order.deliveryAddress}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOrder(prev => ({
+                    ...prev,
+                    deliveryAddress: e.target.value
+                  }))}
+                  language={language}
+                />
             </div>
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
