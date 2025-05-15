@@ -209,6 +209,8 @@ export default function NewOrderPage() {
   const [isScheduled, setIsScheduled] = useState(false)
   const [scheduledTime, setScheduledTime] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"))
   const [isCheckingDeliveryZone, setIsCheckingDeliveryZone] = useState(false)
+  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false)
+  const [isCreatingShift, setIsCreatingShift] = useState(false)
 
   useEffect(() => {
     if (!user) return
@@ -242,12 +244,27 @@ export default function NewOrderPage() {
 
         setProducts(productsData)
         setCategories(categoriesData)
-        setActiveShiftId(activeShift && activeShift.id)
+        
+        // Если нет активной смены, создаем новую
+        if (!activeShift) {
+          setIsCreatingShift(true)
+          const newShift = await ShiftService.createShift({
+            restaurantId: selectedRestaurant.id,
+            startTime: new Date(),
+          })
+          setActiveShiftId(newShift.id)
+          toast.success(language === 'ka' ? 'ახალი ცვლა გაიხსნა' : 'Новая смена открыта')
+        } else {
+          setActiveShiftId(activeShift.id)
+        }
+        
         setLoadingState('success')
       } catch (error) {
         console.error('Failed to load data:', error)
         setLoadingState('error')
         toast.error(language === 'ka' ? 'მონაცემების ჩატვირთვის შეცდომა' : 'Ошибка загрузки данных')
+      } finally {
+        setIsCreatingShift(false)
       }
     }
 
@@ -261,7 +278,7 @@ export default function NewOrderPage() {
     fetchData()
 
     return () => clearTimeout(timer)
-  }, [selectedRestaurant, language, loadingState])
+  }, [selectedRestaurant, language, loadingState, user?.id])
 
   const handleRestaurantChange = async (value: string) => {
     const restaurant = user?.restaurant?.find((r: Restaurant) => r.id === value)
@@ -300,12 +317,10 @@ export default function NewOrderPage() {
       ? order.deliveryZone.price 
       : 0
 
-
     return itemsTotal + deliveryCost
   }
 
   const checkDeliveryZone = async (address: string) => {
-  
     const token = 'e7a8d3897b07bb4631312ee1e8b376424c6667ea';
     const url = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address';
     if (!address || !selectedRestaurant) return
@@ -313,7 +328,7 @@ export default function NewOrderPage() {
     setIsCheckingDeliveryZone(true)
     
     try {
-     const response = await fetch(url, {
+      const response = await fetch(url, {
         method: 'POST',
         mode: 'cors',
         headers: {
@@ -324,11 +339,9 @@ export default function NewOrderPage() {
         body: JSON.stringify({ 
           query: address, 
           count: 1,
-          locations: [{ country: "*" }] // Опциональные параметры фильтрации
+          locations: [{ country: "*" }]
         })
       });
-
-      console.log(response)
 
       if (!response.ok) {
         throw new Error('Failed to geocode address')
@@ -347,7 +360,6 @@ export default function NewOrderPage() {
         throw new Error('Coordinates not found')
       }
 
-      // Проверяем зону доставки
       const deliveryZone = await DeliveryZoneService.findZoneForPoint(
         selectedRestaurant.id,
         parseFloat(lat),
@@ -362,7 +374,6 @@ export default function NewOrderPage() {
         return
       }
 
-      // Проверяем минимальный заказ
       const itemsTotal = order.items.reduce((sum, item) => {
         const product = products.find(p => p.id === item.productId)
         if (!product) return sum
@@ -440,8 +451,21 @@ export default function NewOrderPage() {
     }
 
     try {
+      // Если нет customerId, но есть телефон, создаем нового клиента
+      let customerId = order.customerId
+      if (!customerId && order.customerPhone) {
+        setIsCreatingCustomer(true)
+        const phoneNumber = order.customerPhone.replace(/\D/g, '')
+        const newCustomer = await CustomerService.createCustomer({
+          phone: phoneNumber,
+        })
+        customerId = newCustomer.id
+        setOrder(prev => ({ ...prev, customerId }))
+      }
+
       const orderData = {
         ...order,
+        customerId,
         total: calculateTotal(),
         shiftId: activeShiftId,
         items: order.items.map(item => ({
@@ -464,6 +488,8 @@ export default function NewOrderPage() {
     } catch (error) {
       console.error('Order creation error:', error)
       toast.error(language === 'ka' ? 'შეკვეთის შექმნის შეცდომა' : 'Ошибка при создании заказа')
+    } finally {
+      setIsCreatingCustomer(false)
     }
   }
 
@@ -472,7 +498,7 @@ export default function NewOrderPage() {
     let formattedValue = ''
 
     if (!value) {
-      setOrder(prev => ({ ...prev, customerPhone: '' }))
+      setOrder(prev => ({ ...prev, customerPhone: '', customerId: null }))
       return
     }
 
@@ -492,7 +518,7 @@ export default function NewOrderPage() {
       formattedValue += '-' + value.substring(9, 11)
     }
 
-    setOrder(prev => ({ ...prev, customerPhone: formattedValue }))
+    setOrder(prev => ({ ...prev, customerPhone: formattedValue, customerId: null }))
   }
 
   const handleFindCustomer = async () => {

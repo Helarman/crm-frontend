@@ -310,6 +310,7 @@ export const OrderService = {
    * Обновление статуса заказа
    */
   updateStatus: async (id: string, dto: UpdateOrderStatusDto): Promise<OrderResponse> => {
+    
     if (typeof dto?.status !== 'string') {
       console.error('Invalid status format:', dto);
       throw new Error('Status must be a string value');

@@ -42,16 +42,16 @@ export function KitchenOrdersList() {
 
   // Фильтруем заказы по нужным статусам
   const filteredOrders = orders.filter(( order : OrderResponse) => 
-    ['CONFIRMED', 'PREPARING', 'COMPLETED'].includes(order.status)
+    ['CONFIRMED', 'PREPARING', 'READY'].includes(order.status)
   )
 
-  type OrderStatus = 'PREPARING' | 'CONFIRMED' | 'COMPLETED';
+  type OrderStatus = 'PREPARING' | 'CONFIRMED' | 'READY';
   
   const sortedOrders = [...filteredOrders].sort((a, b) => {
       const statusPriority: Record<OrderStatus, number> = {
-        'PREPARING': 1,
-        'CONFIRMED': 2,
-        'COMPLETED': 3
+        'PREPARING': 2,
+        'CONFIRMED': 1,
+        'READY': 3
       }
 
       const aStatus = a.status as OrderStatus;

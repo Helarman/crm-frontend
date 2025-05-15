@@ -322,14 +322,6 @@ export default function KitchenOrderPage() {
                 </div>
               </div>
             </Card>
-
-            <Button 
-              className="w-full"
-              onClick={handleCompleteOrder}
-              disabled={!isAllItemsCOMPLETED || order.status === 'READY' || isUpdating}
-            >
-              Завершить весь заказ
-            </Button>
           </div>
         </div>
       </div>
