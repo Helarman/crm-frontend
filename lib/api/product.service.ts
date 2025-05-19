@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL
 
 const api = axios.create({
   baseURL: API_URL,
@@ -171,4 +171,9 @@ interface ProductDto {
     const { data } = await api.get(`/categories/${categoryId}/products`);
     return data;
   },
+  async getIngredients(productId: string): Promise<{inventoryItemId: string, quantity: number}[]> {
+  const { data } = await api.get(`/products/${productId}/ingredients`);
+  console.log(data)
+  return data;
+  }
 };

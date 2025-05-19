@@ -92,8 +92,9 @@ interface Product {
 export interface Restaurant {
   id: string
   title: string
-  titleGe?: string
+  address?: string
   categories: Category[]
+
 }
 
 const ORDER_TYPES = [
@@ -580,7 +581,7 @@ export default function NewOrderPage() {
 
   return (
     <AccessCheck allowedRoles={['WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR']}>
-      <div className="container py-6 space-y-6">
+      <div className="space-y-6">
         <h1 className="text-2xl font-bold">{language === 'ka' ? 'ახალი შეკვეთა' : 'Новый заказ'}</h1>
         
         {/* Order Type Selection */}
@@ -1067,7 +1068,7 @@ function ProductSelector({
                 )
                 const displayPrice = restaurantPrice?.price
                 const isStopList = restaurantPrice?.isStopList ?? false
-
+    
                 return (
                   <button
                     key={product.id}
@@ -1078,11 +1079,12 @@ function ProductSelector({
                         : 'hover:bg-accent shadow-sm hover:shadow-md'
                       }`}
                   >
+                    
                     <Utensils className="h-8 w-8 mb-3" />
                     <span className="font-semibold text-base text-center">
                       {t(product.title, product.titleGe)}
                     </span>
-                    <span className="text-base mt-2 font-bold">{displayPrice} ₽</span>
+                    <span className="text-base mt-2 font-bold">{restaurantPrice?.price ? restaurantPrice?.price : product.price} ₽</span>
                   </button> 
                 )
               }

@@ -69,22 +69,7 @@ export default function Nav() {
           <DropdownMenuContent className="w-56 mr-4 dark:bg-gray-800">
             <DropdownMenuLabel>{t.account}</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuGroup>
-              <DropdownMenuItem className="dark:hover:bg-gray-700">
-                <div className="flex items-center gap-2">
-                  <User className="w-4 h-4" />
-                  <span>{t.profile}</span>
-                </div>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="dark:hover:bg-gray-700">
-                <div className="flex items-center gap-2">
-                  <Settings className="w-4 h-4" />
-                  <span>{t.settings}</span>
-                </div>
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            
-            <DropdownMenuSub>
+           <DropdownMenuSub>
               <DropdownMenuSubTrigger className="dark:hover:bg-gray-700">
                 <div className="flex items-center gap-2">
                   <Languages className="w-4 h-4" />

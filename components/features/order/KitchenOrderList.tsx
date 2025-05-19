@@ -106,7 +106,7 @@ export function KitchenOrdersList() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between gap-4">
-        <h2 className="text-xl font-semibold">Заказы на кухне</h2>
+        <h2 className="text-2xl font-bold">Заказы на кухне</h2>
         
         {user.restaurant.length > 1 && (
           <Select

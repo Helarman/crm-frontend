@@ -163,7 +163,8 @@ export interface OrderItemProductDto {
   title: string;
   price: number;
   image?: string;
-  workshops: any
+  workshops: any;
+  ingredients: any;
 }
 
 export interface OrderItemDto {

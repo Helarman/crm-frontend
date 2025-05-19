@@ -7,9 +7,7 @@ export default async function RestaurantDetailPage({
 }) {
   return (
     <AccessCheck allowedRoles={['MANAGER', 'SUPERVISOR']}>
-      <div className="container mx-auto py-8">
-        <RestaurantDetails restaurantId={params.id} />
-      </div>
+      <RestaurantDetails restaurantId={params.id} />
     </AccessCheck>
   );
 }

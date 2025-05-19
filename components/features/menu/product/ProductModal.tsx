@@ -19,6 +19,8 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { WorkshopIn } from './ProductTable';
 import { ImageUploader } from './ImageUploader';
+import { WarehouseItem, WarehouseService } from '@/lib/api/warehouse.service';
+
 
 interface RestaurantPrice {
   restaurantId: string;
@@ -39,7 +41,7 @@ interface ProductModalProps {
   language: 'ru' | 'ka';
 }
 
-type FormStep = 'basic' | 'details' | 'images' | 'additives' | 'prices' | 'seo';
+type FormStep = 'basic' | 'details' | 'images' | 'additives' | 'ingredients' | 'prices' | 'seo';
 
 export const ProductModal = ({
   isOpen,
@@ -82,6 +84,9 @@ export const ProductModal = ({
   const [isRestaurantsLoading, setIsRestaurantsLoading] = useState(false);
   const [isWorkshopsLoading, setIsWorkshopsLoading] = useState(false);
   const [selectedWorkshops, setSelectedWorkshops] = useState<string[]>([]);
+  const [ingredients, setIngredients] = useState<{inventoryItemId: string, quantity: number}[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<{id: string, name: string, unit: string}[]>([]);
+  const [isInventoryLoading, setIsInventoryLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -89,6 +94,7 @@ export const ProductModal = ({
       loadCategories();
       loadRestaurants();
       loadWorkshops();
+      loadInventoryItems();
     }
   }, [isOpen]);
 
@@ -105,6 +111,42 @@ export const ProductModal = ({
     }
   };
 
+  const loadInventoryItems = async () => {
+  setIsInventoryLoading(true);
+  try {
+    // Получаем список всех позиций склада
+    const items = await WarehouseService.getInventoryItems();
+    
+    // Преобразуем данные в нужный формат
+    const formattedItems = items.map((item: WarehouseItem) => ({
+      id: item.id,
+      name: item.name,
+      unit: item.unit,
+      ...(item.storageLocation && { 
+        storageLocation: {
+          id: item.storageLocation.id,
+          name: item.storageLocation.name
+        }
+      }),
+      ...(item.product && {
+        product: {
+          id: item.product.id,
+          title: item.product.title
+        }
+      })
+    }));
+
+    setInventoryItems(formattedItems);
+  } catch (error) {
+    console.error('Failed to load inventory items', error);
+    toast.error(language === 'ru' 
+      ? 'Ошибка загрузки ингредиентов' 
+      : 'ინგრედიენტების ჩატვირთვის შეცდომა');
+  } finally {
+    setIsInventoryLoading(false);
+  }
+};
+
   const loadData = async () => {
     if (!productId) {
       resetForm();
@@ -113,10 +155,11 @@ export const ProductModal = ({
 
     setIsLoading(true);
     try {
-      const [product, productAdditives, prices] = await Promise.all([
+      const [product, productAdditives, prices, productIngredients] = await Promise.all([
         ProductService.getById(productId),
         AdditiveService.getByProduct(productId),
         ProductService.getRestaurantPrices(productId),
+        ProductService.getIngredients(productId),
       ]);
 
       setFormData({
@@ -139,10 +182,11 @@ export const ProductModal = ({
         content: product.content || '',
       });
 
-      setSelectedAdditives(productAdditives.map((a : Additive) => a.id));
+      setSelectedAdditives(productAdditives.map((a: Additive) => a.id));
       setRestaurantPrices(prices);
-      setSelectedRestaurants(prices.map(( p : RestaurantPrice) => p.restaurantId));
-      setSelectedWorkshops(product.workshops?.map((w : WorkshopIn) => w.workshop.id) || []);
+      setSelectedRestaurants(prices.map((p: RestaurantPrice) => p.restaurantId));
+      setSelectedWorkshops(product.workshops?.map((w: WorkshopIn) => w.workshop.id) || []);
+      setIngredients(productIngredients || []);
     } catch (error) {
       toast.error(language === 'ru' ? 'Ошибка загрузки данных' : 'მონაცემების ჩატვირთვის შეცდომა');
     } finally {
@@ -175,6 +219,7 @@ export const ProductModal = ({
     setRestaurantPrices([]);
     setCurrentStep('basic');
     setSelectedWorkshops([]);
+    setIngredients([]);
   };
 
   const loadCategories = async () => {
@@ -323,6 +368,17 @@ export const ProductModal = ({
       errors.push(language === 'ru' ? 'Выберите хотя бы один ресторан' : 'აირჩიეთ ერთი რესტორნი მაინც');
     }
 
+    if (currentStep === 'ingredients') {
+      const hasEmptyIngredients = ingredients.some(
+        i => !i.inventoryItemId || i.quantity <= 0
+      );
+      if (hasEmptyIngredients) {
+        errors.push(language === 'ru' 
+          ? 'Укажите корректные ингредиенты' 
+          : 'მიუთითეთ სწორი ინგრედიენტები');
+      }
+    }
+    
     if (errors.length > 0) {
       toast.error(errors.join('\n'));
       return false;
@@ -333,7 +389,7 @@ export const ProductModal = ({
   const goToNextStep = () => {
     if (!validateCurrentStep()) return;
     
-    const steps: FormStep[] = ['basic', 'details', 'images', 'additives', 'prices', 'seo'];
+    const steps: FormStep[] = ['basic', 'details', 'images', 'additives', 'ingredients', 'prices', 'seo'];
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex < steps.length - 1) {
       setCurrentStep(steps[currentIndex + 1]);
@@ -341,7 +397,7 @@ export const ProductModal = ({
   };
 
   const goToPrevStep = () => {
-    const steps: FormStep[] = ['basic', 'details', 'images', 'additives', 'prices', 'seo'];
+    const steps: FormStep[] = ['basic', 'details', 'images', 'additives', 'ingredients', 'prices', 'seo'];
     const currentIndex = steps.indexOf(currentStep);
     if (currentIndex > 0) {
       setCurrentStep(steps[currentIndex - 1]);
@@ -357,6 +413,11 @@ export const ProductModal = ({
     try {
       const productData = {
         ...formData,
+        ingredients: ingredients.filter(i => i.inventoryItemId && i.quantity > 0)
+        .map(i => ({
+          inventoryItemId: i.inventoryItemId,
+          quantity: parseFloat(i.quantity.toString()) // Преобразуем в число
+        })),
         images: formData.images.filter(img => img.trim()),
         restaurantPrices: restaurantPrices.filter(rp => 
           selectedRestaurants.includes(rp.restaurantId)
@@ -394,7 +455,7 @@ export const ProductModal = ({
   const renderStepContent = () => {
     switch (currentStep) {
       case 'basic':
-        return (
+         return (
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="title" className="text-sm">
@@ -541,7 +602,7 @@ export const ProductModal = ({
                 />
               </div>
 
-              <div className="space-y-2 col-span-2"> {/* Занимает две колонки */}
+              <div className="space-y-2 col-span-2">
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button
@@ -568,7 +629,7 @@ export const ProductModal = ({
                         {language === 'ru' ? 'Цехи не найдены' : 'სახელოსნოები ვერ მოიძებნა'}
                       </CommandEmpty>
                       <CommandGroup className="max-h-60 overflow-y-auto w-full">
-                        <div className="grid gap-2 p-1"> {/* Две колонки */}
+                        <div className="grid gap-2 p-1"> 
                           {workshops.map((workshop) => (
                             <CommandItem
                               key={workshop.id}
@@ -684,84 +745,7 @@ export const ProductModal = ({
             />
           </div>
         );
-
-      case 'additives':
-        return (
-          <div className="space-y-4">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  className="w-full justify-between text-sm"
-                  onClick={() => !additives.length && loadAdditives()}
-                >
-                  {language === 'ru' ? 'Выберите добавки' : 'აირჩიეთ დანამატები'}
-                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-full p-0">
-                <Command>
-                  <CommandInput 
-                    placeholder={language === 'ru' ? 'Поиск добавок...' : 'დანამატების ძებნა...'} 
-                    className="text-sm"
-                  />
-                  <CommandEmpty className="text-sm px-2 py-1.5">
-                    {language === 'ru' ? 'Добавки не найдены' : 'დანამატები ვერ მოიძებნა'}
-                  </CommandEmpty>
-                  <CommandGroup className="max-h-60 overflow-y-auto">
-                    {isAdditivesLoading ? (
-                      <div className="flex justify-center py-4">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      </div>
-                    ) : additives.map(additive => (
-                      <CommandItem
-                        key={additive.id}
-                        value={additive.id}
-                        onSelect={() => toggleAdditive(additive.id)}
-                        className="text-sm"
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            selectedAdditives.includes(additive.id)
-                              ? "opacity-100"
-                              : "opacity-0"
-                          )}
-                        />
-                        {additive.title} (+{additive.price}₾)
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </Command>
-              </PopoverContent>
-            </Popover>
-            {selectedAdditives.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {selectedAdditives.map(additiveId => {
-                  const additive = additives.find(a => a.id === additiveId);
-                  return additive ? (
-                    <Badge 
-                      key={additiveId} 
-                      variant="secondary" 
-                      className="flex items-center gap-1 text-sm"
-                    >
-                      {additive.title} (+{additive.price}₾)
-                      <button
-                        type="button"
-                        onClick={() => toggleAdditive(additiveId)}
-                        className="rounded-full p-0.5 hover:bg-muted"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </Badge>
-                  ) : null;
-                })}
-              </div>
-            )}
-          </div>
-        );
-
+      
       case 'prices':
         return (
           <div className="space-y-4">
@@ -859,9 +843,284 @@ export const ProductModal = ({
             )}
           </div>
         );
-
-      case 'seo':
+      
+      case 'additives':
         return (
+          <div className="space-y-4">
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  className="w-full justify-between text-sm"
+                  onClick={() => !additives.length && loadAdditives()}
+                >
+                  {language === 'ru' ? 'Выберите добавки' : 'აირჩიეთ დანამატები'}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-full p-0">
+                <Command>
+                  <CommandInput 
+                    placeholder={language === 'ru' ? 'Поиск добавок...' : 'დანამატების ძებნა...'} 
+                    className="text-sm"
+                  />
+                  <CommandEmpty className="text-sm px-2 py-1.5">
+                    {language === 'ru' ? 'Добавки не найдены' : 'დანამატები ვერ მოიძებნა'}
+                  </CommandEmpty>
+                  <CommandGroup className="max-h-60 overflow-y-auto">
+                    {isAdditivesLoading ? (
+                      <div className="flex justify-center py-4">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      </div>
+                    ) : additives.map(additive => (
+                      <CommandItem
+                        key={additive.id}
+                        value={additive.id}
+                        onSelect={() => toggleAdditive(additive.id)}
+                        className="text-sm"
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            selectedAdditives.includes(additive.id)
+                              ? "opacity-100"
+                              : "opacity-0"
+                          )}
+                        />
+                        {additive.title} (+{additive.price}₾)
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            {selectedAdditives.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {selectedAdditives.map(additiveId => {
+                  const additive = additives.find(a => a.id === additiveId);
+                  return additive ? (
+                    <Badge 
+                      key={additiveId} 
+                      variant="secondary" 
+                      className="flex items-center gap-1 text-sm"
+                    >
+                      {additive.title} (+{additive.price}₾)
+                      <button
+                        type="button"
+                        onClick={() => toggleAdditive(additiveId)}
+                        className="rounded-full p-0.5 hover:bg-muted"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ) : null;
+                })}
+              </div>
+            )}
+          </div>
+        );
+
+      case 'ingredients':
+        return (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-sm">
+                {language === 'ru' ? 'Ингредиенты продукта' : 'პროდუქტის ინგრედიენტები'}
+              </Label>
+              
+              <div className="space-y-3">
+                {ingredients.map((ingredient, index) => {
+                  const item = inventoryItems.find(i => i.id === ingredient.inventoryItemId);
+                  return (
+                    <div key={index} className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-5">
+                        <Select
+                          value={ingredient.inventoryItemId}
+                          onValueChange={(value) => {
+                            const newIngredients = [...ingredients];
+                            newIngredients[index].inventoryItemId = value;
+                            setIngredients(newIngredients);
+                          }}
+                        >
+                          <SelectTrigger className="text-sm">
+                            <SelectValue placeholder={language === 'ru' ? 'Выберите ингредиент' : 'აირჩიეთ ინგრედიენტი'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {inventoryItems.map(item => (
+                              <SelectItem key={item.id} value={item.id} className="text-sm">
+                                {item.name} ({item.unit})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="col-span-5">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={ingredient.quantity}
+                          onChange={(e) => {
+                            const newIngredients = [...ingredients];
+                            newIngredients[index].quantity = parseFloat(e.target.value) || 0;
+                            setIngredients(newIngredients);
+                          }}
+                          className="text-sm"
+                        />
+                      </div>
+                      
+                      <div className="col-span-2 flex justify-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            const newIngredients = [...ingredients];
+                            newIngredients.splice(index, 1);
+                            setIngredients(newIngredients);
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-2 text-sm"
+                onClick={() => setIngredients([...ingredients, { inventoryItemId: '', quantity: 0 }])}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                {language === 'ru' ? 'Добавить ингредиент' : 'ინგრედიენტის დამატება'}
+              </Button>
+            </div>
+          </div>
+        );
+
+     case 'ingredients':
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label className="text-sm">
+          {language === 'ru' ? 'Ингредиенты продукта' : 'პროდუქტის ინგრედიენტები'}
+        </Label>
+        
+        <div className="space-y-3">
+          {ingredients.map((ingredient, index) => {
+            const [open, setOpen] = useState(false);
+            const selectedItem = inventoryItems.find(i => i.id === ingredient.inventoryItemId);
+            
+            return (
+              <div key={index} className="grid grid-cols-12 gap-2 items-center">
+                <div className="col-span-5">
+                  <Popover open={open} onOpenChange={setOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={open}
+                        className="w-full justify-between text-sm"
+                      >
+                        {selectedItem 
+                          ? `${selectedItem.name} (${selectedItem.unit})`
+                          : language === 'ru' ? 'Выберите ингредиент' : 'აირჩიეთ ინგრედიენტი'}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[300px] p-0">
+                      <Command>
+                        <CommandInput 
+                          placeholder={language === 'ru' ? 'Поиск ингредиентов...' : 'ინგრედიენტების ძებნა...'} 
+                          className="h-9 text-sm"
+                        />
+                        <CommandEmpty className="text-sm px-2 py-1.5">
+                          {language === 'ru' ? 'Ингредиенты не найдены' : 'ინგრედიენტები ვერ მოიძებნა'}
+                        </CommandEmpty>
+                        <CommandGroup className="max-h-[200px] overflow-y-auto">
+                          {inventoryItems.map((item) => (
+                            <CommandItem
+                              key={item.id}
+                              value={`${item.name} ${item.unit}`} // Поиск по name и unit
+                              onSelect={() => {
+                                const newIngredients = [...ingredients];
+                                newIngredients[index].inventoryItemId = item.id;
+                                setIngredients(newIngredients);
+                                setOpen(false);
+                              }}
+                              className="text-sm"
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  ingredient.inventoryItemId === item.id
+                                    ? "opacity-100"
+                                    : "opacity-0"
+                                )}
+                              />
+                              {item.name} ({item.unit})
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                
+                <div className="col-span-5">
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={ingredient.quantity}
+                    onChange={(e) => {
+                      const newIngredients = [...ingredients];
+                      newIngredients[index].quantity = parseFloat(e.target.value) || 0;
+                      setIngredients(newIngredients);
+                    }}
+                    className="text-sm"
+                  />
+                </div>
+                
+                <div className="col-span-2 flex justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      const newIngredients = [...ingredients];
+                      newIngredients.splice(index, 1);
+                      setIngredients(newIngredients);
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-2 text-sm"
+          onClick={() => setIngredients([...ingredients, { inventoryItemId: '', quantity: 0 }])}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          {language === 'ru' ? 'Добавить ингредиент' : 'ინგრედიენტის დამატება'}
+        </Button>
+      </div>
+    </div>
+  );
+  
+      case 'seo':
+         return (
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="pageTitle" className="text-sm">
@@ -917,6 +1176,8 @@ export const ProductModal = ({
         return language === 'ru' ? 'Изображения' : 'სურათები';
       case 'additives':
         return language === 'ru' ? 'Добавки' : 'დანამატები';
+      case 'ingredients':
+        return language === 'ru' ? 'Ингредиенты' : 'ინგრედიენტები';
       case 'prices':
         return language === 'ru' ? 'Цены в ресторанах' : 'რესტორნებში ფასები';
       case 'seo':

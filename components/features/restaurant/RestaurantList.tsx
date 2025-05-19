@@ -18,6 +18,7 @@ import {
   CardFooter,
 } from "@/components/ui/card"
 import {useRouter} from "next/navigation"
+import { WarehouseService } from '@/lib/api/warehouse.service';
 
 interface Restaurant{
   title: string;
@@ -29,10 +30,47 @@ export function RestaurantList() {
   const router = useRouter()
 
   const [isCreating, setIsCreating] = useState(false);
- 
+  const { language } = useLanguageStore();
+
+    const translations = {
+    ru: {
+      restaurants: "Рестораны",
+      warehouse: "Склад",
+      addRestaurans: "Добавить ресторан",
+      open: "Открыто",
+      closed: "Закрыто",
+      edit: "Редактировать",
+      openingHours: "Часы работы",
+      address: "Адрес",
+      phone: "Телефон"
+    },
+    ka: {
+      restaurants: "რესტორნები",
+      warehouse: "საწყობი",
+      addRestaurans: "რესტორნის დამატება",
+      open: "გახსენით",
+      closed: "დახურული",
+      edit: "რედაქტირება",
+      openingHours: 'გახსნის საათები',
+      address: "მისამართი",
+      phone: "ტელეფონი"
+    }
+  } as const;
+
+  const t = translations[language];
+  
+
   const handleCreate = async (values: any) => {
     try {
-      await RestaurantService.create(values);
+       const createdRestaurant = await RestaurantService.create(values);
+      
+      // 2. Создаем склад для ресторана
+      if (createdRestaurant?.id) {
+        await WarehouseService.createWarehouse({
+          restaurantId: createdRestaurant.id,
+          name: `${values.title} - ${t.warehouse}`,
+        });
+      }
       mutate();
       setIsCreating(false);
     } catch (err) {
@@ -50,7 +88,7 @@ export function RestaurantList() {
   };*/
 
  ;
- const { language } = useLanguageStore();
+
 
  const { data: restaurants, error, isLoading, mutate } = useRestaurants();
  if (isLoading) return <div>Loading...</div>;
@@ -58,31 +96,7 @@ export function RestaurantList() {
    Error loading restaurants</div>
 
 
-  const translations = {
-    ru: {
-      restaurants: "Рестораны",
-      addRestaurans: "Добавить ресторан",
-      open: "Открыто",
-      closed: "Закрыто",
-      edit: "Редактировать",
-      openingHours: "Часы работы",
-      address: "Адрес",
-      phone: "Телефон"
-    },
-    ka: {
-      restaurants: "რესტორნები",
-      addRestaurans: "რესტორნის დამატება",
-      open: "გახსენით",
-      closed: "დახურული",
-      edit: "რედაქტირება",
-      openingHours: 'გახსნის საათები',
-      address: "მისამართი",
-      phone: "ტელეფონი"
-    }
-  } as const;
 
-  const t = translations[language];
-  
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">

@@ -46,7 +46,8 @@ export const navTranslations = {
       theme: "Тема",
       language: "Язык",
       notAvailable: "недоступно для вашей роли",
-      version: "Версия"
+      version: "Версия",
+      warehouse: "Склад"
     },
     ka: {
       home: "მთავარი",
@@ -65,6 +66,7 @@ export const navTranslations = {
       theme: "თემა",
       language: "ენა",
       notAvailable: "მიუწვდომელია თქვენი როლისთვის",
-      version: "ვერსია"
+      version: "ვერსია",
+      warehouse: "საწყობი"
     }
   } as const;

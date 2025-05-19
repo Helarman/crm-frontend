@@ -102,20 +102,21 @@ export function EditRestaurantForm({
   };
 
   const onSubmitHandler = handleSubmit(async (data) => {
-    setIsUploading(true);
-    try {
-      await onSubmit({
-        ...data,
-        latitude: coordinates?.lat.toString() || initialValues.latitude,
-        longitude: coordinates?.lng.toString() || initialValues.longitude,
-        images: initialValues.images || []
-      });
-    } catch (error) {
-      console.error('Ошибка при обновлении ресторана:', error);
-    } finally {
-      setIsUploading(false);
-    }
-  });
+  setIsUploading(true);
+  try {
+    await onSubmit({
+      ...data,
+      latitude: coordinates?.lat.toString(),
+      longitude: coordinates?.lng.toString(),
+      // Не передаём images, если они не меняются
+      // Не передаём ничего про пользователей
+    });
+  } catch (error) {
+    console.error('Ошибка при обновлении ресторана:', error);
+  } finally {
+    setIsUploading(false);
+  }
+});
 
   return (
     <form onSubmit={onSubmitHandler} className="space-y-4">

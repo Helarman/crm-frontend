@@ -124,8 +124,9 @@ export function ProductSelector({ products, categories, additives, onItemsChange
                   <div className="mb-2">
                     {getCategoryIcon(selectedCategory)}
                   </div>
+
                   <span className="font-medium text-sm">{product.title}</span>
-                  <span className="text-sm">{product.price} ₽</span>
+                  <span className="text-sm">{product.price}</span>
                 </button>
               ))}
             </div>

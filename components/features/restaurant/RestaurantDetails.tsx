@@ -9,18 +9,19 @@ import { RestaurantProducts } from '@/components/features/restaurant/RestaurantP
 import { useState } from 'react';
 import { EditRestaurantForm } from '@/components/features/restaurant/EditRestaurantForm';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { toast } from 'sonner'; // Библиотека для уведомлений
+import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 
-// Типы для TypeScript
 interface Restaurant {
   id: string;
   name: string;
   address: string;
   description?: string;
-  // другие поля при необходимости
 }
 
 export function RestaurantDetails({ restaurantId }: { restaurantId: string }) {
+  const router = useRouter()
+
   // Получаем данные ресторана, состояние загрузки и ошибки
   const { data: restaurant, error, isLoading, mutate } = useRestaurant(restaurantId);
   const [isEditing, setIsEditing] = useState(false); // Режим редактирования
@@ -52,6 +53,9 @@ export function RestaurantDetails({ restaurantId }: { restaurantId: string }) {
       
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">{restaurant.title}</h2>
+        <Button onClick={() => router.push(`/restaurants/${restaurant.id}/warehouse`)}>
+          Склад
+        </Button>
       </div>
       <div className="border rounded-lg p-4">
 

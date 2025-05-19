@@ -21,41 +21,107 @@ import useSWRMutation from 'swr/mutation'
 import { Restaurant } from '../staff/StaffTable'
 import { Button } from '@/components/ui/button'
 import { Utensils, ShoppingBag, Truck, GlassWater } from 'lucide-react'
+import { useLanguageStore } from '@/lib/stores/language-store'
 
 const ORDER_TYPES = [
   {
     value: 'ALL',
-    label: 'Все',
+    label: {
+      ru: 'Все',
+      ka: 'ყველა'
+    },
     icon: null,
     color: 'bg-gray-100 hover:bg-gray-200'
   },
   {
     value: 'DINE_IN',
-    label: 'В зале',
+    label: {
+      ru: 'В зале',
+      ka: 'დარბაზში'
+    },
     icon: Utensils,
     color: 'bg-blue-100 hover:bg-blue-200'
   },
   {
     value: 'TAKEAWAY',
-    label: 'Навынос',
+    label: {
+      ru: 'Навынос',
+      ka: 'წინასწარ'
+    },
     icon: ShoppingBag,
     color: 'bg-green-100 hover:bg-green-200'
   },
   {
     value: 'DELIVERY',
-    label: 'Доставка',
+    label: {
+      ru: 'Доставка',
+      ka: 'მიტანა'
+    },
     icon: Truck,
     color: 'bg-purple-100 hover:bg-purple-200'
   },
   {
     value: 'BANQUET',
-    label: 'Банкет',
+    label: {
+      ru: 'Банкет',
+      ka: 'ბანკეტი'
+    },
     icon: GlassWater,
     color: 'bg-amber-100 hover:bg-amber-200'
   }
 ]
 
+const translations = {
+  title: {
+    ru: 'Заказы ресторана',
+    ka: 'რესტორნის შეკვეთები'
+  },
+  newOrder: {
+    ru: 'Новый заказ',
+    ka: 'ახალი შეკვეთა'
+  },
+  authRequired: {
+    ru: 'Пожалуйста, авторизуйтесь для просмотра заказов',
+    ka: 'გთხოვთ, გაიაროთ ავტორიზაცია შეკვეთების სანახავად'
+  },
+  noRestaurants: {
+    ru: 'У вас нет доступных ресторанов',
+    ka: 'თქვენ არ გაქვთ ხელმისაწვდომი რესტორანები'
+  },
+  loadingOrders: {
+    ru: 'Загрузка заказов...',
+    ka: 'შეკვეთების ჩატვირთვა...'
+  },
+  orderError: {
+    ru: 'Ошибка загрузки заказов',
+    ka: 'შეკვეთების ჩატვირთვის შეცდომა'
+  },
+  noOrders: {
+    ru: 'Нет заказов по выбранному фильтру',
+    ka: 'არჩეული ფილტრის მიხედვით შეკვეთები არ მოიძებნა'
+  },
+  selectRestaurant: {
+    ru: 'Выберите ресторан',
+    ka: 'აირჩიეთ რესტორანი'
+  },
+  statusUpdated: {
+    ru: 'Статус заказа обновлен',
+    ka: 'შეკვეთის სტატუსი განახლდა'
+  },
+  statusUpdateError: {
+    ru: 'Не удалось обновить статус заказа',
+    ka: 'შეკვეთის სტატუსის განახლება ვერ მოხერხდა'
+  },
+  ordersList: {
+    ru: 'Список заказов',
+    ka: 'შეკვეთების სია'
+  }
+}
+
 export function OrdersList() {
+  const { language } = useLanguageStore()
+  const t = (key: keyof typeof translations) => translations[key][language]
+
   const router = useRouter()
   const { user } = useAuth()
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>('')
@@ -102,10 +168,10 @@ export function OrdersList() {
         mutate((prevOrders: OrderResponse[] | undefined) => 
           prevOrders?.map(o => o.id === updatedOrder.id ? updatedOrder : o) || []
         )
-        toast.success('Статус заказа обновлен')
+        toast.success(t('statusUpdated'))
       },
       onError: (error) => {
-        toast.error('Не удалось обновить статус заказа')
+        toast.error(t('statusUpdateError'))
         console.error('Failed to update order status:', error)
       }
     }
@@ -121,7 +187,7 @@ export function OrdersList() {
     return (
       <Card className="p-6 text-center">
         <p className="text-muted-foreground">
-          Пожалуйста, авторизуйтесь для просмотра заказов
+          {t('authRequired')}
         </p>
       </Card>
     )
@@ -131,7 +197,7 @@ export function OrdersList() {
     return (
       <Card className="p-6 text-center">
         <p className="text-muted-foreground">
-          У вас нет доступных ресторанов
+          {t('noRestaurants')}
         </p>
       </Card>
     )
@@ -151,7 +217,7 @@ export function OrdersList() {
     return (
       <Card className="p-6 text-center">
         <p className="text-destructive">
-          Ошибка загрузки заказов: {ordersError.message}
+          {t('orderError')}: {ordersError.message}
         </p>
       </Card>
     )
@@ -161,46 +227,51 @@ export function OrdersList() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4">
         <div className="flex justify-between flex-col lg:flex-row items-center gap-4">
-          <h2 className="text-xl font-semibold">Список заказов</h2>
-           <div className="flex flex-wrap gap-2">
-          {ORDER_TYPES.map((type) => {
-            const Icon = type.icon
-            return (
-              <Button
-                key={type.value}
-                variant={selectedOrderType === type.value ? 'default' : 'outline'}
-                onClick={() => setSelectedOrderType(type.value)}
+          <h2 className="text-2xl font-bold">{t('ordersList')}</h2>
+          <div className="flex flex-wrap gap-2">
+            {ORDER_TYPES.map((type) => {
+              const Icon = type.icon
+              return (
+                <Button
+                  key={type.value}
+                  variant={selectedOrderType === type.value ? 'default' : 'outline'}
+                  onClick={() => setSelectedOrderType(type.value)}
+                >
+                  {Icon && <Icon className="h-5 w-5" />}
+                  <span className="font-medium">{type.label[language]}</span>
+                </Button>
+              )
+            })}
+          </div>
+          <div className='flex space-x-2'>
+            {user.restaurant.length > 1 && (
+              <Select
+                value={selectedRestaurantId}
+                onValueChange={setSelectedRestaurantId}
               >
-                {Icon && <Icon className="h-5 w-5" />}
-                <span className="font-medium">{type.label}</span>
-              </Button>
-            )
-          })}
-        </div>
-          {user.restaurant.length > 1 && (
-            <Select
-              value={selectedRestaurantId}
-              onValueChange={setSelectedRestaurantId}
-            >
-              <SelectTrigger className="w-[280px]">
-                <SelectValue placeholder="Выберите ресторан" />
-              </SelectTrigger>
-              <SelectContent>
-                {user.restaurant.map((restaurant: Restaurant) => (
-                  <SelectItem key={restaurant.id} value={restaurant.id}>
-                    {restaurant.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+                <SelectTrigger className="w-[280px]">
+                  <SelectValue placeholder={t('selectRestaurant')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {user.restaurant.map((restaurant: Restaurant) => (
+                    <SelectItem key={restaurant.id} value={restaurant.id}>
+                      {restaurant.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Button onClick={() => router.push('/orders/new')}>
+              {t('newOrder')}
+            </Button>
+          </div>
         </div>
       </div>
 
       {sortedOrders.length === 0 ? (
         <Card className="p-6 text-center">
           <p className="text-muted-foreground">
-            Нет заказов по выбранному фильтру
+            {t('noOrders')}
           </p>
         </Card>
       ) : (
