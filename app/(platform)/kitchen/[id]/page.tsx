@@ -240,20 +240,6 @@ export default function KitchenOrderPage() {
     }
   }
 
-  const handleCompleteOrder = async () => {
-    if (!orderId || isUpdating) return
-    try {
-      setIsUpdating(true)
-      await OrderService.updateStatus(orderId as string, {status: EnumOrderStatus.READY} )
-      toast.success('Заказ успешно завершен')
-      router.push('/kitchen')
-    } catch (err) {
-      toast.error('Не удалось завершить заказ')
-      console.error('Failed to complete order:', err)
-    } finally {
-      setIsUpdating(false)
-    }
-  }
 
   const isAllItemsCOMPLETED = items.every(i => i.currentStatus === 'COMPLETED')
   const isAdmin = user?.role == 'MANAGER' || user?.role == 'SUPERVISOR'
@@ -384,16 +370,7 @@ export default function KitchenOrderPage() {
               ))}
             </div>
 
-            {isAllItemsCOMPLETED && (
-              <div className="flex justify-end mt-4">
-                <Button 
-                  onClick={handleCompleteOrder}
-                  disabled={isUpdating}
-                >
-                  Завершить заказ
-                </Button>
-              </div>
-            )}
+           
           </Card>
 
           <div className="space-y-4">
