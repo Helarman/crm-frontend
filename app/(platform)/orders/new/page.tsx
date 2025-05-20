@@ -251,6 +251,7 @@ export default function NewOrderPage() {
           setIsCreatingShift(true)
           const newShift = await ShiftService.createShift({
             restaurantId: selectedRestaurant.id,
+            status: 'STARTED',
             startTime: new Date(),
           })
           setActiveShiftId(newShift.id)

@@ -121,6 +121,7 @@ interface CreateShiftDto {
   restaurantId: string;
   startTime: Date;
   endTime?: Date;
+  status?: string;
   name?: string;
   description?: string;
 }
