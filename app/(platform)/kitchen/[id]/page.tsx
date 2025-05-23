@@ -129,7 +129,8 @@ export default function KitchenOrderPage() {
       [OrderItemStatus.PARTIALLY_DONE]: 'Частично готов',
       [OrderItemStatus.PAUSED]: 'На паузе',
       [OrderItemStatus.COMPLETED]: 'Готов',
-      [OrderItemStatus.CANCELLED]: 'Отменен'
+      [OrderItemStatus.CANCELLED]: 'Отменен',
+      [OrderItemStatus.REFUNDED]: 'Возвращен'
     }
     return statusMap[status] || status
   }

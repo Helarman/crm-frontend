@@ -136,6 +136,7 @@ export interface OrderItemDto {
   additives: OrderItemAdditiveDto[];
   totalPrice: number;
   status: any; // Добавляем статус для каждого блюда
+  workshops: any;
   user?: { // Информация о поваре
     id: string;
     name: string;
@@ -163,7 +164,8 @@ export interface OrderItemAdditiveDto {
 export interface OrderItemProductDto {
    id: string
   title: string
-  titleGe?: string
+  workshops: any;
+  ingredients: any;
   price: number
   restaurantPrices: {
     price: number
