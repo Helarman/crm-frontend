@@ -34,6 +34,7 @@
     "date-fns": "^3.6.0",
     "form-data": "^4.0.2",
     "formidable": "^3.5.4",
+    "framer-motion": "^12.12.1",
     "fs": "^0.0.1-security",
     "js-cookie": "^3.0.5",
     "leaflet-color-markers": "^0.1.0",
