@@ -311,7 +311,6 @@ export default function KitchenOrderPage() {
                       <h3 className="font-medium">
                         {item.product.title} × {item.quantity}
                       </h3>
-                      
                       {item.additives.length > 0 && (
                         <div className="text-sm text-muted-foreground mt-1">
                           Добавки: {item.additives.map(a => a.title).join(', ')}
@@ -333,17 +332,13 @@ export default function KitchenOrderPage() {
                     </div>
 
                     <div className="flex flex-col items-end gap-2">
-                      {item.currentStatus === 'IN_PROGRESS' && item.assignedTo?.name && (
-                        <span className="text-sm text-muted-foreground text-right">
-                          Готовит: {item.assignedTo.name}
-                        </span>
-                      )}
+                      
                       
                       <div className="flex gap-2">
                         <Button
                           size="sm"
                           variant={item.currentStatus === 'IN_PROGRESS' ? 'default' : 'outline'}
-                          disabled={item.currentStatus === 'IN_PROGRESS' || isUpdating}
+                          disabled={item.currentStatus === 'IN_PROGRESS' || isUpdating || item.currentStatus === 'REFUNDED'}
                           onClick={() => handleStartCooking(item.id)}
                         >
                           В работу
@@ -351,7 +346,7 @@ export default function KitchenOrderPage() {
                         <Button
                           size="sm"
                           variant={item.currentStatus === 'COMPLETED' ? 'default' : 'outline'}
-                          disabled={item.currentStatus === 'COMPLETED' || isUpdating}
+                          disabled={item.currentStatus === 'COMPLETED' || isUpdating || item.currentStatus === 'REFUNDED'}
                           onClick={() => handleStatusChange(item.id, OrderItemStatus.COMPLETED)}
                         >
                           Готово

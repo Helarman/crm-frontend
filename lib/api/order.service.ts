@@ -97,6 +97,12 @@ function redirectToLogin() {
 /**
  * Интерфейсы для работы с заказами
  */
+
+export interface UpdateOrderItemDto {
+  comment?: string;
+  additiveIds?: string[];
+}
+
 export enum EnumOrderType {
   DINE_IN = 'DINE_IN',
   TAKEAWAY = 'TAKEAWAY',
@@ -387,6 +393,17 @@ export const OrderService = {
    */
   repeat: async (id: string): Promise<OrderResponse> => {
     const { data } = await api.post<OrderResponse>(`/orders/${id}/repeat`);
+    return data;
+  },
+  updateOrderItem: async (
+    orderId: string,
+    itemId: string,
+    dto: UpdateOrderItemDto
+  ): Promise<OrderResponse> => {
+    const { data } = await api.patch<OrderResponse>(
+      `/orders/${orderId}/items/${itemId}`,
+      dto
+    );
     return data;
   },
   updateItemStatus: async (

@@ -28,6 +28,7 @@ import { useLanguageStore } from '@/lib/stores/language-store'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
+import { Additive } from '@/lib/api/customer.service'
 
 interface OrderItemProduct {
   id: string
@@ -74,9 +75,39 @@ export default function WaiterOrderPage() {
   const [returnItemId, setReturnItemId] = useState<string | null>(null);
   const [returnReason, setReturnReason] = useState('');
   const [isReturning, setIsReturning] = useState(false);
+  const [editingItem, setEditingItem] = useState<{
+    item: OrderItem | null;
+    product: Product | null;
+  } | null>(null);
+  const [updatedComment, setUpdatedComment] = useState('');
+  const [updatedAdditives, setUpdatedAdditives] = useState<string[]>([]);
+  const [confirmItemId, setConfirmItemId] = useState<string | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
 
-  const closeAddItemDialog = () => {
-    setAddItemDialogOpen(false)
+  const fetchOrder = async () => {
+    try {
+      setLoading(true)
+      const data = await OrderService.getById(orderId as string)
+      setOrder(data)
+      
+      if (data.payment?.method) {
+        setPaymentMethod(data.payment.method)
+      }
+      
+      if (data.restaurant?.id) {
+        const [products, categories] = await Promise.all([
+          ProductService.getByRestaurant(data.restaurant.id),
+          CategoryService.getAll()
+        ])
+        setProducts(products)
+        setCategories(categories)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Неизвестная ошибка')
+      toast.error('Не удалось загрузить заказ')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -84,32 +115,6 @@ export default function WaiterOrderPage() {
       setError('Order ID is missing')
       setLoading(false)
       return
-    }
-
-    const fetchOrder = async () => {
-      try {
-        setLoading(true)
-        const data = await OrderService.getById(orderId as string)
-        setOrder(data)
-        
-        if (data.payment?.method) {
-          setPaymentMethod(data.payment.method)
-        }
-        
-        if (data.restaurant?.id) {
-          const [products, categories] = await Promise.all([
-            ProductService.getByRestaurant(data.restaurant.id),
-            CategoryService.getAll()
-          ])
-          setProducts(products)
-          setCategories(categories)
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Неизвестная ошибка')
-        toast.error('Не удалось загрузить заказ')
-      } finally {
-        setLoading(false)
-      }
     }
 
     fetchOrder()
@@ -132,7 +137,7 @@ export default function WaiterOrderPage() {
     const statusMap = {
       [OrderItemStatus.CREATED]: 'Создан',
       [OrderItemStatus.IN_PROGRESS]: 'Готовится',
-      [OrderItemStatus. PARTIALLY_DONE]: 'Частично готов',
+      [OrderItemStatus.PARTIALLY_DONE]: 'Частично готов',
       [OrderItemStatus.PAUSED]: 'На паузе',
       [OrderItemStatus.COMPLETED]: 'Завершён',
       [OrderItemStatus.CANCELLED]: 'Отменён',
@@ -160,7 +165,6 @@ export default function WaiterOrderPage() {
     return methodMap[method] || method
   }
 
-  // Функция для получения цены продукта с учетом restaurantPrices
   const getProductPrice = (product: OrderItemProduct) => {
     const restaurantPrice = product.restaurantPrices?.find(
       p => p.restaurantId === order?.restaurant?.id
@@ -168,7 +172,6 @@ export default function WaiterOrderPage() {
     return restaurantPrice?.price ?? product.price
   }
 
-  // Функция для расчета стоимости позиции с учетом добавок
   const calculateItemPrice = (item: OrderItem) => {
     const restaurantPrice = item.product.restaurantPrices?.find(
       p => p.restaurantId === order?.restaurant?.id
@@ -178,7 +181,6 @@ export default function WaiterOrderPage() {
     return (basePrice + additivesPrice) * item.quantity
   }
 
-  // Функция для расчета общей суммы заказа
   const calculateOrderTotal = () => {
     if (!order) return 0
     
@@ -187,20 +189,66 @@ export default function WaiterOrderPage() {
     }, 0)
   }
 
-  
+  const handleEditItem = async (item: OrderItem) => {
+    try {
+      const product = products.find(p => p.id === item.product.id);
+      
+      if (!product) {
+        toast.error('Продукт не найден');
+        return;
+      }
+
+      setEditingItem({
+        item,
+        product
+      });
+      setUpdatedComment(item.comment || '');
+      setUpdatedAdditives(item.additives.map(a => a.id));
+    } catch (err) {
+      toast.error('Ошибка при загрузке данных продукта');
+      console.error('Ошибка:', err);
+    }
+  };
+
+  const handleSaveItemChanges = async () => {
+    if (!editingItem?.item?.id || !orderId) return;
+
+    try {
+      setIsUpdating(true);
+      
+      await OrderService.updateOrderItem(
+        orderId as string,
+        editingItem.item.id,
+        {
+          comment: updatedComment,
+          additiveIds: updatedAdditives
+        }
+      );
+      
+      await fetchOrder();
+      setEditingItem(null);
+      toast.success('Позиция успешно обновлена');
+      
+    } catch (err) {
+      toast.error('Ошибка при обновлении позиции');
+      console.error('Ошибка:', err);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const handleReturnItem = async () => {
     if (!returnItemId || !orderId) return;
 
     try {
       setIsReturning(true);
       
-      // Обновляем статус позиции и добавляем комментарий
-      const updatedOrder = await OrderService.updateItemStatus(orderId as string, returnItemId, {
+      await OrderService.updateItemStatus(orderId as string, returnItemId, {
         status: 'REFUNDED',
         description: returnReason
       });
 
-      setOrder(updatedOrder);
+      await fetchOrder();
       toast.success('Позиция возвращена');
       setReturnItemId(null);
       setReturnReason('');
@@ -213,6 +261,33 @@ export default function WaiterOrderPage() {
     }
   };
 
+  const handleConfirmItem = async () => {
+    if (!confirmItemId || !orderId) return;
+
+    try {
+      setIsConfirming(true);
+      
+      await OrderService.updateItemStatus(orderId as string, confirmItemId, {
+        status: 'CREATED',
+        description: returnReason
+      });
+
+      await fetchOrder();
+      toast.success('Позиция подтверждена');
+      setConfirmItemId(null);
+      
+    } catch (err) {
+      toast.error('Ошибка при подтверждении позиции');
+      console.error('Ошибка:', err);
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
+  const closeAddItemDialog = () => {
+    setAddItemDialogOpen(false)
+  }
+
   const handleAddItem = async (newItem: {
     productId: string
     quantity: number
@@ -224,21 +299,12 @@ export default function WaiterOrderPage() {
     try {
       setIsUpdating(true)
       
-      const updatedOrder = await OrderService.addItemToOrder(
+      await OrderService.addItemToOrder(
         orderId as string,
         newItem
       )
       
-      if (updatedOrder.status != EnumOrderStatus.CONFIRMED) {
-        const confirmedOrder = await OrderService.updateStatus(
-          orderId as string,
-          { status: 'CONFIRMED' }
-        )
-        setOrder(confirmedOrder)
-      } else {
-        setOrder(updatedOrder)
-      }
-      
+      await fetchOrder();
       closeAddItemDialog()
 
       if (order.payment?.status === 'PENDING') {
@@ -261,8 +327,7 @@ export default function WaiterOrderPage() {
       setIsUpdatingPayment(true)
       await PaymentService.updateAmount(order.payment.id, newAmount)
       
-      const updatedOrder = await OrderService.getById(orderId as string)
-      setOrder(updatedOrder)
+      await fetchOrder();
       
     } catch (err) {
       toast.error('Ошибка при обновлении платежа')
@@ -271,10 +336,6 @@ export default function WaiterOrderPage() {
       setIsUpdatingPayment(false)
     }
   }
-
-  
-
-
 
   const canAddItems = order?.payment?.status === 'PENDING'
   const isAdmin = user?.role === 'MANAGER' || user?.role === 'SUPERVISOR'
@@ -384,6 +445,26 @@ export default function WaiterOrderPage() {
                         >
                           Вернуть
                         </Button>
+                      )}
+                      {item.status === 'REFUNDED' && (
+                        <>
+                          <Button 
+                            variant="outline"
+                            size="sm" 
+                            className="mr-2 cursor-pointer"
+                            onClick={() => handleEditItem(item)}
+                          >
+                            Редактировать
+                          </Button>
+                          <Button 
+                            variant="default"
+                            size="sm" 
+                            className="mr-2 cursor-pointer bg-blue-500 hover:bg-blue-600"
+                            onClick={() => setConfirmItemId(item.id)}
+                          >
+                            Подтвердить
+                        </Button>
+                        </>
                       )}
                       <div className="font-medium items-center">
                         {calculateItemPrice(item)} ₽
@@ -551,13 +632,105 @@ export default function WaiterOrderPage() {
                 categories={categories}
                 restaurantId={order.restaurant.id}
                 onAddItem={handleAddItem}
-                onClose={closeAddItemDialog} // Передаем функцию закрытия
+                onClose={closeAddItemDialog}
                 language={language}
               />
             )}
           </DialogContent>
         </Dialog>
 
+       <Dialog 
+          open={!!editingItem} 
+          onOpenChange={(open) => !open && setEditingItem(null)}
+        >
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Редактирование позиции</DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="itemComment">Комментарий</Label>
+                <Input
+                  className=' mt-2'
+                  id="itemComment"
+                  value={updatedComment}
+                  onChange={(e) => setUpdatedComment(e.target.value)}
+                  placeholder="Введите комментарий"
+                />
+              </div>
+              
+              {editingItem?.product?.additives && editingItem.product.additives.length > 0 && (
+                <div>
+                  <Label>Добавки</Label>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    {editingItem.product.additives.map(additive => (
+                      <button
+                        key={additive.id}
+                        onClick={() => {
+                          setUpdatedAdditives(prev =>
+                            prev.includes(additive.id)
+                              ? prev.filter(id => id !== additive.id)
+                              : [...prev, additive.id]
+                          );
+                        }}
+                        className={`p-2 border rounded-md text-sm flex justify-between items-center
+                          ${updatedAdditives.includes(additive.id)
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'hover:bg-accent dark:hover:bg-gray-800 dark:border-gray-700'
+                          }`}
+                      >
+                        <span>{additive.title}</span>
+                        <span className="font-bold ml-2">+{additive.price} ₽</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => setEditingItem(null)}
+              >
+                Отмена
+              </Button>
+              <Button 
+                onClick={handleSaveItemChanges}
+                disabled={isUpdating}
+              >
+                {isUpdating ? 'Сохранение...' : 'Сохранить изменения'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        
+        <Dialog open={!!confirmItemId} onOpenChange={(open) => !open && setConfirmItemId(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Подтверждение позиции</DialogTitle>
+            </DialogHeader>
+            <DialogDescription>
+              Вы уверены, что хотите подтвердить эту позицию?
+            </DialogDescription>
+            <DialogFooter>
+              <Button 
+                variant="outline" 
+                onClick={() => setConfirmItemId(null)}
+              >
+                Отмена
+              </Button>
+              <Button 
+                onClick={handleConfirmItem}
+                disabled={isConfirming}
+                className="bg-blue-500 hover:bg-blue-600"
+              >
+                {isConfirming ? 'Подтверждение...' : 'Подтвердить'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
     </AccessCheck>
   )
 }
