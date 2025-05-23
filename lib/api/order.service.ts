@@ -112,6 +112,7 @@ export enum EnumPaymentMethod {
 export interface UpdateOrderItemStatusDto {
   status: string;
   userId?: string;
+  description?: string;
 }
 
 export enum OrderItemStatus {
@@ -120,7 +121,8 @@ export enum OrderItemStatus {
   PARTIALLY_DONE = 'PARTIALLY_DONE',
   PAUSED = 'PAUSED',
   COMPLETED = 'COMPLETED',
-  CANCELLED = 'CANCELLED'
+  CANCELLED = 'CANCELLED',
+  REFUNDED = 'REFUNDED'
 }
 
 // В интерфейс OrderItemDto добавим поле status
@@ -159,12 +161,15 @@ export interface OrderItemAdditiveDto {
 }
 
 export interface OrderItemProductDto {
-  id: string;
-  title: string;
-  price: number;
-  image?: string;
-  workshops: any;
-  ingredients: any;
+   id: string
+  title: string
+  titleGe?: string
+  price: number
+  restaurantPrices: {
+    price: number
+    restaurantId: string
+    isStopList: boolean
+  }[]
 }
 
 export interface OrderItemDto {
@@ -285,7 +290,12 @@ export interface GetOrdersParams {
   status?: string; // например: 'CREATED,CONFIRMED'
 }
 
-
+export interface AddItemToOrderDto {
+  productId: string;
+  quantity: number;
+  additiveIds?: string[];
+  comment?: string;
+}
 
 /**
  * Сервис для работы с заказами
@@ -400,7 +410,20 @@ export const OrderService = {
       { params: { statuses: statuses.join(',') } }
     );
     return data;
-  }
+  },
+
+    addItemToOrder: async (orderId: string, item: AddItemToOrderDto): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.post<OrderResponse>(
+        `/orders/${orderId}/items`,
+        item
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to add item to order:', error);
+      throw error;
+    }
+  },
   
 };
 

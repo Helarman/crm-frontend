@@ -106,21 +106,21 @@ export function OrderHeader({ order, compact = false }: { order: OrderResponse, 
 
   const typeIcons ={
     DELIVERY: <Truck className={cn(
-            "text-primary",
+            "text-gray-900",
             compact ? "h-4 w-4" : "w-7 h-7"
           )} />,
     DINE_IN: <Utensils className={cn(
-            "text-primary",
+            "text-gray-900",
             compact ? "h-4 w-4" : "w-7 h-7"
           )} />,
           
     TAKEAWAY: <ShoppingBag className={cn(
-            "text-primary",
+            "text-gray-900",
             compact ? "h-4 w-4" : "w-7 h-7"
           )} />,
 
     BANQUET: <GlassWater className={cn(
-            "text-primary",
+            "text-gray-900",
             compact ? "h-4 w-4" : "w-7 h-7"
           )} />,
   }
@@ -129,11 +129,11 @@ export function OrderHeader({ order, compact = false }: { order: OrderResponse, 
 
   const sourceIcons: Record<SourceKeys, JSX.Element | string> = {
     MOBILE: <Smartphone className={cn( 
-    "text-primary",
+    "text-gray-900",
     compact ? "h-4 w-4" : "w-7 h-7"
     )} />,
     SITE: <Globe className={cn( 
-      "text-primary",
+      "text-gray-900",
       compact ? "h-4 w-4" : "w-7 h-7"
     )} />,
     PANEL: ''
@@ -164,7 +164,7 @@ export function OrderHeader({ order, compact = false }: { order: OrderResponse, 
           )}>
               {order.numberOfPeople}  
                <User className={cn(
-                    "text-primary", "ml-1", 
+                    "text-gray-900", "ml-1", 
                     compact ? "h-4 w-4" : "w-7 h-7")}
                 />
         </span>}

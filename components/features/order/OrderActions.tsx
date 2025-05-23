@@ -9,7 +9,18 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { useLanguageStore } from '@/lib/stores/language-store'
 import { useRouter } from 'next/navigation'
-
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { useState } from 'react'
+import { SwipeButton } from '@/components/ui/swipe-button'
 
 const notificationTranslations = {
   success: {
@@ -19,6 +30,41 @@ const notificationTranslations = {
   error: {
     ru: 'Ошибка обновления',
     ka: 'განახლების შეცდომა'
+  },
+  completeConfirm: {
+    ru: 'Вы уверены что хотите завершить заказ?',
+    ka: 'დარწმუნებული ხართ, რომ გსურთ შეკვეთის დასრულება?'
+  },
+  cancelConfirm: {
+    ru: 'Вы уверены что хотите отменить заказ?',
+    ka: 'დარწმუნებული ხართ, რომ გსურთ შეკვეთის გაუქმება?'
+  }
+}
+
+const buttonVariants = {
+  confirm: {
+    variant: 'secondary' as const,
+    className: 'bg-green-50 text-green-700 hover:bg-green-100'
+  },
+  startPreparing: {
+    variant: 'secondary' as const,
+    className: 'bg-orange-50 text-orange-700 hover:bg-orange-100'
+  },
+  markReady: {
+    variant: 'secondary' as const,
+    className: 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+  },
+  startDelivery: {
+    variant: 'secondary' as const,
+    className: 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+  },
+  complete: {
+    variant: 'secondary' as const,
+    className: 'bg-teal-50 text-teal-700 hover:bg-teal-100'
+  },
+  cancel: {
+    variant: 'secondary' as const,
+    className: 'bg-red-50 text-red-700 hover:bg-red-100'
   }
 }
 
@@ -35,6 +81,8 @@ export function OrderActions({
 }) {
   const router = useRouter()
   const { language } = useLanguageStore()
+  const [showCompleteDialog, setShowCompleteDialog] = useState(false)
+  const [showCancelDialog, setShowCancelDialog] = useState(false)
 
   const { trigger: updateStatus, isMutating } = useSWRMutation(
     ['update-order-status', order.id],
@@ -47,6 +95,8 @@ export function OrderActions({
         toast.success(notificationTranslations.success[language])
         onStatusChange?.(updatedOrder)
         router.refresh()
+        setShowCompleteDialog(false)
+        setShowCancelDialog(false)
       },
       onError: (error) => {
         console.error('Status update failed:', error)
@@ -55,14 +105,26 @@ export function OrderActions({
     }
   )
 
+  const handleComplete = () => {
+    updateStatus('COMPLETED')
+  }
+
+  const handleCancel = () => {
+    updateStatus('CANCELLED')
+  }
+
   const actionButtons = {
     confirm: (
       <Button
-        size={"sm"}
-        variant="default"
+        size={compact ? "sm" : "default"}
         disabled={isMutating}
         onClick={() => updateStatus('CONFIRMED')}
-        className={compact ? "h-6 px-2 text-xs" : "gap-1"}
+        variant={buttonVariants.confirm.variant}
+        className={cn(
+          "transition-colors shadow-sm",
+          compact ? "h-8 px-3 text-xs" : "gap-2",
+          buttonVariants.confirm.className
+        )}
       >
         <Check className={compact ? "h-3 w-3" : "h-4 w-4"} />
         {language === 'ru' ? 'Подтвердить' : 'დადასტურება'}
@@ -70,23 +132,31 @@ export function OrderActions({
     ),
     startPreparing: (
       <Button
-        size={"sm"}
-        variant="secondary"
+        size={compact ? "sm" : "default"}
         disabled={isMutating}
         onClick={() => updateStatus('PREPARING')}
-        className={compact ? "h-6 px-2 text-xs" : "gap-1"}
+        variant={buttonVariants.startPreparing.variant}
+        className={cn(
+          "transition-colors shadow-sm",
+          compact ? "h-8 px-3 text-xs" : "gap-2",
+          buttonVariants.startPreparing.className
+        )}
       >
         <CookingPot className={compact ? "h-3 w-3" : "h-4 w-4"} />
-        {language === 'ru' ? 'Начать готовить' : 'მომზადების დაწყება'}
+        {language === 'ru' ? 'Готовить' : 'მომზადება'}
       </Button>
     ),
     markReady: (
       <Button
-        size={"sm"}
-        variant="default" 
+        size={compact ? "sm" : "default"}
         disabled={isMutating}
         onClick={() => updateStatus('READY')}
-        className={compact ? "h-6 px-2 text-xs" : "gap-1"}
+        variant={buttonVariants.markReady.variant}
+        className={cn(
+          "transition-colors shadow-sm",
+          compact ? "h-8 px-3 text-xs" : "gap-2",
+          buttonVariants.markReady.className
+        )}
       >
         <Check className={compact ? "h-3 w-3" : "h-4 w-4"} />
         {language === 'ru' ? 'Готово' : 'მზადაა'}
@@ -94,23 +164,31 @@ export function OrderActions({
     ),
     startDelivery: (
       <Button
-        size={"sm"}
-        variant="outline"
+        size={compact ? "sm" : "default"}
         disabled={isMutating}
         onClick={() => updateStatus('DELIVERING')}
-        className={compact ? "h-6 px-2 text-xs" : "gap-1"}
+        variant={buttonVariants.startDelivery.variant}
+        className={cn(
+          "transition-colors shadow-sm",
+          compact ? "h-8 px-3 text-xs" : "gap-2",
+          buttonVariants.startDelivery.className
+        )}
       >
         <Truck className={compact ? "h-3 w-3" : "h-4 w-4"} />
-        {language === 'ru' ? 'Начать доставку' : 'მიტანის დაწყება'}
+        {language === 'ru' ? 'Доставить' : 'მიტანა'}
       </Button>
     ),
     complete: (
       <Button
-        size={"sm"}
-        variant="default"
+        size={compact ? "sm" : "default"}
         disabled={isMutating}
-        onClick={() => updateStatus('COMPLETED')}
-        className={compact ? "h-6 px-2 text-xs" : "gap-1"}
+        onClick={() => setShowCompleteDialog(true)}
+        variant={buttonVariants.complete.variant}
+        className={cn(
+          "transition-colors shadow-sm",
+          compact ? "h-8 px-3 text-xs" : "gap-2",
+          buttonVariants.complete.className
+        )}
       >
         <CheckCircle className={compact ? "h-3 w-3" : "h-4 w-4"} />
         {language === 'ru' ? 'Завершить' : 'დასრულება'}
@@ -118,11 +196,15 @@ export function OrderActions({
     ),
     cancel: (
       <Button
-        size={"sm"}
-        variant="destructive"
+        size={compact ? "sm" : "default"}
         disabled={isMutating}
-        onClick={() => updateStatus('CANCELLED')}
-        className={compact ? "h-6 px-2 text-xs" : "gap-1"}
+        onClick={() => setShowCancelDialog(true)}
+        variant={buttonVariants.cancel.variant}
+        className={cn(
+          "transition-colors shadow-sm",
+          compact ? "h-8 px-3 text-xs" : "gap-2",
+          buttonVariants.cancel.className
+        )}
       >
         <X className={compact ? "h-3 w-3" : "h-4 w-4"} />
         {language === 'ru' ? 'Отменить' : 'გაუქმება'}
@@ -131,30 +213,92 @@ export function OrderActions({
   }
 
   const getAvailableActions = () => {
+    if (variant === 'kitchen') {
+      switch (order.status) {
+        case 'CONFIRMED':
+          return ['startPreparing'] as const
+        case 'PREPARING':
+          return ['markReady'] as const
+        default:
+          return [] as const
+      }
+    }
+
     switch (order.status) {
       case 'CREATED':
         return ['confirm', 'cancel'] as const
       case 'CONFIRMED':
-        return variant === 'kitchen' ? ['startPreparing', 'cancel'] : ['cancel'] as const
+        return ['cancel'] as const
       case 'PREPARING':
-        return variant === 'kitchen' ? ['markReady', 'cancel'] : ['cancel'] as const
+        return ['cancel'] as const
       case 'READY':
-        return variant === 'kitchen' ? [] : ['startDelivery'] as const
+        return order.type === 'DELIVERY' ? ['startDelivery'] : ['complete'] as const
       case 'DELIVERING':
         return ['complete'] as const
       default:
         return [] as const
     }
   }
+
   const availableActions = getAvailableActions()
 
   return (
-    <div className={cn("pt-0 flex flex-wrap gap-1", compact ? "p-2" : "p-3")}>
-      {availableActions.map((action) => (
-        <div key={action}>
-          {actionButtons[action as keyof typeof actionButtons]}
-        </div>
-      ))}
-    </div>
+    <>
+      <div className={cn(
+        "flex flex-wrap gap-2",
+        compact ? "p-1" : "p-2",
+        "w-full",
+        variant === 'kitchen' ? "justify-start" : compact ? "justify-center" : "justify-start"
+      )}>
+        {availableActions.map((action) => (
+          <div key={action}>
+            {actionButtons[action as keyof typeof actionButtons]}
+          </div>
+        ))}
+      </div>
+      {/* Complete Order Dialog */}
+      <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {language === 'ru' ? 'Подтверждение' : 'დადასტურება'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {notificationTranslations.completeConfirm[language]}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {language === 'ru' ? 'Отмена' : 'გაუქმება'}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleComplete}>
+              {language === 'ru' ? 'Завершить' : 'დასრულება'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Cancel Order Dialog */}
+      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {language === 'ru' ? 'Подтверждение' : 'დადასტურება'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {notificationTranslations.cancelConfirm[language]}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {language === 'ru' ? 'Отмена' : 'გაუქმება'}
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleCancel}>
+              {language === 'ru' ? 'Отменить' : 'გაუქმება'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

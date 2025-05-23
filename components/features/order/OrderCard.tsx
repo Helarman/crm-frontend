@@ -34,7 +34,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
   return (
     
     <Card className={cn(
-      "flex flex-col h-full relative overflow-hidden",
+      "flex flex-col h-full relative overflow-hidden text dark:text-gray-900",
       "border-l-4",
       statusColors[order.status],
       className

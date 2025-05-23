@@ -14,6 +14,7 @@ import { format } from 'date-fns'
 import { ru } from 'date-fns/locale/ru'
 import { ka } from 'date-fns/locale/ka'
 import { useLanguageStore } from '@/lib/stores/language-store'
+import { EnumPaymentMethod } from '@/lib/api/order.service'
 
 export interface Payment {
   id: string
@@ -77,6 +78,16 @@ export default function PaymentPage() {
     setChangeAmount(change > 0 ? change : 0)
   }
 
+  const updatePaymentMethod = async (method: EnumPaymentMethod) => {
+    if (!payment) return
+    try {
+      await PaymentService.updateMethod(payment.id, method)
+  
+    } catch (err) {
+      toast.error('Ошибка при обновлении метода оплаты')
+      console.error('Ошибка:', err)
+    }}
+    
   useEffect(() => {
     calculateChange()
   }, [receivedAmount, payment?.amount])
@@ -234,13 +245,7 @@ const t = (key: TranslationKey) => {
                   )}
                 </Button>
 
-                <Button 
-                  variant="destructive"
-                  onClick={() => handleStatusUpdate('FAILED')}
-                  disabled={updating}
-                >
-                  {t('mark_failed')}
-                </Button>
+                
               </div>
             </div>
           )}

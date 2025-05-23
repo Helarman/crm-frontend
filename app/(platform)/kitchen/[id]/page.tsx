@@ -240,7 +240,7 @@ export default function KitchenOrderPage() {
     }
   }
 
-
+  
   const isAllItemsCOMPLETED = items.every(i => i.currentStatus === 'COMPLETED')
   const isAdmin = user?.role == 'MANAGER' || user?.role == 'SUPERVISOR'
   const availableWorkshops = user?.workshops?.map((workshop: any) => workshop.workshopId) || []
@@ -355,14 +355,7 @@ export default function KitchenOrderPage() {
                         >
                           Готово
                         </Button>
-                        <Button
-                          size="sm"
-                          variant={item.currentStatus === 'CANCELLED' ? 'default' : 'outline'}
-                          disabled={item.currentStatus === 'CANCELLED' || isUpdating}
-                          onClick={() => handleStatusChange(item.id, OrderItemStatus.CANCELLED)}
-                        >
-                          Отменить
-                        </Button>
+                        
                       </div>
                     </div>
                   </div>

@@ -1,5 +1,6 @@
 
 import axios from 'axios';
+import { EnumPaymentMethod } from './order.service';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -246,5 +247,25 @@ export const PaymentService = {
       console.error('Failed to fetch payment statistics:', error);
       throw error;
     }
+  },
+
+    updateAmount: async (id: string, newAmount: number): Promise<Payment> => {
+    try {
+      const { data } = await api.patch<Payment>(`/payments/${id}/amount`, { amount: newAmount });
+      return data;
+    } catch (error) {
+      console.error(`Failed to update amount for payment ${id}:`, error);
+      throw error;
+    }
+  },
+    updateMethod: async (id: string, newMethod: EnumPaymentMethod): Promise<Payment> => {
+    try {
+      const { data } = await api.patch<Payment>(`/payments/${id}/method`, { method: newMethod });
+      return data;
+    } catch (error) {
+      console.error(`Failed to update method for payment ${id}:`, error);
+      throw error;
+    }
   }
+
 };

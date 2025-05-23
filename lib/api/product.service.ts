@@ -93,7 +93,7 @@ function redirectToLogin() {
   }
 }
 
-interface ProductDto {
+export interface ProductDto {
   title: string;
   description?: string;
   price: number;

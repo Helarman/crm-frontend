@@ -223,6 +223,10 @@ export function OrdersList() {
     )
   }
 
+  const handleOrderClick = (orderId: string) => {
+    router.push(`/orders/${orderId}`)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4">
@@ -279,6 +283,7 @@ export function OrdersList() {
           {sortedOrders.map(order => (
             <div 
               key={order.id}
+              onClick={() => handleOrderClick(order.id)}
               className="cursor-pointer transition-transform hover:scale-[1.02]"
             >
               <OrderCard
