@@ -84,14 +84,6 @@ export function OrderPaymentStatus({ payment, compact = false, order }: {
         </div>
       </div>
       
-      <div>
-       <Button size="sm" className="mt-2 bg-emerald-600 hover:bg-emerald-800">
-        <Link href={`/payments/${payment.id}`}>
-          Платеж
-        </Link>
-        
-      </Button>
-      </div>
     </div>
   )
 }

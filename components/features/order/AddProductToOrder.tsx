@@ -155,11 +155,6 @@ export function AddProductToOrder({
         onClose()
       }
       
-      toast.success(t(
-        'Товар добавлен в заказ', 
-        'პროდუქტი დაემატა შეკვეთას'
-      ))
-      
     } catch (error) {
       console.error('Failed to add item:', error)
       toast.error(t(

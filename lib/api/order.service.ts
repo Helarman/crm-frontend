@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { EventEmitter } from 'events'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -131,7 +130,6 @@ export enum OrderItemStatus {
   REFUNDED = 'REFUNDED'
 }
 
-// В интерфейс OrderItemDto добавим поле status
 export interface OrderItemDto {
   id: string;
   title: string;
@@ -141,9 +139,9 @@ export interface OrderItemDto {
   comment?: string;
   additives: OrderItemAdditiveDto[];
   totalPrice: number;
-  status: any; // Добавляем статус для каждого блюда
+  status: any;
   workshops: any;
-  user?: { // Информация о поваре
+  user?: { 
     id: string;
     name: string;
   };
@@ -274,6 +272,14 @@ export interface OrderResponse {
   
   totalPrice: number;
   totalItems: number;
+   surcharges?: {
+    id: string;
+    surchargeId: string;
+    title: string;
+    amount: number;
+    type: 'FIXED' | 'PERCENTAGE';
+    description?: string;
+  }[];
 }
 
 export interface OrderListResponse {
@@ -295,7 +301,7 @@ export interface OrderFilterParams {
 }
 export interface GetOrdersParams {
   restaurantId: string;
-  status?: string; // например: 'CREATED,CONFIRMED'
+  status?: string; 
 }
 
 export interface AddItemToOrderDto {
@@ -444,5 +450,16 @@ export const OrderService = {
     }
   },
   
+  removeItemFromOrder: async (orderId: string, itemId: string): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.delete<OrderResponse>(
+        `/orders/${orderId}/items/${itemId}`
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to remove item from order:', error);
+      throw error;
+    }
+  }
 };
 

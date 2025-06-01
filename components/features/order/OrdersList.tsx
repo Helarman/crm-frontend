@@ -224,7 +224,6 @@ export function OrdersList() {
   }
 
   const handleOrderClick = (orderId: string) => {
-    router.push(`/orders/${orderId}`)
   }
 
   return (

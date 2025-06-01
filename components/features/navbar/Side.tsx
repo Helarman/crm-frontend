@@ -178,13 +178,13 @@ export default function Side() {
         name: t.discounts, 
         href: "/discounts", 
         icon: <Tag className="w-7 h-7" />,
-        roles: []
+        roles: ['MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.bonuses, 
-        href: "/bonuses", 
+        href: "/surcharge", 
         icon: <TrendingUp className="w-7 h-7" />,
-        roles: []
+        roles: ['MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.analytics, 

@@ -131,11 +131,15 @@ function CommandSeparator({
     />
   )
 }
+interface CommandItemProps extends React.ComponentProps<typeof CommandPrimitive.Item> {
+  type?: string;
+}
 
 function CommandItem({
   className,
+  type,
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Item>) {
+}: CommandItemProps) {
   return (
     <CommandPrimitive.Item
       data-slot="command-item"

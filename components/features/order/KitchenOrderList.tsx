@@ -70,7 +70,7 @@ export function KitchenOrdersList() {
   }
 
   const handleOrderClick = (orderId: string) => {
-    router.push(`/kitchen/${orderId}`)
+    
   }
 
   if (!user) {

@@ -1,5 +1,76 @@
 'use client'
 
+const PromoCodeInput = ({
+  orderType,
+  restaurantId,
+  onApply,
+  language
+}: {
+  orderType: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET'
+  restaurantId: string
+  onApply: (discount: {
+    id: string
+    title: string
+    amount: number
+    type: 'FIXED' | 'PERCENTAGE'
+  }) => void
+  language: string
+}) => {
+  const [promoCode, setPromoCode] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleApply = async () => {
+    if (!promoCode) {
+      setError(language === 'ka' ? 'შეიყვანეთ პრომო კოდი' : 'Введите промокод')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    
+    try {
+      const discount = await DiscountService.getByCode(promoCode)
+      
+      // Проверяем, что скидка применима к текущему типу заказа
+      if (!discount.orderTypes.includes(orderType)) {
+        throw new Error(language === 'ka' 
+          ? 'ეს ფასდაკლება არ არის ხელმისაწვდომი ამ ტიპის შეკვეთისთვის' 
+          : 'Эта скидка недоступна для данного типа заказа')
+      }
+
+      // Проверяем, что скидка применима к текущему ресторану
+      if (discount.targetType === 'RESTAURANT' && 
+          !discount.restaurants?.some(r => r.restaurant.id === restaurantId)) {
+        throw new Error(language === 'ka' 
+          ? 'ეს ფასდაკლება არ არის ხელმისაწვდომი ამ რესტორანისთვის' 
+          : 'Эта скидка недоступна для данного ресторана')
+      }
+
+      onApply({
+        id: discount.id,
+        title: discount.title,
+        amount: discount.value,
+        type: discount.type === 'PERCENTAGE' ? 'PERCENTAGE' : 'FIXED'
+      })
+      
+      setPromoCode('')
+    } catch (error) {
+      console.error('Failed to apply promo code:', error)
+      setError(language === 'ka' 
+        ? 'პრომო კოდის გამოყენების შეცდომა' 
+        : 'Ошибка применения промокода')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return null
+}
+
+
+
+
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { OrderService } from '@/lib/api/order.service'
@@ -51,6 +122,8 @@ import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import AddressInput from '@/components/features/order/AddressInput'
 import { DeliveryZoneService } from '@/lib/api/delivery-zone.service'
+import { SurchargeService, SurchargeResponse } from '@/lib/api/surcharge.service'
+import { DiscountService } from '@/lib/api/discount.service'
 
 interface OrderItem {
   productId: string
@@ -94,7 +167,40 @@ export interface Restaurant {
   title: string
   address?: string
   categories: Category[]
+}
 
+interface OrderState {
+  restaurantId: string
+  items: OrderItem[]
+  payment: { method: 'CASH' | 'CARD', status: 'PAID' | 'PENDING' }
+  type: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET'
+  source: 'PANEL' | 'SITE' | 'MOBILE'
+  comment: string
+  numberOfPeople: number
+  tableNumber: number
+  deliveryAddress: string
+  deliveryTime: string
+  deliveryNotes: string
+  customerId: string | null
+  customerPhone: string
+  deliveryZone?: {
+    id: string
+    title: string
+    price: number
+    minOrder?: number
+  } | null
+  surcharges: {
+    id: string
+    title: string
+    amount: number
+    type: 'FIXED' | 'PERCENTAGE'
+  }[]
+   discounts: {
+    id: string
+    title: string
+    amount: number
+    type: 'FIXED' | 'PERCENTAGE'
+  }[]
 }
 
 const ORDER_TYPES = [
@@ -160,26 +266,101 @@ const SOURCE_TYPES = [
   }
 ]
 
-interface OrderState {
+const SurchargeSelector = ({
+  orderType,
+  restaurantId,
+  selectedSurcharges,
+  onSelect,
+  language
+}: {
+  orderType: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET'
   restaurantId: string
-  items: OrderItem[]
-  payment: { method: 'CASH' | 'CARD', status: 'PAID' | 'PENDING' }
-  type: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET'
-  source: 'PANEL' | 'SITE' | 'MOBILE'
-  comment: string
-  numberOfPeople: number
-  tableNumber: number
-  deliveryAddress: string
-  deliveryTime: string
-  deliveryNotes: string
-  customerId: string | null
-  customerPhone: string
-  deliveryZone?: {
-    id: string
-    title: string
-    price: number
-    minOrder?: number
-  } | null
+  selectedSurcharges: { id: string; title: string; amount: number; type: 'FIXED' | 'PERCENTAGE' }[]
+  onSelect: (surcharges: { id: string; title: string; amount: number; type: 'FIXED' | 'PERCENTAGE' }[]) => void
+  language: string
+}) => {
+  const [availableSurcharges, setAvailableSurcharges] = useState<SurchargeResponse[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchSurcharges = async () => {
+      setLoading(true)
+      try {
+        const surcharges = await SurchargeService.getForOrderType(
+          orderType,
+          restaurantId
+        )
+        setAvailableSurcharges(surcharges)
+      } catch (error) {
+        console.error('Failed to load surcharges:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    if (restaurantId) {
+      fetchSurcharges()
+    }
+  }, [orderType, restaurantId])
+
+  const toggleSurcharge = (surcharge: SurchargeResponse) => {
+    const isSelected = selectedSurcharges.some(s => s.id === surcharge.id)
+    if (isSelected) {
+      onSelect(selectedSurcharges.filter(s => s.id !== surcharge.id))
+    } else {
+      onSelect([
+        ...selectedSurcharges,
+        {
+          id: surcharge.id,
+          title: surcharge.title,
+          amount: surcharge.amount,
+          type: surcharge.type
+        }
+      ])
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <Label className="text-lg">
+        {language === 'ka' ? 'დამატებითი გადასახადები' : 'Дополнительные сборы'}
+      </Label>
+      
+      {loading ? (
+        <p>{language === 'ka' ? 'იტვირთება...' : 'Загрузка...'}</p>
+      ) : availableSurcharges.length === 0 ? (
+        <p className="text-muted-foreground">
+          {language === 'ka' ? 'არ არის ხელმისაწვდომი დამატებითი გადასახადები' : 'Нет доступных дополнительных сборов'}
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {availableSurcharges.map(surcharge => {
+            const isSelected = selectedSurcharges.some(s => s.id === surcharge.id)
+            const title = surcharge.title
+            
+            return (
+              <button
+                key={surcharge.id}
+                onClick={() => toggleSurcharge(surcharge)}
+                className={`p-4 border-2 rounded-lg flex justify-between items-center transition-all
+                  ${isSelected
+                    ? 'bg-primary text-primary-foreground border-primary shadow-lg'
+                    : 'hover:bg-accent shadow-sm hover:shadow-md'
+                  }`}
+              >
+                <span className="font-medium">{title}</span>
+                <span className="font-bold">
+                  {surcharge.type === 'FIXED' 
+                    ? `+${surcharge.amount} ₽`
+                    : `+${surcharge.amount}%`}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function NewOrderPage() {
@@ -201,7 +382,9 @@ export default function NewOrderPage() {
     deliveryNotes: '',
     customerId: null,
     customerPhone: '',
-    deliveryZone: null
+    deliveryZone: null,
+    surcharges: [],
+    discounts: []
   })
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -246,7 +429,6 @@ export default function NewOrderPage() {
         setProducts(productsData)
         setCategories(categoriesData)
         
-        // Если нет активной смены, создаем новую
         if (!activeShift) {
           setIsCreatingShift(true)
           const newShift = await ShiftService.createShift({
@@ -282,23 +464,53 @@ export default function NewOrderPage() {
     return () => clearTimeout(timer)
   }, [selectedRestaurant, language, loadingState, user?.id])
 
-  const handleRestaurantChange = async (value: string) => {
-    const restaurant = user?.restaurant?.find((r: Restaurant) => r.id === value)
-    if (!restaurant) return
+  const calculateTotal = () => {
+    const itemsTotal = order.items.reduce((sum, item) => {
+      const product = products.find(p => p.id === item.productId)
+      if (!product) return sum
 
-    setSelectedRestaurant(restaurant)
-    setOrder(prev => ({
-      ...prev,
-      restaurantId: restaurant.id,
-      items: [],
-      deliveryZone: null
-    }))
-    setProducts([])
-    setCategories([])
-    setLoadingState('loading')
+      const restaurantPrice = product.restaurantPrices?.find(
+        p => p.restaurantId === order.restaurantId
+      )
+      const productPrice = restaurantPrice?.price ?? product.price
+
+      const additivesPrice = (product?.additives || [])
+        .filter(a => item.additiveIds.includes(a.id))
+        .reduce((sum, a) => sum + a.price, 0)
+
+      return sum + (item.quantity * (productPrice + additivesPrice))
+    }, 0)
+
+    const deliveryCost = order.type === 'DELIVERY' && order.deliveryZone && order.deliveryZone.price 
+      ? order.deliveryZone.price 
+      : 0
+
+    const subtotal = itemsTotal + deliveryCost
+
+    // Сначала считаем фиксированные надбавки
+    const fixedSurcharges = order.surcharges
+      .filter(s => s.type === 'FIXED')
+      .reduce((sum, s) => sum + s.amount, 0)
+
+    // Затем считаем процентные надбавки от subtotal
+    const percentageSurcharges = order.surcharges
+      .filter(s => s.type === 'PERCENTAGE')
+      .reduce((sum, s) => sum + (subtotal * (s.amount / 100)), 0)
+
+    // Применяем скидки
+    const discountAmount = order.discounts.reduce((sum, discount) => {
+      if (discount.type === 'FIXED') {
+        return sum + discount.amount
+      } else {
+        return sum + (subtotal * (discount.amount / 100))
+      }
+    }, 0)
+
+    return subtotal + fixedSurcharges + percentageSurcharges - discountAmount
   }
 
-  const calculateTotal = () => {
+  // Новая функция для расчета базовой цены (без надбавок)
+  const calculateBasePrice = () => {
     const itemsTotal = order.items.reduce((sum, item) => {
       const product = products.find(p => p.id === item.productId)
       if (!product) return sum
@@ -322,106 +534,34 @@ export default function NewOrderPage() {
     return itemsTotal + deliveryCost
   }
 
-  const checkDeliveryZone = async (address: string) => {
-    const token = 'e7a8d3897b07bb4631312ee1e8b376424c6667ea';
-    const url = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address';
-    if (!address || !selectedRestaurant) return
-    
-    setIsCheckingDeliveryZone(true)
-    
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        mode: 'cors',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Token ${token}`,
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ 
-          query: address, 
-          count: 1,
-          locations: [{ country: "*" }]
-        })
-      });
+  const handleRestaurantChange = async (value: string) => {
+    const restaurant = user?.restaurant?.find((r: Restaurant) => r.id === value)
+    if (!restaurant) return
 
-      if (!response.ok) {
-        throw new Error('Failed to geocode address')
-      }
-
-      const data = await response.json()
-      const firstSuggestion = data.suggestions?.[0]
-      
-      if (!firstSuggestion) {
-        throw new Error('Address not found')
-      }
-
-      const { geo_lat: lat, geo_lon: lng } = firstSuggestion.data
-      
-      if (!lat || !lng) {
-        throw new Error('Coordinates not found')
-      }
-
-      const deliveryZone = await DeliveryZoneService.findZoneForPoint(
-        selectedRestaurant.id,
-        parseFloat(lat),
-        parseFloat(lng)
-      )
-
-      if (!deliveryZone) {
-        toast.error(language === 'ka' 
-          ? 'მისამართი არ არის მიტანის ზონაში' 
-          : 'Адрес не входит в зону доставки')
-        setOrder(prev => ({ ...prev, deliveryZone: null }))
-        return
-      }
-
-      const itemsTotal = order.items.reduce((sum, item) => {
-        const product = products.find(p => p.id === item.productId)
-        if (!product) return sum
-
-        const restaurantPrice = product.restaurantPrices?.find(
-          p => p.restaurantId === order.restaurantId
-        )
-        const productPrice = restaurantPrice?.price ?? product.price
-
-        return sum + (item.quantity * productPrice)
-      }, 0)
-
-      if (deliveryZone.minOrder && itemsTotal < deliveryZone.minOrder) {
-        toast.error(language === 'ka' 
-          ? `მინიმალური შეკვეთა ამ ზონაში: ${deliveryZone.minOrder} ₽` 
-          : `Минимальный заказ для этой зоны: ${deliveryZone.minOrder} ₽`)
-        setOrder(prev => ({ ...prev, deliveryZone: null }))
-        return
-      }
-
-      setOrder(prev => ({
-        ...prev,
-        deliveryZone: {
-          id: deliveryZone.id,
-          title: deliveryZone.title,
-          price: deliveryZone.price,
-          minOrder: deliveryZone.minOrder
-        }
-      }))
-
-      toast.success(language === 'ka' 
-        ? `მიტანის ღირებულება: ${deliveryZone.price} ₽` 
-        : `Стоимость доставки: ${deliveryZone.price} ₽`)
-
-    } catch (error) {
-      console.error('Delivery zone check error:', error)
-      toast.error(language === 'ka' 
-        ? 'მიტანის ზონის განსაზღვრის შეცდომა' 
-        : 'Ошибка определения зоны доставки')
-      setOrder(prev => ({ ...prev, deliveryZone: null }))
-    } finally {
-      setIsCheckingDeliveryZone(false)
-    }
+    setSelectedRestaurant(restaurant)
+    setOrder(prev => ({
+      ...prev,
+      restaurantId: restaurant.id,
+      items: [],
+      deliveryZone: null,
+      surcharges: []
+    }))
+    setProducts([])
+    setCategories([])
+    setLoadingState('loading')
   }
 
   const handleSubmit = async () => {
+    for (const discount of order.discounts) {
+      const discountDetails = await DiscountService.getById(discount.id)
+      if (discountDetails.minOrderAmount && calculateBasePrice() < discountDetails.minOrderAmount) {
+        toast.error(language === 'ka' 
+          ? `მინიმალური შეკვეთის თანხა ამ ფასდაკლებისთვის: ${discountDetails.minOrderAmount} ₽`
+          : `Минимальная сумма заказа для этой скидки: ${discountDetails.minOrderAmount} ₽`)
+        return
+      }
+    }
+
     if (!activeShiftId) {
       toast.error(language === 'ka' ? 'არ არის აქტიური ცვლა' : 'Нет активной смены')
       return
@@ -453,7 +593,6 @@ export default function NewOrderPage() {
     }
 
     try {
-      // Если нет customerId, но есть телефон, создаем нового клиента
       let customerId = order.customerId
       if (!customerId && order.customerPhone) {
         setIsCreatingCustomer(true)
@@ -481,7 +620,17 @@ export default function NewOrderPage() {
           : undefined,
         scheduledAt: isScheduled ? scheduledTime : undefined,
         deliveryZoneId: order.type === 'DELIVERY' ? order.deliveryZone?.id : undefined,
-        deliveryPrice: order.type === 'DELIVERY' ? order.deliveryZone?.price : undefined
+        deliveryPrice: order.type === 'DELIVERY' ? order.deliveryZone?.price : undefined,
+        surcharges: order.surcharges.map(s => ({
+          surchargeId: s.id,
+          amount: s.amount,
+          description: s.title
+        })),
+        discounts: order.discounts.map(d => ({
+          discountId: d.id,
+          amount: d.amount,
+          description: d.title
+        }))
       }
 
       await OrderService.create(orderData)
@@ -492,61 +641,6 @@ export default function NewOrderPage() {
       toast.error(language === 'ka' ? 'შეკვეთის შექმნის შეცდომა' : 'Ошибка при создании заказа')
     } finally {
       setIsCreatingCustomer(false)
-    }
-  }
-
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value.replace(/\D/g, '')
-    let formattedValue = ''
-
-    if (!value) {
-      setOrder(prev => ({ ...prev, customerPhone: '', customerId: null }))
-      return
-    }
-
-    if (value.length > 0) {
-      formattedValue += '+7 ('
-    }
-    if (value.length > 1) {
-      formattedValue += value.substring(1, 4)
-    }
-    if (value.length > 4) {
-      formattedValue += ') ' + value.substring(4, 7)
-    }
-    if (value.length > 7) {
-      formattedValue += '-' + value.substring(7, 9)
-    }
-    if (value.length > 9) {
-      formattedValue += '-' + value.substring(9, 11)
-    }
-
-    setOrder(prev => ({ ...prev, customerPhone: formattedValue, customerId: null }))
-  }
-
-  const handleFindCustomer = async () => {
-    if (!order.customerPhone) {
-      toast.error(language === 'ka' ? 'შეიყვანეთ ტელეფონის ნომერი' : 'Введите номер телефона')
-      return
-    }
-
-    try {
-      const phoneNumber = order.customerPhone.replace(/\D/g, '')
-      const customer = await CustomerService.getCustomerByPhone(phoneNumber)
-      
-      setOrder(prev => ({
-        ...prev,
-        customerId: customer.id,
-      }))
-      
-      toast.success(language === 'ka' 
-        ? 'კლიენტი წარმატებით მოიძებნა' 
-        : 'Клиент успешно найден')
-    } catch (error) {
-      console.error('Customer search error:', error)
-      setOrder(prev => ({ ...prev, customerId: null }))
-      toast.error(language === 'ka' 
-        ? 'კლიენტი არ მოიძებნა' 
-        : 'Клиент не найден')
     }
   }
 
@@ -597,7 +691,7 @@ export default function NewOrderPage() {
               return (
                 <button
                   key={type.value}
-                  onClick={() => setOrder(prev => ({ ...prev, type: type.value as any, deliveryZone: null }))}
+                  onClick={() => setOrder(prev => ({ ...prev, type: type.value as any, deliveryZone: null, surcharges: [] }))}
                   className={`p-4 border-2 rounded-lg flex flex-col items-center transition-all hover:scale-[1.02] active:scale-[0.98]
                   ${order.type === type.value
                       ? 'bg-primary text-primary-foreground border-primary shadow-lg'
@@ -650,11 +744,33 @@ export default function NewOrderPage() {
             <Input
               placeholder="+7 (___) ___-__-__"
               value={order.customerPhone}
-              onChange={handlePhoneChange}
+              onChange={(e) => setOrder(prev => ({ ...prev, customerPhone: e.target.value, customerId: null }))}
               maxLength={18}
             />
             <Button 
-              onClick={handleFindCustomer}
+              onClick={async () => {
+                if (!order.customerPhone) {
+                  toast.error(language === 'ka' ? 'შეიყვანეთ ტელეფონის ნომერი' : 'Введите номер телефона')
+                  return
+                }
+                try {
+                  const phoneNumber = order.customerPhone.replace(/\D/g, '')
+                  const customer = await CustomerService.getCustomerByPhone(phoneNumber)
+                  setOrder(prev => ({
+                    ...prev,
+                    customerId: customer.id,
+                  }))
+                  toast.success(language === 'ka' 
+                    ? 'კლიენტი წარმატებით მოიძებნა' 
+                    : 'Клиент успешно найден')
+                } catch (error) {
+                  console.error('Customer search error:', error)
+                  setOrder(prev => ({ ...prev, customerId: null }))
+                  toast.error(language === 'ka' 
+                    ? 'კლიენტი არ მოიძებნა' 
+                    : 'Клиент не найден')
+                }
+              }}
               variant="secondary"
             >
               {language === 'ka' ? 'ძებნა' : 'Найти'}
@@ -733,16 +849,15 @@ export default function NewOrderPage() {
                 <MapPin className="h-5 w-5" />
                 {language === 'ka' ? 'მისამართი' : 'Адрес доставки'}
               </Label>
-                <AddressInput
-                  value={order.deliveryAddress}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOrder(prev => ({
-                    ...prev,
-                    deliveryAddress: e.target.value,
-                    deliveryZone: null
-                  }))}
-                  language={language}
-                />
-               
+              <AddressInput
+                value={order.deliveryAddress}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOrder(prev => ({
+                  ...prev,
+                  deliveryAddress: e.target.value,
+                  deliveryZone: null
+                }))}
+                language={language}
+              />
               {order.deliveryZone && (
                 <p className="text-sm text-green-600">
                   {language === 'ka' 
@@ -845,38 +960,116 @@ export default function NewOrderPage() {
               <h3 className="text-lg font-bold">
                 {language === 'ka' ? 'შეკვეთის დეტალები' : 'Детали заказа'}
               </h3>
+              <PromoCodeInput
+                orderType={order.type}
+                restaurantId={order.restaurantId}
+                onApply={(discount) => setOrder(prev => ({
+                  ...prev,
+                  discounts: [...prev.discounts, discount]
+                }))}
+                language={language}
+              />
+
+              {/* Surcharge Selector */}
+              <SurchargeSelector
+                orderType={order.type}
+                restaurantId={order.restaurantId}
+                selectedSurcharges={order.surcharges}
+                onSelect={(surcharges) => setOrder(prev => ({ ...prev, surcharges }))}
+                language={language}
+              />
+
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">
                     {language === 'ka' ? 'პროდუქტები:' : 'Товары:'}
                   </span>
-                  <span className="font-medium">{(calculateTotal() - (order.deliveryZone?.price || 0)).toFixed(2)} ₽</span>
+                  <span className="font-medium">{calculateBasePrice().toFixed(2)} ₽</span>
                 </div>
                 
                 {order.type === 'DELIVERY' && order.deliveryZone && (
-                  <><div className="flex justify-between">
+                  <div className="flex justify-between">
                     <span className="text-muted-foreground">
                       {language === 'ka' ? 'მიტანის ღირებულება:' : 'Стоимость доставки:'}
                     </span>
                     <span className="font-medium">{order.deliveryZone.price.toFixed(2)} ₽</span>
-                    
                   </div>
-                  {order.deliveryZone && (
-                      <p className="text-sm text-muted-foreground">
-                        {language === 'ka' 
-                          ? `მიტანის ზონა: ${order.deliveryZone.title}`
-                          : `Зона доставки: ${order.deliveryZone.title}`}
-                      </p>
-                    )}</>
                 )}
                 
-                <div className="flex justify-between border-t pt-2">
-                  <span className="text-muted-foreground font-bold">
-                    {language === 'ka' ? 'სულ:' : 'Итого:'}
-                  </span>
-                  <span className="font-bold text-lg">{calculateTotal().toFixed(2)} ₽</span>
-                </div>
+                {/* Display selected surcharges */}
+                {order.surcharges.length > 0 && (
+                  <>
+                    {order.surcharges.map(surcharge => (
+                      <div key={surcharge.id} className="flex justify-between">
+                        <span className="text-muted-foreground">
+                          {surcharge.title}:
+                        </span>
+                        <span className="font-medium">
+                          {surcharge.type === 'FIXED'
+                            ? `+${surcharge.amount.toFixed(2)} ₽`
+                            : `+${surcharge.amount}%`} 
+                            {` (${(calculateTotal() - calculateBasePrice()).toFixed(2)} ₽)`}
+                        </span>
+                      </div>
+                    ))}
+                  </>
+                )}
 
+                {order.discounts.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-lg">
+                    {language === 'ka' ? 'გამოყენებული ფასდაკლებები' : 'Примененные скидки'}
+                  </Label>
+                  <div className="space-y-2">
+                    {order.discounts.map(discount => (
+                      <div key={discount.id} className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+                        <span className="font-medium">{discount.title}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-green-600">
+                            -{discount.type === 'FIXED' 
+                              ? `${discount.amount} ₽`
+                              : `${discount.amount}%`}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => setOrder(prev => ({
+                              ...prev,
+                              discounts: prev.discounts.filter(d => d.id !== discount.id)
+                            }))}
+                          >
+                            <Trash className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+                
+              <div className="flex justify-between border-t pt-2">
+                <span className="text-muted-foreground font-bold">
+                  {language === 'ka' ? 'სულ:' : 'Итого:'}
+                </span>
+                <div className="text-right">
+                  {order.discounts.length > 0 && (
+                    <p className="text-sm text-muted-foreground line-through">
+                      {calculateBasePrice().toFixed(2)} ₽
+                    </p>
+                  )}
+                  <span className="font-bold text-lg">
+                    {calculateTotal().toFixed(2)} ₽
+                  </span>
+                  {order.discounts.length > 0 && (
+                    <p className="text-sm text-green-600">
+                      {language === 'ka' ? 'დაზოგვა:' : 'Скидка:'} {(
+                        calculateBasePrice() - calculateTotal()
+                      ).toFixed(2)} ₽
+                    </p>
+                  )}
+                </div>
+              </div>
                 {selectedRestaurant && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">
@@ -907,16 +1100,108 @@ export default function NewOrderPage() {
                 )}
               </div>
               
-              {order.type === 'DELIVERY' && (<Button
+              {order.type === 'DELIVERY' && (
+                <Button
                   className='w-full' 
-                  onClick={() => checkDeliveryZone(order.deliveryAddress)}
+                  onClick={async () => {
+                    if (!order.deliveryAddress) {
+                      toast.error(language === 'ka' 
+                        ? 'შეიყვანეთ მისამართი' 
+                        : 'Введите адрес доставки')
+                      return
+                    }
+                    setIsCheckingDeliveryZone(true)
+                    try {
+                      const token = 'e7a8d3897b07bb4631312ee1e8b376424c6667ea'
+                      const url = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address'
+                      
+                      const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Token ${token}`,
+                          'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({ 
+                          query: order.deliveryAddress, 
+                          count: 1,
+                          locations: [{ country: "*" }]
+                        })
+                      })
+
+                      if (!response.ok) throw new Error('Failed to geocode address')
+
+                      const data = await response.json()
+                      const firstSuggestion = data.suggestions?.[0]
+                      if (!firstSuggestion) throw new Error('Address not found')
+
+                      const { geo_lat: lat, geo_lon: lng } = firstSuggestion.data
+                      if (!lat || !lng) throw new Error('Coordinates not found')
+
+                      const deliveryZone = await DeliveryZoneService.findZoneForPoint(
+                        order.restaurantId,
+                        parseFloat(lat),
+                        parseFloat(lng)
+                      )
+
+                      if (!deliveryZone) {
+                        toast.error(language === 'ka' 
+                          ? 'მისამართი არ არის მიტანის ზონაში' 
+                          : 'Адрес не входит в зону доставки')
+                        setOrder(prev => ({ ...prev, deliveryZone: null }))
+                        return
+                      }
+
+                      const itemsTotal = order.items.reduce((sum, item) => {
+                        const product = products.find(p => p.id === item.productId)
+                        if (!product) return sum
+
+                        const restaurantPrice = product.restaurantPrices?.find(
+                          p => p.restaurantId === order.restaurantId
+                        )
+                        const productPrice = restaurantPrice?.price ?? product.price
+
+                        return sum + (item.quantity * productPrice)
+                      }, 0)
+
+                      if (deliveryZone.minOrder && itemsTotal < deliveryZone.minOrder) {
+                        toast.error(language === 'ka' 
+                          ? `მინიმალური შეკვეთა ამ ზონაში: ${deliveryZone.minOrder} ₽` 
+                          : `Минимальный заказ для этой зоны: ${deliveryZone.minOrder} ₽`)
+                        setOrder(prev => ({ ...prev, deliveryZone: null }))
+                        return
+                      }
+
+                      setOrder(prev => ({
+                        ...prev,
+                        deliveryZone: {
+                          id: deliveryZone.id,
+                          title: deliveryZone.title,
+                          price: deliveryZone.price,
+                          minOrder: deliveryZone.minOrder
+                        }
+                      }))
+
+                      toast.success(language === 'ka' 
+                        ? `მიტანის ღირებულება: ${deliveryZone.price} ₽` 
+                        : `Стоимость доставки: ${deliveryZone.price} ₽`)
+                    } catch (error) {
+                      console.error('Delivery zone check error:', error)
+                      toast.error(language === 'ka' 
+                        ? 'მიტანის ზონის განსაზღვრის შეცდომა' 
+                        : 'Ошибка определения зоны доставки')
+                    } finally {
+                      setIsCheckingDeliveryZone(false)
+                    }
+                  }}
                   disabled={!order.deliveryAddress || isCheckingDeliveryZone}
                   variant="secondary"
                 >
                   {isCheckingDeliveryZone 
                     ? language === 'ka' ? 'იტვირთება...' : 'Загрузка...'
                     : language === 'ka' ? 'გამოთვალეთ მიწოდება' : 'Рассчитать доставку'}
-              </Button>)}
+                </Button>
+              )}
 
               <Button
                 className="w-full"
@@ -985,7 +1270,6 @@ function ProductSelector({
   const handleAddItem = () => {
     if (!selectedProduct) return
 
-    // Проверяем, не в стоп-листе ли продукт в этом ресторане
     const isStopList = selectedProduct.restaurantPrices?.find(
       p => p.restaurantId === restaurantId
     )?.isStopList
@@ -1067,7 +1351,7 @@ function ProductSelector({
                 const restaurantPrice = product.restaurantPrices?.find(
                   p => p.restaurantId === restaurantId
                 )
-                const displayPrice = restaurantPrice?.price
+                const displayPrice = restaurantPrice?.price ?? product.price
                 const isStopList = restaurantPrice?.isStopList ?? false
     
                 return (
@@ -1085,7 +1369,7 @@ function ProductSelector({
                     <span className="font-semibold text-base text-center">
                       {t(product.title, product.titleGe)}
                     </span>
-                    <span className="text-base mt-2 font-bold">{restaurantPrice?.price ? restaurantPrice?.price : product.price} ₽</span>
+                    <span className="text-base mt-2 font-bold">{displayPrice} ₽</span>
                   </button> 
                 )
               }
@@ -1157,7 +1441,11 @@ function ProductSelector({
                 <li key={index} className="p-4 border-2 rounded-lg flex justify-between items-center shadow-sm">
                   <div className="space-y-1">
                     <p className="text-lg font-bold">
-                      {t(product?.title, product?.titleGe)} × {item.quantity} = {(itemPrice * item.quantity).toFixed(2)} ₽
+                      {t(product?.title, product?.titleGe)} × {item.quantity} = {(
+                        ((product?.restaurantPrices?.find(p => p.restaurantId === restaurantId)?.price || product?.price || 0) + 
+                        (itemAdditives?.reduce((sum, a) => sum + a.price, 0) || 0)) * 
+                        item.quantity
+                      ).toFixed(2)} ₽
                     </p>
                     {itemAdditives && itemAdditives.length > 0 && (
                       <p className="text-base text-muted-foreground">
