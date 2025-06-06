@@ -8,6 +8,16 @@ export interface Additive {
   price: number;
 }
 
+export interface PaginatedCustomersResponse {
+  data: CustomerDto[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
 export interface UpdateProductAdditivesDto {
   additiveIds: string[];
 }
@@ -107,6 +117,8 @@ function redirectToLogin() {
 export interface CustomerDto {
   id: string;
   phone: string;
+  createdAt?: Date;
+  bonusPoints?: number
 }
 
 export const CustomerService = {
@@ -121,6 +133,57 @@ export const CustomerService = {
       return data;
     } catch (error) {
       console.error('Failed to create customer:', error);
+      throw error;
+    }
+  },
+
+  getAllCustomers: async (
+    page: number = 1,
+    limit: number = 10
+  ): Promise<{
+    data: CustomerDto[];
+    pagination: {
+      total: number;
+      page: number;
+      limit: number;
+      totalPages: number;
+    };
+  }> => {
+    try {
+      const { data } = await api.get('/customer-verification/customers', {
+        params: {
+          page,
+          limit
+        }
+      });
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch customers:', error);
+      throw error;
+    }
+  },
+  updateBonusPoints: async (customerId: string, bonusPoints: number): Promise<CustomerDto> => {
+    try {
+      const { data } = await api.patch<CustomerDto>(
+        `/customer-verification/customer/${customerId}/bonus-points`,
+        { bonusPoints }
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to update bonus points:', error);
+      throw error;
+    }
+  },
+
+  incrementBonusPoints: async (customerId: string, points: number): Promise<CustomerDto> => {
+    try {
+      const { data } = await api.patch<CustomerDto>(
+        `/customer-verification/customer/${customerId}/bonus-points/increment`,
+        { points }
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to increment bonus points:', error);
       throw error;
     }
   },

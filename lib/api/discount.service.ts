@@ -92,28 +92,36 @@ function redirectToLogin() {
     window.location.href = '/login';
   }
 }
+export type DiscountType = 'PERCENTAGE' | 'FIXED';
+export type DiscountTargetType = 'ALL' | 'RESTAURANT' | 'CATEGORY' | 'PRODUCT' | 'ORDER_TYPE';
+export type OrderType = 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET';
 
 export interface CreateDiscountDto {
   title: string;
   description?: string;
-  type: 'PERCENTAGE' | 'FIXED';
+  type: DiscountType;
   value: number;
-  targetType: 'ALL' | 'RESTAURANT' | 'CATEGORY' | 'PRODUCT' | 'ORDER_TYPE';
+  targetType: DiscountTargetType;
   minOrderAmount?: number;
   restaurants?: { restaurantId: string }[];
   categories?: { categoryId: string }[];
   products?: { productId: string }[];
-  orderTypes: ('DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET')[];
+  orderTypes?: OrderType[];
   daysOfWeek?: number[];
   code?: string;
   maxUses?: number;
   startDate?: Date;
-  
   endDate?: Date;
   isActive?: boolean;
 }
 
 export interface UpdateDiscountDto extends Partial<CreateDiscountDto> {}
+
+export interface DiscountFormState extends Omit<Partial<CreateDiscountDto>, 'restaurants' | 'categories' | 'products'> {
+  restaurantIds: string[]; // Simplified for form handling
+  categoryIds: string[];
+  productIds: string[];
+}
 
 export interface DiscountResponseDto {
   id: string;
@@ -121,11 +129,11 @@ export interface DiscountResponseDto {
   updatedAt: Date;
   title: string;
   description?: string;
-  type: 'PERCENTAGE' | 'FIXED';
+  type: DiscountType;
   value: number;
-  targetType: 'ALL' | 'RESTAURANT' | 'CATEGORY' | 'PRODUCT' | 'ORDER_TYPE';
+  targetType: DiscountTargetType;
   minOrderAmount?: number;
-  orderTypes: ('DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET')[];
+  orderTypes: OrderType[];
   daysOfWeek: number[];
   isActive: boolean;
   code?: string;
@@ -357,6 +365,46 @@ export const DiscountService = {
       return data.isValid;
     } catch (error) {
       console.error(`Failed to check min amount for discount ${discountId}:`, error);
+      throw error;
+    }
+  },
+
+  getForOrderType: async (
+    orderType: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET',
+    restaurantId?: string
+  ): Promise<DiscountResponseDto[]> => {
+    try {
+      const params = new URLSearchParams();
+      params.append('orderType', orderType);
+      if (restaurantId) params.append('restaurantId', restaurantId);
+      
+      const { data } = await api.get<DiscountResponseDto[]>(
+        `${API_URL}/discounts/for-order-type?${params.toString()}`
+      );
+      return data;
+    } catch (error) {
+      console.error(`Failed to fetch discounts for order type ${orderType}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Получение скидок для текущего заказа
+   */
+  getForCurrentOrder: async (
+    orderType: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET',
+    productIds: string[],
+    categoryIds: string[],
+    restaurantId?: string
+  ): Promise<DiscountResponseDto[]> => {
+    try {
+      const { data } = await api.post<DiscountResponseDto[]>(
+        `${API_URL}/discounts/for-current-order`,
+        { orderType, productIds, categoryIds, restaurantId }
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch discounts for current order:', error);
       throw error;
     }
   }

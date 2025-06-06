@@ -28,10 +28,7 @@ export function PaymentSelector({
   ]
 
   return (
-    <div className="p-4 border rounded-lg space-y-2">
-      <h2 className="text-lg font-semibold">
-        {language === 'ru' ? 'Способ оплаты' : 'გადახდის მეთოდი'}
-      </h2>
+
       <div className="flex flex-wrap gap-2">
         {paymentMethods.map(payment => (
           <Button
@@ -43,6 +40,5 @@ export function PaymentSelector({
           </Button>
         ))}
       </div>
-    </div>
   )
 }

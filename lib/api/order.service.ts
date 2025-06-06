@@ -141,6 +141,7 @@ export interface OrderItemDto {
   totalPrice: number;
   status: any;
   workshops: any;
+  createdAt: Date;
   user?: { 
     id: string;
     name: string;
@@ -205,7 +206,7 @@ export interface CustomerDto {
 
 export interface RestaurantDto {
   id: string;
-  name: string;
+  title: string;
   address: string;
 }
 

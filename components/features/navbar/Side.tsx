@@ -32,7 +32,8 @@ import {
   Sun,
   Languages,
   Truck,
-  Package
+  Package,
+  PersonStanding
 } from 'lucide-react'
 
 const ROLE_COLORS = {
@@ -185,6 +186,12 @@ export default function Side() {
         href: "/surcharge", 
         icon: <TrendingUp className="w-7 h-7" />,
         roles: ['MANAGER', 'SUPERVISOR']
+      },
+      { 
+        name: t.customers, 
+        href: "/customers", 
+        icon: <PersonStanding className="w-7 h-7" />,
+        roles: ['SUPERVISOR']
       },
       { 
         name: t.analytics, 

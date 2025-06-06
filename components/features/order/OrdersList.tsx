@@ -20,8 +20,9 @@ import { useRouter } from 'next/navigation'
 import useSWRMutation from 'swr/mutation'
 import { Restaurant } from '../staff/StaffTable'
 import { Button } from '@/components/ui/button'
-import { Utensils, ShoppingBag, Truck, GlassWater } from 'lucide-react'
+import { Utensils, ShoppingBag, Truck, GlassWater, Archive } from 'lucide-react'
 import { useLanguageStore } from '@/lib/stores/language-store'
+import Loading from '../Loading'
 
 const ORDER_TYPES = [
   {
@@ -100,6 +101,10 @@ const translations = {
     ru: 'Нет заказов по выбранному фильтру',
     ka: 'არჩეული ფილტრის მიხედვით შეკვეთები არ მოიძებნა'
   },
+  noRecentOrders: {
+    ru: 'Нет заказов за последние 2 дня',
+    ka: 'შეკვეთები ბოლო 2 დღის განმავლობაში არ მოიძებნა'
+  },
   selectRestaurant: {
     ru: 'Выберите ресторан',
     ka: 'აირჩიეთ რესტორანი'
@@ -115,6 +120,14 @@ const translations = {
   ordersList: {
     ru: 'Список заказов',
     ka: 'შეკვეთების სია'
+  },
+  showArchive: {
+    ru: 'Архив заказов',
+    ka: 'შეკვეთების არქივი'
+  },
+  recentOrders: {
+    ru: 'Последние заказы',
+    ka: 'ბოლო შეკვეთები'
   }
 }
 
@@ -126,6 +139,7 @@ export function OrdersList() {
   const { user } = useAuth()
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>('')
   const [selectedOrderType, setSelectedOrderType] = useState<string>('ALL')
+  const [showArchive, setShowArchive] = useState<boolean>(false)
   const { 
     data: orders = [], 
     isLoading: ordersLoading, 
@@ -133,19 +147,29 @@ export function OrdersList() {
     mutate 
   } = useRestaurantOrders(selectedRestaurantId)
 
-  // Set first restaurant as default when user is loaded
+  // Установка первого ресторана по умолчанию при загрузке пользователя
   useEffect(() => {
     if (user?.restaurant?.length > 0) {
       setSelectedRestaurantId(user.restaurant[0].id)
     }
   }, [user])
 
-  // Filter orders by selected type
-  const filteredOrders = selectedOrderType === 'ALL' 
-    ? orders 
-    : orders.filter((order : OrderItemDto) => order.type === selectedOrderType)
+  // Фильтрация заказов по дате (последние 2 дня), если архив не показан
+  const filterByDate = (order: OrderItemDto) => {
+    if (showArchive) return true
+    
+    const twoDaysAgo = new Date()
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2)
+    return new Date(order.createdAt) >= twoDaysAgo
+  }
 
-  // Sort orders: active first, then completed/cancelled
+  // Фильтрация заказов по выбранному типу
+  const filteredOrders = (selectedOrderType === 'ALL' 
+    ? orders 
+    : orders.filter((order : OrderItemDto) => order.type === selectedOrderType))
+    .filter(filterByDate)
+
+  // Сортировка заказов: сначала активные, затем завершенные/отмененные
   const sortedOrders = [...filteredOrders].sort((a, b) => {
     const isACompletedOrCancelled = a.status === 'COMPLETED' || a.status === 'CANCELLED'
     const isBCompletedOrCancelled = b.status === 'COMPLETED' || b.status === 'CANCELLED'
@@ -172,7 +196,7 @@ export function OrdersList() {
       },
       onError: (error) => {
         toast.error(t('statusUpdateError'))
-        console.error('Failed to update order status:', error)
+        console.error('Ошибка при обновлении статуса заказа:', error)
       }
     }
   )
@@ -206,9 +230,7 @@ export function OrdersList() {
   if (ordersLoading || !selectedRestaurantId) {
     return (
       <div className="space-y-4">
-        {[...Array(3)].map((_, i) => (
-          <Skeleton key={i} className="h-[300px] w-full rounded-lg" />
-        ))}
+        <Loading/>
       </div>
     )
   }
@@ -223,14 +245,14 @@ export function OrdersList() {
     )
   }
 
-  const handleOrderClick = (orderId: string) => {
-  }
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4">
         <div className="flex justify-between flex-col lg:flex-row items-center gap-4">
-          <h2 className="text-2xl font-bold">{t('ordersList')}</h2>
+          <h2 className="text-2xl font-bold">
+            {showArchive ? t('ordersList') : t('recentOrders')}
+          </h2>
           <div className="flex flex-wrap gap-2">
             {ORDER_TYPES.map((type) => {
               const Icon = type.icon
@@ -264,6 +286,13 @@ export function OrdersList() {
                 </SelectContent>
               </Select>
             )}
+            <Button 
+              variant={showArchive ? 'default' : 'outline'} 
+              onClick={() => setShowArchive(!showArchive)}
+            >
+              <Archive className="h-5 w-5 mr-2" />
+              {t('showArchive')}
+            </Button>
             <Button onClick={() => router.push('/orders/new')}>
               {t('newOrder')}
             </Button>
@@ -274,7 +303,7 @@ export function OrdersList() {
       {sortedOrders.length === 0 ? (
         <Card className="p-6 text-center">
           <p className="text-muted-foreground">
-            {t('noOrders')}
+            {showArchive ? t('noOrders') : t('noRecentOrders')}
           </p>
         </Card>
       ) : (
@@ -282,7 +311,6 @@ export function OrdersList() {
           {sortedOrders.map(order => (
             <div 
               key={order.id}
-              onClick={() => handleOrderClick(order.id)}
               className="cursor-pointer transition-transform hover:scale-[1.02]"
             >
               <OrderCard

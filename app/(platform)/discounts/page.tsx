@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import useSWR, { mutate } from 'swr'
-import { PlusIcon, PencilIcon, TrashIcon, Check, ChevronsUpDown, X, CalendarIcon } from 'lucide-react'
-import { CreateDiscountDto, DiscountResponseDto, DiscountService } from '@/lib/api/discount.service'
+import { PlusIcon, PencilIcon, TrashIcon, Check, ChevronsUpDown, CalendarIcon } from 'lucide-react'
+import { CreateDiscountDto, DiscountFormState, DiscountResponseDto, DiscountService } from '@/lib/api/discount.service'
 import { RestaurantService } from '@/lib/api/restaurant.service'
 import {
   Table,
@@ -41,7 +41,7 @@ import {
   CommandDialog,
 } from '@/components/ui/command'
 import { Calendar } from '@/components/ui/calendar'
-import { format } from 'date-fns'
+import { format, Locale } from 'date-fns'
 import { ru, ka } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -54,7 +54,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 type OrderType = "DINE_IN" | "TAKEAWAY" | "DELIVERY" | "BANQUET";
 type DiscountType = "FIXED" | "PERCENTAGE";
-type DiscountTargetType = "ALL" | "RESTAURANT" | "CATEGORY" | "PRODUCT" | "ORDER_TYPE";
+type DiscountTargetType = "ALL" | "CATEGORY" | "PRODUCT" | "ORDER_TYPE";
 
 interface Category {
   id: string;
@@ -92,7 +92,7 @@ const translations: Translations = {
     title: 'Название',
     type: 'Тип скидки',
     value: 'Размер скидки',
-    targetType: 'Область применения',
+    targetType: 'Применение скидки',
     minOrderAmount: 'Мин. сумма заказа',
     orderTypes: 'Типы заказов',
     restaurants: 'Рестораны',
@@ -103,7 +103,6 @@ const translations: Translations = {
     fixed: 'Фиксированная сумма',
     percentage: 'Процент',
     all: 'Ко всему меню',
-    restaurant: 'По ресторанам',
     category: 'По категориям',
     product: 'По продуктам',
     order_type: 'По типу заказа',
@@ -122,7 +121,7 @@ const translations: Translations = {
     save: 'Сохранить',
     add: 'Добавить',
     selectType: 'Выберите тип',
-    selectTargetType: 'Выберите область применения',
+    selectTargetType: 'Выберите применение скидки',
     selectDate: 'Выберите дату',
     selectOrderTypes: 'Выберите типы заказов',
     selectRestaurants: 'Выберите рестораны',
@@ -156,13 +155,17 @@ const translations: Translations = {
     allRestaurants: 'Все рестораны',
     specificRestaurants: 'Конкретные рестораны',
     searchPlaceholder: 'Поиск...',
-    noResults: 'Ничего не найдено'
+    noResults: 'Ничего не найдено',
+    requiredField: 'Обязательное поле',
+    restaurantsRequired: 'Необходимо выбрать хотя бы один ресторан',
+    datesRequired: 'Необходимо указать даты начала и окончания',
+    invalidDateRange: 'Дата окончания должна быть после даты начала'
   },
   ka: {
     title: 'სახელი',
     type: 'ფასდაკლების ტიპი',
     value: 'ფასდაკლების ზომა',
-    targetType: 'გამოყენების არეალი',
+    targetType: 'ფასდაკლების გამოყენება',
     minOrderAmount: 'მინ. შეკვეთის თანხა',
     orderTypes: 'შეკვეთის ტიპები',
     restaurants: 'რესტორნები',
@@ -173,7 +176,6 @@ const translations: Translations = {
     fixed: 'ფიქსირებული თანხა',
     percentage: 'პროცენტი',
     all: 'მთელ მენიუზე',
-    restaurant: 'რესტორნების მიხედვით',
     category: 'კატეგორიების მიხედვით',
     product: 'პროდუქტების მიხედვით',
     order_type: 'შეკვეთის ტიპის მიხედვით',
@@ -192,7 +194,7 @@ const translations: Translations = {
     save: 'შენახვა',
     add: 'დამატება',
     selectType: 'აირჩიეთ ტიპი',
-    selectTargetType: 'აირჩიეთ გამოყენების არეალი',
+    selectTargetType: 'აირჩიეთ ფასდაკლების გამოყენება',
     selectDate: 'აირჩიეთ თარიღი',
     selectOrderTypes: 'აირჩიეთ შეკვეთის ტიპები',
     selectRestaurants: 'აირჩიეთ რესტორნები',
@@ -226,8 +228,88 @@ const translations: Translations = {
     allRestaurants: 'ყველა რესტორანი',
     specificRestaurants: 'კონკრეტული რესტორნები',
     searchPlaceholder: 'ძებნა...',
-    noResults: 'ვერ მოიძებნა'
+    noResults: 'ვერ მოიძებნა',
+    requiredField: 'სავალდებულო ველი',
+    restaurantsRequired: 'მინიმუმ ერთი რესტორანი უნდა აირჩიოთ',
+    datesRequired: 'დაწყების და დასრულების თარიღები აუცილებელია',
+    invalidDateRange: 'დასრულების თარიღი უნდა იყოს დაწყების თარიღის შემდეგ'
   }
+};
+
+const DatePickerWithTime = ({
+  date,
+  onChange,
+  placeholder,
+  locale,
+  error
+}: {
+  date: Date | undefined;
+  onChange: (date: Date | undefined) => void;
+  placeholder: string;
+  locale: Locale;
+  error?: string;
+}) => {
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [timeValue, setTimeValue] = useState(
+    date ? format(date, 'HH:mm') : '00:00'
+  );
+
+  const handleDateSelect = (selectedDate: Date | undefined) => {
+    if (!selectedDate) return;
+
+    const [hours, minutes] = timeValue.split(':').map(Number);
+    const newDate = new Date(selectedDate);
+    newDate.setHours(hours, minutes);
+    
+    onChange(newDate);
+  };
+
+  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const time = e.target.value;
+    setTimeValue(time);
+    
+    if (date) {
+      const [hours, minutes] = time.split(':').map(Number);
+      const newDate = new Date(date);
+      newDate.setHours(hours, minutes);
+      onChange(newDate);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <Button
+        variant={error ? "destructive" : "outline"}
+        className={cn("w-full justify-start text-left font-normal", error && "border-red-500")}
+        type="button"
+        onClick={() => setShowCalendar(!showCalendar)}
+      >
+        <CalendarIcon className="mr-2 h-4 w-4" />
+        {date ? format(date, 'PPPp', { locale }) : <span>{placeholder}</span>}
+      </Button>
+      {error && <p className="mt-1 text-sm text-red-500">{error}</p>}
+
+      {showCalendar && (
+        <div className="absolute z-50 mt-1 bg-white border rounded-md shadow-lg p-2">
+          <Calendar
+            mode="single"
+            selected={date}
+            onSelect={handleDateSelect}
+            initialFocus
+          />
+          <div className="mt-2 p-2 border-t">
+            <Label>Time</Label>
+            <Input
+              type="time"
+              value={timeValue}
+              onChange={handleTimeChange}
+              className="mt-1"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
 };
 
 const SearchableSelect = ({
@@ -237,7 +319,8 @@ const SearchableSelect = ({
   placeholder,
   searchPlaceholder,
   emptyText,
-  multiple = true
+  multiple = true,
+  error
 }: {
   options: { id: string; label: string }[];
   value: string[];
@@ -246,6 +329,7 @@ const SearchableSelect = ({
   searchPlaceholder: string;
   emptyText: string;
   multiple?: boolean;
+  error?: string;
 }) => {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
@@ -268,12 +352,13 @@ const SearchableSelect = ({
   };
 
   return (
-    <>
+    <div className="space-y-1">
       <Button
-        variant="outline"
+        type="button"
+        variant={error ? "destructive" : "outline"}
+        className={cn("w-full justify-between", error && "border-red-500")}
         role="combobox"
         aria-expanded={open}
-        className="w-full justify-between"
         onClick={() => setOpen(true)}
       >
         {value.length > 0 
@@ -283,6 +368,7 @@ const SearchableSelect = ({
           : placeholder}
         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
       </Button>
+      {error && <p className="text-sm text-red-500">{error}</p>}
 
       <CommandDialog open={open} onOpenChange={setOpen}>
         <CommandInput 
@@ -312,7 +398,7 @@ const SearchableSelect = ({
           </CommandGroup>
         </CommandList>
       </CommandDialog>
-    </>
+    </div>
   );
 };
 
@@ -323,7 +409,7 @@ const DiscountsTable = () => {
 
   const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false);
   const [editingDiscount, setEditingDiscount] = useState<DiscountResponseDto | null>(null);
-  const [formData, setFormData] = useState<Partial<CreateDiscountDto>>({
+  const [formData, setFormData] = useState<Partial<DiscountFormState>>({
     title: '',
     description: '',
     type: 'FIXED',
@@ -331,9 +417,9 @@ const DiscountsTable = () => {
     targetType: 'ALL',
     minOrderAmount: 0,
     orderTypes: [],
-    restaurants: [],
-    categories: [],
-    products: [],
+    restaurantIds: [],
+    categoryIds: [],
+    productIds: [],
     isActive: true,
     code: '',
     maxUses: 0,
@@ -341,6 +427,7 @@ const DiscountsTable = () => {
     startDate: undefined,
     endDate: undefined,
   });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const { data: discounts, error: discountsError, isLoading } = useSWR<DiscountResponseDto[]>('discounts', () => DiscountService.getAll());
   const { data: restaurants, error: restaurantsError } = useSWR<Restaurant[]>('restaurants', () => RestaurantService.getAll());
@@ -356,7 +443,6 @@ const DiscountsTable = () => {
 
   const targetTypeOptions: TargetTypeOption[] = [
     { value: 'ALL', label: t.all },
-    { value: 'RESTAURANT', label: t.restaurant },
     { value: 'CATEGORY', label: t.category },
     { value: 'PRODUCT', label: t.product },
     { value: 'ORDER_TYPE', label: t.order_type },
@@ -372,6 +458,58 @@ const DiscountsTable = () => {
     { value: 6, label: t.sunday },
   ];
 
+  const getTranslatedDay = (day: number) => {
+    const dayTranslations: Record<string, string> = {
+      "SUNDAY": t.sunday,
+      "MONDAY": t.monday,
+      "TUESDAY": t.tuesday,
+      "WEDNESDAY": t.wednesday,
+      "THURSDAY": t.thursday,
+      "FRIDAY": t.friday,
+      "SATURDAY": t.saturday
+    };
+    return dayTranslations[day] || day;
+  };
+
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+    
+    if (!formData.title) {
+      errors.title = t.requiredField;
+    }
+    
+    if (!formData.startDate) {
+      errors.startDate = t.requiredField;
+    }
+    
+    if (!formData.endDate) {
+      errors.endDate = t.requiredField;
+    }
+    
+    if (formData.startDate && formData.endDate && formData.startDate >= formData.endDate) {
+      errors.endDate = t.invalidDateRange;
+    }
+    
+    if (!formData.restaurantIds || formData.restaurantIds.length === 0) {
+      errors.restaurantIds = t.restaurantsRequired;
+    }
+    
+    if (formData.targetType === 'CATEGORY' && (!formData.categoryIds || formData.categoryIds.length === 0)) {
+      errors.categoryIds = t.requiredField;
+    }
+    
+    if (formData.targetType === 'PRODUCT' && (!formData.productIds || formData.productIds.length === 0)) {
+      errors.productIds = t.requiredField;
+    }
+    
+    if (formData.targetType === 'ORDER_TYPE' && (!formData.orderTypes || formData.orderTypes.length === 0)) {
+      errors.orderTypes = t.requiredField;
+    }
+    
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const { name, value } = e.target;
     setFormData((prev : any) => ({ 
@@ -380,17 +518,18 @@ const DiscountsTable = () => {
         ? Number(value) 
         : value 
     }));
+    setFormErrors(prev => ({ ...prev, [name]: '' }));
   };
 
   const handleSelectChange = (name: string, value: any): void => {
     setFormData((prev : any) => ({ ...prev, [name]: value }));
+    setFormErrors(prev => ({ ...prev, [name]: '' }));
     
     if (name === 'targetType') {
       setFormData((prev : any) => ({
         ...prev,
-        restaurants: [],
-        categories: [],
-        products: [],
+        categoryIds: [],
+        productIds: [],
         orderTypes: []
       }));
     }
@@ -398,6 +537,7 @@ const DiscountsTable = () => {
 
   const handleDateChange = (name: string, date: Date | undefined): void => {
     setFormData((prev : any) => ({ ...prev, [name]: date }));
+    setFormErrors(prev => ({ ...prev, [name]: '' }));
   };
 
   const handleEdit = (discount: DiscountResponseDto): void => {
@@ -409,10 +549,10 @@ const DiscountsTable = () => {
       value: discount.value,
       targetType: discount.targetType,
       minOrderAmount: discount.minOrderAmount || 0,
-      orderTypes: discount.orderTypes,
-      restaurants: discount.restaurants?.map(r => ({ restaurantId: r.restaurant.id })) || [],
-      categories: discount.categories?.map(c => ({ categoryId: c.category.id })) || [],
-      products: discount.products?.map(p => ({ productId: p.product.id })) || [],
+      orderTypes: discount.orderTypes || [],
+      restaurantIds: discount.restaurants?.map(r => r.restaurant.id) || [],
+      categoryIds: discount.categories?.map(c => c.category.id) || [],
+      productIds: discount.products?.map(p => p.product.id) || [],
       isActive: discount.isActive,
       code: discount.code || '',
       maxUses: discount.maxUses || 0,
@@ -420,35 +560,59 @@ const DiscountsTable = () => {
       startDate: discount.startDate ? new Date(discount.startDate) : undefined,
       endDate: discount.endDate ? new Date(discount.endDate) : undefined,
     });
+    setFormErrors({});
     setIsDialogOpen(true);
   };
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
-    e.preventDefault();
-    
-    try {
-      const dataToSend = {
-        ...formData,
-        code: formData.code
-      };
-
-      if (editingDiscount) {
-        await DiscountService.update(editingDiscount.id, dataToSend);
-        toast.success(language === 'ru' ? 'Скидка успешно обновлена' : 'ფასდაკლება წარმატებით განახლდა');
-      } else {
-        await DiscountService.create(dataToSend as CreateDiscountDto);
-        toast.success(language === 'ru' ? 'Скидка успешно создана' : 'ფასდაკლება წარმატებით შეიქმნა');
-      }
+  e.preventDefault();
+  
+  if (!validateForm()) return;
+  
+  try {
+    const requestData = {
+      title: formData.title as string,
+      description: formData.description,
+      type: formData.type || "PERCENTAGE",
+      value: formData.value as number,
+      targetType: formData.targetType || "ALL",
+      minOrderAmount: formData.minOrderAmount,
+      orderTypes: formData.orderTypes,
+      isActive: formData.isActive,
+      code: formData.code,
+      maxUses: formData.maxUses,
+      daysOfWeek: formData.daysOfWeek,
+      startDate: formData.startDate,
+      endDate: formData.endDate,
       
-      mutate('discounts');
-      setIsDialogOpen(false);
-      setEditingDiscount(null);
-      resetForm();
-    } catch (error) {
-      console.error('Error saving discount:', error);
-      toast.error(language === 'ru' ? 'Ошибка при сохранении скидки' : 'ფასდაკლების შენახვის შეცდომა');
+      restaurants: formData.restaurantIds && formData.restaurantIds.map(id => ({ restaurantId: id })),
+      
+      ...(formData.targetType === 'CATEGORY' && {
+        categories: formData.categoryIds && formData.categoryIds.map(id => ({ categoryId: id }))
+      }),
+      
+      ...(formData.targetType === 'PRODUCT' && {
+        products: formData.productIds && formData.productIds.map(id => ({ productId: id }))
+      })
+    };
+
+    if (editingDiscount) {
+      await DiscountService.update(editingDiscount.id, requestData);
+      toast.success(language === 'ru' ? 'Скидка успешно обновлена' : 'ფასდაკლება წარმატებით განახლდა');
+    } else {
+      await DiscountService.create(requestData);
+      toast.success(language === 'ru' ? 'Скидка успешно создана' : 'ფასდაკლება წარმატებით შეიქმნა');
     }
-  };
+    
+    mutate('discounts');
+    setIsDialogOpen(false);
+    setEditingDiscount(null);
+    resetForm();
+  } catch (error) {
+    console.error('Ошибка при сохранении скидки:', error);
+    toast.error(language === 'ru' ? 'Ошибка при сохранении скидки' : 'ფასდაკლების შენახვის შეცდომა');
+  }
+};
 
   const resetForm = () => {
     setFormData({
@@ -459,9 +623,9 @@ const DiscountsTable = () => {
       targetType: 'ALL',
       minOrderAmount: 0,
       orderTypes: [],
-      restaurants: [],
-      categories: [],
-      products: [],
+      restaurantIds: [],
+      categoryIds: [],
+      productIds: [],
       isActive: true,
       code: '',
       maxUses: 0,
@@ -469,6 +633,7 @@ const DiscountsTable = () => {
       startDate: undefined,
       endDate: undefined,
     });
+    setFormErrors({});
   };
 
   const handleDelete = async (id: string): Promise<void> => {
@@ -531,7 +696,11 @@ const DiscountsTable = () => {
                     value={formData.title}
                     onChange={handleInputChange}
                     required
+                    className={formErrors.title ? 'border-red-500' : ''}
                   />
+                  {formErrors.title && (
+                    <p className="mt-1 text-sm text-red-500">{formErrors.title}</p>
+                  )}
                 </div>
                 <div>
                   <Label className="mb-2" htmlFor="type">{t.type}</Label>
@@ -585,34 +754,34 @@ const DiscountsTable = () => {
                 </div>
               </div>
 
-              {formData.targetType === 'RESTAURANT' && (
-                <div>
-                  <Label className="mb-2">{t.restaurants}</Label>
-                  <SearchableSelect
-                    options={restaurants?.map(r => ({ id: r.id, label: r.title })) || []}
-                    value={formData.restaurants?.map(( r : any ) => r.restaurantId) || []}
-                    onChange={(ids) => {
-                      handleSelectChange('restaurants', ids.map(id => ({ restaurantId: id })));
-                    }}
-                    placeholder={t.selectRestaurants}
-                    searchPlaceholder={t.searchPlaceholder}
-                    emptyText={t.noResults}
-                  />
-                </div>
-              )}
+              <div>
+                <Label className="mb-2">{t.restaurants}</Label>
+                <SearchableSelect
+                  options={restaurants?.map(r => ({ id: r.id, label: r.title })) || []}
+                  value={formData.restaurantIds || []}
+                  onChange={(ids) => {
+                    handleSelectChange('restaurantIds', ids);
+                  }}
+                  placeholder={t.selectRestaurants}
+                  searchPlaceholder={t.searchPlaceholder}
+                  emptyText={t.noResults}
+                  error={formErrors.restaurantIds}
+                />
+              </div>
 
               {formData.targetType === 'CATEGORY' && (
                 <div>
                   <Label className="mb-2">{t.categories}</Label>
                   <SearchableSelect
                     options={categories?.map(c => ({ id: c.id, label: c.title })) || []}
-                    value={formData.categories?.map(( c : any ) => c.categoryId) || []}
+                    value={formData.categoryIds || []}
                     onChange={(ids) => {
-                      handleSelectChange('categories', ids.map(id => ({ categoryId: id })));
+                      handleSelectChange('categoryIds', ids);
                     }}
                     placeholder={t.selectCategories}
                     searchPlaceholder={t.searchPlaceholder}
                     emptyText={t.noResults}
+                    error={formErrors.categoryIds}
                   />
                 </div>
               )}
@@ -622,13 +791,14 @@ const DiscountsTable = () => {
                   <Label className="mb-2">{t.products}</Label>
                   <SearchableSelect
                     options={products?.map(p => ({ id: p.id, label: p.title })) || []}
-                    value={formData.products?.map(( p : any ) => p.productId) || []}
+                    value={formData.productIds || []}
                     onChange={(ids) => {
-                      handleSelectChange('products', ids.map(id => ({ productId: id })));
+                      handleSelectChange('productIds', ids);
                     }}
                     placeholder={t.selectProducts}
                     searchPlaceholder={t.searchPlaceholder}
                     emptyText={t.noResults}
+                    error={formErrors.productIds}
                   />
                 </div>
               )}
@@ -648,6 +818,7 @@ const DiscountsTable = () => {
                     placeholder={t.selectOrderTypes}
                     searchPlaceholder={t.searchPlaceholder}
                     emptyText={t.noResults}
+                    error={formErrors.orderTypes}
                   />
                 </div>
               )}
@@ -657,31 +828,23 @@ const DiscountsTable = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="mb-2">{t.startDate}</Label>
-                    <div className="relative">
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start text-left font-normal"
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {formData.startDate
-                          ? format(formData.startDate, 'PPP', { locale })
-                          : <span>{t.selectDate}</span>}
-                      </Button>
-                    </div>
+                    <DatePickerWithTime
+                      date={formData.startDate}
+                      onChange={(date) => handleDateChange('startDate', date)}
+                      placeholder={t.selectDate}
+                      locale={locale}
+                      error={formErrors.startDate}
+                    />
                   </div>
                   <div>
                     <Label className="mb-2">{t.endDate}</Label>
-                    <div className="relative">
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start text-left font-normal"
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {formData.endDate
-                          ? format(formData.endDate, 'PPP', { locale })
-                          : <span>{t.selectDate}</span>}
-                      </Button>
-                    </div>
+                    <DatePickerWithTime
+                      date={formData.endDate}
+                      onChange={(date) => handleDateChange('endDate', date)}
+                      placeholder={t.selectDate}
+                      locale={locale}
+                      error={formErrors.endDate}
+                    />
                   </div>
                 </div>
 
@@ -692,7 +855,7 @@ const DiscountsTable = () => {
                       id: d.value.toString(), 
                       label: d.label 
                     }))}
-                    value={formData.daysOfWeek?.map((d : any) => d.toString()) || []}
+                    value={formData.daysOfWeek?.map(d => d.toString()) || []}
                     onChange={(values) => {
                       handleSelectChange('daysOfWeek', values.map(v => parseInt(v)));
                     }}
@@ -704,31 +867,30 @@ const DiscountsTable = () => {
               </div>
 
               <div className="space-y-4">
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="mb-2" htmlFor="code">{t.code}</Label>
-                      <Input
-                        id="code"
-                        name="code"
-                        value={formData.code}
-                        onChange={handleInputChange}
-                        placeholder={t.code}
-                      />
-                    </div>
-                    <div>
-                      <Label className="mb-2" htmlFor="maxUses">{t.maxUses}</Label>
-                      <Input
-                        id="maxUses"
-                        name="maxUses"
-                        type="number"
-                        value={formData.maxUses}
-                        onChange={handleInputChange}
-                        min="0"
-                        placeholder="0 - без ограничений"
-                      />
-                    </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="mb-2" htmlFor="code">{t.code}</Label>
+                    <Input
+                      id="code"
+                      name="code"
+                      value={formData.code}
+                      onChange={handleInputChange}
+                      placeholder={t.code}
+                    />
                   </div>
+                  <div>
+                    <Label className="mb-2" htmlFor="maxUses">{t.maxUses}</Label>
+                    <Input
+                      id="maxUses"
+                      name="maxUses"
+                      type="number"
+                      value={formData.maxUses}
+                      onChange={handleInputChange}
+                      min="0"
+                      placeholder="0 - без ограничений"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -779,6 +941,7 @@ const DiscountsTable = () => {
               <TableHead>{t.value}</TableHead>
               <TableHead>{t.targetType}</TableHead>
               <TableHead>{t.activePeriod}</TableHead>
+              <TableHead>{t.activeRestaurants}</TableHead>
               <TableHead>{t.status}</TableHead>
               <TableHead>{t.usageLimit}</TableHead>
               <TableHead>{t.actions}</TableHead>
@@ -787,7 +950,7 @@ const DiscountsTable = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={8}>
+                <TableCell colSpan={9}>
                   <div className="space-y-2">
                     {[...Array(5)].map((_, i) => (
                       <Skeleton key={i} className="h-10 w-full" />
@@ -797,7 +960,7 @@ const DiscountsTable = () => {
               </TableRow>
             ) : discounts?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-4">
+                <TableCell colSpan={9} className="text-center py-4">
                   {t.noData}
                 </TableCell>
               </TableRow>
@@ -831,11 +994,25 @@ const DiscountsTable = () => {
                     <div className="flex flex-col gap-1">
                       <Badge variant="outline">
                         {discount.targetType === 'ALL' && t.all}
-                        {discount.targetType === 'RESTAURANT' && t.restaurant}
                         {discount.targetType === 'CATEGORY' && t.category}
                         {discount.targetType === 'PRODUCT' && t.product}
                         {discount.targetType === 'ORDER_TYPE' && t.order_type}
                       </Badge>
+                      {discount.targetType === 'CATEGORY' && discount.categories?.length && (
+                        <div className="text-xs text-muted-foreground">
+                          {discount.categories.length} {t.categories}
+                        </div>
+                      )}
+                      {discount.targetType === 'PRODUCT' && discount.products?.length && (
+                        <div className="text-xs text-muted-foreground">
+                          {discount.products.length} {t.products}
+                        </div>
+                      )}
+                      {discount.targetType === 'ORDER_TYPE' && discount.orderTypes?.length && (
+                        <div className="text-xs text-muted-foreground">
+                          {discount.orderTypes.length} {t.orderTypes}
+                        </div>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -853,10 +1030,24 @@ const DiscountsTable = () => {
                         <div className="flex flex-wrap gap-1">
                           {discount.daysOfWeek.map(day => (
                             <Badge key={day} variant="secondary" className="text-xs">
-                              {daysOfWeekOptions.find(d => d.value === day)?.label}
+                              {getTranslatedDay(day)}
                             </Badge>
                           ))}
                         </div>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {discount.restaurants?.slice(0, 3).map(restaurant => (
+                        <Badge key={restaurant.restaurant.id} variant="outline" className="text-xs">
+                          {restaurant.restaurant.title}
+                        </Badge>
+                      ))}
+                      {discount.restaurants && discount.restaurants.length > 3 && (
+                        <Badge variant="outline" className="text-xs">
+                          +{discount.restaurants.length - 3}
+                        </Badge>
                       )}
                     </div>
                   </TableCell>
@@ -879,46 +1070,46 @@ const DiscountsTable = () => {
                       </div>
                     )}
                   </TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2 justify-end">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleEdit(discount)}
-                        >
-                          <PencilIcon className="h-4 w-4" />
-                        </Button>
-                        
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <TrashIcon className="h-4 w-4 text-red-500" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>{t.deleteConfirm}</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                {language === 'ru' 
-                                  ? 'Это действие нельзя отменить. Скидка будет удалена безвозвратно.' 
-                                  : 'ამ მოქმედების გაუქმება შეუძლებელია. ფასდაკლება სამუდამოდ წაიშლება.'}
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>
-                                {t.cancel}
-                              </AlertDialogCancel>
-                              <AlertDialogAction 
-                                onClick={() => handleDelete(discount.id)}
-                                className="bg-red-500 hover:bg-red-600"
-                              >
-                                {language === 'ru' ? 'Удалить' : 'წაშლა'}
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </TableCell>
+                  <TableCell>
+                    <div className="flex space-x-2 justify-end">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEdit(discount)}
+                      >
+                        <PencilIcon className="h-4 w-4" />
+                      </Button>
+                      
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <TrashIcon className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>{t.deleteConfirm}</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              {language === 'ru' 
+                                ? 'Это действие нельзя отменить. Скидка будет удалена безвозвратно.' 
+                                : 'ამ მოქმედების გაუქმება შეუძლებელია. ფასდაკლება სამუდამოდ წაიშლება.'}
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>
+                              {t.cancel}
+                            </AlertDialogCancel>
+                            <AlertDialogAction 
+                              onClick={() => handleDelete(discount.id)}
+                              className="bg-red-500 hover:bg-red-600"
+                            >
+                              {language === 'ru' ? 'Удалить' : 'წაშლა'}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))
             )}

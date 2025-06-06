@@ -1,3 +1,4 @@
+import { Language } from '@/lib/stores/language-store';
 import React from 'react';
 import { AddressSuggestions, DaDataAddress, DaDataSuggestion } from 'react-dadata';
 import 'react-dadata/dist/react-dadata.css';
@@ -5,7 +6,7 @@ import 'react-dadata/dist/react-dadata.css';
 interface AddressInputProps {
   value: any;
   onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  language: 'ka' | 'ru'; // You can specify the possible languages here
+  language: Language
 }
 
 const AddressInput: React.FC<AddressInputProps> = ({ value, onChange, language }) => {
