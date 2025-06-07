@@ -33,7 +33,8 @@ import {
   Languages,
   Truck,
   Package,
-  PersonStanding
+  PersonStanding,
+  Hexagon
 } from 'lucide-react'
 
 const ROLE_COLORS = {
@@ -139,6 +140,12 @@ export default function Side() {
         icon: <Utensils className="w-7 h-7" />,
         roles: ['COOK', 'CHEF', 'MANAGER', 'SUPERVISOR']
       },
+       { 
+        name: t.delivery, 
+        href: "/delivery", 
+        icon: <Truck className="w-7 h-7" />,
+        roles: ['COURIER', 'MANAGER', 'SUPERVISOR']
+      },
       { 
         name: t.restaurants, 
         href: "/restaurants", 
@@ -158,9 +165,9 @@ export default function Side() {
         roles: ['MANAGER', 'SUPERVISOR']
       },
       { 
-        name: t.dlivery, 
-        href: "/delivery", 
-        icon: <Truck className="w-7 h-7" />,
+        name: t.dliveryZone, 
+        href: "/delivery-zones", 
+        icon: <Hexagon className="w-7 h-7" />,
         roles: ['MANAGER', 'SUPERVISOR']
       },
       { 

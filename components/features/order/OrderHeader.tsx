@@ -92,7 +92,7 @@ function getOrderItemCounts(items: OrderItem[]) {
 
 }
 
-export function OrderHeader({ order, compact = false }: { order: OrderResponse, compact?: boolean }) {
+export function OrderHeader({ order, compact = false, variant }: { order: OrderResponse, compact?: boolean, variant?: 'default' | 'kitchen' | 'delivery' }) {
   const { language } = useLanguageStore()
   const statusColors = {
     CREATED: 'border-amber-500 bg-amber-50 text-amber-800',
@@ -194,10 +194,20 @@ export function OrderHeader({ order, compact = false }: { order: OrderResponse, 
       </div>
 
       {order.type === 'DELIVERY' && (
-        <Badge variant="outline" className={cn("gap-1", compact ? "px-2 py-0.5 text-sm" : "text-sm")}>
-          <MapPin className={compact ? "h-3 w-3" : "h-4 w-4"} />
-          {order.delivery?.address}
-        </Badge>
+        <button 
+        disabled={variant != 'delivery'}
+          className='cursor-pointer'
+          onClick={(e) => {
+                e.stopPropagation();
+                const address = encodeURIComponent(order.delivery?.address as string);
+                window.open(`https://yandex.ru/maps/?text=${address}`, '_blank');
+              }}
+        >
+          <Badge  variant="outline" className={cn("gap-1", compact ? "px-2 py-0.5 text-sm" : "text-sm")}>
+            <MapPin className={compact ? "h-3 w-3" : "h-4 w-4"} />
+            {order.delivery?.address}
+          </Badge>
+        </button>
       )}
     </div>
   )

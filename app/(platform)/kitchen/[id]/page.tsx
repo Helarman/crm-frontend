@@ -301,7 +301,7 @@ export default function KitchenOrderPage() {
         writeOffItems.map(item => 
           WarehouseService.writeOffInventory(item.id, {
             quantity: item.quantity,
-            reason: `ინგრედიენტების ჩამოწერა შეკვეთაზე #${order?.number}`
+            reason: `Списание при приготовлении заказа #${order?.number}`
           })
         )
       )

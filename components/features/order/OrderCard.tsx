@@ -9,14 +9,64 @@ import { OrderPaymentStatus } from './OrderPaymentStatus'
 import { Card } from '@/components/ui/card'
 import { OrderResponse, OrderItemStatus, OrderService } from '@/lib/api/order.service'
 import { cn } from '@/lib/utils'
-import { useLanguageStore } from '@/lib/stores/language-store'
+import { Language, useLanguageStore } from '@/lib/stores/language-store'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { Button } from '@/components/ui/button'
-import { ChevronDown, ChevronUp, Check, Play, Pause, Clock, Utensils } from 'lucide-react'
+import { ChevronDown, ChevronUp, Check, Play, Pause, Clock, Utensils, Package, AlertCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/hooks/useAuth'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { WarehouseService } from '@/lib/api/warehouse.service'
+import { Skeleton } from '@/components/ui/skeleton'
+import { LoadingSpinner } from '@/components/ui/loading-spinner'
+import { Payment } from '@/lib/api/payment.service'
+
+type OrderItemWithStatus = {
+  id: string
+  product: {
+    title: string
+    workshops: {
+      workshop: {
+        name: string
+        id: string
+      }
+      id: string
+    }[]
+    ingredients: {
+      inventoryItemId: string
+      quantity: number
+    }[]
+  }
+  quantity: number
+  additives: {
+    title: string
+  }[]
+  comment?: string
+  currentStatus: OrderItemStatus
+  assignedTo?: {
+    id: string
+    name: string
+  } | null
+}
+
+type WriteOffItem = {
+  id: string
+  name: string
+  quantity: number
+  unit: string
+}
+
+interface Ingredient {
+  inventoryItemId: string;
+  quantity: number;
+  inventoryItem?: {
+    name: string;
+    unit: string;
+  };
+}
+
 
 const statusColors = {
   CREATED: {
@@ -84,7 +134,7 @@ const getStatusText = (status: OrderItemStatus, language: string): string => {
 
 export function OrderCard({ order, variant = 'default', onStatusChange, className }: {
   order: OrderResponse
-  variant?: 'default' | 'kitchen'
+  variant?: 'default' | 'kitchen' | 'delivery'
   onStatusChange?: (updatedOrder: OrderResponse) => void
   className?: string
 }) {
@@ -96,7 +146,102 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
   const [contentHeight, setContentHeight] = useState(0)
   const [isUpdating, setIsUpdating] = useState(false)
   const contentRef = useRef<HTMLDivElement>(null)
+  const [writeOffDialogOpen, setWriteOffDialogOpen] = useState(false)
+  const [currentItemId, setCurrentItemId] = useState<string | null>(null)
+  const [writeOffItems, setWriteOffItems] = useState<WriteOffItem[]>([])
+  const [isWritingOff, setIsWritingOff] = useState(false)
+  const [items, setItems] = useState<OrderItemWithStatus[]>([])
+
+   const orderId = order.id;
+
+   const translations = {
+      ru: {
+        back: "Назад к списку заказов",
+        orderComposition: "Состав заказа",
+        noDishes: "Нет блюд для приготовления",
+        additives: "Добавки",
+        comment: "Комментарий",
+        orderInfo: "Информация о заказе",
+        orderNumber: "Номер заказа",
+        date: "Дата",
+        orderStatus: "Статус заказа",
+        startCooking: "В работу",
+        partiallyDone: "Частично готово",
+        pause: "Пауза",
+        ready: "Готово",
+        writeOffTitle: "Списание ингредиентов",
+        writeOffText: "Будут списаны следующие ингредиенты:",
+        cancel: "Отмена",
+        confirmWriteOff: "Подтвердить списание",
+        writingOff: "Списание...",
+        statusUpdated: "Статус обновлён",
+        writeOffSuccess: "Ингредиенты списаны, статус обновлён",
+        writeOffError: "Ошибка при списании ингредиентов",
+        statusUpdateError: "Ошибка обновления статуса",
+        loadError: "Не удалось загрузить заказ",
+        unknownError: "Неизвестная ошибка",
+        orderNotFound: "Заказ не найден",
+        ingredientsError: "Не удалось получить информацию об ингредиентах",
+        created: "Создан",
+        inProgress: "В процессе",
+        partiallyDoneStatus: "Частично готов",
+        paused: "На паузе",
+        completed: "Готов",
+        cancelled: "Отменен",
+        refunded: "Возвращен",
+        assignedTo: "Ответственный",
+        you: "Вы",
+        currentStatus: "Текущий статус",
+        loading: "Загрузка..",
+        deliveryAddress: "Адрес доставки",
+        openInMap: "Открыть в картах"
+      },
+      ka: {
+        back: "უკან შეკვეთების სიაში",
+        orderComposition: "შეკვეთის შემადგენლობა",
+        noDishes: "მომზადებისთვის კერძები არ არის",
+        additives: "დანამატები",
+        comment: "კომენტარი",
+        orderInfo: "შეკვეთის ინფორმაცია",
+        orderNumber: "შეკვეთის ნომერი",
+        date: "თარიღი",
+        orderStatus: "შეკვეთის სტატუსი",
+        startCooking: "სამუშაოდ",
+        partiallyDone: "ნაწილობრივ მზადაა",
+        pause: "პაუზა",
+        ready: "მზადაა",
+        writeOffTitle: "ინგრედიენტების ჩამოწერა",
+        writeOffText: "შემდეგი ინგრედიენტები ჩაიწერება:",
+        cancel: "გაუქმება",
+        confirmWriteOff: "ჩამოწერის დადასტურება",
+        writingOff: "იწერება...",
+        statusUpdated: "სტატუსი განახლდა",
+        writeOffSuccess: "ინგრედიენტები ჩაიწერა, სტატუსი განახლდა",
+        writeOffError: "ინგრედიენტების ჩამოწერის შეცდომა",
+        statusUpdateError: "სტატუსის განახლების შეცდომა",
+        loadError: "შეკვეთის ჩატვირთვა ვერ მოხერხდა",
+        unknownError: "უცნობი შეცდომა",
+        orderNotFound: "შეკვეთა ვერ მოიძებნა",
+        ingredientsError: "ინგრედიენტების მონაცემების მიღება ვერ მოხერხდა",
+        created: "შექმნილი",
+        inProgress: "მუშავდება",
+        partiallyDoneStatus: "ნაწილობრივ მზადაა",
+        paused: "პაუზაზეა",
+        completed: "მზადაა",
+        cancelled: "გაუქმებული",
+        refunded: "დაბრუნებული",
+        assignedTo: "პასუხისმგებელი",
+        you: "თქვენ",
+        currentStatus: "მიმდინარე სტატუსი",
+        loading: "იტვირთება..",
+        deliveryAddress: "მიტანის მისამართი",
+        openInMap: "გახსნა რუკაზე"
+      }
+    } as const;
   
+  const t = translations[language as Language];
+  
+
   const currentStatusStyle = statusColors[order.status] || statusColors.CREATED
   
   useEffect(() => {
@@ -106,7 +251,31 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
         : Math.min(contentRef.current.scrollHeight, MAX_VISIBLE_ITEMS * 64)
       )
     }
+    
   }, [showAllItems, order.items])
+
+  useEffect(() => {
+    if (order) {
+      setItems(order.items.map(item => ({
+        id: item.id,
+        product: {
+          title: item.product.title || 'Без названия',
+          workshops: item.product.workshops,
+          ingredients: item.product.ingredients || []
+        },
+        quantity: item.quantity,
+        additives: item.additives.map(add => ({
+          title: add.name || 'Добавка'
+        })),
+        comment: item.comment,
+        currentStatus: item.status || 'CREATED',
+        assignedTo: item.user ? {
+          id: item.user.id,
+          name: item.user.name || 'Повар'
+        } : null
+      })))
+    }
+  }, [order]) 
 
   const hasHiddenItems = order.items.length > MAX_VISIBLE_ITEMS
 
@@ -121,49 +290,117 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
     e.stopPropagation()
   }
 
-  const handleItemStatusChange = async (itemId: string, newStatus: OrderItemStatus) => {
-    if (!user?.id || isUpdating) return
   
+  const handleStartCooking = async (itemId: string) => {
     try {
-      setIsUpdating(true)
+      const item = order.items.find(i => i.id === itemId)
       
-      // Оптимистичное обновление
-      const updatedItems = order.items.map(item => 
-        item.id === itemId 
-          ? { 
-              ...item, 
-              status: newStatus,
-              user: newStatus === OrderItemStatus.IN_PROGRESS ? { id: user.id, name: user.name } : item.user
-            } 
-          : item
+      if (!item) return
+      const ingredientsToWriteOff = await Promise.all(
+        item.product.ingredients.map(async (ingredient: Ingredient) => {
+          try {
+            return {
+              id: ingredient.inventoryItemId,
+              name: ingredient.inventoryItem?.name || t.unknownError,
+              quantity: ingredient.quantity * item.quantity,
+              unit: ingredient.inventoryItem?.unit || 'ც.'
+            }
+          } catch (error) {
+            console.error(`Error processing ingredient ${ingredient.inventoryItemId}:`, error)
+            return null
+          }
+        })
       )
 
-      const updatedOrder = { ...order, items: updatedItems }
+      const validIngredients = ingredientsToWriteOff.filter(Boolean) as WriteOffItem[]
       
-      // Вызов API для обновления статуса
-      await OrderService.updateItemStatus(
-        order.id,
-        itemId,
-        { 
-          status: newStatus,
-          userId: newStatus === OrderItemStatus.IN_PROGRESS ? user.id : undefined
-        }
-      )
-      
-      // Вызов callback для обновления родительского состояния
-      if (onStatusChange) {
-        onStatusChange(updatedOrder)
+      if (validIngredients.length === 0) {
+        toast.warning(t.ingredientsError)
+        return
       }
-
-      toast.success(getStatusText(newStatus, language))
-    } catch (err) {
-      toast.error(language === 'ru' ? 'Ошибка обновления статуса' : 'სტატუსის განახლების შეცდომა')
-      console.error('Error updating item status:', err)
-    } finally {
-      setIsUpdating(false)
+      setWriteOffItems(validIngredients)
+      setCurrentItemId(itemId)
+      setWriteOffDialogOpen(true)
+    } catch (error) {
+      console.error('Error preparing write-off:', error)
+      toast.error(t.writeOffError)
     }
   }
 
+  const handleConfirmWriteOff = async () => {
+  if (!currentItemId) return
+
+  setIsWritingOff(true)
+    try {
+      await Promise.all(
+        writeOffItems.map(item => 
+          WarehouseService.writeOffInventory(item.id, {
+            quantity: item.quantity,
+            reason: `Списание при приготовлении заказа #${order?.number}`
+          })
+        )
+      )
+
+      // Получаем обновленный заказ после изменения статуса
+      const updatedOrder = await handleStatusChange(currentItemId, OrderItemStatus.IN_PROGRESS)
+
+      toast.success(t.writeOffSuccess)
+      setWriteOffDialogOpen(false)
+      return updatedOrder
+    } catch (error) {
+      console.error('Error writing off inventory:', error)
+      toast.error(t.writeOffError)
+      throw error
+    } finally {
+      setIsWritingOff(false)
+    }
+  }
+
+  const handleStatusChange = async (itemId: string, newStatus: OrderItemStatus) => {
+  if (!orderId || !user?.id || isUpdating) return
+
+  try {
+    setIsUpdating(true)
+    
+    const updatedItems = items.map(item => 
+      item.id === itemId 
+        ? { 
+            ...item, 
+            currentStatus: newStatus,
+            assignedTo: newStatus === 'IN_PROGRESS' ? { id: user.id, name: user.name } : item.assignedTo
+          } 
+        : item
+    )
+    setItems(updatedItems)
+
+    // Обновляем статус на сервере и получаем обновленный заказ
+    const updatedOrder = await OrderService.updateItemStatus(
+      orderId as string,
+      itemId,
+      { 
+        status: newStatus,
+        userId: newStatus === 'IN_PROGRESS' ? user.id : undefined
+      }
+    )
+
+    // Вызываем колбэк с обновленным заказом
+    if (onStatusChange) {
+      onStatusChange(updatedOrder)
+    }
+
+    toast.success(`${t.statusUpdated}`)
+    return updatedOrder
+  } catch (err) {
+    // В случае ошибки возвращаем предыдущее состояние
+    setItems(items)
+    toast.error(t.statusUpdateError)
+    console.error('Error:', err)
+    throw err
+  } finally {
+    setIsUpdating(false)
+  }
+  }
+    
   const renderItemStatusControls = (item: OrderResponse['items'][0]) => {
     if (variant !== 'kitchen') return null
 
@@ -173,10 +410,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
           <Button
             
             variant="default"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleItemStatusChange(item.id, OrderItemStatus.IN_PROGRESS)
-            }}
+            onClick={() => handleStartCooking(item.id)}
             disabled={isUpdating}
             className="h-7"
           >
@@ -190,10 +424,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
             <Button
               
               variant="secondary"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleItemStatusChange(item.id, OrderItemStatus.PARTIALLY_DONE)
-              }}
+              onClick={() => handleStatusChange(item.id, OrderItemStatus.PARTIALLY_DONE)}
               disabled={isUpdating}
               className="h-7"
             >
@@ -204,10 +435,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
             <Button
               
               variant="outline"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleItemStatusChange(item.id, OrderItemStatus.PAUSED)
-              }}
+              onClick={() => handleStatusChange(item.id, OrderItemStatus.PAUSED)}
               disabled={isUpdating}
               className="h-7"
             >
@@ -221,10 +449,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
           <Button
             
             variant="outline"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleItemStatusChange(item.id, OrderItemStatus.PAUSED)
-            }}
+            onClick={() => handleStatusChange(item.id, OrderItemStatus.PAUSED)}
             disabled={isUpdating}
             className="h-7"
           >
@@ -238,10 +463,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
             <Button
               
               variant="default"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleItemStatusChange(item.id, OrderItemStatus.IN_PROGRESS)
-              }}
+              onClick={() => handleStatusChange(item.id, OrderItemStatus.IN_PROGRESS)}
               disabled={isUpdating}
               className="h-7"
             >
@@ -252,10 +474,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
             <Button
               
               variant="secondary"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleItemStatusChange(item.id, OrderItemStatus.PARTIALLY_DONE)
-              }}
+              onClick={() => handleStatusChange(item.id, OrderItemStatus.PARTIALLY_DONE)}
               disabled={isUpdating}
               className="h-7"
             >
@@ -271,10 +490,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
           <Button
             
             variant="default"
-            onClick={(e) => {
-              e.stopPropagation()
-              handleItemStatusChange(item.id, OrderItemStatus.COMPLETED)
-            }}
+            onClick={() => handleStatusChange(item.id, OrderItemStatus.COMPLETED)}
             disabled={isUpdating}
             className="h-7"
           >
@@ -287,6 +503,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
   }
 
   return (
+    <div>
     <Card 
       className={cn(
         "flex flex-col h-full relative overflow-hidden",
@@ -300,7 +517,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
       <div className="absolute top-0 left-0 w-full h-1" />
       
       <div className="flex flex-col flex-grow pt-1">
-        <OrderHeader order={order} compact={variant === 'kitchen'} />
+        <OrderHeader order={order} compact={variant === 'kitchen'}  />
         
         <div className="p-3 space-y-3">
           <div
@@ -308,43 +525,54 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
             className="overflow-hidden transition-all duration-300 ease-in-out"
             style={{ maxHeight: `${contentHeight}px` }}
           >
-            {order.items.map(item => (
-              <div 
-                key={item.id} 
-                className={cn(
-                  "mb-2 last:mb-0 p-2 rounded-lg border",
-                  currentStatusStyle.itemBorder,
-                  "transition-colors hover:bg-opacity-90"
-                )}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="font-medium flex items-center gap-1">
-                      {item.product.title} × {item.quantity}
-                    </div>
-                    {item.additives.length > 0 && (
-                      <div className="text-xs text-muted-foreground">
-                        {language === 'ru' ? 'Добавки:' : 'დანამატები:'} {item.additives.map(a => a.name).join(', ')}
-                      </div>
-                    )}
-                    {item.comment && (
-                      <div className="text-xs text-muted-foreground">
-                        {language === 'ru' ? 'Коммент:' : 'კომენტარი:'} {item.comment}
-                      </div>
-                    )}
-                  </div>
-                  <Badge 
-                    variant="outline" 
-                    className="text-xs"
-                  >
-                    {getStatusText(item.status, language)}
-                  </Badge>
+            {isUpdating ?
+              (
+                <div>
+                  {t.loading}
                 </div>
-                
-                {renderItemStatusControls(item)}
+              ) :
+              (
+                <div>
+                  {order.items.map(item => (
+                  <div 
+                    key={item.id} 
+                    className={cn(
+                      "mb-2 last:mb-0 p-2 rounded-lg border",
+                      currentStatusStyle.itemBorder,
+                      "transition-colors hover:bg-opacity-90"
+                    )}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="font-medium flex items-center gap-1">
+                          {item.product.title} × {item.quantity}
+                        </div>
+                        {item.additives.length > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            {language === 'ru' ? 'Добавки:' : 'დანამატები:'} {item.additives.map(a => a.name).join(', ')}
+                          </div>
+                        )}
+                        {item.comment && (
+                          <div className="text-xs text-muted-foreground">
+                            {language === 'ru' ? 'Коммент:' : 'კომენტარი:'} {item.comment}
+                          </div>
+                        )}
+                      </div>
+                      <Badge 
+                        variant="outline" 
+                        className="text-xs"
+                      >
+                        {getStatusText(item.status, language)}
+                      </Badge>
+                    </div>
+                    
+                    {renderItemStatusControls(item)}
+                  </div>
+                ))}
               </div>
-            ))}
+              )
+            }
           </div>
 
           {hasHiddenItems && (
@@ -392,14 +620,15 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
             </div>
           ) : null}
           
-          <div className="flex justify-between items-center border-t pt-2">
+
+         {variant === 'default' && ( <div className="flex justify-between items-center border-t pt-2">
             <div className="font-medium text-sm">
               {language === 'ru' ? 'Итого:' : 'სულ:'}
             </div>
             <div className="font-bold">
               {totalAmount.toFixed(2)}{language === 'ru' ? '₽' : '₽'}
             </div>
-          </div>
+          </div>)}
 
           {variant === 'default' && order.payment && (
             <OrderPaymentStatus payment={order.payment} order={order} compact />
@@ -411,10 +640,64 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
         <OrderActions 
           order={order} 
           variant={variant}
-          onStatusChange={onStatusChange}
           compact={variant === 'kitchen'}
         />
       </div>
     </Card>
+     <Dialog open={writeOffDialogOpen} onOpenChange={setWriteOffDialogOpen}>
+
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              {t.writeOffTitle}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <p className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-yellow-500" />
+              {t.writeOffText}
+            </p>
+            <ul className="space-y-2">
+              {writeOffItems.map((item, index) => (
+                <li key={index} className="flex justify-between items-center p-2 bg-muted/50 rounded">
+                  <span>{item.name}</span>
+                  <span className="font-medium">
+                    {item.quantity} {item.unit}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setWriteOffDialogOpen(false)} 
+              disabled={isWritingOff}
+            >
+              {t.cancel}
+            </Button>
+            <Button 
+              onClick={handleConfirmWriteOff} 
+              disabled={isWritingOff}
+            >
+              {isWritingOff ? (
+                <>
+                  <Clock className="mr-2 h-4 w-4 animate-spin" />
+                  {t.writingOff}
+                </>
+              ) : (
+                <>
+                  <Check className="mr-2 h-4 w-4" />
+                  {t.confirmWriteOff}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   )
 }

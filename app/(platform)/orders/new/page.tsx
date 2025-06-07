@@ -1114,22 +1114,36 @@ const OrderInfoStep = ({
   </div>
 </div>
 
-      {order.type === 'DELIVERY' && (
+       {order.type === 'DELIVERY' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div className="space-y-1">
             <Label className="text-sm flex items-center gap-2">
               <MapPin className="h-4 w-4" />
               {language === 'ka' ? 'მისამართი' : 'Адрес доставки'}
             </Label>
-            <AddressInput
-              value={order.deliveryAddress}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOrder({
-                ...order,
-                deliveryAddress: e.target.value,
-                deliveryZone: null
-              })}
-              language={language as Language}
-            />
+            <div className="flex w-full">
+              <div className='w-full mr-4'>
+              <AddressInput
+                value={order.deliveryAddress}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOrder({
+                  ...order,
+                  deliveryAddress: e.target.value,
+                  deliveryZone: null
+                })}
+                language={language as Language}
+              />
+              </div>
+              <Button
+                onClick={checkDeliveryZone}
+                disabled={!order.deliveryAddress || isCheckingDeliveryZone}
+                variant="secondary"
+                className="whitespace-nowrap"
+              >
+                {isCheckingDeliveryZone 
+                  ? language === 'ka' ? 'იტვირთება...' : 'Загрузка...'
+                  : language === 'ka' ? 'ღირებულების შემოწმება' : 'Проверить стоимость'}
+              </Button>
+            </div>
             {order.deliveryZone && (
               <p className="text-sm text-green-600">
                 {language === 'ka' 
@@ -1138,7 +1152,7 @@ const OrderInfoStep = ({
               </p>
             )}
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 ">
             <Label className="text-sm flex items-center gap-2">
               <Clock className="h-4 w-4" />
               {language === 'ka' ? 'დრო მიტანისთვის' : 'Время доставки'}
