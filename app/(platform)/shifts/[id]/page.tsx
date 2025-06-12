@@ -7,7 +7,7 @@ import { useParams } from 'next/navigation';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ShoppingCart, DollarSign, Users, User } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, RussianRuble, Users, User, Plus, Trash2, Edit, BanknoteArrowUp, BanknoteArrowDown } from 'lucide-react';
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { AccessCheck } from '@/components/AccessCheck';
 import {
@@ -18,7 +18,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ShiftService } from '@/lib/api/shift.service';
 import { toast } from 'sonner';
 
@@ -27,6 +27,7 @@ const translations = {
     shiftStats: 'Статистика смены',
     orders: 'Заказы',
     staff: 'Персонал',
+    expenses: 'Расходы',
     orderId: 'Номер',
     status: 'Статус',
     amount: 'Сумма',
@@ -37,8 +38,10 @@ const translations = {
     loading: 'Загрузка...',
     noOrders: 'Заказы не найдены',
     noStaff: 'Персонал не назначен',
+    noExpenses: 'Расходы не добавлены',
     totalOrders: 'Всего заказов',
     totalAmount: 'Общая сумма',
+    totalExpenses: 'Общие расходы',
     staffCount: 'Количество персонала',
     created: 'Создан',
     confirmed: 'Подтверждён',
@@ -52,11 +55,21 @@ const translations = {
     waiter: 'Официант',
     chef: 'Повар',
     addStaff: 'Добавить персонал',
+    addExpense: 'Добавить расход',
+    editExpense: 'Редактировать расход',
+    expenseTitle: 'Название',
+    expenseAmount: 'Сумма',
+    expenseDescription: 'Описание',
+    actions: 'Действия',
     emailPlaceholder: 'Введите email пользователя',
     add: 'Добавить',
+    save: 'Сохранить',
     adding: 'Добавление...',
     success: 'Успех',
     userAddedSuccessfully: 'Пользователь успешно добавлен в смену',
+    expenseAdded: 'Расход добавлен',
+    expenseRemoved: 'Расход удалён',
+    expenseUpdated: 'Расход обновлён',
     error: 'Ошибка',
     somethingWentWrong: 'Что-то пошло не так'
   },
@@ -64,6 +77,7 @@ const translations = {
     shiftStats: 'ცვლის სტატისტიკა',
     orders: 'შეკვეთები',
     staff: 'პერსონალი',
+    expenses: 'ხარჯები',
     orderId: 'შეკვეთის ID',
     status: 'სტატუსი',
     amount: 'თანხა',
@@ -74,8 +88,10 @@ const translations = {
     loading: 'იტვირთება...',
     noOrders: 'შეკვეთები არ მოიძებნა',
     noStaff: 'პერსონალი არ არის მინიჭებული',
+    noExpenses: 'ხარჯები არ დამატებულა',
     totalOrders: 'შეკვეთების რაოდენობა',
     totalAmount: 'საერთო თანხა',
+    totalExpenses: 'საერთო ხარჯები',
     staffCount: 'პერსონალის რაოდენობა',
     created: 'შექმნილი',
     confirmed: 'დადასტურებული',
@@ -89,11 +105,21 @@ const translations = {
     waiter: 'ოფიციანტი',
     chef: 'მზარეული',
     addStaff: 'პერსონალის დამატება',
+    addExpense: 'ხარჯის დამატება',
+    editExpense: 'ხარჯის რედაქტირება',
+    expenseTitle: 'სახელი',
+    expenseAmount: 'თანხა',
+    expenseDescription: 'აღწერა',
+    actions: 'მოქმედებები',
     emailPlaceholder: 'შეიყვანეთ მომხმარებლის ელ.ფოსტა',
     add: 'დამატება',
+    save: 'შენახვა',
     adding: 'დამატება...',
     success: 'წარმატება',
     userAddedSuccessfully: 'მომხმარებელი წარმატებით დაემატა ცვლაში',
+    expenseAdded: 'ხარჯი დაემატა',
+    expenseRemoved: 'ხარჯი წაიშალა',
+    expenseUpdated: 'ხარჯი განახლდა',
     error: 'შეცდომა',
     somethingWentWrong: 'რაღაც შეცდომა მოხდა'
   }
@@ -161,6 +187,15 @@ function RoleBadge({ role, lang = 'ru' }: RoleBadgeProps) {
   );
 }
 
+interface ShiftExpense {
+  id: string;
+  title: string;
+  amount: number;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export default function ShiftStatsPage() {
   const { id } = useParams();
   const { language } = useLanguageStore();
@@ -168,12 +203,34 @@ export default function ShiftStatsPage() {
 
   const { data: shift, isLoading: isLoadingShift, mutate: mutateShift } = useShift(id as string);
   const { data: staff, isLoading: isLoadingStaff, mutate: mutateStaff } = useShiftUsers(id as string);
-
+  const [expenses, setExpenses] = useState<ShiftExpense[]>([]);
+  const [isLoadingExpenses, setIsLoadingExpenses] = useState(false);
   const [email, setEmail] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isAddingUser, setIsAddingUser] = useState(false);
+  const [newExpense, setNewExpense] = useState({
+    title: '',
+    amount: 0,
+    description: ''
+  });
+  const [isExpenseDialogOpen, setIsExpenseDialogOpen] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<ShiftExpense | null>(null);
 
+  const loadExpenses = async () => {
+    setIsLoadingExpenses(true);
+    try {
+      const expenses = await ShiftService.getShiftExpenses(id as string);
+      setExpenses(expenses);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t.somethingWentWrong);
+    } finally {
+      setIsLoadingExpenses(false);
+    }
+  };
 
+  useEffect(() => {
+    loadExpenses();
+  }, [id]);
 
   const handleAddUser = async () => {
     if (!email) return;
@@ -195,6 +252,51 @@ export default function ShiftStatsPage() {
     }
   };
 
+  const handleAddExpense = async () => {
+    try {
+      if (editingExpense) {
+        const updatedExpense = await ShiftService.updateExpense(
+          editingExpense.id,
+          newExpense
+        );
+        setExpenses(expenses.map(e => e.id === updatedExpense.id ? updatedExpense : e));
+        toast.success(t.expenseUpdated);
+      } else {
+        const expense = await ShiftService.addExpenseToShift(id as string, newExpense);
+        setExpenses([...expenses, expense]);
+        toast.success(t.expenseAdded);
+      }
+      setIsExpenseDialogOpen(false);
+      setNewExpense({ title: '', amount: 0, description: '' });
+      setEditingExpense(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t.somethingWentWrong);
+    }
+  };
+
+  const handleDeleteExpense = async (expenseId: string) => {
+    try {
+      await ShiftService.removeExpense(expenseId);
+      setExpenses(expenses.filter(e => e.id !== expenseId));
+      toast.success(t.expenseRemoved);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t.somethingWentWrong);
+    }
+  };
+
+  const handleEditExpense = (expense: ShiftExpense) => {
+    setEditingExpense(expense);
+    setNewExpense({
+      title: expense.title,
+      amount: expense.amount,
+      description: expense.description || ''
+    });
+    setIsExpenseDialogOpen(true);
+  };
+
+  const totalAmount = shift?.orders?.reduce((sum, order) => sum + (order.totalAmount || 0), 0) || 0;
+  const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+
   if (isLoadingShift) {
     return (
       <div className="container mx-auto py-8">
@@ -215,8 +317,6 @@ export default function ShiftStatsPage() {
     );
   }
 
-  const totalAmount = shift.orders?.reduce((sum, order) => sum + (order.totalAmount || 0), 0) || 0;
-
   return (
     <AccessCheck allowedRoles={['MANAGER', 'SUPERVISOR']}>
       <div className="container mx-auto py-8">
@@ -229,7 +329,8 @@ export default function ShiftStatsPage() {
         </div>
 
         <div className="grid gap-6">
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-5">
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">{t.totalOrders}</CardTitle>
@@ -243,14 +344,36 @@ export default function ShiftStatsPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">{t.totalAmount}</CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
+                <BanknoteArrowUp className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{totalAmount.toFixed(2)}</div>
               </CardContent>
             </Card>
 
+           
+
             <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{t.totalExpenses}</CardTitle>
+                <BanknoteArrowDown className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{totalExpenses.toFixed(2)}</div>
+              </CardContent>
+            </Card>
+
+              <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Баланс</CardTitle>
+                <RussianRuble className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{(totalAmount - totalExpenses).toFixed(2)}</div>
+              </CardContent>
+            </Card>
+
+             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">{t.staffCount}</CardTitle>
                 <Users className="h-4 w-4 text-muted-foreground" />
@@ -260,7 +383,7 @@ export default function ShiftStatsPage() {
               </CardContent>
             </Card>
           </div>
-
+              
           <Card>
             <CardHeader>
               <CardTitle>{t.orders}</CardTitle>
@@ -366,7 +489,111 @@ export default function ShiftStatsPage() {
               )}
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <CardTitle>{t.expenses}</CardTitle>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setEditingExpense(null);
+                    setNewExpense({ title: '', amount: 0, description: '' });
+                    setIsExpenseDialogOpen(true);
+                  }}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  {t.addExpense}
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoadingExpenses ? (
+                <div className="space-y-4">
+                  {[...Array(3)].map((_, i) => (
+                    <Skeleton key={i} className="h-12 w-full" />
+                  ))}
+                </div>
+              ) : expenses.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{t.expenseTitle}</TableHead>
+                      <TableHead>{t.expenseAmount}</TableHead>
+                      <TableHead>{t.expenseDescription}</TableHead>
+                      <TableHead>{t.actions}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {expenses.map((expense) => (
+                      <TableRow key={expense.id}>
+                        <TableCell className="font-medium">{expense.title}</TableCell>
+                        <TableCell>{expense.amount.toFixed(2)}</TableCell>
+                        <TableCell>{expense.description || '-'}</TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleEditExpense(expense)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteExpense(expense.id)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <p className="text-muted-foreground text-center py-8">{t.noExpenses}</p>
+              )}
+            </CardContent>
+          </Card>
         </div>
+
+        <Dialog open={isExpenseDialogOpen} onOpenChange={setIsExpenseDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {editingExpense ? t.editExpense : t.addExpense}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Input
+                placeholder={t.expenseTitle}
+                value={newExpense.title}
+                onChange={(e) => setNewExpense({...newExpense, title: e.target.value})}
+              />
+              <Input
+                type="number"
+                placeholder={t.expenseAmount}
+                value={newExpense.amount}
+                onChange={(e) => setNewExpense({...newExpense, amount: Number(e.target.value)})}
+              />
+              <Input
+                placeholder={t.expenseDescription}
+                value={newExpense.description}
+                onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
+              />
+              <Button
+                onClick={handleAddExpense}
+                disabled={!newExpense.title || newExpense.amount <= 0}
+                className="w-full"
+              >
+                {editingExpense ? t.save : t.add}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </AccessCheck>
   );

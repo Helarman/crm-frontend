@@ -772,7 +772,7 @@ const DiscountsTable = () => {
               {formData.targetType === 'CATEGORY' && (
                 <div>
                   <Label className="mb-2">{t.categories}</Label>
-                  <SearchableSelect
+                  <Select
                     options={categories?.map(c => ({ id: c.id, label: c.title })) || []}
                     value={formData.categoryIds || []}
                     onChange={(ids) => {

@@ -86,7 +86,27 @@ function redirectToLogin() {
   }
 }
 
-// Интерфейсы
+interface ShiftExpense {
+  id: string;
+  title: string;
+  amount: number;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CreateShiftExpenseDto {
+  title: string;
+  amount: number;
+  description?: string;
+}
+
+interface UpdateShiftExpenseDto {
+  title?: string;
+  amount?: number;
+  description?: string;
+}
+
 interface Shift {
   id: string;
   name: string;
@@ -257,4 +277,34 @@ export const ShiftService = {
   async getCompletedShifts(): Promise<Shift[]> {
     return this.getAllShifts({ status: 'COMPLETED' }).then(res => res.data);
   },
+
+    // Добавить расход к смене
+  async addExpenseToShift(shiftId: string, dto: CreateShiftExpenseDto): Promise<ShiftExpense> {
+    const { data } = await api.post(`/shifts/${shiftId}/expenses`, dto);
+    return data;
+  },
+
+  // Получить расходы смены
+  async getShiftExpenses(shiftId: string): Promise<ShiftExpense[]> {
+    const { data } = await api.get(`/shifts/${shiftId}/expenses`);
+    return data;
+  },
+
+  // Удалить расход
+  async removeExpense(expenseId: string): Promise<void> {
+    await api.delete(`/shifts/expenses/${expenseId}`);
+  },
+
+  // Обновить расход
+  async updateExpense(expenseId: string, dto: UpdateShiftExpenseDto): Promise<ShiftExpense> {
+    const { data } = await api.put(`/shifts/expenses/${expenseId}`, dto);
+    return data;
+  },
+
+  // Получить общую сумму расходов смены
+  async getShiftTotalExpenses(shiftId: string): Promise<number> {
+    const expenses = await this.getShiftExpenses(shiftId);
+    return expenses.reduce((total, expense) => total + expense.amount, 0);
+  }
+  
 };

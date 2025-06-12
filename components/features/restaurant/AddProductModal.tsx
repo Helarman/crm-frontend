@@ -1,16 +1,15 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Popover, PopoverTrigger, PopoverContent  } from '@/components/ui/popover'
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList} from "@/components/ui/command"
 import { Input } from '@/components/ui/input';
 import { useCategories } from '@/lib/hooks/useCategories';
 import { useProducts } from '@/lib/hooks/useProducts';
 import { RestaurantService } from '@/lib/api/restaurant.service';
 import { toast } from 'sonner';
 import { useLanguageStore } from '@/lib/stores/language-store';
-import { ChevronDown, Check } from 'lucide-react';
+import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from "@/lib/utils";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 
 interface Product {
   id: string;
@@ -39,15 +38,16 @@ export function AddProductModal({
   const [open, setOpen] = useState(false);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
   const [selectedProductId, setSelectedProductId] = useState<string>('');
-  const [isPopoverOpen, setIsPopoverOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [categorySearch, setCategorySearch] = useState('');
+  const [productSearch, setProductSearch] = useState('');
+  const [isCategorySelectOpen, setIsCategorySelectOpen] = useState(false);
+  const [isProductSelectOpen, setIsProductSelectOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { language } = useLanguageStore();
 
   // Загрузка данных
   const { data: categories = [] } = useCategories();
   const { data: allProducts = [], error: productsError } = useProducts(selectedCategoryId);
-
 
   // Переводы
   const translations = {
@@ -56,8 +56,10 @@ export function AddProductModal({
       categoryLabel: 'Категория',
       productLabel: 'Продукт',
       searchPlaceholder: 'Поиск продуктов...',
+      categorySearchPlaceholder: 'Поиск категорий...',
       availableCount: (count: number) => `(${count} доступно)`,
       noProducts: 'Нет доступных продуктов',
+      noCategories: 'Нет доступных категорий',
       allAdded: 'Все продукты этой категории уже добавлены',
       selectCategory: 'Выберите категорию',
       selectProduct: 'Выберите продукт',
@@ -74,8 +76,10 @@ export function AddProductModal({
       categoryLabel: 'კატეგორია',
       productLabel: 'პროდუქტი',
       searchPlaceholder: 'პროდუქტების ძებნა...',
+      categorySearchPlaceholder: 'კატეგორიების ძებნა...',
       availableCount: (count: number) => `(${count} ხელმისაწვდომია)`,
       noProducts: 'პროდუქტები არ არის',
+      noCategories: 'კატეგორიები არ არის',
       allAdded: 'ამ კატეგორიის ყველა პროდუქტი უკვე დამატებულია',
       selectCategory: 'აირჩიეთ კატეგორია',
       selectProduct: 'აირჩიეთ პროდუქტი',
@@ -95,31 +99,37 @@ export function AddProductModal({
     if (!selectedCategoryId || !Array.isArray(allProducts.products)) return [];
     
     const restaurantProductIds = restaurantProducts.map(p => p.id);
-    return allProducts.products.filter((product : Product) => {
-      const nameMatches = product.title?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false;
+    return allProducts.products.filter((product: Product) => {
+      const nameMatches = product.title?.toLowerCase().includes(productSearch.toLowerCase()) ?? false;
       return !restaurantProductIds.includes(product.id) && nameMatches;
     });
-  }, [allProducts, restaurantProducts, searchTerm, selectedCategoryId]);
+  }, [allProducts, restaurantProducts, productSearch, selectedCategoryId]);
+
+  const filteredCategories = useMemo(() => {
+    return categories.filter((category : Category) => 
+      category.title.toLowerCase().includes(categorySearch.toLowerCase())
+    );
+  }, [categories, categorySearch]);
 
   const selectedProduct = useMemo(
-    () => availableProducts.find((p : Product) => p.id === selectedProductId),
+    () => availableProducts.find((p: Product) => p.id === selectedProductId),
     [availableProducts, selectedProductId]
   );
 
+  const selectedCategory = useMemo(
+    () => categories.find((c: Category) => c.id === selectedCategoryId),
+    [categories, selectedCategoryId]
+  );
 
   useEffect(() => {
     if (!open) {
       setSelectedCategoryId('');
       setSelectedProductId('');
-      setSearchTerm('');
+      setProductSearch('');
+      setCategorySearch('');
     }
   }, [open]);
 
-  const handleSelect = (productId : string) =>{
-    setSelectedProductId(productId)
-    setIsPopoverOpen(false)
-  }
-  
   const handleAddProduct = async () => {
     if (!selectedProductId) {
       toast.error(t.selectError);
@@ -153,30 +163,73 @@ export function AddProductModal({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Категория */}
           <div>
             <label className="block text-sm font-medium mb-1">
               {t.categoryLabel}
             </label>
             <div className="relative">
-              <select
-                className="w-full p-2 border rounded appearance-auto bg-white"
-                value={selectedCategoryId}
-                onChange={(e) => {
-                  setSelectedCategoryId(e.target.value);
-                  setSelectedProductId('');
-                }}
+              <Button
+                variant="outline"
+                role="combobox"
+                aria-expanded={isCategorySelectOpen}
+                className="w-full justify-between"
+                onClick={() => setIsCategorySelectOpen(true)}
               >
-                <option value="">{t.selectCategory}</option>
-                {categories.map((category: Category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.title}
-                  </option>
-                ))}
-              </select>
+                {selectedCategory ? selectedCategory.title : t.selectCategory}
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
             </div>
           </div>
 
-          {/* Выбор продукта */}
+          {isCategorySelectOpen && (
+            <div 
+              className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4"
+              onClick={() => setIsCategorySelectOpen(false)}
+            >
+              <div 
+                className="bg-background rounded-lg border shadow-lg w-full max-w-md max-h-[80vh] overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Command>
+                  <CommandInput
+                    placeholder={t.categorySearchPlaceholder}
+                    value={categorySearch}
+                    onValueChange={setCategorySearch}
+                  />
+                  <CommandList>
+                    <CommandEmpty>{t.noCategories}</CommandEmpty>
+                    <CommandGroup>
+                      {filteredCategories.map((category: Category) => (
+                        <CommandItem
+                          key={category.id}
+                          value={category.title}
+                          onSelect={() => {
+                            setSelectedCategoryId(category.id);
+                            setSelectedProductId('');
+                            setIsCategorySelectOpen(false);
+                            setCategorySearch('');
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              selectedCategoryId === category.id
+                                ? "opacity-100"
+                                : "opacity-0"
+                            )}
+                          />
+                          {category.title}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </div>
+            </div>
+          )}
+
+          {/* Продукт */}
           {selectedCategoryId && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -196,65 +249,74 @@ export function AddProductModal({
                 </div>
               )}
 
-              <Popover open={isPopoverOpen} onOpenChange={setIsPopoverOpen}>
-                <PopoverTrigger asChild>
-                    <Button
-                    variant="outline"
-                    role="combobox"
-                    className={cn(
-                        "w-full justify-between",
-                        !selectedProductId && "text-muted-foreground"
-                    )}
-                    disabled={!selectedCategoryId || availableProducts.length === 0 || !!productsError}
-                    >
-                    {selectedProduct
-                        ? `${selectedProduct.title} - ${selectedProduct.price} ₽`
-                        : t.selectProduct}
-                    <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 z-[1060]">
-                    <Command onKeyDown={(e) => {
-                        if (e.key === 'Escape') {
-                        setIsPopoverOpen(false);
-                        }
-                    }}>
-                        <CommandInput
-                            placeholder={t.searchPlaceholder}
-                            value={searchTerm}
-                            onValueChange={setSearchTerm}
-                        />
+              <Button
+                variant="outline"
+                role="combobox"
+                aria-expanded={isProductSelectOpen}
+                className={cn(
+                  "w-full justify-between",
+                  !selectedProductId && "text-muted-foreground"
+                )}
+                disabled={!selectedCategoryId || availableProducts.length === 0 || !!productsError}
+                onClick={() => setIsProductSelectOpen(true)}
+              >
+                {selectedProduct
+                  ? `${selectedProduct.title} - ${selectedProduct.price} ₽`
+                  : t.selectProduct}
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+
+              {isProductSelectOpen && (
+                <div 
+                  className="fixed inset-0 z-[1050] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4"
+                  onClick={() => setIsProductSelectOpen(false)}
+                >
+                  <div 
+                    className="bg-background rounded-lg border shadow-lg w-full max-w-md max-h-[80vh] overflow-hidden"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Command>
+                      <CommandInput
+                        placeholder={t.searchPlaceholder}
+                        value={productSearch}
+                        onValueChange={setProductSearch}
+                      />
+                      <CommandList>
                         <CommandEmpty>
-                            {productsError
+                          {productsError
                             ? t.loadError
-                            : allProducts.length === 0
-                                ? t.noProducts
-                                : t.allAdded}
+                            : availableProducts.length === 0
+                              ? t.noProducts
+                              : t.allAdded}
                         </CommandEmpty>
                         <CommandGroup>
-                            {availableProducts.map((product: Product) => (
+                          {availableProducts.map((product: Product) => (
                             <CommandItem
-                                value={`${product.title} ${product.price}`}
-                                key={product.id}
-                                onSelect={() => {
-                                handleSelect(product.id); // Обновляем только ID
-                                }}
+                              key={product.id}
+                              value={`${product.title} ${product.price}`}
+                              onSelect={() => {
+                                setSelectedProductId(product.id);
+                                setIsProductSelectOpen(false);
+                                setProductSearch('');
+                              }}
                             >
-                                <Check
+                              <Check
                                 className={cn(
-                                    "mr-2 h-4 w-4",
-                                    selectedProductId === product.id
+                                  "mr-2 h-4 w-4",
+                                  selectedProductId === product.id
                                     ? "opacity-100"
                                     : "opacity-0"
                                 )}
-                                />
-                                {product.title} - {product.price} ₽
+                              />
+                              {product.title} - {product.price} ₽
                             </CommandItem>
-                            ))}
+                          ))}
                         </CommandGroup>
+                      </CommandList>
                     </Command>
-                </PopoverContent>
-                </Popover>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

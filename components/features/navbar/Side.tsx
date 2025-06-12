@@ -34,7 +34,8 @@ import {
   Truck,
   Package,
   PersonStanding,
-  Hexagon
+  Hexagon,
+  Network
 } from 'lucide-react'
 
 const ROLE_COLORS = {
@@ -152,6 +153,12 @@ export default function Side() {
         icon: <Store className="w-7 h-7" />,
         roles: ['MANAGER', 'SUPERVISOR']
       },
+         { 
+        name: t.networks, 
+        href: "/networks", 
+        icon: <Network className="w-7 h-7" />,
+        roles: ['MANAGER', 'SUPERVISOR']
+      },
       { 
         name: t.menu, 
         href: "/products", 
@@ -256,7 +263,7 @@ export default function Side() {
               )
             })}
 
-            {inactiveItems.length > 0 && (
+            {/*inactiveItems.length > 0 && (
               <li className="border-t border-gray-200 dark:border-gray-700 my-2"></li>
             )}
 
@@ -276,7 +283,7 @@ export default function Side() {
                   )}
                 </div>
               </li>
-            ))}
+            ))*/}
           </ul>
         </nav>
       

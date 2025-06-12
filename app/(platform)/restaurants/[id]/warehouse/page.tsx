@@ -223,7 +223,7 @@ export default function WarehousePage() {
                     value={newItem.unit}
                     onValueChange={(value) => setNewItem({ ...newItem, unit: value })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className='w-full'>
                       <SelectValue placeholder={t('unit')} />
                     </SelectTrigger>
                     <SelectContent>
@@ -249,7 +249,7 @@ export default function WarehousePage() {
                     value={newItem.storageLocationId}
                     onValueChange={(value) => setNewItem({ ...newItem, storageLocationId: value })}
                   >
-                    <SelectTrigger >
+                    <SelectTrigger className='w-full' >
                       <SelectValue placeholder={t('filterByLocation')} />
                     </SelectTrigger>
                     <SelectContent>

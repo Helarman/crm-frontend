@@ -1,20 +1,22 @@
+'use client'
+
 import { useForm } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { UploadCloud, X, Languages } from 'lucide-react';
 import { useLanguageStore } from '@/lib/stores/language-store';
+import { NetworkService } from '@/lib/api/network.service';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 // Динамическая загрузка компонента карты
 const MapWithNoSSR = dynamic(
   () => import('@/components/ui/map').then((mod) => mod.Map),
   { ssr: false }
 );
-
-
 
 export function CreateRestaurantForm({ 
   onSubmit, 
@@ -25,15 +27,18 @@ export function CreateRestaurantForm({
 }) {
   const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | undefined>(undefined);
   const [isUploading, setIsUploading] = useState(false);
+  const [networks, setNetworks] = useState<any[]>([]);
+  const [isLoadingNetworks, setIsLoadingNetworks] = useState(true);
   const { language } = useLanguageStore();
 
-  const { register, handleSubmit, setValue, formState: { errors } } = useForm({
+  const { register, handleSubmit, setValue, formState: { errors }, watch } = useForm({
     defaultValues: {
       title: '',
       address: '',
       description: '',
       latitude: '',
-      longitude: ''
+      longitude: '',
+      networkId: ''
     }
   });
 
@@ -49,7 +54,9 @@ export function CreateRestaurantForm({
       create: 'Создать',
       uploading: 'Загрузка...',
       requiredField: 'Обязательное поле',
-      language: 'Язык'
+      language: 'Язык',
+      selectNetwork: 'Выберите сеть *',
+      noNetworks: 'Нет доступных сетей'
     },
     en: {
       title: 'Name *',
@@ -62,7 +69,9 @@ export function CreateRestaurantForm({
       create: 'Create',
       uploading: 'Uploading...',
       requiredField: 'Required field',
-      language: 'Language'
+      language: 'Language',
+      selectNetwork: 'Select network *',
+      noNetworks: 'No networks available'
     },
     ka: {
       title: 'სახელი *',
@@ -75,11 +84,28 @@ export function CreateRestaurantForm({
       create: 'შექმნა',
       uploading: 'იტვირთება...',
       requiredField: 'სავალდებულო ველი',
-      language: 'ენა'
+      language: 'ენა',
+      selectNetwork: 'აირჩიეთ ქსელი *',
+      noNetworks: 'ხელმისაწვდომი ქსელი არ არის'
     }
   };
 
   const t = translations[language];
+
+  useEffect(() => {
+    const fetchNetworks = async () => {
+      try {
+        const data = await NetworkService.getAll();
+        setNetworks(data);
+      } catch (error) {
+        console.error('Error fetching networks:', error);
+      } finally {
+        setIsLoadingNetworks(false);
+      }
+    };
+
+    fetchNetworks();
+  }, []);
 
   const handleMapClick = (lat: number, lng: number) => {
     setCoordinates({ lat, lng });
@@ -97,7 +123,8 @@ export function CreateRestaurantForm({
           'https://example.com/photo2.jpg'
         ],
         latitude: coordinates?.lat.toString(),
-        longitude: coordinates?.lng.toString()
+        longitude: coordinates?.lng.toString(),
+        networkId: data.networkId
       });
     } catch (error) {
       console.error('Ошибка при создании ресторана:', error);
@@ -108,7 +135,38 @@ export function CreateRestaurantForm({
 
   return (
     <form onSubmit={onSubmitHandler} className="space-y-4">
-      {/* Form Fields */}
+      <div>
+        <Label htmlFor="networkId" className="mb-4">{t.selectNetwork}</Label>
+        {isLoadingNetworks ? (
+          <div className="h-10 w-full rounded-md border bg-muted animate-pulse" />
+        ) : (
+          <Select
+            onValueChange={(value) => setValue('networkId', value)}
+            value={watch('networkId')}
+          >
+            <SelectTrigger className='w-full'>
+              <SelectValue placeholder={t.selectNetwork} />
+            </SelectTrigger>
+            <SelectContent>
+              {networks.length > 0 ? (
+                networks.map((network) => (
+                  <SelectItem key={network.id} value={network.id}>
+                    {network.name}
+                  </SelectItem>
+                ))
+              ) : (
+                <div className="text-sm text-muted-foreground p-2">
+                  {t.noNetworks}
+                </div>
+              )}
+            </SelectContent>
+          </Select>
+        )}
+        {errors.networkId && (
+          <p className="text-red-500 text-sm">{errors.networkId.message}</p>
+        )}
+      </div>
+
       <div>
         <Label htmlFor="title" className="mb-4">{t.title}</Label>
         <Input
@@ -159,7 +217,7 @@ export function CreateRestaurantForm({
         <Button variant="outline" type="button" onClick={onCancel}>
           {t.cancel}
         </Button>
-        <Button type="submit" disabled={isUploading}>
+        <Button type="submit" disabled={isUploading || !watch('networkId')}>
           {isUploading ? t.uploading : t.create}
         </Button>
       </div>

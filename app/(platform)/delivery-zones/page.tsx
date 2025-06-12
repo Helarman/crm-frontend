@@ -159,8 +159,8 @@ export default function DeliveryZonePage() {
           setSelectedRestaurantId(user.restaurant[0].id);
         }
       } catch (error) {
-        toast.error(t.errors.loadError);
-        console.error(error);
+        //toast.error(t.errors.loadError);
+        //console.error(error);
       } finally {
         setLoading(false);
       }
@@ -264,15 +264,12 @@ export default function DeliveryZonePage() {
   };
 
   const handlePolygonChange = useCallback((polygon: string | null) => {
+    console.log('Polygon changed:', polygon); // 🚨 Логируем
     setFormData(prev => ({
       ...prev,
       polygon: polygon || '',
     }));
   }, []);
-
-  const getRestaurantName = (id: string) => {
-    return user?.restaurant?.find(( r : Restaurant) => r.id === id)?.title || id;
-  };
 
   return (
     <div>

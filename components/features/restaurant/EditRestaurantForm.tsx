@@ -7,7 +7,8 @@ import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useLanguageStore } from '@/lib/stores/language-store';
-
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { NetworkService } from '@/lib/api/network.service';
 
 const MapWithNoSSR = dynamic(
   () => import('@/components/ui/map').then((mod) => mod.Map),
@@ -20,6 +21,7 @@ interface RestaurantFormValues {
   description: string;
   latitude: string;
   longitude: string;
+  networkId: string;
   images?: string[];
 }
 
@@ -36,9 +38,11 @@ export function EditRestaurantForm({
 }: EditRestaurantFormProps) {
   const [coordinates, setCoordinates] = useState<{ lat: number; lng: number }>({ lat: 55.751244, lng: 37.618423 });
   const [isUploading, setIsUploading] = useState(false);
+  const [networks, setNetworks] = useState<any[]>([]);
+  const [isLoadingNetworks, setIsLoadingNetworks] = useState(true);
   const { language, setLanguage } = useLanguageStore();
 
-  const { register, handleSubmit, setValue, formState: { errors, isDirty } } = useForm<RestaurantFormValues>({
+  const { register, handleSubmit, setValue, formState: { errors, isDirty }, watch } = useForm<RestaurantFormValues>({
     defaultValues: initialValues
   });
 
@@ -54,7 +58,9 @@ export function EditRestaurantForm({
       save: 'Сохранить изменения',
       saving: 'Сохранение...',
       requiredField: 'Обязательное поле',
-      language: 'Язык'
+      language: 'Язык',
+      selectNetwork: 'Выберите сеть *',
+      noNetworks: 'Нет доступных сетей'
     },
     en: {
       title: 'Name *',
@@ -67,7 +73,9 @@ export function EditRestaurantForm({
       save: 'Save changes',
       saving: 'Saving...',
       requiredField: 'Required field',
-      language: 'Language'
+      language: 'Language',
+      selectNetwork: 'Select network *',
+      noNetworks: 'No networks available'
     },
     ka: {
       title: 'სახელი *',
@@ -80,13 +88,28 @@ export function EditRestaurantForm({
       save: 'ცვლილებების შენახვა',
       saving: 'ინახება...',
       requiredField: 'სავალდებულო ველი',
-      language: 'ენა'
+      language: 'ენა',
+      selectNetwork: 'აირჩიეთ ქსელი *',
+      noNetworks: 'ხელმისაწვდომი ქსელი არ არის'
     }
   };
 
   const t = translations[language];
 
   useEffect(() => {
+    const fetchNetworks = async () => {
+      try {
+        const data = await NetworkService.getAll();
+        setNetworks(data);
+      } catch (error) {
+        console.error('Error fetching networks:', error);
+      } finally {
+        setIsLoadingNetworks(false);
+      }
+    };
+
+    fetchNetworks();
+
     if (initialValues.latitude && initialValues.longitude) {
       setCoordinates({
         lat: parseFloat(initialValues.latitude),
@@ -102,24 +125,56 @@ export function EditRestaurantForm({
   };
 
   const onSubmitHandler = handleSubmit(async (data) => {
-  setIsUploading(true);
-  try {
-    await onSubmit({
-      ...data,
-      latitude: coordinates?.lat.toString(),
-      longitude: coordinates?.lng.toString(),
-      // Не передаём images, если они не меняются
-      // Не передаём ничего про пользователей
-    });
-  } catch (error) {
-    console.error('Ошибка при обновлении ресторана:', error);
-  } finally {
-    setIsUploading(false);
-  }
-});
+    setIsUploading(true);
+    try {
+      await onSubmit({
+        ...data,
+        latitude: coordinates?.lat.toString(),
+        longitude: coordinates?.lng.toString(),
+        networkId: data.networkId
+      });
+    } catch (error) {
+      console.error('Ошибка при обновлении ресторана:', error);
+    } finally {
+      setIsUploading(false);
+    }
+  });
 
   return (
     <form onSubmit={onSubmitHandler} className="space-y-4">
+      {/* Network Selection */}
+      <div>
+        <Label htmlFor="networkId" className="mb-4">{t.selectNetwork}</Label>
+        {isLoadingNetworks ? (
+          <div className="h-10 w-full rounded-md border bg-muted animate-pulse" />
+        ) : (
+          <Select
+            onValueChange={(value) => setValue('networkId', value, { shouldDirty: true })}
+            value={watch('networkId')}
+          >
+            <SelectTrigger className='w-full'>
+              <SelectValue placeholder={t.selectNetwork} />
+            </SelectTrigger>
+            <SelectContent>
+              {networks.length > 0 ? (
+                networks.map((network) => (
+                  <SelectItem key={network.id} value={network.id}>
+                    {network.name}
+                  </SelectItem>
+                ))
+              ) : (
+                <div className="text-sm text-muted-foreground p-2">
+                  {t.noNetworks}
+                </div>
+              )}
+            </SelectContent>
+          </Select>
+        )}
+        {errors.networkId && (
+          <p className="text-red-500 text-sm">{errors.networkId.message}</p>
+        )}
+      </div>
+
       {/* Form Fields */}
       <div>
         <Label htmlFor="title" className="mb-4">{t.title}</Label>

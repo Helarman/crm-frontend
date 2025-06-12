@@ -49,7 +49,8 @@ export const navTranslations = {
       notAvailable: "недоступно для вашей роли",
       version: "Версия",
       warehouse: "Склад",
-      customers: "Клиенты"
+      customers: "Клиенты",
+      networks: "Сети"
     },
     ka: {
       home: "მთავარი",
@@ -71,6 +72,7 @@ export const navTranslations = {
       notAvailable: "მიუწვდომელია თქვენი როლისთვის",
       version: "ვერსია",
       warehouse: "საწყობი",
-      customers: "კლიენტებს"
+      customers: "კლიენტებს",
+      networks: ""
     }
   } as const;

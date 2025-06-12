@@ -94,7 +94,7 @@ function redirectToLogin() {
   }
 }
 
-interface CreateRestaurantDto {
+export interface CreateRestaurantDto {
   name: string;
   description?: string;
   address: string;
@@ -120,7 +120,7 @@ export const RestaurantService = {
     return data;
   },
 
-  create: async (dto: CreateRestaurantDto) => {
+  create: async (dto: CreateRestaurantDto & { networkId: string }) => {
     const { data } = await api.post('/restaurants', dto);
     return data;
   },
@@ -145,19 +145,16 @@ export const RestaurantService = {
     const { data } = await api.post(`/restaurants/${restaurantId}/users`, dto);
     return data;
   },
+
   addUserByEmail: async (restaurantId: string, dto: { email: string }) => {
-    // First get the user by email
     const user = await UserService.getByEmail(dto.email);
     
     if (!user) {
       throw new Error('User not found');
     }
     
-    // Then add the user to the restaurant using the existing addUser function
     const { data } = await api.post(`/restaurants/${restaurantId}/users`, { 
       userId: user.id,
-      // Include any other required fields from AddUserDto
-      // For example: role, permissions, etc.
     });
     
     return data;
