@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -12,26 +12,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-} from "@/components/ui/command"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Check, ChevronsUpDown, X, Loader2, Trash2 } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { Check, Loader2, Trash2 } from "lucide-react"
 import { Restaurant } from "./StaffTable"
 import { useLanguageStore } from '@/lib/stores/language-store'
-import { WorkshopDto, WorkshopService } from '@/lib/api/workshop.service'
+import { WorkshopDto } from '@/lib/api/workshop.service'
 import { toast } from 'sonner'
+import SearchableSelect from '../menu/product/SearchableSelect'
 
 enum UserRoles {
   NONE = "NONE",
@@ -81,6 +69,10 @@ const translations = {
     selectRestaurants: "Выберите рестораны",
     searchRestaurants: "Поиск ресторанов...",
     noRestaurants: "Рестораны не найдены",
+    workshops: "Цехи",
+    selectWorkshops: "Выберите цехи",
+    searchWorkshops: "Поиск цехов...",
+    noWorkshops: "Цехи не найдены",
     save: "Сохранить",
     cancel: "Отмена",
     delete: "Удалить",
@@ -109,6 +101,10 @@ const translations = {
     selectRestaurants: "აირჩიეთ რესტორანები",
     searchRestaurants: "რესტორანების ძებნა...",
     noRestaurants: "რესტორანები ვერ მოიძებნა",
+    workshops: "სახელოსნოები",
+    selectWorkshops: "აირჩიეთ სახელოსნოები",
+    searchWorkshops: "სახელოსნოების ძებნა...",
+    noWorkshops: "სახელოსნოები ვერ მოიძებნა",
     save: "შენახვა",
     cancel: "გაუქმება",
     delete: "წაშლა",
@@ -150,30 +146,10 @@ export function EditStaffDialog({
   const [selectedWorkshops, setSelectedWorkshops] = useState<string[]>(
     staffMember.workshops?.map(w => w.workshopId) || []
   )
-  const [restaurantsOpen, setRestaurantsOpen] = useState(false)
-  const [workshopsOpen, setWorkshopsOpen] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
 
   const allRoles = Object.values(UserRoles)
   const isKitchenRole = selectedRole === UserRoles.COOK || selectedRole === UserRoles.CHEF
-
-  const toggleRestaurant = (restaurantId: string) => {
-    setSelectedRestaurants(prev =>
-      prev.includes(restaurantId)
-        ? prev.filter(id => id !== restaurantId)
-        : [...prev, restaurantId]
-    )
-    setRestaurantsOpen(false)
-  }
-
-  const toggleWorkshop = (workshopId: string) => {
-    setSelectedWorkshops(prev =>
-      prev.includes(workshopId)
-        ? prev.filter(id => id !== workshopId)
-        : [...prev, workshopId]
-    )
-    setWorkshopsOpen(false)
-  }
 
   const handleDelete = async () => {
     if (!deleteConfirm) {
@@ -187,67 +163,32 @@ export function EditStaffDialog({
   }
 
   const handleSave = async () => {
-  try {
-    // 1. Сохраняем основную информацию о сотруднике
-    await onSave(
-      selectedRole,
-      selectedRestaurants,
-      isKitchenRole ? selectedWorkshops : undefined
-    );
-
-    // 2. Обновляем привязку к цехам
-    if (isKitchenRole) {
-      // Получаем текущие цехи сотрудника
-      const currentWorkshops = staffMember.workshops?.map(w => w.workshopId) || [];
+    try {
+      await onSave(
+        selectedRole,
+        selectedRestaurants,
+        isKitchenRole ? selectedWorkshops : undefined
+      )
       
-      // Определяем цехи для добавления и удаления
-      const workshopsToAdd = selectedWorkshops.filter(
-        id => !currentWorkshops.includes(id)
-      );
-      const workshopsToRemove = currentWorkshops.filter(
-        id => !selectedWorkshops.includes(id)
-      );
-
-      // Добавляем пользователя в новые цехи
-      if (workshopsToAdd.length > 0) {
-        await Promise.all(
-          workshopsToAdd.map(workshopId => 
-            WorkshopService.addUsers(workshopId, [staffMember.id])
-          )
-        );
-      }
-
-      // Удаляем пользователя из старых цехов
-      if (workshopsToRemove.length > 0) {
-        await Promise.all(
-          workshopsToRemove.map(workshopId => 
-            WorkshopService.removeUsers(workshopId, [staffMember.id])
-          )
-        );
-      }
+      toast.success(
+        language === 'ru'
+          ? 'Данные сотрудника успешно обновлены'
+          : 'თანამშრომლის მონაცემები წარმატებით განახლდა'
+      )
+    } catch (error) {
+      console.error('Failed to update staff member:', error)
+      toast.error(
+        language === 'ru'
+          ? 'Ошибка при обновлении данных сотрудника'
+          : 'შეცდომა თანამშრომლის მონაცემების განახლებისას'
+      )
     }
-
-    toast.success(
-      language === 'ru'
-        ? 'Данные сотрудника успешно обновлены'
-        : 'თანამშრომლის მონაცემები წარმატებით განახლდა'
-    );
-  } catch (error) {
-    console.error('Failed to update staff member:', error);
-    toast.error(
-      language === 'ru'
-        ? 'Ошибка при обновлении данных сотрудника'
-        : 'შეცდომა თანამშრომლის მონაცემების განახლებისას'
-    );
   }
-};
 
   return (
     <Dialog open={open} onOpenChange={(open) => {
       if (!open) {
         setDeleteConfirm(false)
-        setWorkshopsOpen(false)
-        setRestaurantsOpen(false)
       }
       onOpenChange(open)
     }}>
@@ -255,9 +196,8 @@ export function EditStaffDialog({
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold">{t.editStaff}</DialogTitle>
         </DialogHeader>
-
         <div className="grid gap-4 py-4">
-          {/* ... (оставляем поля name и email без изменений) ... */}
+          {/* Name and Email fields would go here */}
 
           <div className="grid grid-cols-4 items-center gap-4">
             <label className="text-sm font-medium text-right">{t.role}:</label>
@@ -266,7 +206,6 @@ export function EditStaffDialog({
                 value={selectedRole}
                 onValueChange={(value) => {
                   setSelectedRole(value as UserRoles)
-                  // Сбрасываем цехи при смене роли, если это не кухонная роль
                   if (value !== UserRoles.COOK && value !== UserRoles.CHEF) {
                     setSelectedWorkshops([])
                   }
@@ -290,145 +229,36 @@ export function EditStaffDialog({
             </div>
           </div>
 
-          {/* Поле выбора ресторанов */}
+          {/* Restaurant selection */}
           <div className="grid grid-cols-4 items-center gap-4">
             <label className="text-sm font-medium text-right">{t.restaurants}:</label>
-            <div className="col-span-3 space-y-2">
-              <Popover open={restaurantsOpen} onOpenChange={setRestaurantsOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={restaurantsOpen}
-                    className="w-full justify-between"
-                  >
-                    {t.selectRestaurants}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[400px] p-0">
-                  <Command>
-                    <CommandInput placeholder={t.searchRestaurants} />
-                    <CommandEmpty>{t.noRestaurants}</CommandEmpty>
-                    <CommandGroup className="max-h-[200px] overflow-y-auto">
-                      {restaurants.map((restaurant) => (
-                        <CommandItem
-                          key={restaurant.id}
-                          value={restaurant.id}
-                          onSelect={() => toggleRestaurant(restaurant.id)}
-                        >
-                          <Check
-                            className={cn(
-                              "mr-2 h-4 w-4",
-                              selectedRestaurants.includes(restaurant.id)
-                                ? "opacity-100"
-                                : "opacity-0"
-                            )}
-                          />
-                          {restaurant.title}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </Command>
-                </PopoverContent>
-              </Popover>
-
-              {selectedRestaurants.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {selectedRestaurants.map(restaurantId => {
-                    const restaurant = restaurants.find(r => r.id === restaurantId)
-                    return (
-                      <Badge
-                        key={restaurantId}
-                        variant="outline"
-                        className="px-3 py-1 text-sm"
-                      >
-                        {restaurant?.title}
-                        <button
-                          onClick={() => toggleRestaurant(restaurantId)}
-                          className="ml-2 rounded-full p-0.5 hover:bg-muted"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    )
-                  })}
-                </div>
-              )}
+            <div className="col-span-3">
+              <SearchableSelect
+                options={restaurants.map(r => ({ id: r.id, label: r.title }))}
+                value={selectedRestaurants}
+                onChange={setSelectedRestaurants}
+                placeholder={t.selectRestaurants}
+                searchPlaceholder={t.searchRestaurants}
+                emptyText={t.noRestaurants}
+                multiple={true}
+              />
             </div>
           </div>
 
-          {/* Поле выбора цехов (только для кухонных ролей) */}
+          {/* Workshop selection (only for kitchen roles) */}
           {isKitchenRole && (
             <div className="grid grid-cols-4 items-center gap-4">
-              {}
-              <label className="text-sm font-medium text-right">
-                {language === 'ru' ? 'Цехи' : 'სახელოსნოები'}:
-              </label>
-              <div className="col-span-3 space-y-2">
-                <Popover open={workshopsOpen} onOpenChange={setWorkshopsOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={workshopsOpen}
-                      className="w-full justify-between"
-                    >
-                      {language === 'ru' ? 'Выберите цехи' : 'აირჩიეთ სახელოსნოები'}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[400px] p-0">
-                    <Command>
-                      <CommandInput placeholder={language === 'ru' ? 'Поиск цехов...' : 'სახელოსნოების ძებნა...'} />
-                      <CommandEmpty>
-                        {language === 'ru' ? 'Цехи не найдены' : 'სახელოსნოები ვერ მოიძებნა'}
-                      </CommandEmpty>
-                      <CommandGroup className="max-h-[200px] overflow-y-auto">
-                        {workshops.map((workshop) => (
-                          <CommandItem
-                            key={workshop.id}
-                            value={workshop.id}
-                            onSelect={() => toggleWorkshop(workshop.id)}
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                selectedWorkshops.includes(workshop.id)
-                                  ? "opacity-100"
-                                  : "opacity-0"
-                              )}
-                            />
-                            {workshop.name}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-                  
-                {selectedWorkshops.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {selectedWorkshops.map(workshopId => {
-                      const workshop = workshops.find(w => w.id === workshopId)
-                      return (
-                        <Badge
-                          key={workshopId}
-                          variant="outline"
-                          className="px-3 py-1 text-sm"
-                        >
-                          {workshop?.name}
-                          <button
-                            onClick={() => toggleWorkshop(workshopId)}
-                            className="ml-2 rounded-full p-0.5 hover:bg-muted"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </Badge>
-                      )
-                    })}
-                  </div>
-                )}
+              <label className="text-sm font-medium text-right">{t.workshops}:</label>
+              <div className="col-span-3">
+                <SearchableSelect
+                  options={workshops.map(w => ({ id: w.id, label: w.name }))}
+                  value={selectedWorkshops}
+                  onChange={setSelectedWorkshops}
+                  placeholder={t.selectWorkshops}
+                  searchPlaceholder={t.searchWorkshops}
+                  emptyText={t.noWorkshops}
+                  multiple={true}
+                />
               </div>
             </div>
           )}

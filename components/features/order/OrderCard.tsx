@@ -1,10 +1,8 @@
 'use client'
 
-import { useState, useRef, useEffect, MouseEvent } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { OrderHeader } from './OrderHeader'
-import { OrderItemsList } from './OrderItemsList'
 import { OrderCustomerInfo } from './OrderCustomerInfo'
-import { OrderActions } from './OrderActions'
 import { OrderPaymentStatus } from './OrderPaymentStatus'
 import { Card } from '@/components/ui/card'
 import { OrderResponse, OrderItemStatus, OrderService } from '@/lib/api/order.service'
@@ -13,18 +11,18 @@ import { Language, useLanguageStore } from '@/lib/stores/language-store'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { Button } from '@/components/ui/button'
-import { ChevronDown, ChevronUp, Check, Play, Pause, Clock, Utensils, Package, AlertCircle } from 'lucide-react'
+import { ChevronDown, Check, Clock, Package, AlertCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { WarehouseService } from '@/lib/api/warehouse.service'
-import { Skeleton } from '@/components/ui/skeleton'
-import { LoadingSpinner } from '@/components/ui/loading-spinner'
-import { Payment } from '@/lib/api/payment.service'
+import { motion, AnimatePresence } from 'framer-motion'
+import { OrderItem } from '@/lib/types/order'
 
 type OrderItemWithStatus = {
   id: string
+  status: string
   product: {
     title: string
     workshops: {
@@ -49,6 +47,7 @@ type OrderItemWithStatus = {
     id: string
     name: string
   } | null
+  isReordered?: boolean
 }
 
 type WriteOffItem = {
@@ -66,7 +65,6 @@ interface Ingredient {
     unit: string;
   };
 }
-
 
 const statusColors = {
   CREATED: {
@@ -132,6 +130,13 @@ const getStatusText = (status: OrderItemStatus, language: string): string => {
   return translations[language as 'ru' | 'ka'][status] || status
 }
 
+type WarningMessage = {
+  id: string;
+  text: string;
+  icon: React.ReactNode;
+  color: string;
+};
+
 export function OrderCard({ order, variant = 'default', onStatusChange, className }: {
   order: OrderResponse
   variant?: 'default' | 'kitchen' | 'delivery'
@@ -151,99 +156,182 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
   const [writeOffItems, setWriteOffItems] = useState<WriteOffItem[]>([])
   const [isWritingOff, setIsWritingOff] = useState(false)
   const [items, setItems] = useState<OrderItemWithStatus[]>([])
+  const [currentWarningIndex, setCurrentWarningIndex] = useState(0)
 
-   const orderId = order.id;
+  const orderId = order.id;
 
-   const translations = {
-      ru: {
-        back: "Назад к списку заказов",
-        orderComposition: "Состав заказа",
-        noDishes: "Нет блюд для приготовления",
-        additives: "Добавки",
-        comment: "Комментарий",
-        orderInfo: "Информация о заказе",
-        orderNumber: "Номер заказа",
-        date: "Дата",
-        orderStatus: "Статус заказа",
-        startCooking: "В работу",
-        partiallyDone: "Частично готово",
-        pause: "Пауза",
-        ready: "Готово",
-        writeOffTitle: "Списание ингредиентов",
-        writeOffText: "Будут списаны следующие ингредиенты:",
-        cancel: "Отмена",
-        confirmWriteOff: "Подтвердить списание",
-        writingOff: "Списание...",
-        statusUpdated: "Статус обновлён",
-        writeOffSuccess: "Ингредиенты списаны, статус обновлён",
-        writeOffError: "Ошибка при списании ингредиентов",
-        statusUpdateError: "Ошибка обновления статуса",
-        loadError: "Не удалось загрузить заказ",
-        unknownError: "Неизвестная ошибка",
-        orderNotFound: "Заказ не найден",
-        ingredientsError: "Не удалось получить информацию об ингредиентах",
-        created: "Создан",
-        inProgress: "В процессе",
-        partiallyDoneStatus: "Частично готов",
-        paused: "На паузе",
-        completed: "Готов",
-        cancelled: "Отменен",
-        refunded: "Возвращен",
-        assignedTo: "Ответственный",
-        you: "Вы",
-        currentStatus: "Текущий статус",
-        loading: "Загрузка..",
-        deliveryAddress: "Адрес доставки",
-        openInMap: "Открыть в картах"
-      },
-      ka: {
-        back: "უკან შეკვეთების სიაში",
-        orderComposition: "შეკვეთის შემადგენლობა",
-        noDishes: "მომზადებისთვის კერძები არ არის",
-        additives: "დანამატები",
-        comment: "კომენტარი",
-        orderInfo: "შეკვეთის ინფორმაცია",
-        orderNumber: "შეკვეთის ნომერი",
-        date: "თარიღი",
-        orderStatus: "შეკვეთის სტატუსი",
-        startCooking: "სამუშაოდ",
-        partiallyDone: "ნაწილობრივ მზადაა",
-        pause: "პაუზა",
-        ready: "მზადაა",
-        writeOffTitle: "ინგრედიენტების ჩამოწერა",
-        writeOffText: "შემდეგი ინგრედიენტები ჩაიწერება:",
-        cancel: "გაუქმება",
-        confirmWriteOff: "ჩამოწერის დადასტურება",
-        writingOff: "იწერება...",
-        statusUpdated: "სტატუსი განახლდა",
-        writeOffSuccess: "ინგრედიენტები ჩაიწერა, სტატუსი განახლდა",
-        writeOffError: "ინგრედიენტების ჩამოწერის შეცდომა",
-        statusUpdateError: "სტატუსის განახლების შეცდომა",
-        loadError: "შეკვეთის ჩატვირთვა ვერ მოხერხდა",
-        unknownError: "უცნობი შეცდომა",
-        orderNotFound: "შეკვეთა ვერ მოიძებნა",
-        ingredientsError: "ინგრედიენტების მონაცემების მიღება ვერ მოხერხდა",
-        created: "შექმნილი",
-        inProgress: "მუშავდება",
-        partiallyDoneStatus: "ნაწილობრივ მზადაა",
-        paused: "პაუზაზეა",
-        completed: "მზადაა",
-        cancelled: "გაუქმებული",
-        refunded: "დაბრუნებული",
-        assignedTo: "პასუხისმგებელი",
-        you: "თქვენ",
-        currentStatus: "მიმდინარე სტატუსი",
-        loading: "იტვირთება..",
-        deliveryAddress: "მიტანის მისამართი",
-        openInMap: "გახსნა რუკაზე"
-      }
-    } as const;
-  
+  // Get user's workshop IDs
+  const userWorkshopIds = user?.workshops?.map((workshop: any) => workshop.workshopId) || [];
+
+  const filteredItems = order.items.filter(item => {
+    if (item.status === OrderItemStatus.REFUNDED) return false;
+    if (item.status === OrderItemStatus.CREATED) return false;
+    if (item.status === OrderItemStatus.COMPLETED) return false;
+
+    if (userWorkshopIds.length === 0) return true;
+    
+    const itemWorkshopIds = item.product.workshops?.map((w: any) => w.workshop.id) || [];
+    
+    return itemWorkshopIds.some((id: string) => userWorkshopIds.includes(id));
+  });
+
+  const otherItems = order.items.filter(item => !filteredItems.includes(item));
+
+  const translations = {
+    ru: {
+      back: "Назад к списку заказов",
+      orderComposition: "Состав заказа",
+      noDishes: "Нет блюд для приготовления",
+      additives: "Добавки",
+      comment: "Комментарий",
+      orderInfo: "Информация о заказе",
+      orderNumber: "Номер заказа",
+      date: "Дата",
+      orderStatus: "Статус заказа",
+      startCooking: "В работу",
+      partiallyDone: "Частично готово",
+      pause: "Пауза",
+      ready: "Готово",
+      writeOffTitle: "Списание ингредиентов",
+      writeOffText: "Будут списаны следующие ингредиенты:",
+      cancel: "Отмена",
+      confirmWriteOff: "Подтвердить списание",
+      writingOff: "Списание...",
+      statusUpdated: "Статус обновлён",
+      writeOffSuccess: "Ингредиенты списаны, статус обновлён",
+      writeOffError: "Ошибка при списании ингредиентов",
+      statusUpdateError: "Ошибка обновления статуса",
+      loadError: "Не удалось загрузить заказ",
+      unknownError: "Неизвестная ошибка",
+      orderNotFound: "Заказ не найден",
+      ingredientsError: "Не удалось получить информацию об ингредиентах",
+      created: "Создан",
+      inProgress: "В процессе",
+      partiallyDoneStatus: "Частично готов",
+      paused: "На паузе",
+      completed: "Готов",
+      cancelled: "Отменен",
+      refunded: "Возвращен",
+      assignedTo: "Ответственный",
+      you: "Вы",
+      currentStatus: "Текущий статус",
+      loading: "Загрузка..",
+      deliveryAddress: "Адрес доставки",
+      openInMap: "Открыть в картах",
+      otherDishes: "Другие блюда",
+      responsibleWorkshop: "Ответственный цех",
+      reorderInKitchen: "Дозаказ на кухне",
+      reorderNotConfirmed: "Дозаказ не подтвержден",
+      wasRefund: "Был возврат",
+      discountCanceled: "Была отмена скидки"
+    },
+    ka: {
+      back: "უკან შეკვეთების სიაში",
+      orderComposition: "შეკვეთის შემადგენლობა",
+      noDishes: "მომზადებისთვის კერძები არ არის",
+      additives: "დანამატები",
+      comment: "კომენტარი",
+      orderInfo: "შეკვეთის ინფორმაცია",
+      orderNumber: "შეკვეთის ნომერი",
+      date: "თარიღი",
+      orderStatus: "შეკვეთის სტატუსი",
+      startCooking: "სამუშაოდ",
+      partiallyDone: "ნაწილობრივ მზადაა",
+      pause: "პაუზა",
+      ready: "მზადაა",
+      writeOffTitle: "ინგრედიენტების ჩამოწერა",
+      writeOffText: "შემდეგი ინგრედიენტები ჩაიწერება:",
+      cancel: "გაუქმება",
+      confirmWriteOff: "ჩამოწერის დადასტურება",
+      writingOff: "იწერება...",
+      statusUpdated: "სტატუსი განახლდა",
+      writeOffSuccess: "ინგრედიენტები ჩაიწერა, სტატუსი განახლდა",
+      writeOffError: "ინგრედიენტების ჩამოწერის შეცდომა",
+      statusUpdateError: "სტატუსის განახლების შეცდომა",
+      loadError: "შეკვეთის ჩატვირთვა ვერ მოხერხდა",
+      unknownError: "უცნობი შეცდომა",
+      orderNotFound: "შეკვეთა ვერ მოიძებნა",
+      ingredientsError: "ინგრედიენტების მონაცემების მიღება ვერ მოხერხდა",
+      created: "შექმნილი",
+      inProgress: "მუშავდება",
+      partiallyDoneStatus: "ნაწილობრივ მზადაა",
+      paused: "პაუზაზეა",
+      completed: "მზადაა",
+      cancelled: "გაუქმებული",
+      refunded: "დაბრუნებული",
+      assignedTo: "პასუხისმგებელი",
+      you: "თქვენ",
+      currentStatus: "მიმდინარე სტატუსი",
+      loading: "იტვირთება..",
+      deliveryAddress: "მიტანის მისამართი",
+      openInMap: "გახსნა რუკაზე",
+      otherDishes: "სხვა კერძები",
+      responsibleWorkshop: "პასუხისმგებელი სახელოსნო",
+      reorderInKitchen: "რეორდერი სამზარეულოში",
+      reorderNotConfirmed: "რეორდერი არ არის დადასტურებული",
+      wasRefund: "იყო დაბრუნება",
+      discountCanceled: "ფასდაკლების გაუქმება"
+    }
+  } as const;
+
   const t = translations[language as Language];
-  
 
   const currentStatusStyle = statusColors[order.status] || statusColors.CREATED
-  
+
+  const getWarningMessages = (): WarningMessage[] => {
+    const warnings: WarningMessage[] = [];
+    
+    if (order.attentionFlags?.isReordered) {
+      if (order.status === 'PREPARING') {
+        warnings.push({
+          id: 'reordered-preparing',
+          text: t.reorderInKitchen,
+          icon: <AlertCircle className="h-4 w-4" />,
+          color: 'bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200'
+        });
+      } else if (order.status === 'CREATED') {
+        warnings.push({
+          id: 'reordered-created',
+          text: t.reorderNotConfirmed,
+          icon: <AlertCircle className="h-4 w-4" />,
+          color: 'bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200'
+        });
+      }
+    }
+
+    if (order.attentionFlags?.isRefund) {
+      warnings.push({
+        id: 'refund',
+        text: t.wasRefund,
+        icon: <AlertCircle className="h-4 w-4" />,
+        color: 'bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-200'
+      });
+    }
+
+    if (order.attentionFlags?.discountCanceled) {
+      warnings.push({
+        id: 'discount-canceled',
+        text: t.discountCanceled,
+        icon: <AlertCircle className="h-4 w-4" />,
+        color: 'bg-purple-100 dark:bg-purple-900/50 text-purple-800 dark:text-purple-200'
+      });
+    }
+
+    return warnings;
+  };
+
+  const warnings = getWarningMessages();
+
+  useEffect(() => {
+    if (warnings.length > 1) {
+      const interval = setInterval(() => {
+        setCurrentWarningIndex((prev) => (prev + 1) % warnings.length);
+      }, 3000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [warnings.length]);
+
   useEffect(() => {
     if (contentRef.current) {
       setContentHeight(showAllItems 
@@ -251,13 +339,13 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
         : Math.min(contentRef.current.scrollHeight, MAX_VISIBLE_ITEMS * 64)
       )
     }
-    
   }, [showAllItems, order.items])
 
   useEffect(() => {
     if (order) {
       setItems(order.items.map(item => ({
         id: item.id,
+        status: item.status,
         product: {
           title: item.product.title || 'Без названия',
           workshops: item.product.workshops,
@@ -265,37 +353,44 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
         },
         quantity: item.quantity,
         additives: item.additives.map(add => ({
-          title: add.name || 'Добавка'
+          title: add.title 
         })),
         comment: item.comment,
         currentStatus: item.status || 'CREATED',
-        assignedTo: item.user ? {
-          id: item.user.id,
-          name: item.user.name || 'Повар'
-        } : null
+        assignedTo: null,
+        isReordered: item.isReordered,
       })))
     }
-  }, [order]) 
-
-  const hasHiddenItems = order.items.length > MAX_VISIBLE_ITEMS
+  }, [order])
 
   const handleCardClick = () => {
     const routePath = `/orders/${order.id}`
-    if(variant === 'default' ){ 
-        router.push(routePath)
+    if(variant === 'default'){ 
+      router.push(routePath)
     } 
   }
-
-  const handleButtonClick = (e: MouseEvent) => {
-    e.stopPropagation()
-  }
-
   
-  const handleStartCooking = async (itemId: string) => {
+  const createOrderLog = async (action: string) => {
+    if (!orderId || !user) return;
+    
+    try {
+      await OrderService.createLog({
+        orderId: orderId as string,
+        action,
+        userId: user.id,
+      });
+      
+    } catch (err) {
+      console.error('Ошибка при создании лога:', err);
+    }
+  };
+
+
+  const handleItemClick = async (itemId: string) => {
     try {
       const item = order.items.find(i => i.id === itemId)
-      
       if (!item) return
+
       const ingredientsToWriteOff = await Promise.all(
         item.product.ingredients.map(async (ingredient: Ingredient) => {
           try {
@@ -318,6 +413,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
         toast.warning(t.ingredientsError)
         return
       }
+
       setWriteOffItems(validIngredients)
       setCurrentItemId(itemId)
       setWriteOffDialogOpen(true)
@@ -328,9 +424,9 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
   }
 
   const handleConfirmWriteOff = async () => {
-  if (!currentItemId) return
+    if (!currentItemId) return
 
-  setIsWritingOff(true)
+    setIsWritingOff(true)
     try {
       await Promise.all(
         writeOffItems.map(item => 
@@ -341,8 +437,19 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
         )
       )
 
-      // Получаем обновленный заказ после изменения статуса
-      const updatedOrder = await handleStatusChange(currentItemId, OrderItemStatus.IN_PROGRESS)
+      // Find the item being prepared
+    const preparedItem = items.find(item => item.id === currentItemId);
+    
+    // Create log entry for dish preparation
+    if (preparedItem && user) {
+      await createOrderLog(
+        language === 'ru' 
+          ? `Блюдо приготовлено: ${preparedItem.product.title} × ${preparedItem.quantity}` 
+          : `კერძი მზადაა: ${preparedItem.product.title} × ${preparedItem.quantity}`
+      );
+    }
+
+      const updatedOrder = await handleStatusChange(currentItemId, OrderItemStatus.COMPLETED)
 
       toast.success(t.writeOffSuccess)
       setWriteOffDialogOpen(false)
@@ -357,295 +464,258 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
   }
 
   const handleStatusChange = async (itemId: string, newStatus: OrderItemStatus) => {
-  if (!orderId || !user?.id || isUpdating) return
+    if (!orderId || !user?.id || isUpdating) return;
 
-  try {
-    setIsUpdating(true)
-    
-    const updatedItems = items.map(item => 
-      item.id === itemId 
-        ? { 
-            ...item, 
-            currentStatus: newStatus,
-            assignedTo: newStatus === 'IN_PROGRESS' ? { id: user.id, name: user.name } : item.assignedTo
-          } 
-        : item
-    )
-    setItems(updatedItems)
+    const originalItems = [...items];
 
-    // Обновляем статус на сервере и получаем обновленный заказ
-    const updatedOrder = await OrderService.updateItemStatus(
-      orderId as string,
-      itemId,
-      { 
-        status: newStatus,
-        userId: newStatus === 'IN_PROGRESS' ? user.id : undefined
+    try {
+      setIsUpdating(true);
+      
+      const updatedItems = items.map(item => 
+        item.id === itemId 
+          ? { 
+              ...item, 
+              currentStatus: newStatus,
+              status: newStatus,
+              assignedTo: newStatus === 'IN_PROGRESS' ? { id: user.id, name: user.name } : item.assignedTo
+            } 
+          : item
+      );
+      setItems(updatedItems);
+
+      const updatedOrder = await OrderService.updateItemStatus(
+        orderId,
+        itemId,
+        { 
+          status: newStatus,
+          userId: newStatus === 'IN_PROGRESS' ? user.id : undefined
+        }
+      );
+
+      const fullOrder = await OrderService.getById(orderId);
+      const itemsToCheck = fullOrder.items?.length > 0 ? fullOrder.items : updatedItems;
+      const allItemsCompleted = itemsToCheck.every(item => 
+        ['COMPLETED', 'CANCELLED', 'REFUNDED'].includes(item.status)
+      );
+
+      if (allItemsCompleted && fullOrder.status !== 'COMPLETED') {
+        const finalUpdatedOrder = await OrderService.updateStatus(
+          orderId,
+          { status: 'READY' }
+        );
+        
+        if (onStatusChange) onStatusChange(finalUpdatedOrder);
+        
+        toast.success(language === 'ru' 
+          ? 'Все блюда готовы! Заказ завершен.' 
+          : 'ყველა კერძი მზადაა! შეკვეთა დასრულებულია.');
+        return finalUpdatedOrder;
       }
-    )
 
-    // Вызываем колбэк с обновленным заказом
-    if (onStatusChange) {
-      onStatusChange(updatedOrder)
+      if (onStatusChange) onStatusChange(fullOrder);
+      toast.success(t.statusUpdated);
+      return fullOrder;
+
+    } catch (err) {
+      setItems(originalItems);
+      toast.error(t.statusUpdateError);
+      console.error('Status update error:', err);
+      throw err;
+    } finally {
+      setIsUpdating(false);
     }
-
-    toast.success(`${t.statusUpdated}`)
-    return updatedOrder
-  } catch (err) {
-    // В случае ошибки возвращаем предыдущее состояние
-    setItems(items)
-    toast.error(t.statusUpdateError)
-    console.error('Error:', err)
-    throw err
-  } finally {
-    setIsUpdating(false)
-  }
-  }
-    
-  const renderItemStatusControls = (item: OrderResponse['items'][0]) => {
-    if (variant !== 'kitchen') return null
-
-    return (
-      <div className="flex flex-wrap gap-1 mt-2">
-        {item.status === OrderItemStatus.CREATED && (
-          <Button
-            
-            variant="default"
-            onClick={() => handleStartCooking(item.id)}
-            disabled={isUpdating}
-            className="h-7"
-          >
-            <Play className="mr-1 h-3 w-3" />
-            {language === 'ru' ? 'Начать' : 'დაწყება'}
-          </Button>
-        )}
-        
-        {item.status === OrderItemStatus.IN_PROGRESS && (
-          <>
-            <Button
-              
-              variant="secondary"
-              onClick={() => handleStatusChange(item.id, OrderItemStatus.PARTIALLY_DONE)}
-              disabled={isUpdating}
-              className="h-7"
-            >
-              <Clock className="mr-1 h-3 w-3" />
-              {language === 'ru' ? 'Частично' : 'ნაწილობრივ'}
-            </Button>
-            
-            <Button
-              
-              variant="outline"
-              onClick={() => handleStatusChange(item.id, OrderItemStatus.PAUSED)}
-              disabled={isUpdating}
-              className="h-7"
-            >
-              <Pause className="mr-1 h-3 w-3" />
-              {language === 'ru' ? 'Пауза' : 'პაუზა'}
-            </Button>
-          </>
-        )}
-        
-        {item.status === OrderItemStatus.PARTIALLY_DONE && (
-          <Button
-            
-            variant="outline"
-            onClick={() => handleStatusChange(item.id, OrderItemStatus.PAUSED)}
-            disabled={isUpdating}
-            className="h-7"
-          >
-            <Pause className="mr-1 h-3 w-3" />
-            {language === 'ru' ? 'Пауза' : 'პაუზა'}
-          </Button>
-        )}
-        
-        {item.status === OrderItemStatus.PAUSED && (
-          <>
-            <Button
-              
-              variant="default"
-              onClick={() => handleStatusChange(item.id, OrderItemStatus.IN_PROGRESS)}
-              disabled={isUpdating}
-              className="h-7"
-            >
-              <Play className="mr-1 h-3 w-3" />
-              {language === 'ru' ? 'Продолжить' : 'გაგრძელება'}
-            </Button>
-            
-            <Button
-              
-              variant="secondary"
-              onClick={() => handleStatusChange(item.id, OrderItemStatus.PARTIALLY_DONE)}
-              disabled={isUpdating}
-              className="h-7"
-            >
-              <Clock className="mr-1 h-3 w-3" />
-              {language === 'ru' ? 'Частично' : 'ნაწილობრივ'}
-            </Button>
-          </>
-        )}
-        
-        {(item.status === OrderItemStatus.IN_PROGRESS || 
-          item.status === OrderItemStatus.PARTIALLY_DONE || 
-          item.status === OrderItemStatus.PAUSED) && (
-          <Button
-            
-            variant="default"
-            onClick={() => handleStatusChange(item.id, OrderItemStatus.COMPLETED)}
-            disabled={isUpdating}
-            className="h-7"
-          >
-            <Check className="mr-1 h-3 w-3" />
-            {language === 'ru' ? 'Готово' : 'მზადაა'}
-          </Button>
-        )}
-      </div>
-    )
   }
 
   return (
     <div>
-    <Card 
-      className={cn(
-        "flex flex-col h-full relative overflow-hidden",
-        "border-l-4 cursor-pointer transition-all hover:shadow-md",
-        currentStatusStyle.border,
-        currentStatusStyle.bg,
-        className
-      )}
-      onClick={handleCardClick}
-    >
-      <div className="absolute top-0 left-0 w-full h-1" />
-      
-      <div className="flex flex-col flex-grow pt-1">
-        <OrderHeader order={order} compact={variant === 'kitchen'}  />
-        
-        <div className="p-3 space-y-3">
-          <div
-            ref={contentRef}
-            className="overflow-hidden transition-all duration-300 ease-in-out"
-            style={{ maxHeight: `${contentHeight}px` }}
-          >
-            {isUpdating ?
-              (
+      <Card 
+        className={cn(
+          "flex flex-col h-full relative overflow-hidden",
+          "border-l-4 cursor-pointer transition-all hover:shadow-md",
+          currentStatusStyle.border,
+          currentStatusStyle.bg,
+          className
+        )}
+        onClick={handleCardClick}
+      >
+        <div className="absolute top-0 left-0 w-full h-1" />
+         
+        <div className="flex flex-col flex-grow pt-1">
+          <OrderHeader order={order} compact={variant === 'kitchen'} />
+          
+          {/* Warning messages block */}
+          {warnings.length > 0 && variant === 'default' && (
+            <div className="px-3 pt-1">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={warnings[currentWarningIndex]?.id || 'no-warnings'}
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  transition={{ duration: 0.3 }}
+                  className={cn(
+                    "flex items-center gap-2 p-2 rounded-md text-sm font-medium",
+                    warnings[currentWarningIndex]?.color
+                  )}
+                >
+                  {warnings[currentWarningIndex]?.icon}
+                  <span>{warnings[currentWarningIndex]?.text}</span>
+                  
+                  {warnings.length > 1 && (
+                    <div className="ml-auto flex gap-1">
+                      {warnings.map((_, index) => (
+                        <div
+                          key={index}
+                          className={`h-2 w-2 rounded-full ${index === currentWarningIndex ? 'bg-current opacity-100' : 'bg-current opacity-30'}`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          )}
+
+          <div className="p-3 space-y-3">
+            <div>
+              {isUpdating ? (
                 <div>
                   {t.loading}
                 </div>
-              ) :
-              (
-                <div>
-                  {order.items.map(item => (
-                  <div 
-                    key={item.id} 
-                    className={cn(
-                      "mb-2 last:mb-0 p-2 rounded-lg border",
-                      currentStatusStyle.itemBorder,
-                      "transition-colors hover:bg-opacity-90"
-                    )}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="font-medium flex items-center gap-1">
-                          {item.product.title} × {item.quantity}
-                        </div>
-                        {item.additives.length > 0 && (
-                          <div className="text-xs text-muted-foreground">
-                            {language === 'ru' ? 'Добавки:' : 'დანამატები:'} {item.additives.map(a => a.name).join(', ')}
-                          </div>
-                        )}
-                        {item.comment && (
-                          <div className="text-xs text-muted-foreground">
-                            {language === 'ru' ? 'Коммент:' : 'კომენტარი:'} {item.comment}
-                          </div>
-                        )}
-                      </div>
-                      <Badge 
-                        variant="outline" 
-                        className="text-xs"
-                      >
-                        {getStatusText(item.status, language)}
-                      </Badge>
-                    </div>
-                    
-                    {renderItemStatusControls(item)}
-                  </div>
-                ))}
-              </div>
-              )
-            }
-          </div>
-
-          {hasHiddenItems && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full text-sm text-muted-foreground hover:text-primary"
-              onClick={(e) => {
-                e.stopPropagation()
-                setShowAllItems(!showAllItems)
-              }}
-            >
-              {showAllItems ? (
-                <>
-                  <ChevronUp className="h-4 w-4 mr-1" />
-                  {language === 'ru' ? 'Скрыть' : 'დამალვა'}
-                </>
               ) : (
-                <>
-                  <ChevronDown className="h-4 w-4 mr-1" />
-                  {language === 'ru' 
-                    ? `Показать ещё ${order.items.length - MAX_VISIBLE_ITEMS}` 
-                    : `ნაჩვენებია კიდევ ${order.items.length - MAX_VISIBLE_ITEMS}`}
-                </>
-              )}
-            </Button>
-          )}
-          
-          {variant === 'default' && (order.scheduledAt || order.customer) ? (
-            <div className='border-t pt-2'>
-              {order.customer && variant === 'default' && (
-                <OrderCustomerInfo customer={order.customer} compact />
-              )}
-              {order.scheduledAt &&
-                <Badge 
-                  variant="outline"
-                  className="flex items-center gap-1 px-2 py-1 rounded-md border text-sm font-medium"
-                >
-                  {language === 'ru' ? 'Отложено до' : 'გადაიდო'}
-                  <span className="text-sm">
-                    {format(new Date(order.scheduledAt), 'HH:mm')}
-                  </span>
-                </Badge>
-              }
-            </div>
-          ) : null}
-          
+                variant === 'kitchen' &&
+                <div>
+                  {filteredItems.length > 0 ? (
+                    filteredItems.map(item => (
+                      <div 
+                        key={item.id} 
+                        className={cn(
+                          "mb-2 last:mb-0 p-2 rounded-lg border border-dashed cursor-pointer py-7 transition-colors hover:bg-opacity-90 border-2",
+                          item.status === OrderItemStatus.COMPLETED ? "opacity-70" : "" , 
+                          item.isReordered ? 'border-red-500 ' : 'border-black'
+                        )}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (item.status !== OrderItemStatus.COMPLETED) {
+                            handleItemClick(item.id);
+                          }
+                        }}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <div className="font-medium flex items-center gap-1">
+                              {item.product.title} × {item.quantity}
+                            </div>
+                            {item.additives.length > 0 && (
+                              <div className="text-xs text-muted-foreground">
+                                {language === 'ru' ? 'Добавки:' : 'დანამატები:'} {item.additives.map(a => a.title).join(', ')}
+                              </div>
+                            )}
+                            {item.comment && (
+                              <div className="text-xs text-muted-foreground">
+                                {language === 'ru' ? 'Коммент:' : 'კომენტარი:'} {item.comment}
+                              </div>
+                            )}
+                          </div>
+                          <Badge 
+                            variant="outline" 
+                            className="text-xs"
+                          >
+                            {getStatusText(item.status, language)}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center text-muted-foreground py-4">
+                      {t.noDishes}
+                    </div>
+                  )}
 
-         {variant === 'default' && ( <div className="flex justify-between items-center border-t pt-2">
-            <div className="font-medium text-sm">
-              {language === 'ru' ? 'Итого:' : 'სულ:'}
+                  {otherItems.length > 0 && (
+                    <div className="mt-4">
+                      <details className="group">
+                        <summary className="flex items-center justify-between cursor-pointer list-none text-sm text-muted-foreground">
+                          <span>
+                            {t.otherDishes} ({otherItems.length})
+                          </span>
+                          <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                        </summary>
+                        <div className="mt-2 space-y-2">
+                          {otherItems.map(item => (
+                            <div 
+                              key={item.id} 
+                              className={cn(
+                                "p-2 rounded-lg border border-dashed border-gray-300 py-4 opacity-70",
+                                item.status === OrderItemStatus.COMPLETED ? "opacity-50" : ""
+                              )}
+                            >
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <div className="font-medium flex items-center gap-1">
+                                    {item.product.title} × {item.quantity}
+                                  </div>
+                                  {item.additives.length > 0 && (
+                                    <div className="text-xs text-muted-foreground">
+                                      {language === 'ru' ? 'Добавки:' : 'დანამატები:'} {item.additives.map(a => a.title).join(', ')}
+                                    </div>
+                                  )}
+                                </div>
+                                <Badge variant="outline" className="text-xs">
+                                  {getStatusText(item.status, language)}
+                                </Badge>
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {t.responsibleWorkshop}: {item.product.workshops?.[0]?.workshop.name || (language === 'ru' ? 'Не указан' : 'არ არის მითითებული')}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="font-bold">
-              {totalAmount.toFixed(2)}{language === 'ru' ? '₽' : '₽'}
-            </div>
-          </div>)}
+            
+            {variant === 'default' && (order.scheduledAt || order.customer) ? (
+              <div className='border-t pt-2'>
+                {(user?.role === 'SUPERVISOR' || user?.role === 'MANAGER') && order.customer && variant === 'default' && (
+                  <OrderCustomerInfo customer={order.customer} compact />
+                )}
+                {order.scheduledAt &&
+                  <Badge 
+                    variant="outline"
+                    className="flex items-center gap-1 px-2 py-1 rounded-md border text-sm font-medium"
+                  >
+                    {language === 'ru' ? 'Отложено до' : 'გადაიდო'}
+                    <span className="text-sm">
+                      {format(new Date(order.scheduledAt), 'HH:mm')}
+                    </span>
+                  </Badge>
+                }
+              </div>
+            ) : null}
+            
+            {variant === 'default' && (
+              <div className="flex justify-between items-center border-t pt-2">
+                <div className="font-medium text-sm">
+                  {language === 'ru' ? 'Итого:' : 'სულ:'}
+                </div>
+                <div className="font-bold">
+                  {totalAmount.toFixed(2)}{language === 'ru' ? '₽' : '₽'}
+                </div>
+              </div>
+            )}
 
-          {variant === 'default' && order.payment && (
-            <OrderPaymentStatus payment={order.payment} order={order} compact />
-          )}
+            {variant === 'default' && order.payment && (
+              <OrderPaymentStatus payment={order.payment} order={order} compact />
+            )}
+          </div>
         </div>
-      </div>
+      </Card>
 
-      <div onClick={handleButtonClick}>
-        <OrderActions 
-          order={order} 
-          variant={variant}
-          compact={variant === 'kitchen'}
-        />
-      </div>
-    </Card>
-     <Dialog open={writeOffDialogOpen} onOpenChange={setWriteOffDialogOpen}>
-
+      <Dialog open={writeOffDialogOpen} onOpenChange={setWriteOffDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">

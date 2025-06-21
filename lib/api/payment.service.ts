@@ -99,7 +99,7 @@ export interface Payment {
   id: string;
   orderId: string;
   amount: number;
-  method: 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'OTHER';
+  method: EnumPaymentMethod
   status: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
   transactionId?: string;
   createdAt: Date;

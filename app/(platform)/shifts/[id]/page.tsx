@@ -7,20 +7,102 @@ import { useParams } from 'next/navigation';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ShoppingCart, RussianRuble, Users, User, Plus, Trash2, Edit, BanknoteArrowUp, BanknoteArrowDown } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, RussianRuble, Users, User, Plus, Trash2, Edit, BanknoteArrowUp, BanknoteArrowDown, PlusCircle, MinusCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { AccessCheck } from '@/components/AccessCheck';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useState, useEffect } from 'react';
 import { ShiftService } from '@/lib/api/shift.service';
 import { toast } from 'sonner';
+import { useRestaurantUsers } from '@/lib/hooks/useRestaurant';
+import { User as UserType } from '@/lib/types/user';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+
+const EXPENSES = [
+                                      "Деньги",
+                                      "Георгий деньги",
+                                      "Александр Деньги",
+                                      "Малхаз Деньги",
+                                      "Алексей Деньги",
+                                      "Инкассация",
+                                      "Перерасход Безнал",
+                                      "Карен Деньги",
+                                      "Долги",
+                                      "Измайловский Лес",
+                                      "Шоссе Энтузиастов",
+                                      "Жулебино",
+                                      "Савеловская",
+                                      "Войковская",
+                                      "Горенский Бульвар",
+                                      "Долги Безнал",
+                                      "Закуп",
+                                      "Закуп Кухня",
+                                      "Закуп Бар",
+                                      "Закуп Сыр",
+                                      "Доставка Грузия",
+                                      "Упаковка и Посуда для доставки",
+                                      "ХозТовары",
+                                      "Аванс Закуп",
+                                      "Связь",
+                                      "Телефония",
+                                      "Интернет",
+                                      "СМС",
+                                      "Услуги и Оборудование",
+                                      "Посуда",
+                                      "Аквариум",
+                                      "Цветы",
+                                      "Ремонт Автомобиля",
+                                      "Вентиляция и Кондиционеры",
+                                      "Газель Перевозки",
+                                      "Сантехника",
+                                      "Холодильники",
+                                      "Печи",
+                                      "Тестораскатка",
+                                      "Тестомес",
+                                      "Плиты",
+                                      "Прочие работы и оборудование",
+                                      "IT (АЙТИ) ИТ",
+                                      "Размещение вакансий",
+                                      "Дезинсекция",
+                                      "Аренда",
+                                      "Электричество",
+                                      "Коммуналка",
+                                      "ФМС",
+                                      "Налоговая",
+                                      "Фирма",
+                                      "Пожарник",
+                                      "С.Э.С.",
+                                      "Охрана",
+                                      "Транспорт логистика",
+                                      "Такси персонал",
+                                      "Парковка",
+                                      "Такси рынок",
+                                      "Такси доставка заказов",
+                                      "Бензин Курьер",
+                                      "Бензин Закупщик",
+                                      "Каршаринг Аренда Авто",
+                                      "Реклама и Маркетинг",
+                                      "Меню и чекницы и т.д.",
+                                      "Интернет реклама",
+                                      "Реклама в оффлайне",
+                                      "Комиссии банка",
+                                      "Комиссия банка",
+                                      "2,8%",
+                                      "Безнал 2%"
+                                    ]
+
+const INCOMES = [
+                          "Возврат Долгов",
+                          "Предоплаты",
+                          "Закуп долг",
+                          "Онлайн Оплата",
+                          "Безнал",
+                          "Фирма",
+                          "Другое",
+                          "Из Инкассации",
+                          "Остаток с пр. месяца"
+                        ]
 
 const translations = {
   ru: {
@@ -28,6 +110,7 @@ const translations = {
     orders: 'Заказы',
     staff: 'Персонал',
     expenses: 'Расходы',
+    incomes: 'Доходы',
     orderId: 'Номер',
     status: 'Статус',
     amount: 'Сумма',
@@ -39,9 +122,11 @@ const translations = {
     noOrders: 'Заказы не найдены',
     noStaff: 'Персонал не назначен',
     noExpenses: 'Расходы не добавлены',
+    noIncomes: 'Доходы не добавлены',
     totalOrders: 'Всего заказов',
     totalAmount: 'Общая сумма',
     totalExpenses: 'Общие расходы',
+    totalIncomes: 'Общие доходы',
     staffCount: 'Количество персонала',
     created: 'Создан',
     confirmed: 'Подтверждён',
@@ -54,31 +139,61 @@ const translations = {
     manager: 'Менеджер',
     waiter: 'Официант',
     chef: 'Повар',
-    addStaff: 'Добавить персонал',
+    addStaff: 'Добавить в смену',
+    removeFromShift: 'Удалить из смены',
     addExpense: 'Добавить расход',
     editExpense: 'Редактировать расход',
+    addIncome: 'Добавить доход',
+    editIncome: 'Редактировать доход',
     expenseTitle: 'Название',
     expenseAmount: 'Сумма',
     expenseDescription: 'Описание',
+    incomeTitle: 'Название',
+    incomeAmount: 'Сумма',
+    incomeDescription: 'Описание',
     actions: 'Действия',
-    emailPlaceholder: 'Введите email пользователя',
-    add: 'Добавить',
-    save: 'Сохранить',
-    adding: 'Добавление...',
     success: 'Успех',
     userAddedSuccessfully: 'Пользователь успешно добавлен в смену',
+    userRemovedSuccessfully: 'Пользователь успешно удалён из смены',
     expenseAdded: 'Расход добавлен',
     expenseRemoved: 'Расход удалён',
     expenseUpdated: 'Расход обновлён',
+    incomeAdded: 'Доход добавлен',
+    incomeRemoved: 'Доход удалён',
+    incomeUpdated: 'Доход обновлён',
     error: 'Ошибка',
-    somethingWentWrong: 'Что-то пошло не так'
+    somethingWentWrong: 'Что-то пошло не так',
+    balance: 'Баланс',
+    restaurantStaff: 'Сотрудники ресторана',
+    shiftStaff: 'Сотрудники в смене',
+    noRestaurantStaff: 'Нет доступных сотрудников',
+    shiftCompleted: 'Смена завершена, изменения невозможны',
+    selectUser: 'Выберите сотрудника',
+    selected: 'Выбрано',
+    save: 'Сохранить',
+    add: 'Добавить',
+    cancel: 'Отмена',
+    revenue: 'Выручка',
+    cashPayment: 'Оплата наличными',
+    cardPayment: 'Оплата картой',
+    onlinePayment: 'Онлайн оплата',
+    banquet: 'Банкет',
+    delivery: 'Доставка',
+    dineIn: 'Зал',
+    takeaway: 'На вынос',
+    otherIncome: 'Иные поступления',
+    beznal: 'Безнал',
+    expensesTotal: 'Расход',
+    cashBalance: 'Остаток',
+    cashInSafe: 'Денег в кассе',
   },
   ka: {
     shiftStats: 'ცვლის სტატისტიკა',
     orders: 'შეკვეთები',
     staff: 'პერსონალი',
     expenses: 'ხარჯები',
-    orderId: 'შეკვეთის ID',
+    incomes: 'შემოსავლები',
+    orderId: 'რიცხვი',
     status: 'სტატუსი',
     amount: 'თანხა',
     createdAt: 'შექმნის თარიღი',
@@ -87,41 +202,74 @@ const translations = {
     back: 'უკან',
     loading: 'იტვირთება...',
     noOrders: 'შეკვეთები არ მოიძებნა',
-    noStaff: 'პერსონალი არ არის მინიჭებული',
-    noExpenses: 'ხარჯები არ დამატებულა',
-    totalOrders: 'შეკვეთების რაოდენობა',
-    totalAmount: 'საერთო თანხა',
-    totalExpenses: 'საერთო ხარჯები',
+    noStaff: 'პერსონალი არ არის დანიშნული',
+    noExpenses: 'ხარჯები არ არის დამატებული',
+    noIncomes: 'შემოსავლები არ არის დამატებული',
+    totalOrders: 'შეკვეთების ჯამი',
+    totalAmount: 'ჯამური თანხა',
+    totalExpenses: 'ხარჯების ჯამი',
+    totalIncomes: 'შემოსავლის ჯამი',
     staffCount: 'პერსონალის რაოდენობა',
-    created: 'შექმნილი',
-    confirmed: 'დადასტურებული',
+    created: 'შექმნილია',
+    confirmed: 'დადასტურებულია',
     preparing: 'მზადდება',
     ready: 'მზადაა',
-    delivering: 'იგზავნება',
-    completed: 'დასრულებული',
-    cancelled: 'გაუქმებული',
+    delivering: 'მიწოდება',
+    completed: 'დასრულებულია',
+    cancelled: 'გაუქმებულია',
     admin: 'ადმინისტრატორი',
     manager: 'მენეჯერი',
-    waiter: 'ოფიციანტი',
+    waiter: 'მიმტანი',
     chef: 'მზარეული',
-    addStaff: 'პერსონალის დამატება',
+    addStaff: 'ცვლაში დამატება',
+    removeFromShift: 'ცვლიდან ამოღება',
     addExpense: 'ხარჯის დამატება',
     editExpense: 'ხარჯის რედაქტირება',
-    expenseTitle: 'სახელი',
+    addIncome: 'შემოსავლის დამატება',
+    editIncome: 'შემოსავლის რედაქტირება',
+    expenseTitle: 'სათაური',
     expenseAmount: 'თანხა',
     expenseDescription: 'აღწერა',
+    incomeTitle: 'სათაური',
+    incomeAmount: 'თანხა',
+    incomeDescription: 'აღწერა',
     actions: 'მოქმედებები',
-    emailPlaceholder: 'შეიყვანეთ მომხმარებლის ელ.ფოსტა',
-    add: 'დამატება',
-    save: 'შენახვა',
-    adding: 'დამატება...',
-    success: 'წარმატება',
-    userAddedSuccessfully: 'მომხმარებელი წარმატებით დაემატა ცვლაში',
+    წარმატება: 'წარმატება',
+    userAddedSuccessfully: 'მომხმარებელი წარმატებით დაემატა ცვლას',
+    userRemovedSuccessfully: 'მომხმარებელი წარმატებით წაიშალა ცვლადან',
     expenseAdded: 'ხარჯი დაემატა',
     expenseRemoved: 'ხარჯი წაიშალა',
     expenseUpdated: 'ხარჯი განახლდა',
+    incomeAdded: 'შემოსავალი დაემატა',
+    incomeRemoved: 'შემოსავალი წაიშალა',
+    incomeUpdated: 'შემოსავალი განახლდა',
     error: 'შეცდომა',
-    somethingWentWrong: 'რაღაც შეცდომა მოხდა'
+    somethingWentWrong: 'რაღაც არასწორად წარიმართა',
+    balance: 'ბალანსი',
+    restaurantStaff: 'რესტორნის პერსონალი',
+    shiftStaff: 'პერსონალი ცვლაში',
+    noRestaurantStaff: 'პერსონალი არ არის ხელმისაწვდომი',
+    shiftCompleted: 'ცვლა დასრულდა, ცვლილებები შეუძლებელია',
+    selectUser: 'პერსონალის არჩევა',
+    selected: 'არჩეულია',
+    add: 'დამატება',
+    save: 'შენახვა',
+    cancel: 'გაუქმება',
+    revenue: 'შემოსავალი',
+    cashPayment:'ნაღდი ფულით გადახდა',
+    cardPayment: 'ბარათით გადახდა',
+    onlinePayment: 'ონლაინ გადახდა',
+    ბანკეტი: 'ბანკეტი',
+    მიტანა: 'მიტანა',
+    dineIn: 'დარბაზი',
+    takeaway: 'გატანა',
+    otherIncome: 'სხვა შემოსავალი',
+    beznal: 'უნაღდო',
+    expensesTotal: 'ხარჯი',
+    cashBalance: 'ბალანსი',
+    cashInSafe: 'ნაღდი ფული სალაროში',
+    delivery: 'მიწოდება',
+    banquet: 'ბანკეტი'
   }
 };
 
@@ -196,6 +344,15 @@ interface ShiftExpense {
   updatedAt: string;
 }
 
+interface ShiftIncome {
+  id: string;
+  title: string;
+  amount: number;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export default function ShiftStatsPage() {
   const { id } = useParams();
   const { language } = useLanguageStore();
@@ -203,18 +360,30 @@ export default function ShiftStatsPage() {
 
   const { data: shift, isLoading: isLoadingShift, mutate: mutateShift } = useShift(id as string);
   const { data: staff, isLoading: isLoadingStaff, mutate: mutateStaff } = useShiftUsers(id as string);
+  const { data: restaurantUsers } = useRestaurantUsers(shift?.restaurantId || '');
+  
+  const [selectedRestaurantUser, setSelectedRestaurantUser] = useState<string | null>(null);
+  const [selectedShiftUser, setSelectedShiftUser] = useState<string | null>(null);
+  
   const [expenses, setExpenses] = useState<ShiftExpense[]>([]);
   const [isLoadingExpenses, setIsLoadingExpenses] = useState(false);
-  const [email, setEmail] = useState('');
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isAddingUser, setIsAddingUser] = useState(false);
   const [newExpense, setNewExpense] = useState({
     title: '',
     amount: 0,
     description: ''
   });
-  const [isExpenseDialogOpen, setIsExpenseDialogOpen] = useState(false);
+  const [isAddingExpense, setIsAddingExpense] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ShiftExpense | null>(null);
+  
+  const [incomes, setIncomes] = useState<ShiftIncome[]>([]);
+  const [isLoadingIncomes, setIsLoadingIncomes] = useState(false);
+  const [newIncome, setNewIncome] = useState({
+    title: '',
+    amount: 0,
+    description: ''
+  });
+  const [isAddingIncome, setIsAddingIncome] = useState(false);
+  const [editingIncome, setEditingIncome] = useState<ShiftIncome | null>(null);
 
   const loadExpenses = async () => {
     setIsLoadingExpenses(true);
@@ -228,37 +397,53 @@ export default function ShiftStatsPage() {
     }
   };
 
+  const loadIncomes = async () => {
+    setIsLoadingIncomes(true);
+    try {
+      const incomes = await ShiftService.getShiftIncomes(id as string);
+      setIncomes(incomes);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t.somethingWentWrong);
+    } finally {
+      setIsLoadingIncomes(false);
+    }
+  };
+
   useEffect(() => {
     loadExpenses();
+    loadIncomes();
   }, [id]);
 
-  const handleAddUser = async () => {
-    if (!email) return;
+  const handleAddUserToShift = async () => {
+    if (!selectedRestaurantUser) return;
 
-    setIsAddingUser(true);
     try {
-      await ShiftService.addUserToShiftByEmail(id as string, { email });
-      toast.success(t.userAddedSuccessfully);
+      await ShiftService.addUserToShift(id as string, { userId: selectedRestaurantUser });
       mutateShift();
       mutateStaff();
-      setEmail('');
-      setIsDialogOpen(false);
+      setSelectedRestaurantUser(null);
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : t.somethingWentWrong
-      );
-    } finally {
-      setIsAddingUser(false);
+      toast.error(error instanceof Error ? error.message : t.somethingWentWrong);
+    }
+  };
+
+  const handleRemoveUserFromShift = async () => {
+    if (!selectedShiftUser) return;
+    console.log(selectedShiftUser)
+    try {
+      await ShiftService.removeUserFromShift(id as string,  selectedShiftUser );
+      mutateShift();
+      mutateStaff();
+      setSelectedShiftUser(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t.somethingWentWrong);
     }
   };
 
   const handleAddExpense = async () => {
     try {
       if (editingExpense) {
-        const updatedExpense = await ShiftService.updateExpense(
-          editingExpense.id,
-          newExpense
-        );
+        const updatedExpense = await ShiftService.updateExpense(editingExpense.id, newExpense);
         setExpenses(expenses.map(e => e.id === updatedExpense.id ? updatedExpense : e));
         toast.success(t.expenseUpdated);
       } else {
@@ -266,7 +451,7 @@ export default function ShiftStatsPage() {
         setExpenses([...expenses, expense]);
         toast.success(t.expenseAdded);
       }
-      setIsExpenseDialogOpen(false);
+      setIsAddingExpense(false);
       setNewExpense({ title: '', amount: 0, description: '' });
       setEditingExpense(null);
     } catch (error) {
@@ -291,11 +476,80 @@ export default function ShiftStatsPage() {
       amount: expense.amount,
       description: expense.description || ''
     });
-    setIsExpenseDialogOpen(true);
+    setIsAddingExpense(true);
   };
 
+  const handleAddIncome = async () => {
+    try {
+      if (editingIncome) {
+        const updatedIncome = await ShiftService.updateIncome(editingIncome.id, newIncome);
+        setIncomes(incomes.map(i => i.id === updatedIncome.id ? updatedIncome : i));
+        toast.success(t.incomeUpdated);
+      } else {
+        const income = await ShiftService.addIncomeToShift(id as string, newIncome);
+        setIncomes([...incomes, income]);
+        toast.success(t.incomeAdded);
+      }
+      setIsAddingIncome(false);
+      setNewIncome({ title: '', amount: 0, description: '' });
+      setEditingIncome(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t.somethingWentWrong);
+    }
+  };
+
+  const handleDeleteIncome = async (incomeId: string) => {
+    try {
+      await ShiftService.removeIncome(incomeId);
+      setIncomes(incomes.filter(i => i.id !== incomeId));
+      toast.success(t.incomeRemoved);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t.somethingWentWrong);
+    }
+  };
+
+  const handleEditIncome = (income: ShiftIncome) => {
+    setEditingIncome(income);
+    setNewIncome({
+      title: income.title,
+      amount: income.amount,
+      description: income.description || ''
+    });
+    setIsAddingIncome(true);
+  };
+
+   // Основные расчеты
   const totalAmount = shift?.orders?.reduce((sum, order) => sum + (order.totalAmount || 0), 0) || 0;
   const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const totalIncomes = incomes.reduce((sum, income) => sum + income.amount, 0);
+  const balance = totalAmount + totalIncomes - totalExpenses;
+
+  // Расчеты по типам оплаты
+  const cashOrders = shift?.orders?.filter(order => order.payment?.method === 'CASH') || [];
+  const cardOrders = shift?.orders?.filter(order => order.payment?.method === 'CARD') || [];
+  const onlineOrders = shift?.orders?.filter(order => order.payment?.method === 'ONLINE') || [];
+
+  const cashAmount = cashOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+  const cardAmount = cardOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+  const onlineAmount = onlineOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+
+  // Расчеты по типам заказов
+  const banquetOrders = shift?.orders?.filter(order => order.type === 'BANQUET') || [];
+  const deliveryOrders = shift?.orders?.filter(order => order.type === 'DELIVERY') || [];
+  const dineInOrders = shift?.orders?.filter(order => order.type === 'DINE_IN') || [];
+  const takeawayOrders = shift?.orders?.filter(order => order.type === 'TAKEAWAY') || [];
+
+  const banquetAmount = banquetOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+  const deliveryAmount = deliveryOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+  const dineInAmount = dineInOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+  const takeawayAmount = takeawayOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+
+  // Расчеты по доходам и кассе
+  const otherIncomes = incomes.filter(income => income.title !== 'Безнал').reduce((sum, income) => sum + income.amount, 0);
+  const beznalIncomes = incomes.filter(income => income.title === 'Безнал').reduce((sum, income) => sum + income.amount, 0);
+  const cashBalance = cashAmount - totalExpenses;
+  const cashInSafe = cashBalance + otherIncomes;
+
 
   if (isLoadingShift) {
     return (
@@ -317,6 +571,11 @@ export default function ShiftStatsPage() {
     );
   }
 
+  const isShiftCompleted = shift.status === 'COMPLETED';
+  const availableUsers = restaurantUsers?.filter((user : UserType) => 
+    !staff?.some(s => s.userId === user.id)
+  ) || [];
+
   return (
     <AccessCheck allowedRoles={['MANAGER', 'SUPERVISOR']}>
       <div className="container mx-auto py-8">
@@ -327,23 +586,17 @@ export default function ShiftStatsPage() {
             {t.back}
           </Button>
         </div>
+ {isShiftCompleted && (
+          <div className="mb-4 p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700">
+            <p>{t.shiftCompleted}</p>
+          </div>
+        )}
 
         <div className="grid gap-6">
-          <div className="grid gap-4 md:grid-cols-5">
-
+          <div className="grid gap-4 md:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{t.totalOrders}</CardTitle>
-                <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{shift.orders?.length || 0}</div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{t.totalAmount}</CardTitle>
+                <CardTitle className="text-sm font-medium">{t.revenue}</CardTitle>
                 <BanknoteArrowUp className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -351,39 +604,429 @@ export default function ShiftStatsPage() {
               </CardContent>
             </Card>
 
-           
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{t.cashPayment}</CardTitle>
+                <BanknoteArrowUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{cashAmount.toFixed(2)}</div>
+              </CardContent>
+            </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{t.totalExpenses}</CardTitle>
+                <CardTitle className="text-sm font-medium">{t.cardPayment}</CardTitle>
+                <BanknoteArrowUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{cardAmount.toFixed(2)}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{t.onlinePayment}</CardTitle>
+                <BanknoteArrowUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{onlineAmount.toFixed(2)}</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{t.banquet}</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{banquetAmount.toFixed(2)}</div>
+                <p className="text-xs text-muted-foreground">{banquetOrders.length} заказов</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{t.delivery}</CardTitle>
+                <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{deliveryAmount.toFixed(2)}</div>
+                <p className="text-xs text-muted-foreground">{deliveryOrders.length} заказов</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{t.dineIn}</CardTitle>
+                <User className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{dineInAmount.toFixed(2)}</div>
+                <p className="text-xs text-muted-foreground">{dineInOrders.length} заказов</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{t.takeaway}</CardTitle>
+                <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{takeawayAmount.toFixed(2)}</div>
+                <p className="text-xs text-muted-foreground">{takeawayOrders.length} заказов</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-5">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{t.otherIncome}</CardTitle>
+                <PlusCircle className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{otherIncomes.toFixed(2)}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{t.beznal}</CardTitle>
                 <BanknoteArrowDown className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{beznalIncomes.toFixed(2)}</div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">{t.expensesTotal}</CardTitle>
+                <MinusCircle className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{totalExpenses.toFixed(2)}</div>
               </CardContent>
             </Card>
 
-              <Card>
+            <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Баланс</CardTitle>
+                <CardTitle className="text-sm font-medium">{t.cashBalance}</CardTitle>
                 <RussianRuble className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{(totalAmount - totalExpenses).toFixed(2)}</div>
+                <div className="text-2xl font-bold">{cashBalance.toFixed(2)}</div>
               </CardContent>
             </Card>
 
-             <Card>
+            <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{t.staffCount}</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">{t.cashInSafe}</CardTitle>
+                <RussianRuble className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{staff?.length || 0}</div>
+                <div className="text-2xl font-bold">{cashInSafe.toFixed(2)}</div>
               </CardContent>
             </Card>
           </div>
-              
+
+          <div className='grid grid-cols-1 md:grid-cols-2 space-x-4'>
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle>{t.incomes}</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                  <div className="mb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <Select
+                    value={newIncome.title}
+                    onValueChange={(value) => setNewIncome({...newIncome, title: value})}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={t.incomeTitle} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectLabel>Доходы</SelectLabel>
+                        {INCOMES.map((category) => (
+                          <SelectItem key={category} value={category}>
+                            {category}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                    
+                    <Input
+                      type="number"
+                      placeholder={t.incomeAmount}
+                      value={newIncome.amount}
+                      onChange={(e) => setNewIncome({...newIncome, amount: Number(e.target.value)})}
+                    />
+                    
+                    <Input
+                      placeholder={t.incomeDescription}
+                      value={newIncome.description}
+                      onChange={(e) => setNewIncome({...newIncome, description: e.target.value})}
+                    />
+                    
+                    <Button
+                      onClick={handleAddIncome}
+                      disabled={!newIncome.title || newIncome.amount <= 0}
+                    >
+                      {editingIncome ? t.save : t.add}
+                    </Button>
+                    </div>
+                  </div>
+                
+                {isLoadingIncomes ? (
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => (
+                      <Skeleton key={i} className="h-12 w-full" />
+                    ))}
+                  </div>
+                ) : incomes.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t.incomeTitle}</TableHead>
+                        <TableHead>{t.incomeAmount}</TableHead>
+                        <TableHead>{t.incomeDescription}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {incomes.map((income) => (
+                        <TableRow key={income.id}>
+                          <TableCell className="font-medium">{income.title}</TableCell>
+                          <TableCell>{income.amount.toFixed(2)}</TableCell>
+                          <TableCell>{income.description || '-'}</TableCell>
+                          <TableCell className='text-right'>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDeleteIncome(income.id)}
+                                disabled={isShiftCompleted}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <p className="text-muted-foreground text-center py-8">{t.noIncomes}</p>
+                )}
+              </CardContent>
+            </Card>
+
+          <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle>{t.expenses}</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent>
+                  <div className="mb-4">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                       <Select
+                          value={newExpense.title}
+                          onValueChange={(value) => setNewExpense({...newExpense, title: value})}
+                        >
+                          <SelectTrigger className='w-full'>
+                            <SelectValue placeholder={t.expenseTitle} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              <SelectLabel>Расходы</SelectLabel>
+                              <Command>
+                                <CommandInput placeholder="Поиск категории..." />
+                                <CommandEmpty>Категория не найдена</CommandEmpty>
+                                <CommandList>
+                                  <CommandGroup>
+                                    {EXPENSES.map((category) => (
+                                    <SelectItem key={category} value={category}>
+                                      {category}
+                                    </SelectItem>
+                                  ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        
+                        <Input
+                          type="number"
+                          placeholder={t.expenseAmount}
+                          value={newExpense.amount}
+                          onChange={(e) => setNewExpense({...newExpense, amount: Number(e.target.value)})}
+                        />
+                        
+                        <Input
+                          placeholder={t.expenseDescription}
+                          value={newExpense.description}
+                          onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
+                        />
+                        
+                        <Button
+                          onClick={handleAddExpense}
+                          disabled={!newExpense.title || newExpense.amount <= 0}
+                        >
+                          {editingExpense ? t.save : t.add}
+                        </Button>
+                    </div>
+                  
+                  </div>
+                
+                {isLoadingExpenses ? (
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => (
+                      <Skeleton key={i} className="h-12 w-full" />
+                    ))}
+                  </div>
+                ) : expenses.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{t.expenseTitle}</TableHead>
+                        <TableHead>{t.expenseAmount}</TableHead>
+                        <TableHead>{t.expenseDescription}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {expenses.map((expense) => (
+                        <TableRow key={expense.id}>
+                          <TableCell className="font-medium">{expense.title}</TableCell>
+                          <TableCell>{expense.amount.toFixed(2)}</TableCell>
+                          <TableCell>{expense.description || '-'}</TableCell>
+                          <TableCell className='text-right'>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleDeleteExpense(expense.id)}
+                                disabled={isShiftCompleted}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <p className="text-muted-foreground text-center py-8">{t.noExpenses}</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+          
+          <Card>
+            <CardHeader>
+              <CardTitle>{t.staff}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col md:flex-row gap-6">
+                <div className="flex-1">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-semibold">{t.restaurantStaff}</h3>
+                    {selectedRestaurantUser && (
+                      <span className="text-sm text-muted-foreground">
+                        {t.selected}: 1
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-2 h-96 overflow-y-auto border rounded-lg p-2">
+                    {availableUsers.length > 0 ? (
+                      availableUsers.map((user : UserType) => (
+                        <div 
+                          key={user.id} 
+                          className={`p-3 rounded-lg cursor-pointer flex items-center gap-3 ${
+                            selectedRestaurantUser === user.id
+                              ? 'bg-primary/10 border-2 border-primary'
+                              : 'hover:bg-accent'
+                          }`}
+                          onClick={() => setSelectedRestaurantUser(user.id)}
+                        >
+                          <User className="h-5 w-5 text-muted-foreground" />
+                          <div>
+                            <p className="font-medium">{user.email}</p>
+                            <RoleBadge role={user.role} lang={language} />
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-muted-foreground text-center py-8">
+                        {t.noRestaurantStaff}
+                      </p>
+                    )}
+                  </div>
+                  
+                </div>
+                <div className='flex flex-col justify-center items-center'>
+                  <Button
+                    className="mt-4"
+                    onClick={handleAddUserToShift}
+                    disabled={!selectedRestaurantUser || isShiftCompleted}
+                  >
+                    <ChevronRight className="mr-2 h-4 w-4" />
+                    {t.addStaff}
+                  </Button>
+                  <Button
+                    className="mt-4"
+                    variant="destructive"
+                    onClick={handleRemoveUserFromShift}
+                    disabled={!selectedShiftUser || isShiftCompleted}
+                  >
+                    <ChevronLeft className="mr-2 h-4 w-4" />
+                    {t.removeFromShift}
+                  </Button>
+                </div>
+                <div className="flex-1">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-semibold">{t.shiftStaff}</h3>
+                    {selectedShiftUser && (
+                      <span className="text-sm text-muted-foreground">
+                        {t.selected}: 1
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-2 h-96 overflow-y-auto border rounded-lg p-2">
+                    {staff && staff?.length > 0 ? (
+                      staff.map(user => (
+                        <div 
+                          key={user.userId} 
+                          className={`p-3 rounded-lg cursor-pointer  flex items-center gap-3 ${
+                            selectedShiftUser === user.userId
+                              ? 'bg-destructive/10 border-2 border-destructive'
+                              : 'hover:bg-accent'
+                          }`}
+                          onClick={() => setSelectedShiftUser(user.userId)}
+                        >
+                          <User className="h-5 w-5 text-muted-foreground" />
+                          <div>
+                            <p className="font-medium">{user.user.email}</p>
+                            <RoleBadge role={user.user.role} lang={language} />
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-muted-foreground text-center py-8">
+                        {t.noStaff}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+
           <Card>
             <CardHeader>
               <CardTitle>{t.orders}</CardTitle>
@@ -420,180 +1063,9 @@ export default function ShiftStatsPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle>{t.staff}</CardTitle>
-                <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" variant="outline">
-                      {t.addStaff}
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>{t.addStaff}</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <Input
-                        type="email"
-                        placeholder={t.emailPlaceholder}
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                      />
-                      <Button
-                        onClick={handleAddUser}
-                        disabled={isAddingUser || !email}
-                        className="w-full"
-                      >
-                        {isAddingUser ? t.adding : t.add}
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isLoadingStaff ? (
-                <div className="space-y-4">
-                  {[...Array(3)].map((_, i) => (
-                    <Skeleton key={i} className="h-12 w-full" />
-                  ))}
-                </div>
-              ) : staff?.length ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t.user}</TableHead>
-                      <TableHead>{t.role}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {staff.map((user) => (
-                      <TableRow key={user.userId}>
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4" />
-                            {user.user.email}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <RoleBadge role={user.user.role} lang={language} />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <p className="text-muted-foreground text-center py-8">{t.noStaff}</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle>{t.expenses}</CardTitle>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setEditingExpense(null);
-                    setNewExpense({ title: '', amount: 0, description: '' });
-                    setIsExpenseDialogOpen(true);
-                  }}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  {t.addExpense}
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {isLoadingExpenses ? (
-                <div className="space-y-4">
-                  {[...Array(3)].map((_, i) => (
-                    <Skeleton key={i} className="h-12 w-full" />
-                  ))}
-                </div>
-              ) : expenses.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t.expenseTitle}</TableHead>
-                      <TableHead>{t.expenseAmount}</TableHead>
-                      <TableHead>{t.expenseDescription}</TableHead>
-                      <TableHead>{t.actions}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {expenses.map((expense) => (
-                      <TableRow key={expense.id}>
-                        <TableCell className="font-medium">{expense.title}</TableCell>
-                        <TableCell>{expense.amount.toFixed(2)}</TableCell>
-                        <TableCell>{expense.description || '-'}</TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleEditExpense(expense)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDeleteExpense(expense.id)}
-                            >
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <p className="text-muted-foreground text-center py-8">{t.noExpenses}</p>
-              )}
-            </CardContent>
-          </Card>
+          
+          
         </div>
-
-        <Dialog open={isExpenseDialogOpen} onOpenChange={setIsExpenseDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {editingExpense ? t.editExpense : t.addExpense}
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <Input
-                placeholder={t.expenseTitle}
-                value={newExpense.title}
-                onChange={(e) => setNewExpense({...newExpense, title: e.target.value})}
-              />
-              <Input
-                type="number"
-                placeholder={t.expenseAmount}
-                value={newExpense.amount}
-                onChange={(e) => setNewExpense({...newExpense, amount: Number(e.target.value)})}
-              />
-              <Input
-                placeholder={t.expenseDescription}
-                value={newExpense.description}
-                onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
-              />
-              <Button
-                onClick={handleAddExpense}
-                disabled={!newExpense.title || newExpense.amount <= 0}
-                className="w-full"
-              >
-                {editingExpense ? t.save : t.add}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
     </AccessCheck>
   );

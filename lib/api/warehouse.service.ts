@@ -240,7 +240,7 @@ export interface InventoryTransaction {
     quantity?: number;
     minQuantity?: number;
     cost?: number;
-    storageLocationId?: string;
+    storageLocationId?: string | null;
     productId?: string;
   }
 

@@ -113,6 +113,7 @@ interface Shift {
   startTime: string;
   endTime: string | null;
   status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'PAUSED';
+  restaurantId: string;
   restaurant: {
     id: string;
     title: string;
@@ -120,8 +121,7 @@ interface Shift {
   staffCount: number;
   completedOrders: number;
   description?: string;
-  users:
-  {
+  users: {
     userId: string;
     user: {
       email: string;
@@ -134,7 +134,32 @@ interface Shift {
     status: any,
     totalAmount: any,
     createdAt: any,
-  }[]
+    type: string,
+    payment: any
+  }[];
+  expenses: ShiftExpense[];
+  incomes: ShiftIncome[];
+}
+
+interface ShiftIncome {
+  id: string;
+  title: string;
+  amount: number;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CreateShiftIncomeDto {
+  title: string;
+  amount: number;
+  description?: string;
+}
+
+interface UpdateShiftIncomeDto {
+  title?: string;
+  amount?: number;
+  description?: string;
 }
 
 interface CreateShiftDto {
@@ -305,6 +330,53 @@ export const ShiftService = {
   async getShiftTotalExpenses(shiftId: string): Promise<number> {
     const expenses = await this.getShiftExpenses(shiftId);
     return expenses.reduce((total, expense) => total + expense.amount, 0);
+  },
+  async addIncomeToShift(shiftId: string, dto: CreateShiftIncomeDto): Promise<ShiftIncome> {
+    const { data } = await api.post(`/shifts/${shiftId}/incomes`, dto);
+    return data;
+  },
+
+  // Получить доходы смены
+  async getShiftIncomes(shiftId: string): Promise<ShiftIncome[]> {
+    const { data } = await api.get(`/shifts/${shiftId}/incomes`);
+    return data;
+  },
+
+  // Удалить доход
+  async removeIncome(incomeId: string): Promise<void> {
+    await api.delete(`/shifts/incomes/${incomeId}`);
+  },
+
+  // Обновить доход
+  async updateIncome(incomeId: string, dto: UpdateShiftIncomeDto): Promise<ShiftIncome> {
+    const { data } = await api.put(`/shifts/incomes/${incomeId}`, dto);
+    return data;
+  },
+
+  // Получить общую сумму доходов смены
+  async getShiftTotalIncomes(shiftId: string): Promise<number> {
+    const incomes = await this.getShiftIncomes(shiftId);
+    return incomes.reduce((total, income) => total + income.amount, 0);
+  },
+
+  // Получить финансовый отчет смены (доходы - расходы)
+  async getShiftFinancialReport(shiftId: string): Promise<{
+    totalIncomes: number;
+    totalExpenses: number;
+    profit: number;
+  }> {
+    const [incomes, expenses] = await Promise.all([
+      this.getShiftIncomes(shiftId),
+      this.getShiftExpenses(shiftId)
+    ]);
+    
+    const totalIncomes = incomes.reduce((sum, income) => sum + income.amount, 0);
+    const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+    
+    return {
+      totalIncomes,
+      totalExpenses,
+      profit: totalIncomes - totalExpenses
+    };
   }
-  
 };

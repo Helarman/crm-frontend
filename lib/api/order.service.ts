@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { OrderType } from './discount.service';
+import { OrderItem } from '../types/order';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -128,6 +130,7 @@ export enum OrderItemStatus {
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
   REFUNDED = 'REFUNDED'
+  
 }
 
 export interface OrderItemDto {
@@ -179,6 +182,14 @@ export interface OrderItemProductDto {
   }[]
 }
 
+export interface AttentionFlagsDto {
+  isReordered: boolean;
+  hasDiscount: boolean;
+  discountCanceled: boolean;
+  isPrecheck: boolean;
+  isRefund: boolean;
+}
+
 export interface OrderItemDto {
   id: string;
   product: OrderItemProductDto;
@@ -195,6 +206,7 @@ export interface PaymentDto {
   status: string;
   externalId?: string;
   processedAt?: Date;
+  createdAt: Date;
 }
 
 export interface CustomerDto {
@@ -267,13 +279,13 @@ export interface OrderResponse {
   
   customer?: CustomerDto;
   restaurant: RestaurantDto;
-  items: OrderItemDto[];
+  items: OrderItem[];
   payment?: PaymentDto;
   delivery?: DeliveryInfoDto;
   
   totalPrice: number;
   totalItems: number;
-   surcharges?: {
+  surcharges?: {
     id: string;
     surchargeId: string;
     title: string;
@@ -281,6 +293,10 @@ export interface OrderResponse {
     type: 'FIXED' | 'PERCENTAGE';
     description?: string;
   }[];
+  attentionFlags: AttentionFlagsDto;
+  deliveryAddress: string;
+  deliveryNotes: string;
+  deliveryTime: string;
 }
 
 export interface OrderListResponse {
@@ -312,9 +328,69 @@ export interface AddItemToOrderDto {
   comment?: string;
 }
 
-/**
- * Сервис для работы с заказами
- */
+export interface UpdateOrderDto {
+  type?: OrderType;
+  customerPhone?: string;
+  customerId?: string | null;
+  numberOfPeople?: number;
+  tableNumber?: string;
+  comment?: string;
+  deliveryAddress?: string;
+  deliveryTime?: string;
+  deliveryNotes?: string;
+  scheduledAt?: string;
+  payment?: {
+    method: EnumPaymentMethod;
+  };
+}
+
+export interface OrderArchiveFilterParams {
+  startDate?: string;
+  endDate?: string;
+  isReordered?: boolean;
+  hasDiscount?: boolean;
+  discountCanceled?: boolean;
+  isRefund?: boolean;
+  status?: EnumOrderStatus[];
+  searchQuery?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  meta: PaginatedMeta;
+}
+
+export interface CreateOrderLogDto {
+  orderId: string;
+  action: string;
+  userId?: string;
+  details?: Record<string, any>;
+  status?: string;
+}
+
+export interface OrderLogResponseDto {
+  id: string;
+  orderId: string;
+  action: string;
+  userId?: string;
+  details?: Record<string, any>;
+  status?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+
+export interface OrderArchiveResponse extends PaginatedResponse<OrderResponse> {}
+
 export const OrderService = {
   /**
    * Создание нового заказа
@@ -461,6 +537,168 @@ export const OrderService = {
       console.error('Failed to remove item from order:', error);
       throw error;
     }
-  }
+  },
+  updateOrder: async (id: string, dto: UpdateOrderDto): Promise<OrderResponse> => {
+    try {
+      // Prepare the data for the API
+      const requestData = {
+        ...dto,
+        // Convert deliveryTime to ISO string if it exists
+        deliveryTime: dto.deliveryTime ? new Date(dto.deliveryTime).toISOString() : undefined,
+        // Convert scheduledAt to ISO string if it exists
+        scheduledAt: dto.scheduledAt ? new Date(dto.scheduledAt).toISOString() : undefined,
+      };
+
+      const { data } = await api.patch<OrderResponse>(`/orders/${id}`, requestData);
+      return data;
+    } catch (error) {
+      console.error('Failed to update order:', error);
+      throw error;
+    }
+  },
+
+   updateAttentionFlags: async (
+    orderId: string,
+    dto: Partial<AttentionFlagsDto>
+  ): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.patch<OrderResponse>(
+        `/orders/${orderId}/attention-flags`,
+        dto
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to update attention flags:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Установка флага дозаказа
+   */
+  setReorderedFlag: async (
+    orderId: string,
+    value: boolean
+  ): Promise<OrderResponse> => {
+    return OrderService.updateAttentionFlags(orderId, { isReordered: value });
+  },
+
+  /**
+   * Установка флага пречека
+   */
+  setPrecheckFlag: async (
+    orderId: string,
+    value: boolean
+  ): Promise<OrderResponse> => {
+    return OrderService.updateAttentionFlags(orderId, { isPrecheck: value });
+  },
+
+  /**
+   * Установка флага возврата
+   */
+  setRefundFlag: async (
+    orderId: string,
+    value: boolean
+  ): Promise<OrderResponse> => {
+    return OrderService.updateAttentionFlags(orderId, { isRefund: value });
+  },
+
+  /**
+   * Установка флагов скидки
+   */
+  setDiscountFlags: async (
+    orderId: string,
+    hasDiscount: boolean,
+    canceled: boolean = false
+  ): Promise<OrderResponse> => {
+    return OrderService.updateAttentionFlags(orderId, {
+      hasDiscount,
+      discountCanceled: canceled,
+    });
+  },
+
+  /**
+   * Возврат позиции
+   */
+  refundItem: async (
+    orderId: string,
+    itemId: string,
+    reason: string
+  ): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.post<OrderResponse>(
+        `/orders/${orderId}/items/${itemId}/refund`,
+        { reason }
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to refund item:', error);
+      throw error;
+    }
+  },
+  /**
+   * Получение активных заказов ресторана (за последние 2 дня)
+   */
+  getActiveRestaurantOrders: async (restaurantId: string): Promise<OrderResponse[]> => {
+    try {
+      const { data } = await api.get<OrderResponse[]>(
+        `/orders/restaurant/${restaurantId}/active`
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch active orders:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Получение архива заказов ресторана с пагинацией и фильтрами
+   */
+  getRestaurantArchive: async (
+    restaurantId: string,
+    params: OrderArchiveFilterParams = {}
+  ): Promise<OrderArchiveResponse> => {
+    try {
+      // Нормализация параметров
+      const normalizedParams = {
+        ...params,
+        page: params.page || 1,
+        limit: params.limit || 10,
+      };
+
+      const { data } = await api.get<OrderArchiveResponse>(
+        `/orders/restaurant/${restaurantId}/archive`,
+        { params: normalizedParams }
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch order archive:', error);
+      throw error;
+    }
+  },
+
+   createLog: async (dto: CreateOrderLogDto): Promise<OrderLogResponseDto> => {
+    try {
+      const { data } = await api.post<OrderLogResponseDto>('/order-logs', dto);
+      return data;
+    } catch (error) {
+      console.error('Failed to create order log:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Получение логов для конкретного заказа
+   */
+  getOrderLogs: async (orderId: string): Promise<OrderLogResponseDto[]> => {
+    try {
+      const { data } = await api.get<OrderLogResponseDto[]>(`/order-logs/${orderId}`);
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch order logs:', error);
+      throw error;
+    }
+  },
+
 };
 

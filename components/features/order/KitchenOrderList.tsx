@@ -42,7 +42,7 @@ export function KitchenOrdersList() {
 
   // Фильтруем заказы по нужным статусам
   const filteredOrders = orders.filter(( order : OrderResponse) => 
-    ['CONFIRMED', 'PREPARING', 'READY'].includes(order.status)
+    ['CONFIRMED', 'PREPARING'].includes(order.status)
   )
 
   type OrderStatus = 'PREPARING' | 'CONFIRMED' | 'READY';
@@ -128,7 +128,7 @@ export function KitchenOrdersList() {
       </div>
 
       {ordersLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {[...Array(6)].map((_, i) => (
             <Skeleton key={i} className="h-[300px] w-full rounded-lg" />
           ))}

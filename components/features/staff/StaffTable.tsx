@@ -15,6 +15,7 @@ import { toast } from 'sonner'
 import { RestaurantService } from '@/lib/api/restaurant.service'
 import { UserService } from '@/lib/api/user.service'
 import { EditStaffDialog } from './EditStaffDialog'
+import { WorkshopService } from "@/lib/api/workshop.service"
 
 export interface Restaurant {
   id: string
@@ -28,6 +29,10 @@ export interface StaffMember {
   restaurant: {
     id: string
     title: string
+  }[]
+  workshops?: {
+    workshopId: string
+    name: string
   }[]
   position: string
 }
@@ -167,51 +172,68 @@ export function StaffTable({
     setEditDialogOpen(true)
   }
 
-  const handleSaveChanges = async (selectedRole: UserRoles, selectedRestaurants: string[]) => {
-    if (!selectedStaff) return
-    
-    setIsLoading(true)
-    
-    try {
-      // Обновляем роль, если она изменилась
-      if (selectedRole !== selectedStaff.position) {
-        await UserService.changeUserRole(selectedStaff.id, selectedRole)
-        toast.success(tDialog.roleUpdated)
-      }
+const handleSaveChanges = async (
+  selectedRole: UserRoles, 
+  selectedRestaurants: string[],
+  selectedWorkshops?: string[]
+) => {
+  if (!selectedStaff) return
   
-      // Получаем текущие рестораны пользователя
-      const currentRestaurantIds = selectedStaff.restaurant.map(r => r.id)
-      
-      // Определяем рестораны для добавления и удаления
-      const restaurantsToAdd = selectedRestaurants.filter(id => !currentRestaurantIds.includes(id))
-      const restaurantsToRemove = currentRestaurantIds.filter(id => !selectedRestaurants.includes(id))
+  setIsLoading(true)
   
-      // Добавляем пользователя в новые рестораны
-      for (const restaurantId of restaurantsToAdd) {
-        await RestaurantService.addUser(restaurantId, {
-          userId: selectedStaff.id,
-        })
-      }
-  
-      // Удаляем пользователя из старых ресторанов
-      for (const restaurantId of restaurantsToRemove) {
-        await RestaurantService.removeUser(restaurantId, selectedStaff.id)
-      }
-  
-      if (restaurantsToAdd.length > 0 || restaurantsToRemove.length > 0) {
-        toast.success(tDialog.restaurantUpdated)
-      }
-  
-      // Обновляем данные через родительский компонент
-      await onRefresh()
-      setEditDialogOpen(false)
-    } catch (error) {
-      toast.error(tDialog.error)
-      console.error(error)
-    } finally {
-      setIsLoading(false)
+  try {
+    // 1. Обновляем роль пользователя
+    if (selectedRole !== selectedStaff.position) {
+      await UserService.changeUserRole(selectedStaff.id, selectedRole)
+      toast.success(tDialog.roleUpdated)
     }
+
+    // 2. Обновляем рестораны пользователя
+    const currentRestaurantIds = selectedStaff.restaurant.map(r => r.id)
+    const restaurantsToAdd = selectedRestaurants.filter(id => !currentRestaurantIds.includes(id))
+    const restaurantsToRemove = currentRestaurantIds.filter(id => !selectedRestaurants.includes(id))
+
+    for (const restaurantId of restaurantsToAdd) {
+      await RestaurantService.addUser(restaurantId, { userId: selectedStaff.id })
+    }
+
+    for (const restaurantId of restaurantsToRemove) {
+      await RestaurantService.removeUser(restaurantId, selectedStaff.id)
+    }
+
+    if (restaurantsToAdd.length > 0 || restaurantsToRemove.length > 0) {
+      toast.success(tDialog.restaurantUpdated)
+    }
+
+    // 3. Обновляем цехи пользователя (только для кухонных ролей)
+    if (selectedWorkshops) {
+      // Получаем текущие цехи пользователя
+      const currentWorkshopIds = selectedStaff.workshops?.map(w => w.workshopId) || []
+      
+      // Определяем цехи для добавления и удаления
+      const workshopsToAdd = selectedWorkshops.filter(id => !currentWorkshopIds.includes(id))
+      const workshopsToRemove = currentWorkshopIds.filter(id => !selectedWorkshops.includes(id))
+
+      // Добавляем пользователя в новые цехи
+      for (const workshopId of workshopsToAdd) {
+        await WorkshopService.addUsers(workshopId, [selectedStaff.id])
+      }
+
+      // Удаляем пользователя из старых цехов
+      for (const workshopId of workshopsToRemove) {
+        await WorkshopService.removeUsers(workshopId, [selectedStaff.id])
+      }
+    }
+
+    await onRefresh()
+    setEditDialogOpen(false)
+  } catch (error) {
+    toast.error(tDialog.error)
+    console.error(error)
+  } finally {
+    setIsLoading(false)
   }
+}
 
   const filteredStaff = staff.filter(member => {
     const matchesSearch = 

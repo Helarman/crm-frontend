@@ -407,45 +407,66 @@ export const ProductModal = ({
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validateCurrentStep()) return;
+ const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!validateCurrentStep()) return;
 
-    setIsLoading(true);
+  setIsLoading(true);
 
-    try {
-      const productData = {
-        ...formData,
-        ingredients: ingredients.filter(i => i.inventoryItemId && i.quantity > 0)
+  try {
+    const productData = {
+      ...formData,
+      ingredients: ingredients.filter(i => i.inventoryItemId && i.quantity > 0)
         .map(i => ({
           inventoryItemId: i.inventoryItemId,
-          quantity: parseFloat(i.quantity.toString()) // Преобразуем в число
+          quantity: parseFloat(i.quantity.toString())
         })),
-        images: formData.images.filter(img => img.trim()),
-        restaurantPrices: restaurantPrices.filter(rp => 
-          selectedRestaurants.includes(rp.restaurantId)
-        ),
-        additives: selectedAdditives,
-        workshopIds: selectedWorkshops,
-      };
+      images: formData.images.filter(img => img.trim()),
+      restaurantPrices: restaurantPrices.filter(rp => 
+        selectedRestaurants.includes(rp.restaurantId)
+      ),
+      additives: selectedAdditives,
+      workshopIds: selectedWorkshops,
+    };
 
-      if (productId) {
-        await ProductService.update(productId, productData);
-        toast.success(language === 'ru' ? 'Продукт обновлен' : 'პროდუქტი განახლებულია');
-      } else {
-        await ProductService.create(productData);
-        toast.success(language === 'ru' ? 'Продукт создан' : 'პროდუქტი შექმნილია');
-      }
-
-      onSubmitSuccess();
-      onClose();
-    } catch (error) {
-      console.error('Error saving product:', error);
-      toast.error(language === 'ru' ? 'Ошибка сохранения' : 'შენახვის შეცდომა');
-    } finally {
-      setIsLoading(false);
+    let productIdToUse = productId;
+    
+    // Create or update the product
+    if (productId) {
+      await ProductService.update(productId, productData);
+      toast.success(language === 'ru' ? 'Продукт обновлен' : 'პროდუქტი განახლებულია');
+    } else {
+      const createdProduct = await ProductService.create(productData);
+      productIdToUse = createdProduct.id;
+      toast.success(language === 'ru' ? 'Продукт создан' : 'პროდუქტი შექმნილია');
     }
-  };
+
+    // Add product to selected restaurants
+    if (productIdToUse) {
+      await Promise.all(
+        selectedRestaurants.map(restaurantId => 
+          RestaurantService.addProduct(restaurantId, { productId: productIdToUse as string })
+            .catch(error => {
+              console.error(`Failed to add product to restaurant ${restaurantId}:`, error);
+              toast.error(
+                language === 'ru' 
+                  ? `Ошибка добавления продукта в ресторан ${restaurantId}`
+                  : `პროდუქტის რესტორნში დამატების შეცდომა ${restaurantId}`
+              );
+            })
+        )
+      );
+    }
+
+    onSubmitSuccess();
+    onClose();
+  } catch (error) {
+    console.error('Error saving product:', error);
+    toast.error(language === 'ru' ? 'Ошибка сохранения' : 'შენახვის შეცდომა');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const getRestaurantPrice = (restaurantId: string) => {
     return restaurantPrices.find(rp => rp.restaurantId === restaurantId) || {
@@ -706,6 +727,7 @@ export const ProductModal = ({
                   const priceInfo = getRestaurantPrice(restaurantId);
                   return (
                     <div key={restaurantId} className="grid grid-cols-3 gap-4 items-center">
+                      
                       <Label className="text-sm">{restaurant?.title}</Label>
                       
                       <Input
@@ -1000,7 +1022,6 @@ export const ProductModal = ({
           </DialogTitle>
           <div className="text-sm text-muted-foreground">{getStepTitle()}</div>
         </DialogHeader>
-        
         {isLoading ? (
           <div className="flex justify-center py-8">
             <Loader2 className="h-8 w-8 animate-spin" />

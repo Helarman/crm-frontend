@@ -45,7 +45,6 @@ export default function StaffManagementPage() {
       try {
         setLoading(true)
 
-        // Параллельная загрузка данных
         const [usersData, restaurantsData, workshopsData] = await Promise.all([
           UserService.getAll(),
           RestaurantService.getAll(),

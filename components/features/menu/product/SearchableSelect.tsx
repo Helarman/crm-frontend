@@ -15,9 +15,11 @@ interface SearchableSelectProps {
   searchPlaceholder: string;
   emptyText: string;
   multiple?: boolean;
+  disabled?: boolean;
   className?: string;
 }
  const SearchableSelect = ({
+  disabled,
   options,
   value,
   onChange,
@@ -51,6 +53,7 @@ interface SearchableSelectProps {
   return (
     <div className="space-y-2">
       <Button
+        disabled={disabled}
         variant="outline"
         role="combobox"
         aria-expanded={open}

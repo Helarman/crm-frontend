@@ -191,24 +191,27 @@ export default function KitchenOrderPage() {
         setLoading(true)
         const data = await OrderService.getById(orderId as string)
         setOrder(data)
-        
+
         setItems(data.items.map(item => ({
           id: item.id,
           product: {
             title: item.product.title || 'Без названия',
-            workshops: item.product.workshops,
-            ingredients: item.product.ingredients || []
+            workshops: item.product.workshops.map(workshopItem => ({
+              id: workshopItem.id,
+              workshop: {
+                id: workshopItem.workshop.id ,
+                name: workshopItem.workshop.name
+              }
+            })),
+            ingredients: item.product.ingredients
           },
           quantity: item.quantity,
           additives: item.additives.map(add => ({
-            title: add.name || 'Добавка'
+            title: add.title || 'Добавка'
           })),
           comment: item.comment,
           currentStatus: item.status || 'CREATED',
-          assignedTo: item.user ? {
-            id: item.user.id,
-            name: item.user.name || 'Повар'
-          } : null
+          assignedTo: null
         })))
 
       } catch (err) {

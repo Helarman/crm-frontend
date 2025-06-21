@@ -1,7 +1,13 @@
+import { OrderItemStatus } from "../api/order.service"
+import { Product } from "./product"
+
 export interface OrderState {
   restaurantId: string
   items: OrderItem[]
-  payment: { method: 'CASH' | 'CARD' | 'CASH_TO_COURIER' | 'CARD_TO_COURIER', status: 'PAID' | 'PENDING' }
+  payment: { 
+    method: 'CASH' | 'CARD' | 'CASH_TO_COURIER' | 'CARD_TO_COURIER'
+    status: 'PAID' | 'PENDING'
+  }
   type: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET'
   source: 'PANEL' | 'SITE' | 'MOBILE'
   comment: string
@@ -24,48 +30,44 @@ export interface OrderState {
     amount: number
     type: 'FIXED' | 'PERCENTAGE'
   }[]
-  discounts: {
+  discounts?: {
     id: string
     title: string
     amount: number
     type: 'FIXED' | 'PERCENTAGE'
-  }[]
+  }[]   
 }
 
 export interface OrderItem {
+  id: string;
+  isReordered: boolean;
+  isRefund: boolean;
+  refundReason: string;
+  status: OrderItemStatus;
+  product: Product
   productId: string
   quantity: number
+  ingredients: any[]
   additiveIds: string[]
   comment?: string
-}
-
-export interface Product {
-  id: string
-  title: string
-  titleGe?: string
-  price: number
-  categoryId: string
   additives: Additive[]
-  description?: string
-  descriptionGe?: string
-  images?: string[]
-  restaurantPrices: {
-    restaurantId: string
-    price: number
-    isStopList: boolean
-  }[]
+  timestamps: {
+    createdAt: Date;
+    startedAt: Date;
+    completedAt: Date;
+    pausedAt: Date;
+    refundedAt: Date;
+  }
 }
 
 export interface Additive {
   id: string
   title: string
-  titleGe?: string
   price: number
 }
 
 export interface Category {
   id: string
   title: string
-  titleGe?: string
   order?: number
 }

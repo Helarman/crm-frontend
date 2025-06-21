@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { useLanguageStore } from '@/lib/stores/language-store'
 import { JSX } from 'react'
+import { OrderItem } from '@/lib/types/order'
 
 const statusTranslations = {
   CREATED: {
@@ -50,13 +51,7 @@ const deliveryTypeTranslations = {
   }
 }
 
-type OrderItem = {
 
-  status: 'IN_PROGRESS' | 'COMPLETED';
-
-  quantity: number;
-
-};
 
 function getOrderItemCounts(items: OrderItem[]) {
 

@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TransactionsTable } from '@/components/features/warehouse/TransactionsTable';
 import { Refrigerator, Package, ArrowLeftRight } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function WarehousePage() {
   const params = useParams();
@@ -33,14 +34,23 @@ export default function WarehousePage() {
   const [activeTab, setActiveTab] = useState('items');
   const [locationFilter, setLocationFilter] = useState('all');
 
-  // Формы
+  // Формы и ошибки
   const [newItem, setNewItem] = useState({
     name: '',
     unit: 'kg',
     quantity: 0,
     storageLocationId: 'none',
   });
+  const [itemErrors, setItemErrors] = useState({
+    name: '',
+    quantity: '',
+  });
+
   const [newLocation, setNewLocation] = useState({
+    name: '',
+    code: '',
+  });
+  const [locationErrors, setLocationErrors] = useState({
     name: '',
     code: '',
   });
@@ -73,40 +83,102 @@ export default function WarehousePage() {
       setLocations(warehouseData.storageLocations || []);
     } catch (error) {
       console.error('Failed to load warehouse data:', error);
+      toast.error(t('loadError'));
     } finally {
       setLoading(false);
     }
   };
 
+  const validateItem = () => {
+    let isValid = true;
+    const newErrors = { name: '', quantity: '' };
+
+    if (!newItem.name.trim()) {
+      newErrors.name = t('nameRequired');
+      isValid = false;
+    }
+
+    if (newItem.quantity < 0) {
+      newErrors.quantity = t('quantityPositive');
+      isValid = false;
+    }
+
+    setItemErrors(newErrors);
+    return isValid;
+  };
+
+  const validateLocation = () => {
+    let isValid = true;
+    const newErrors = { name: '', code: '' };
+
+    if (!newLocation.name.trim()) {
+      newErrors.name = t('nameRequired');
+      isValid = false;
+    }
+
+    if (!newLocation.code.trim()) {
+      newErrors.code = t('codeRequired');
+      isValid = false;
+    }
+
+    setLocationErrors(newErrors);
+    return isValid;
+  };
+
   const handleAddItem = async () => {
+    if (!validateItem()) return;
+
     try {
       const itemToCreate = {
         ...newItem,
         storageLocationId: newItem.storageLocationId === 'none' ? null : newItem.storageLocationId
       };
-      await WarehouseService.createInventoryItem(warehouse.id, newItem);
+      
+      await WarehouseService.createInventoryItem(warehouse.id, itemToCreate);
       await loadWarehouseData();
+      
       setNewItem({
         name: '',
         unit: 'kg',
         quantity: 0,
         storageLocationId: 'none',
       });
-    } catch (error) {
+      
+      toast.success(t('itemAdded'));
+    } catch (error: any) {
       console.error('Failed to add item:', error);
+      
+      let errorMessage = t('addItemError');
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      
+      toast.error(errorMessage);
     }
   };
 
   const handleAddLocation = async () => {
+    if (!validateLocation()) return;
+
     try {
       await WarehouseService.createStorageLocation(warehouse.id, newLocation);
       await loadWarehouseData();
+      
       setNewLocation({
         name: '',
         code: '',
       });
-    } catch (error) {
+      
+      toast.success(t('locationAdded'));
+    } catch (error: any) {
       console.error('Failed to add location:', error);
+      
+      let errorMessage = t('addLocationError');
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      
+      toast.error(errorMessage);
     }
   };
 
@@ -123,7 +195,7 @@ export default function WarehousePage() {
     const reason = reasonRef.current?.value || '';
 
     if (quantity <= 0) {
-      alert('Количество должно быть положительным');
+      toast.error(t('quantityPositive'));
       return;
     }
 
@@ -133,20 +205,29 @@ export default function WarehousePage() {
           quantity,
           reason,
         });
+        toast.success(t('receiptSuccess'));
       } else {
         if (quantity > currentItem.quantity) {
-          alert('Недостаточно товара для списания');
+          toast.error(t('insufficientQuantity'));
           return;
         }
         await WarehouseService.writeOffInventory(currentItem.id, {
           quantity,
           reason,
         });
+        toast.success(t('writeOffSuccess'));
       }
       await loadWarehouseData();
       setTransactionDialogOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Transaction error:', error);
+      
+      let errorMessage = t('transactionError');
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      
+      toast.error(errorMessage);
     }
   };
 
@@ -157,15 +238,16 @@ export default function WarehousePage() {
       setActiveTab('transactions');
     } catch (error) {
       console.error('Failed to load transactions:', error);
+      toast.error(t('loadTransactionsError'));
     }
   };
 
   if (loading) {
-    return <div className="p-4">Loading...</div>;
+    return <div className="p-4">{t('loading')}</div>;
   }
 
   if (!warehouse) {
-    return <div className="p-4">Warehouse not found</div>;
+    return <div className="p-4">{t('warehouseNotFound')}</div>;
   }
 
   return (
@@ -188,6 +270,9 @@ export default function WarehousePage() {
                     value={newLocation.name}
                     onChange={(e) => setNewLocation({ ...newLocation, name: e.target.value })}
                   />
+                  {locationErrors.name && (
+                    <p className="text-sm text-red-500 mt-1">{locationErrors.name}</p>
+                  )}
                 </div>
                 <div>
                   <Label className='mb-1'>{t('code')}</Label>
@@ -195,6 +280,9 @@ export default function WarehousePage() {
                     value={newLocation.code}
                     onChange={(e) => setNewLocation({ ...newLocation, code: e.target.value })}
                   />
+                  {locationErrors.code && (
+                    <p className="text-sm text-red-500 mt-1">{locationErrors.code}</p>
+                  )}
                 </div>
                 <Button onClick={handleAddLocation}>{t('addLocation')}</Button>
               </div>
@@ -216,6 +304,9 @@ export default function WarehousePage() {
                     value={newItem.name}
                     onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
                   />
+                  {itemErrors.name && (
+                    <p className="text-sm text-red-500 mt-1">{itemErrors.name}</p>
+                  )}
                 </div>
                 <div>
                   <Label className='mb-1'>{t('unit')}</Label>
@@ -239,9 +330,13 @@ export default function WarehousePage() {
                   <Label className='mb-1'>{t('quantity')}</Label>
                   <Input
                     type="number"
+                    min="0"
                     value={newItem.quantity}
                     onChange={(e) => setNewItem({ ...newItem, quantity: Number(e.target.value) })}
                   />
+                  {itemErrors.quantity && (
+                    <p className="text-sm text-red-500 mt-1">{itemErrors.quantity}</p>
+                  )}
                 </div>
                 <div>
                   <Label className='mb-1'>{t('location')}</Label>
@@ -270,26 +365,26 @@ export default function WarehousePage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-       <TabsList>
-        <TabsTrigger value="items">
-          <div className="flex items-center gap-2">
-            <Package className="h-4 w-4" />
-            {t('inventory')}
-          </div>
-        </TabsTrigger>
-        <TabsTrigger value="locations">
-          <div className="flex items-center gap-2">
-            <Refrigerator className="h-4 w-4" />
-            {t('locations')}
-          </div>
-        </TabsTrigger>
-        <TabsTrigger value="transactions">
-          <div className="flex items-center gap-2">
-            <ArrowLeftRight className="h-4 w-4" />
-            {t('transactions')}
-          </div>
-        </TabsTrigger>
-      </TabsList>
+        <TabsList>
+          <TabsTrigger value="items">
+            <div className="flex items-center gap-2">
+              <Package className="h-4 w-4" />
+              {t('inventory')}
+            </div>
+          </TabsTrigger>
+          <TabsTrigger value="locations">
+            <div className="flex items-center gap-2">
+              <Refrigerator className="h-4 w-4" />
+              {t('locations')}
+            </div>
+          </TabsTrigger>
+          <TabsTrigger value="transactions">
+            <div className="flex items-center gap-2">
+              <ArrowLeftRight className="h-4 w-4" />
+              {t('transactions')}
+            </div>
+          </TabsTrigger>
+        </TabsList>
 
         <TabsContent value="items">
           <Card>
@@ -324,6 +419,7 @@ export default function WarehousePage() {
                     <TableHead>{t('quantity')}</TableHead>
                     <TableHead>{t('unit')}</TableHead>
                     <TableHead>{t('location')}</TableHead>
+                    <TableHead className="text-right">{t('actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -333,7 +429,6 @@ export default function WarehousePage() {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           {item.quantity}
-                          
                         </div>
                       </TableCell>
                       <TableCell>{item.unit}</TableCell>
@@ -343,14 +438,14 @@ export default function WarehousePage() {
                           : t('noLocation')}
                       </TableCell>
                       <TableCell>
-                        <div className='text-right'>
+                        <div className="flex justify-end gap-2">
                           <Button 
-                              variant="ghost" 
-                              size="sm"
-                              onClick={() => handleOpenTransactionDialog(item)}
-                            >
-                              {t('edit')}
-                            </Button>
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => handleOpenTransactionDialog(item)}
+                          >
+                            {t('edit')}
+                          </Button>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -379,7 +474,7 @@ export default function WarehousePage() {
                   <TableRow>
                     <TableHead>{t('name')}</TableHead>
                     <TableHead>{t('code')}</TableHead>
-                    <TableHead>Количество позиций</TableHead>
+                    <TableHead>{t('itemCount')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -410,60 +505,60 @@ export default function WarehousePage() {
         </TabsContent>
       </Tabs>
 
-     <Dialog open={transactionDialogOpen} onOpenChange={setTransactionDialogOpen}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {transactionType === 'receipt' ? t('receiptTitle') : t('writeOffTitle')}
-          </DialogTitle>
-        </DialogHeader>
-        
-        <div className="space-y-4">
-          <div className="flex gap-2">
-            <Button
-              variant={transactionType === 'receipt' ? 'default' : 'outline'}
-              onClick={() => setTransactionType('receipt')}
-            >
-              {t('receipt')}
+      <Dialog open={transactionDialogOpen} onOpenChange={setTransactionDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {transactionType === 'receipt' ? t('receiptTitle') : t('writeOffTitle')}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <Button
+                variant={transactionType === 'receipt' ? 'default' : 'outline'}
+                onClick={() => setTransactionType('receipt')}
+              >
+                {t('receipt')}
+              </Button>
+              <Button
+                variant={transactionType === 'writeoff' ? 'default' : 'outline'}
+                onClick={() => setTransactionType('writeoff')}
+              >
+                {t('writeOff')}
+              </Button>
+            </div>
+
+            <div>
+              <Label className='mb-1'>{t('quantity')} ({currentItem?.unit})</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                defaultValue="0"
+                ref={quantityRef}
+              />
+              {transactionType === 'writeoff' && currentItem && (
+                <p className="text-sm text-muted-foreground">
+                  {t('available')}: {currentItem.quantity} {currentItem.unit}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <Label className='mb-1'>{t('reason')}</Label>
+              <Input
+                placeholder={t('reasonPlaceholder')}
+                ref={reasonRef}
+              />
+            </div>
+
+            <Button onClick={handleSubmitTransaction}>
+              {transactionType === 'receipt' ? t('confirmReceipt') : t('confirmWriteOff')}
             </Button>
-            <Button
-              variant={transactionType === 'writeoff' ? 'default' : 'outline'}
-              onClick={() => setTransactionType('writeoff')}
-            >
-              {t('writeOff')}
-            </Button>
           </div>
-
-          <div>
-            <Label className=' mb-1'>{t('quantity')} ({currentItem?.unit})</Label>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              defaultValue="0"
-              ref={quantityRef}
-            />
-            {transactionType === 'writeoff' && currentItem && (
-              <p className="text-sm text-muted-foreground">
-                {t('available')}: {currentItem.quantity} {currentItem.unit}
-              </p>
-            )}
-          </div>
-
-          <div>
-            <Label className=' mb-1'>{t('reason')}</Label>
-            <Input
-              placeholder={t('reasonPlaceholder')}
-              ref={reasonRef}
-            />
-          </div>
-
-          <Button onClick={handleSubmitTransaction}>
-            {transactionType === 'receipt' ? t('confirmReceipt') : t('confirmWriteOff')}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

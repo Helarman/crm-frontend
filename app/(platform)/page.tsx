@@ -7,7 +7,7 @@ import { Language, useLanguageStore } from "@/lib/stores/language-store";
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Restaurant } from "./orders/new/page";
+import { Restaurant } from "@/lib/types/restaurant";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import UnauthorizedPage from "./unauthorized/page";

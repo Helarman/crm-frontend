@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { PaymentService } from '@/lib/api/payment.service'
+import { Payment, PaymentService } from '@/lib/api/payment.service'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -16,16 +16,7 @@ import { ka } from 'date-fns/locale/ka'
 import { useLanguageStore } from '@/lib/stores/language-store'
 import { EnumPaymentMethod } from '@/lib/api/order.service'
 
-export interface Payment {
-  id: string
-  orderId: string
-  amount: number
-  method: 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'OTHER'
-  status: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED'
-  transactionId?: string
-  createdAt: Date
-  updatedAt: Date
-}
+
 
 export default function PaymentPage() {
   const router = useRouter()
@@ -193,7 +184,7 @@ const t = (key: TranslationKey) => {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>{language === 'ka' ? 'მეთოდი' : 'Метод'}</Label>
-              <Input value={t(payment.method)} readOnly />
+              <Input value={payment.method} readOnly />
             </div>
 
             <div className="space-y-2">

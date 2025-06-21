@@ -10,6 +10,8 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { AddProductModal } from './AddProductModal';
+import { Edit, Pencil } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 interface Product {
   id: string;
@@ -18,6 +20,7 @@ interface Product {
 }
 
 export function RestaurantProducts({ restaurantId }: { restaurantId: string }) {
+  const router = useRouter()
   const { data: restaurantProducts = [], mutate: mutateProducts } = useRestaurantProducts(restaurantId);
   const { data: categories } = useCategories();
   const [isLoading, setIsLoading] = useState(false);
@@ -131,25 +134,6 @@ export function RestaurantProducts({ restaurantId }: { restaurantId: string }) {
     <div className="space-y-4">
       <h2 className="text-2xl font-bold">{t.title}</h2>
       
-      <div className="flex gap-2 mb-6">
-        <Input
-          value={newProductId}
-          onChange={(e) => setNewProductId(e.target.value)}
-          placeholder={t.idPlaceholder}
-          className="flex-1"
-        />
-        <Button 
-          onClick={handleAddProduct}
-          disabled={isLoading || !newProductId.trim()}
-        >
-          {isLoading ? t.adding : t.addIdButton}
-        </Button>
-        <AddProductModal 
-          restaurantId={restaurantId} 
-          onSuccess={() => mutateProducts()} 
-          restaurantProducts={restaurantProducts}
-        />
-      </div>
       
       <Accordion type="multiple" defaultValue={sortedCategories.map(c => c.id)} className="space-y-4">
         {sortedCategories.map((category) => {
@@ -189,10 +173,9 @@ export function RestaurantProducts({ restaurantId }: { restaurantId: string }) {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleRemoveProduct(product.id)}
-                              className="text-destructive hover:text-destructive"
+                              onClick={() => router.push(`/products/${product.id}`)}
                             >
-                              {t.remove}
+                              <Pencil/>
                             </Button>
                           </TableCell>
                         </TableRow>

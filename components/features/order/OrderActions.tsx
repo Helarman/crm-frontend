@@ -31,13 +31,12 @@ import { ka } from 'date-fns/locale/ka'
 import { EnumPaymentMethod } from '@/lib/api/order.service'
 
 type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED'
-type PaymentMethod = 'CASH' | 'CARD' | 'BANK_TRANSFER' | 'OTHER'
 
 interface Payment {
   id: string
   orderId: string
   amount: number
-  method: PaymentMethod
+  method: EnumPaymentMethod
   status: PaymentStatus
   transactionId?: string
   createdAt: Date

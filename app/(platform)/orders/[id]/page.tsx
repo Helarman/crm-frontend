@@ -1,9 +1,8 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { OrderHeader } from '@/components/features/order/OrderHeader'
-import { OrderCustomerInfo } from '@/components/features/order/OrderCustomerInfo'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -13,83 +12,70 @@ import { toast } from 'sonner'
 import { AccessCheck } from '@/components/AccessCheck'
 import { Badge } from '@/components/ui/badge'
 import { ProductService } from '@/lib/api/product.service'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription
-} from '@/components/ui/dialog'
-import { PaymentService } from '@/lib/api/payment.service'
-import { AddProductToOrder, Category, Product} from '@/components/features/order/AddProductToOrder'
 import { CategoryService } from '@/lib/api/category.service'
 import { useLanguageStore } from '@/lib/stores/language-store'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { Additive } from '@/lib/api/customer.service'
+import { Textarea } from '@/components/ui/textarea'
 import {
   ArrowLeft,
-  Plus,
-  Edit,
-  Trash2,
   Check,
   X,
-  RotateCcw,
-  CreditCard,
-  AlertCircle,
   Clock,
   Utensils,
-  Soup,
-  Salad,
-  Pizza,
-  Coffee,
-  Dessert,
-  List,
   MessageSquare,
-  User,
-  Table,
-  Users,
-  Calendar,
   Package,
-  PackageCheck,
-  PackageX,
-  CircleDollarSign,
-  Wallet,
-  ShoppingBag,
-  Home,
-  Truck,
-  ChevronDown,
+  History,
+  Edit,
+  Plus,
+  Minus,
+  List,
+  Users,
+  Table,
+  MapPin,
+  CheckCircle,
+  Loader2,
   ChevronUp,
-  Pause
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  AlertCircle,
+  RefreshCw,
+  Receipt,
+  Ban,
+  ShoppingBag,
+  Tag,
+  Play,
+  Pause,
+  Undo,
+  User,
+  Printer,
+  CookingPot,
+  ChefHat,
+  Truck,
+  Pencil
 } from 'lucide-react'
-
-interface OrderItemProduct {
-  id: string
-  title: string
-  price: number
-  restaurantPrices?: {
-    price: number
-    restaurantId: string
-    isStopList: boolean
-  }[]
-}
-
-interface OrderItemAdditive {
-  id: string
-  title: string
-  price: number
-}
-
-interface OrderItem {
-  id: string
-  product: OrderItemProduct
-  additives: OrderItemAdditive[]
-  quantity: number
-  comment?: string
-  status: string
-}
+import { Category, OrderItem, OrderState } from '@/lib/types/order'
+import { Product } from '@/lib/types/product'
+import Image from 'next/image'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import SearchableSelect from '@/components/features/menu/product/SearchableSelect'
+import { OrderTypeSelector } from '@/components/features/order/OrderTypeSelector'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { OrderType } from '@/lib/api/discount.service'
+import { PaymentDialog } from '@/components/features/order/PaymentDialog'
+import { format } from 'date-fns'
+import { ru, ka } from 'date-fns/locale'
 
 export default function WaiterOrderPage() {
   const { id: orderId } = useParams()
@@ -100,51 +86,18 @@ export default function WaiterOrderPage() {
   const translations = {
     ru: {
       back: "Назад к списку заказов",
-      orderComposition: "Состав заказа",
-      addDish: "Добавить блюдо",
-      price: "Цена",
+      menu: "Меню",
       additives: "Добавки",
       comment: "Комментарий",
       total: "Итого",
       paymentStatus: "Статус оплаты",
       paymentMethod: "Способ оплаты",
-      payment: "Платеж",
-      orderInfo: "Информация о заказе",
-      orderNumber: "Номер заказа",
-      date: "Дата",
-      orderStatus: "Статус заказа",
+      orderType: "Тип заказа",
       table: "Стол",
       persons: "Количество персон",
-      orderType: "Тип заказа",
-      dineIn: "В заведении",
-      takeaway: "Навынос",
-      delivery: "Доставка",
-      returnItem: "Возврат позиции",
-      returnReason: "Причина возврата",
-      cancel: "Отмена",
-      confirmReturn: "Подтвердить возврат",
-      processing: "Обработка...",
-      addPosition: "Добавить позицию в заказ",
-      editPosition: "Редактирование позиции",
-      saveChanges: "Сохранить изменения",
-      saving: "Сохранение...",
-      confirmPosition: "Подтверждение позиции",
-      confirmQuestion: "Вы уверены, что хотите подтвердить эту позицию?",
       confirm: "Подтвердить",
-      confirming: "Подтверждение...",
-      return: "Вернуть",
-      edit: "Редактировать",
-      delete: "Удалить",
-      created: "Создан",
-      confirmed: "Подтверждён",
-      preparing: "Готовится",
-      ready: "Готов",
-      delivering: "Доставляется",
-      completed: "Завершён",
-      cancelled: "Отменён",
-      partiallyDone: "Частично готов",
-      paused: "На паузе",
-      refunded: "Возвращен",
+      complete: "Завершить",
+      cancel: "Отменить",
       pending: "Ожидает оплаты",
       paid: "Оплачен",
       failed: "Ошибка оплаты",
@@ -153,72 +106,89 @@ export default function WaiterOrderPage() {
       online: "Онлайн",
       orderNotFound: "Заказ не найден",
       loadingError: "Не удалось загрузить заказ",
-      unknownError: "Неизвестная ошибка",
-      productNotFound: "Продукт не найден",
-      productLoadError: "Ошибка при загрузке данных продукта",
-      positionUpdated: "Позиция успешно обновлена",
-      updateError: "Ошибка при обновлении позиции",
-      positionReturned: "Позиция возвращена",
-      returnError: "Ошибка при возврате позиции",
-      positionConfirmed: "Позиция подтверждена",
-      confirmError: "Ошибка при подтверждении позиции",
-      positionAdded: "Позиция добавлена в заказ",
-      addError: "Ошибка при добавлении позиции",
-      paymentUpdateError: "Ошибка при обновлении платежа",
-      positionRemoved: "Позиция удалена из заказа",
-      removeError: "Ошибка при удалении позиции",
       emptyOrder: "Заказ пуст",
-      addFromMenu: "Добавьте позиции из меню",
-      expand: "Развернуть",
-      collapse: "Свернуть"
+      selectAdditives: "Выберите добавки...",
+      searchAdditives: "Поиск добавок...",
+      noAdditivesFound: "Добавки не найдены",
+      noProductsFound: "Продукты не найдены",
+      saveChanges: "Сохранить изменения",
+      saving: "Сохранение...",
+      orderHistory: "История заказа",
+      noHistory: "История изменений пока пуста",
+      confirmComplete: "Вы уверены, что хотите завершить заказ?",
+      confirmCancel: "Вы уверены, что хотите отменить заказ?",
+      paymentRequired: "Сначала необходимо подтвердить оплату",
+      exitConfirmTitle: "Подтверждение выхода",
+      exitConfirmMessage: "Заказ еще не подтвержден. Вы уверены, что хотите уйти? Неподтвержденные заказы могут быть потеряны.",
+      exitConfirmLeave: "Уйти",
+      precheckFormed: "Пречек сформирован",
+      formPrecheck: "Сформировать пречек",
+      refundItem: "Вернуть блюдо",
+      refundReason: "Причина возврата",
+      confirmRefund: "Подтвердить возврат",
+      reorderedItem: "Дозаказ",
+      itemReturned: "Возвращено",
+      originalItems: "Основной заказ",
+      orderDetails: "Детали заказа",
+      statusCreated: "Создан",
+      statusPreparing: "Готовится",
+      statusReady: "Готов",
+      statusDelivering: "Доставляется",
+      statusCompleted: "Завершен",
+      statusCancelled: "Отменен",
+      showLogs: "История заказа",
+      createdAt: "Создан",
+      startedAt: "Начат",
+      completedAt: "Завершен",
+      pausedAt: "Приостановлен",
+      refundedAt: "Возврат",
+      surcharges: "Надбавки",
+      deliveryAddress: "Адрес доставки",
+      deliveryTime: "Время доставки",
+      deliveryNotes: "Примечания к доставке",
+      reorder: "Дозаказ",
+      discount: "Скидка",
+      discountCanceled: "Скидка отменена",
+      precheck: "Пречек",
+      refund: "Возврат",
+      mainInfo: "Основная информация",
+      callBeforeArrival: "Например: Позвоните перед приездом",
+      cookingError: "Например: Ошибка приготовления",
+      confirmation: "Подтверждение",
+      logs: {
+        orderCreated: "Заказ создан",
+        orderConfirmed: "Заказ подтвержден",
+        orderCompleted: "Заказ завершен",
+        orderCancelled: "Заказ отменен",
+        itemAdded: "Добавлено блюдо",
+        itemRemoved: "Удалено блюдо",
+        itemRefunded: "Блюдо возвращено",
+        orderEdited: "Заказ изменен",
+        precheckPrinted: "Пречек распечатан",
+        sentToKitchen: "Отправлено на кухню",
+        readyForDelivery: "Готово к выдаче",
+        deliveryStarted: "Доставка начата",
+        reorderItems: "Сделан дозаказ",
+        paymentCompleted: "Оплата завершена",
+        paymentFailed: "Ошибка оплаты",
+        
+        
+      }
     },
     ka: {
       back: "უკან შეკვეთების სიაში",
-      orderComposition: "შეკვეთის შემადგენლობა",
-      addDish: "კერძის დამატება",
-      price: "ფასი",
+      menu: "მენიუ",
       additives: "დანამატები",
       comment: "კომენტარი",
       total: "სულ",
       paymentStatus: "გადახდის სტატუსი",
       paymentMethod: "გადახდის მეთოდი",
-      payment: "გადახდა",
-      orderInfo: "შეკვეთის ინფორმაცია",
-      orderNumber: "შეკვეთის ნომერი",
-      date: "თარიღი",
-      orderStatus: "შეკვეთის სტატუსი",
+      orderType: "შეკვეთის ტიპი",
       table: "მაგიდა",
       persons: "პირების რაოდენობა",
-      orderType: "შეკვეთის ტიპი",
-      dineIn: "დაწესებულებაში",
-      takeaway: "წინასწარ შეკვეთა",
-      delivery: "მიტანა",
-      returnItem: "პოზიციის დაბრუნება",
-      returnReason: "დაბრუნების მიზეზი",
-      cancel: "გაუქმება",
-      confirmReturn: "დაბრუნების დადასტურება",
-      processing: "მუშავდება...",
-      addPosition: "პოზიციის დამატება შეკვეთაში",
-      editPosition: "პოზიციის რედაქტირება",
-      saveChanges: "ცვლილებების შენახვა",
-      saving: "ინახება...",
-      confirmPosition: "პოზიციის დადასტურება",
-      confirmQuestion: "დარწმუნებული ხართ, რომ გსურთ ამ პოზიციის დადასტურება?",
       confirm: "დადასტურება",
-      confirming: "დადასტურდება...",
-      return: "დაბრუნება",
-      edit: "რედაქტირება",
-      delete: "წაშლა",
-      created: "შექმნილი",
-      confirmed: "დადასტურებული",
-      preparing: "მზადდება",
-      ready: "მზადაა",
-      delivering: "იგზავნება",
-      completed: "დასრულებული",
-      cancelled: "გაუქმებული",
-      partiallyDone: "ნაწილობრივ მზადაა",
-      paused: "პაუზაზეა",
-      refunded: "დაბრუნებული",
+      complete: "დასრულება",
+      cancel: "გაუქმება",
       pending: "ელოდება გადახდას",
       paid: "გადახდილი",
       failed: "გადახდის შეცდომა",
@@ -227,106 +197,348 @@ export default function WaiterOrderPage() {
       online: "ონლაინ",
       orderNotFound: "შეკვეთა ვერ მოიძებნა",
       loadingError: "შეკვეთის ჩატვირთვა ვერ მოხერხდა",
-      unknownError: "უცნობი შეცდომა",
-      productNotFound: "პროდუქტი ვერ მოიძებნა",
-      productLoadError: "პროდუქტის მონაცემების ჩატვირთვის შეცდომა",
-      positionUpdated: "პოზიცია წარმატებით განახლდა",
-      updateError: "პოზიციის განახლების შეცდომა",
-      positionReturned: "პოზიცია დაბრუნებულია",
-      returnError: "პოზიციის დაბრუნების შეცდომა",
-      positionConfirmed: "პოზიცია დადასტურებულია",
-      confirmError: "პოზიციის დადასტურების შეცდომა",
-      positionAdded: "პოზიცია დაემატა შეკვეთაში",
-      addError: "პოზიციის დამატების შეცდომა",
-      paymentUpdateError: "გადახდის განახლების შეცდომა",
-      positionRemoved: "პოზიცია წაიშალა შეკვეთიდან",
-      removeError: "პოზიციის წაშლის შეცდომა",
       emptyOrder: "შეკვეთა ცარიელია",
-      addFromMenu: "მენიუდან დაამატეთ პოზიციები",
-      expand: "გაშლა",
-      collapse: "ჩაკეცვა"
+      selectAdditives: "აირჩიეთ დანამატები...",
+      searchAdditives: "დანამატების ძებნა...",
+      noAdditivesFound: "დანამატები არ მოიძებნა",
+      noProductsFound: "პროდუქტები ვერ მოიძებნა",
+      saveChanges: "ცვლილებების შენახვა",
+      saving: "ინახება...",
+      orderHistory: "შეკვეთის ისტორია",
+      noHistory: "ისტორია ცარიელია",
+      confirmComplete: "დარწმუნებული ხართ, რომ გსურთ შეკვეთის დასრულება?",
+      confirmCancel: "დარწმუნებული ხართ, რომ გსურთ შეკვეთის გაუქმება?",
+      paymentRequired: "ჯერ გადახდა უნდა დაადასტუროთ",
+      exitConfirmTitle: "გასვლის დადასტურება",
+      exitConfirmMessage: "შეკვეთა ჯერ არ არის დადასტურებული. დარწმუნებული ხართ, რომ გსურთ გასვლა? დაუდასტურებელი შეკვეთები შეიძლება დაიკარგოს.",
+      exitConfirmLeave: "გასვლა",
+      precheckFormed: "პრეჩეკი ჩამოყალიბებულია",
+      formPrecheck: "პრეჩეკის ფორმირება",
+      refundItem: "კერძის დაბრუნება",
+      refundReason: "დაბრუნების მიზეზი",
+      confirmRefund: "დაბრუნების დადასტურება",
+      reorderedItem: "დამატებითი შეკვეთა",
+      itemReturned: "დაბრუნებულია",
+      originalItems: "მთავარი შეკვეთა",
+      orderDetails: "შეკვეთის დეტალები",
+      statusCreated: "შექმნილია",
+      statusPreparing: "მზადდება",
+      statusReady: "მზადაა",
+      statusDelivering: "იტანება",
+      statusCompleted: "დასრულებულია",
+      statusCancelled: "გაუქმებულია",
+      showLogs: "შეკვეთის ისტორია",
+      createdAt: "შექმნილია",
+      startedAt: "დაწყებულია",
+      completedAt: "დასრულებულია",
+      pausedAt: "დაპაუზებულია",
+      refundedAt: "დაბრუნებულია",
+      surcharges: "დანამატები",
+      deliveryAddress: "მიწოდების მისამართი",
+      deliveryTime: "მიწოდების დრო",
+      deliveryNotes: "მიწოდების შენიშვნები",
+      reorder: "დამატებითი შეკვეთა",
+      discount: "ფასდაკლება",
+      discountCanceled: "ფასდაკლება გაუქმებულია",
+      precheck: "პრეჩეკი",
+      refund: "დაბრუნება",
+      mainInfo: "ძირითადი ინფორმაცია",
+      callBeforeArrival: "მაგალითად: დარეკეთ ჩამოსვლამდე",
+      cookingError: "მაგალითად: მომზადების შეცდომა",
+      confirmation: "დადასტურება",
+      logs: {
+        orderCreated: "შეკვეთა შექმნილია",
+        orderConfirmed: "შეკვეთა დადასტურებულია",
+        orderCompleted: "შეკვეთა დასრულებულია",
+        orderCancelled: "შეკვეთა გაუქმებულია",
+        itemAdded: "კერძი დამატებული",
+        itemRemoved: "კერძი წაშლილია",
+        itemRefunded: "კერძი დაბრუნებულია",
+        orderEdited: "შეკვეთა შეცვლილია",
+        precheckPrinted: "პრეჩეკი დაბეჭდილია",
+        sentToKitchen: "კულინარიაზე გაგზავნილია",
+        readyForDelivery: "მზადაა გაცემისთვის",
+        deliveryStarted: "მიწოდება დაწყებულია",
+        reorderItems: "დამატებითი შეკვეთა გაკეთებულია",
+        paymentCompleted: "გადახდა დასრულებულია",
+        paymentFailed: "გადახდის შეცდომა"
+      }
     }
   } as const;
 
   const t = translations[language];
+  const [order, setOrder] = useState<OrderResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [showMenu, setShowMenu] = useState(false);
+  const [productAdditives, setProductAdditives] = useState<Record<string, string[]>>({});
+  const [productComments, setProductComments] = useState<Record<string, string>>({});
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    type: 'DINE_IN' as OrderType,
+    paymentMethod: EnumPaymentMethod.CASH,
+    numberOfPeople: 1,
+    tableNumber: '',
+    comment: '',
+    deliveryAddress: '',
+    deliveryNotes: '',
+    deliveryTime: '',
+  });
+  const [showCompleteDialog, setShowCompleteDialog] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [showExitConfirmDialog, setShowExitConfirmDialog] = useState(false);
+  const [intendedPath, setIntendedPath] = useState<string | null>(null);
+  const [showRefundDialog, setShowRefundDialog] = useState(false);
+  const [selectedItemForRefund, setSelectedItemForRefund] = useState<OrderItem | null>(null);
+  const [refundReason, setRefundReason] = useState('');
+  const [logs, setLogs] = useState<any[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
 
-  const [order, setOrder] = useState<OrderResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [isUpdating, setIsUpdating] = useState(false)
-  const [addItemDialogOpen, setAddItemDialogOpen] = useState(false)
-  const [products, setProducts] = useState<Product[]>([])
-  const [categories, setCategories] = useState<Category[]>([])
-  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState<EnumPaymentMethod>(EnumPaymentMethod.CASH)
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false)
-  const [isUpdatingPayment, setIsUpdatingPayment] = useState(false)
-  const [returnItemId, setReturnItemId] = useState<string | null>(null);
-  const [returnReason, setReturnReason] = useState('');
-  const [isReturning, setIsReturning] = useState(false);
-  const [editingItem, setEditingItem] = useState<{
-    item: OrderItem | null;
-    product: Product | null;
-  } | null>(null);
-  const [updatedComment, setUpdatedComment] = useState('');
-  const [updatedAdditives, setUpdatedAdditives] = useState<string[]>([]);
-  const [confirmItemId, setConfirmItemId] = useState<string | null>(null);
-  const [isConfirming, setIsConfirming] = useState(false);
-  const [isRemoving, setIsRemoving] = useState(false);
-  const [itemToRemove, setItemToRemove] = useState<string | null>(null);
-  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+  const [pendingAdditions, setPendingAdditions] = useState<Record<string, {
+    quantity: number
+    additives: string[]
+    comment: string
+    timer: NodeJS.Timeout | null
+  }>>({})
 
-  const fetchOrder = async () => {
+  const isOrderEditable = order && !['DELIVERING', 'COMPLETED', 'CANCELLED'].includes(order.status);
+
+  const createOrderLog = async (action: string) => {
+    if (!orderId || !user) return;
+    
     try {
-      setLoading(true)
-      const data = await OrderService.getById(orderId as string)
-      setOrder(data)
+      await OrderService.createLog({
+        orderId: orderId as string,
+        action,
+        userId: user.id,
+      });
       
-      if (data.payment?.method) {
-        setPaymentMethod(data.payment.method)
-      }
-      
-      if (data.restaurant?.id) {
-        const [products, categories] = await Promise.all([
-          ProductService.getByRestaurant(data.restaurant.id),
-          CategoryService.getAll()
-        ])
-        setProducts(products)
-        setCategories(categories)
-      }
+      fetchOrderLogs();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Неизвестная ошибка')
-      toast.error(t.loadingError)
-    } finally {
-      setLoading(false)
+      console.error('Ошибка при создании лога:', err);
     }
-  }
+  };
+
+  const fetchOrderLogs = async () => {
+    if (!orderId) return;
+    
+    try {
+      setLogsLoading(true);
+      const logsData = await OrderService.getOrderLogs(orderId as string);
+      setLogs(logsData);
+    } catch (err) {
+      console.error('Ошибка при получении логов:', err);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (!orderId) {
-      setError('Order ID is missing')
-      setLoading(false)
-      return
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (order?.status === 'CREATED') {
+        e.preventDefault();
+        e.returnValue = t.exitConfirmMessage;
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      Object.values(pendingAdditions).forEach(({ timer }) => {
+        if (timer) clearTimeout(timer)
+      })
+    };
+  }, [order?.status, t.exitConfirmMessage, pendingAdditions]);
+
+  const handleRouteChange = (path: string) => {
+    if (order?.status === 'CREATED') {
+      setIntendedPath(path);
+      setShowExitConfirmDialog(true);
+    } else {
+      router.push(path);
     }
+  };
 
-    fetchOrder()
-  }, [orderId])
+  const confirmExit = () => {
+    setShowExitConfirmDialog(false);
+    if (intendedPath) {
+      router.push(intendedPath);
+    }
+  };
 
-  const getProductPrice = (product: OrderItemProduct) => {
-    const restaurantPrice = product.restaurantPrices?.find(
-      p => p.restaurantId === order?.restaurant?.id
-    )
-    return restaurantPrice?.price ?? product.price
-  }
+  const cancelExit = () => {
+    setShowExitConfirmDialog(false);
+    setIntendedPath(null);
+  };
+
+  const handleConfirmOrder = async () => {
+    if (!order) return;
+
+    try {
+      setIsUpdating(true);
+      
+      const updatedOrder = await OrderService.updateStatus(order.id, { status: 'PREPARING' });
+      
+      await Promise.all(
+        order.items.map(item => 
+          OrderService.updateItemStatus(order.id, item.id, { status: OrderItemStatus.IN_PROGRESS })
+      ));
+      
+      const refreshedOrder = await OrderService.getById(order.id);
+      setOrder(refreshedOrder);
+      
+      await createOrderLog(t.logs.orderConfirmed);
+      
+      toast.success(language === 'ru' ? 'Заказ подтвержден' : 'შეკვეთა დადასტურებულია');
+    } catch (error) {
+      toast.error(language === 'ru' 
+        ? 'Ошибка подтверждения заказа' 
+        : 'შეკვეთის დადასტურების შეცდომა');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleCompleteOrder = () => {
+    if (!order) return;
+
+    if (order && order.payment && order.payment.status !== 'PAID' && calculateOrderTotal() > 0) {
+      setShowPaymentDialog(true);
+      return;
+    }
+    setShowCompleteDialog(true);
+  };
+
+  const confirmCompleteOrder = async () => {
+    if (!order) return;
+    try {
+      setIsUpdating(true);
+      const updatedOrder = await OrderService.updateStatus(order.id, { status: 'COMPLETED' });
+      setOrder(updatedOrder);
+      
+      await createOrderLog(t.logs.orderCompleted);
+      
+      toast.success(language === 'ru' ? 'Заказ завершен' : 'შეკვეთა დასრულებულია');
+      setShowCompleteDialog(false);
+      setShowPaymentDialog(false);
+    } catch (error) {
+      toast.error(language === 'ru' 
+        ? 'Ошибка завершения заказа' 
+        : 'შეკვეთის დასრულების შეცდომა');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleCancelOrder = () => {
+    setShowCancelDialog(true);
+  };
+
+  const confirmCancelOrder = async () => {
+    if (!order) return;
+    try {
+      setIsUpdating(true);
+      const updatedOrder = await OrderService.updateStatus(order.id, { status: 'CANCELLED' });
+      setOrder(updatedOrder);
+      
+      await createOrderLog(t.logs.orderCancelled);
+      
+      toast.success(language === 'ru' ? 'Заказ отменен' : 'შეკვეთა გაუქმებულია');
+      setShowCancelDialog(false);
+    } catch (error) {
+      toast.error(language === 'ru' 
+        ? 'Ошибка отмены заказа' 
+        : 'შეკვეთის გაუქმების შეცდომა');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleRefundItem = async () => {
+    if (!order) return;
+    if (!selectedItemForRefund || !refundReason.trim()) return;
+    
+    try {
+      setIsUpdating(true);
+      const updatedOrder = await OrderService.refundItem(
+        order.id,
+        selectedItemForRefund.id,
+        refundReason
+      );
+      setOrder(updatedOrder);
+      
+      await createOrderLog(`${t.logs.itemRefunded} : ${selectedItemForRefund.product.title} x ${selectedItemForRefund.quantity}`);
+      
+      toast.success(language === 'ru' ? 'Блюдо возвращено' : 'კერძი დაბრუნებულია');
+      setShowRefundDialog(false);
+      setRefundReason('');
+    } catch (error) {
+      toast.error(language === 'ru' 
+        ? 'Ошибка при возврате блюда' 
+        : 'კერძის დაბრუნების შეცდომა');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleEditOrderSubmit = async () => {
+    if (!orderId || !isOrderEditable) return;
+    
+    try {
+      setIsUpdating(true);
+      
+      await OrderService.updateOrder(orderId as string, {
+        type: editFormData.type,
+        payment: {
+          method: editFormData.paymentMethod,
+          //status: order?.payment?.status || 'PENDING'
+        },
+        numberOfPeople: editFormData.numberOfPeople,
+        tableNumber: editFormData.tableNumber,
+        comment: editFormData.comment,
+        deliveryAddress: editFormData.deliveryAddress,
+        deliveryNotes: editFormData.deliveryNotes,
+        deliveryTime: editFormData.deliveryTime,
+      });
+      
+      await fetchOrder();
+      
+      await createOrderLog(t.logs.orderEdited);
+      
+      toast.success(language === 'ru' ? 'Заказ обновлен' : 'შეკვეთა განახლდა');
+      setShowEditForm(false);
+    } catch (err) {
+      toast.error(language === 'ru' 
+        ? 'Ошибка обновления заказа' 
+        : 'შეკვეთის განახლების შეცდომა');
+      console.error('Ошибка при обновлении заказа:', err);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   const calculateItemPrice = (item: OrderItem) => {
+    if (item.isRefund) return 0;
+    
     const restaurantPrice = item.product.restaurantPrices?.find(
       p => p.restaurantId === order?.restaurant?.id
-    )
-    const basePrice = restaurantPrice?.price ?? item.product.price
-    const additivesPrice = item.additives.reduce((sum, a) => sum + a.price, 0)
-    return (basePrice + additivesPrice) * item.quantity
-  }
+    );
+    const basePrice = restaurantPrice?.price ?? item.product.price;
+    const additivesPrice = item.additives.reduce((sum, a) => sum + a.price, 0);
+    return (basePrice + additivesPrice) * item.quantity;
+  };
+
+  const getProductPrice = (product: Product) => {
+    const restaurantPrice = product.restaurantPrices?.find(
+      p => p.restaurantId === order?.restaurant?.id
+    );
+    return restaurantPrice?.price ?? product.price;
+  };
 
   const calculateOrderTotal = () => {
     if (!order) return 0;
@@ -346,326 +558,396 @@ export default function WaiterOrderPage() {
     return itemsTotal + surchargesTotal;
   };
 
+  const handleQuantityChange = useCallback(async (product: Product, newQuantity: number, additives: string[], comment: string) => {
+    if (!orderId || !isOrderEditable) return;
 
-  const handleEditItem = async (item: OrderItem) => {
-    try {
-      const product = products.find(p => p.id === item.product.id);
+    const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`;
+
+    if (pendingAdditions[key]?.timer) {
+      clearTimeout(pendingAdditions[key].timer!);
+    }
+
+    if (newQuantity === 0) {
+      setPendingAdditions(prev => {
+        const newState = { ...prev };
+        delete newState[key];
+        return newState;
+      });
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        setIsUpdating(true);
+
+        await OrderService.updateStatus(orderId as string, { status: 'CREATED' });
+
+        await OrderService.addItemToOrder(
+          orderId as string,
+          {
+            productId: product.id,
+            quantity: newQuantity,
+            additiveIds: additives,
+            comment,
+          }
+        );
+
+        const updatedOrder = await OrderService.getById(orderId as string);
+        setOrder(updatedOrder);
+        
+        await createOrderLog(`${t.logs.itemAdded}: ${product.title} x ${newQuantity}`);
       
-      if (!product) {
-        toast.error(t.productNotFound);
-        return;
+        setPendingAdditions(prev => {
+          const newState = { ...prev };
+          delete newState[key];
+          return newState;
+        });
+      } catch (err) {
+        toast.error(language === 'ru' ? 'Ошибка при дозаказе' : 'დამატებითი შეკვეთის შეცდომა');
+        console.error('Error:', err);
+      } finally {
+        setIsUpdating(false);
       }
+    }, 3000);
 
-      setEditingItem({
-        item,
-        product
-      });
-      setUpdatedComment(item.comment || '');
-      setUpdatedAdditives(item.additives.map(a => a.id));
-    } catch (err) {
-      toast.error(t.productLoadError);
-      console.error('Error:', err);
-    }
-  };
-
-  const handleSaveItemChanges = async () => {
-    if (!editingItem?.item?.id || !orderId) return;
-
-    try {
-      setIsUpdating(true);
-      
-      await OrderService.updateOrderItem(
-        orderId as string,
-        editingItem.item.id,
-        {
-          comment: updatedComment,
-          additiveIds: updatedAdditives
-        }
-      );
-      
-      await fetchOrder();
-      setEditingItem(null);
-      toast.success(t.positionUpdated);
-      
-    } catch (err) {
-      toast.error(t.updateError);
-      console.error('Error:', err);
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const handleReturnItem = async () => {
-    if (!returnItemId || !orderId) return;
-
-    try {
-      setIsReturning(true);
-      
-      await OrderService.updateItemStatus(orderId as string, returnItemId, {
-        status: 'REFUNDED',
-        description: returnReason
-      });
-
-      await fetchOrder();
-      toast.success(t.positionReturned);
-      setReturnItemId(null);
-      setReturnReason('');
-      
-    } catch (err) {
-      toast.error(t.returnError);
-      console.error('Error:', err);
-    } finally {
-      setIsReturning(false);
-    }
-  };
-
-  const handleConfirmItem = async () => {
-    if (!confirmItemId || !orderId) return;
-
-    try {
-      setIsConfirming(true);
-      
-      await OrderService.updateItemStatus(orderId as string, confirmItemId, {
-        status: 'CREATED',
-        description: returnReason
-      });
-
-      await fetchOrder();
-      toast.success(t.positionConfirmed);
-      setConfirmItemId(null);
-      
-    } catch (err) {
-      toast.error(t.confirmError);
-      console.error('Error:', err);
-    } finally {
-      setIsConfirming(false);
-    }
-  };
-
-  const handleRemoveItem = async (itemId: string) => {
-    if (!orderId) return;
-
-    try {
-      setIsRemoving(true);
-      setItemToRemove(itemId);
-      
-      await OrderService.removeItemFromOrder(orderId as string, itemId);
-      await fetchOrder();
-      
-      toast.success(t.positionRemoved);
-    } catch (err) {
-      toast.error(t.removeError);
-      console.error('Error:', err);
-    } finally {
-      setIsRemoving(false);
-      setItemToRemove(null);
-    }
-  };
-
-  const closeAddItemDialog = () => {
-    setAddItemDialogOpen(false)
-  }
-
-  const handleAddItem = async (newItem: {
-    productId: string
-    quantity: number
-    additiveIds: string[]
-    comment?: string
-  }) => {
-    if (!orderId || !order) return
-
-    try {
-      setIsUpdating(true)
-      
-      await OrderService.addItemToOrder(
-        orderId as string,
-        newItem
-      )
-      
-      await fetchOrder();
-      closeAddItemDialog()
-
-      if (order.payment?.status === 'PENDING') {
-        await updatePaymentAmount(calculateOrderTotal())
-      }
-
-      toast.success(t.positionAdded)
-    } catch (err) {
-      toast.error(t.addError)
-      console.error('Error:', err)
-    } finally {
-      setIsUpdating(false)
-    }
-  }
-
-  const updatePaymentAmount = async (newAmount: number) => {
-    if (!order?.payment?.id) return
-    
-    try {
-      setIsUpdatingPayment(true)
-      await PaymentService.updateAmount(order.payment.id, newAmount)
-      
-      await fetchOrder();
-      
-    } catch (err) {
-      toast.error(t.paymentUpdateError)
-      console.error('Error:', err)
-    } finally {
-      setIsUpdatingPayment(false)
-    }
-  }
-
-  const toggleItemExpansion = (itemId: string) => {
-    setExpandedItems(prev => ({
+    setPendingAdditions(prev => ({
       ...prev,
-      [itemId]: !prev[itemId]
+      [key]: {
+        quantity: newQuantity,
+        additives,
+        comment,
+        timer,
+      },
+    }));
+  }, [orderId, isOrderEditable, language]);
+
+  const getDisplayQuantity = (product: Product, additives: string[], comment: string) => {
+    const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`
+    
+    if (pendingAdditions[key]) {
+      return pendingAdditions[key].quantity
+    }
+    
+    return 0
+  }
+
+  const handleAdditivesChange = (productId: string, newAdditives: string[]) => {
+    setProductAdditives(prev => ({
+      ...prev,
+      [productId]: newAdditives
     }))
   }
 
-  const getProductIcon = (productTitle: string) => {
-    if (productTitle.includes('Салат') || productTitle.includes('სალათი')) return <Salad className="h-4 w-4 text-green-600" />;
-    if (productTitle.includes('Суп') || productTitle.includes('წვნიანი')) return <Soup className="h-4 w-4 text-orange-500" />;
-    if (productTitle.includes('Пицца') || productTitle.includes('პიცა')) return <Pizza className="h-4 w-4 text-red-500" />;
-    if (productTitle.includes('Кофе') || productTitle.includes('ყავა')) return <Coffee className="h-4 w-4 text-amber-800" />;
-    if (productTitle.includes('Десерт') || productTitle.includes('დესერტი')) return <Dessert className="h-4 w-4 text-pink-500" />;
-    return <Utensils className="h-4 w-4" />;
+  const handleCommentChange = (productId: string, newComment: string) => {
+    setProductComments(prev => ({
+      ...prev,
+      [productId]: newComment
+    }))
+  }
+
+  const fetchOrder = async () => {
+    try {
+      setLoading(true);
+      const data = await OrderService.getById(orderId as string);
+      setOrder(data);
+      
+    setEditFormData(prev => ({
+        ...prev,
+        type: data.type || 'DINE_IN',
+        paymentMethod: data.payment?.method || EnumPaymentMethod.CASH,
+        numberOfPeople: Number(data.numberOfPeople) || 1,
+        tableNumber: data.tableNumber || '',
+        comment: data.comment || '',
+        deliveryAddress: data.deliveryAddress || '',
+        deliveryNotes: data.deliveryNotes || '',
+        deliveryTime: data.deliveryTime || '',
+      }));
+      
+      if (data.restaurant?.id) {
+        const [products, categories] = await Promise.all([
+          ProductService.getByRestaurant(data.restaurant.id),
+          CategoryService.getAll()
+        ]);
+        setProducts(products);
+        setCategories(categories);
+
+        const additives: Record<string, string[]> = {};
+        const comments: Record<string, string> = {};
+
+        products.forEach((product : Product) => {
+          additives[product.id] = [];
+          comments[product.id] = '';
+        });
+
+        setProductAdditives(additives);
+        setProductComments(comments);
+      }
+
+      await fetchOrderLogs();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Неизвестная ошибка');
+      toast.error(t.loadingError);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const getStatusIcon = (status: OrderItemStatus) => {
-    switch (status) {
+  useEffect(() => {
+    if (!orderId) {
+      setError('Order ID is missing');
+      setLoading(false);
+      return;
+    }
+
+    fetchOrder();
+  }, [orderId]);
+
+  const getStatusBadge = (status: OrderItemStatus) => {
+    let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'outline';
+    let text = '';
+    
+    switch(status) {
       case OrderItemStatus.CREATED:
-        return <Package className="h-4 w-4" />;
+        variant = 'secondary';
+        text = t.statusCreated;
+        break;
       case OrderItemStatus.IN_PROGRESS:
-        return <Clock className="h-4 w-4" />;
-      case OrderItemStatus.PARTIALLY_DONE:
-        return <PackageCheck className="h-4 w-4" />;
-      case OrderItemStatus.PAUSED:
-        return <Pause className="h-4 w-4" />;
+        variant = 'default';
+        text = t.statusPreparing;
+        break;
       case OrderItemStatus.COMPLETED:
-        return <Check className="h-4 w-4" />;
-      case OrderItemStatus.CANCELLED:
+        variant = 'default';
+        text = t.statusReady;
+        break;
       case OrderItemStatus.REFUNDED:
-        return <PackageX className="h-4 w-4" />;
+        variant = 'destructive';
+        text = t.itemReturned;
+        break;
+      case OrderItemStatus.CANCELLED:
+        variant = 'destructive';
+        text = t.statusCancelled;
+        break;
       default:
-        return <AlertCircle className="h-4 w-4" />;
+        variant = 'outline';
+        text = status;
     }
+    
+    return <Badge variant={variant} className="text-xs">{text}</Badge>;
   };
 
-  const getPaymentMethodIcon = (method: EnumPaymentMethod) => {
-    switch (method) {
-      case EnumPaymentMethod.CASH:
-        return <Wallet className="h-4 w-4" />;
-      case EnumPaymentMethod.CARD:
-        return <CreditCard className="h-4 w-4" />;
-      case EnumPaymentMethod.ONLINE:
-        return <CircleDollarSign className="h-4 w-4" />;
-      default:
-        return <AlertCircle className="h-4 w-4" />;
-    }
+  const renderItemActions = (item: OrderItem) => {
+    if (!order) return;
+
+    const canRefund = [ 'READY', 'DELIVERING'].includes(order.status) && !item.isRefund
+    
+    return (
+      <div className="mt-3 flex items-center justify-between border-t pt-3">
+        <div className="text-sm">
+          {getStatusBadge(item.status)}
+        </div>
+        {canRefund && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+            onClick={() => {
+              setSelectedItemForRefund(item);
+              setShowRefundDialog(true);
+            }}
+          >
+            <RefreshCw className="h-4 w-4 mr-1" />
+            {language === 'ru' ? 'Вернуть' : 'დაბრუნება'}
+          </Button>
+        )}
+      </div>
+    );
   };
 
-  const getOrderTypeIcon = (type: string) => {
-    switch (type) {
-      case 'DINE_IN':
-        return <Home className="h-4 w-4" />;
-      case 'TAKEAWAY':
-        return <ShoppingBag className="h-4 w-4" />;
-      case 'DELIVERY':
-        return <Truck className="h-4 w-4" />;
-      default:
-        return <AlertCircle className="h-4 w-4" />;
-    }
+  const renderItemCard = (item: OrderItem) => (
+   <Card 
+    key={item.id} 
+    className={`p-4 ${item.isReordered ? 'border-l-4 border-blue-500 dark:border-blue-400' : ''} ${item.isRefund ? 'bg-red-50 dark:bg-red-900/20' : 'bg-card'}`}
+  >  
+    <div className="flex justify-between items-start gap-4">
+      <div className="flex-1">
+        <div className="flex items-center gap-2">
+          <h3 className="font-medium">
+            {item.quantity} × {item.product.title}
+          </h3>
+          {item.isReordered && (
+            <Badge variant="secondary" className="text-xs">
+              {t.reorderedItem}
+            </Badge>
+          )}
+        </div>
+        
+        {item.product.restaurantPrices[0] && (
+          <p className="text-sm text-muted-foreground mt-1">
+            {getProductPrice(item.product)} ₽ × {item.quantity}шт. = {getProductPrice(item.product) * item.quantity} ₽
+          </p>
+        )}
+
+        <div className="mt-2 pl-4 border-l-2 border-muted">
+          {item.additives.length > 0 && (
+            <div className="text-sm text-muted-foreground mt-1 flex items-center">
+              <Plus className="h-3 w-3 mr-1" />
+              {t.additives}: {item.additives.map(a => a.title).join(', ')}
+            </div>
+          )}
+          {item.comment && (
+            <div className="text-sm text-muted-foreground mt-1 flex items-center">
+              <MessageSquare className="h-3 w-3 mr-1" />
+              {t.comment}: {item.comment}
+            </div>
+          )}
+          {item.isRefund && item.refundReason && (
+            <div className="text-sm text-red-500 dark:text-red-400 mt-1 flex items-center">
+              <AlertCircle className="h-3 w-3 mr-1" />
+              {language === 'ru' ? 'Причина' : 'მიზეზი'}: {item.refundReason}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+
+   <details className="text-sm text-muted-foreground">
+    <summary className="cursor-pointer">{t.showLogs}</summary>
+    <div className="mt-2 space-y-1">
+      <div className="flex items-center">
+        <Clock className="h-3 w-3 mr-2" />
+        {t.createdAt}: {new Date(item.timestamps.createdAt).toLocaleString()}
+      </div>
+      {item.timestamps.startedAt && (
+        <div className="flex items-center">
+          <Play className="h-3 w-3 mr-2" />
+          {t.startedAt}: {new Date(item.timestamps.startedAt).toLocaleString()}
+        </div>
+      )}
+      {item.timestamps.completedAt && (
+        <div className="flex items-center">
+          <Check className="h-3 w-3 mr-2" />
+          {t.completedAt}: {new Date(item.timestamps.completedAt).toLocaleString()}
+        </div>
+      )}
+      {item.timestamps.pausedAt && (
+        <div className="flex items-center">
+          <Pause className="h-3 w-3 mr-2" />
+          {t.pausedAt}: {new Date(item.timestamps.pausedAt).toLocaleString()}
+        </div>
+      )}
+      {item.timestamps.refundedAt && (
+        <div className="flex items-center text-red-500 dark:text-red-400">
+          <Undo className="h-3 w-3 mr-2" />
+          {t.refundedAt}: {new Date(item.timestamps.refundedAt).toLocaleString()}
+        </div>
+      )}
+    </div>
+  </details>
+
+    {renderItemActions(item)}
+  </Card>
+  );
+
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return format(date, 'PPpp', {
+      locale: language === 'ru' ? ru : ka
+    });
   };
 
-  const getStatusText = (status: EnumOrderStatus): string => {
-    const statusMap = {
-      [EnumOrderStatus.CREATED]: t.created,
-      [EnumOrderStatus.CONFIRMED]: t.confirmed,
-      [EnumOrderStatus.PREPARING]: t.preparing,
-      [EnumOrderStatus.READY]: t.ready,
-      [EnumOrderStatus.DELIVERING]: t.delivering,
-      [EnumOrderStatus.COMPLETED]: t.completed,
-      [EnumOrderStatus.CANCELLED]: t.cancelled
+  const renderLogs = () => {
+    if (logsLoading) {
+      return (
+        <div className="flex justify-center py-4">
+          <Loader2 className="h-6 w-6 animate-spin" />
+        </div>
+      );
     }
-    return statusMap[status] || status
-  }
 
-  const getItemStatusText = (status: OrderItemStatus): string => {
-    const statusMap = {
-      [OrderItemStatus.CREATED]: t.created,
-      [OrderItemStatus.IN_PROGRESS]: t.preparing,
-      [OrderItemStatus.PARTIALLY_DONE]: t.partiallyDone,
-      [OrderItemStatus.PAUSED]: t.paused,
-      [OrderItemStatus.COMPLETED]: t.completed,
-      [OrderItemStatus.CANCELLED]: t.cancelled,
-      [OrderItemStatus.REFUNDED]: t.refunded
+    if (logs.length === 0) {
+      return (
+        <div className="text-center py-8 text-muted-foreground">
+          {t.noHistory}
+        </div>
+      );
     }
-    return statusMap[status as keyof typeof statusMap] || status
-  }
 
-  const getPaymentStatusText = (status: string): string => {
-    const statusMap = {
-      'PENDING': t.pending,
-      'PAID': t.paid,
-      'FAILED': t.failed,
-      'REFUNDED': t.refunded
-    }
-    return statusMap[status as keyof typeof statusMap] || status
-  }
-
-  const getPaymentMethodText = (method: EnumPaymentMethod): string => {
-    const methodMap = {
-      [EnumPaymentMethod.CASH]: t.cash,
-      [EnumPaymentMethod.CARD]: t.card,
-      [EnumPaymentMethod.ONLINE]: t.online,
-    }
-    return methodMap[method] || method
-  }
-
-  const canAddItems = order?.payment?.status === 'PENDING'
-  const isAdmin = user?.role === 'MANAGER' || user?.role === 'SUPERVISOR'
+    return (
+      <div className="space-y-4 h-96 overflow-y-auto">
+      {logs.map((log) => (
+        <div key={log.id} className="pb-4 px-2 last:pb-0">
+          <div className="flex items-start gap-3">
+            <div className="flex-1 flex justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="font-medium">{log.action}</div>
+                {log.userName && (
+                  <div className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                    <User className="h-3 w-3" />
+                    {log.userName}
+                  </div>
+                )}
+                {log.details && (
+                  <div className="mt-2 text-sm bg-muted/50 p-2 rounded">
+                    <pre className="whitespace-pre-wrap break-words">
+                      {JSON.stringify(log.details, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+              <div className="flex-shrink-0 text-sm text-muted-foreground w-32 text-center"> 
+                {formatDate(log.createdAt)}
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+    );
+  };
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <Skeleton className="h-8 w-1/3" />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Skeleton className="h-[200px]" />
-          <Skeleton className="h-[200px]" />
+      <div className="space-y-4">
+        <Skeleton className="h-10 w-[200px]" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-4">
+            <Skeleton className="h-[500px] w-full" />
+          </div>
+          <div className="space-y-4">
+            <Skeleton className="h-[200px] w-full" />
+            <Skeleton className="h-[300px] w-full" />
+          </div>
         </div>
-        <Skeleton className="h-[300px]" />
       </div>
-    )
+    );
   }
 
   if (error) {
     return (
-      <Card className="space-y-6 p-4">
-        <div className="flex items-center gap-2 text-destructive">
-          <AlertCircle className="h-5 w-5" />
-          <p>{t.loadingError}</p>
-        </div>
-        <Button onClick={() => router.push('/orders')} className="mt-4">
-          <ArrowLeft className="mr-2 h-4 w-4" />
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+        <AlertCircle className="h-12 w-12 text-red-500" />
+        <h2 className="text-xl font-semibold">{t.orderNotFound}</h2>
+        <p className="text-muted-foreground">{error}</p>
+        <Button onClick={() => router.push('/orders')}>
+          <ArrowLeft className="h-4 w-4 mr-2" />
           {t.back}
         </Button>
-      </Card>
-    )
+      </div>
+    );
   }
 
   if (!order) {
     return (
-      <Card className="space-y-6 p-4">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <PackageX className="h-5 w-5" />
-          <p>{t.orderNotFound}</p>
-        </div>
-        <Button onClick={() => router.push('/orders')} className="mt-4">
-          <ArrowLeft className="mr-2 h-4 w-4" />
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+        <AlertCircle className="h-12 w-12 text-red-500" />
+        <h2 className="text-xl font-semibold">{t.orderNotFound}</h2>
+        <Button onClick={() => router.push('/orders')}>
+          <ArrowLeft className="h-4 w-4 mr-2" />
           {t.back}
         </Button>
-      </Card>
-    )
+      </div>
+    );
   }
 
   return (
@@ -673,7 +955,7 @@ export default function WaiterOrderPage() {
       <div className="space-y-6">
         <Button 
           variant="outline" 
-          onClick={() => router.push('/orders')}
+          onClick={() => handleRouteChange('/orders')}
           className="mb-4"
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
@@ -681,464 +963,756 @@ export default function WaiterOrderPage() {
         </Button>
 
         <OrderHeader order={order} />
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <Card className="md:col-span-2 p-4 space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                <List className="h-5 w-5" />
-                {t.orderComposition}
-              </h2>
-              {canAddItems && (
-                <Button 
-                  size="sm" 
-                  onClick={() => setAddItemDialogOpen(true)}
-                  disabled={isUpdating}
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  {t.addDish}
-                </Button>
-              )}
-            </div>
-
-            <div className="space-y-4">
-              {order.items.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground flex flex-col items-center">
-                  <Package className="h-8 w-8 mb-2" />
-                  {t.emptyOrder}
+        
+        <Card className="p-0">
+          <Collapsible open={showMenu} onOpenChange={setShowMenu}>
+            <CollapsibleTrigger asChild>
+              <div className="p-4 hover:bg-muted/50 cursor-pointer">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <List className="h-5 w-5" />
+                    <h2 className="text-lg font-semibold">{t.menu}</h2>
+                  </div>
+                  {showMenu ? (
+                    <ChevronUp className="h-5 w-5" />
+                  ) : (
+                    <ChevronDown className="h-5 w-5" />
+                  )}
                 </div>
-              ) : (
-                order.items.map(item => (
-                  <Card key={item.id} className="p-4 overflow-hidden">  
-                    <div className="flex justify-between items-start gap-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          {getProductIcon(item.product.title)}
-                          <h3 className="font-medium">
-                            {item.product.title} × {item.quantity}
-                          </h3>
-                          <Badge variant="outline" className="flex items-center gap-1">
-                            {getStatusIcon(item.status)}
-                            {getItemStatusText(item.status)}
-                          </Badge>
+              </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="p-4 border-t">
+                {categories.length > 0 && products.length > 0 ? (
+                  <Tabs defaultValue={categories[0].id} className="w-full">
+                    <div className="relative group">
+                      <div className="absolute left-0 top-0 bottom-0 flex items-center z-10">
+                        <button 
+                          onClick={() => {
+                            const container = document.getElementById('scrollContainer');
+                            if (container) container.scrollBy({ left: -200, behavior: 'smooth' });
+                          }}
+                          className="p-2"
+                        >
+                          <ChevronLeft className="w-6 h-6 text-foreground" />
+                        </button>
+                      </div>
+
+                      <TabsList 
+                        id="scrollContainer"
+                        className="flex w-full overflow-x-auto overflow-y-hidden scrollbar-hide whitespace-nowrap py-8 gap-4 px-8 scroll-smooth"
+                      >
+                        {categories.map(category => (
+                          <TabsTrigger 
+                            key={category.id} 
+                            value={category.id}
+                            className="flex-shrink-0 px-6 py-6 text-lg font-medium rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                          >
+                            {category.title}
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
+
+                      <div className="absolute right-0 top-0 bottom-0 flex items-center z-10">
+                        <button 
+                          onClick={() => {
+                            const container = document.getElementById('scrollContainer');
+                            if (container) container.scrollBy({ left: 200, behavior: 'smooth' });
+                          }}
+                          className="p-2"
+                        >
+                          <ChevronRight className="w-6 h-6 text-foreground" />
+                        </button>
+                      </div>
+                    </div>
+                                  
+                    {categories.map(category => {
+                      const categoryProducts = products.filter(p => p.categoryId === category.id);
+                      return (
+                        <TabsContent key={category.id} value={category.id} className="mt-4">
+                          {categoryProducts.length > 0 ? (
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                              {categoryProducts.map(product => {
+                                const additives = productAdditives[product.id] || []
+                                const comment = productComments[product.id] || ''
+                                const quantity = getDisplayQuantity(product, additives, comment)
+
+                                return (
+                                  <div key={product.id} className="bg-card rounded-xl shadow-sm overflow-hidden border hover:shadow-md transition-shadow flex flex-col h-full">
+                                    <div className="relative aspect-square">
+                                      {product.images?.[0] ? (
+                                        <Image
+                                          src={product.images[0]}
+                                          alt={product.title}
+                                          width={300}
+                                          height={300}
+                                          className="w-full h-full object-cover"
+                                        />
+                                      ) : (
+                                        <div className="w-full h-full bg-muted flex items-center justify-center">
+                                          <Utensils className="h-12 w-12 text-muted-foreground" />
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="p-4 flex flex-col flex-grow">
+                                      <div className="flex-grow">
+                                        <div className="mb-2">
+                                          <h3 className="font-semibold text-lg">
+                                            {product.title}
+                                          </h3>
+                                        </div>
+
+                                        {product.additives && product.additives.length > 0 && (
+                                          <div className="mb-3">
+                                            <div className="text-sm font-medium text-muted-foreground mb-1">
+                                              {t.additives}
+                                            </div>
+                                            <SearchableSelect
+                                              options={product.additives.map(additive => ({
+                                                id: additive.id,
+                                                label: `${additive.title} (+${additive.price} ₽)`
+                                              }))}
+                                              value={additives}
+                                              onChange={(newAdditives) => {
+                                                handleAdditivesChange(product.id, newAdditives)
+                                                if (quantity > 0) {
+                                                  handleQuantityChange(
+                                                    product,
+                                                    quantity,
+                                                    newAdditives,
+                                                    comment
+                                                  )
+                                                }
+                                              }}
+                                              placeholder={t.selectAdditives}
+                                              searchPlaceholder={t.searchAdditives}
+                                              emptyText={t.noAdditivesFound}
+                                              multiple={true}
+                                              disabled={!isOrderEditable}
+                                            />
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      <div className="mt-auto">
+                                        <div className="flex items-center justify-between mb-4">
+                                          <div className="flex items-center gap-2">
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              className="h-8 w-8 p-0"
+                                              onClick={() => {
+                                                const newQuantity = Math.max(0, quantity - 1)
+                                                handleQuantityChange(product, newQuantity, additives, comment)
+                                              }}
+                                              disabled={quantity === 0 || !isOrderEditable || order?.attentionFlags.isPrecheck}
+                                            >
+                                              <Minus className="h-4 w-4" />
+                                            </Button>
+                                            <span className="font-medium w-8 text-center">{quantity}</span>
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              className="h-8 w-8 p-0"
+                                              onClick={() => {
+                                                const newQuantity = quantity + 1
+                                                handleQuantityChange(product, newQuantity, additives, comment)
+                                              }}
+                                              disabled={!isOrderEditable}
+                                            >
+                                              <Plus className="h-4 w-4" />
+                                            </Button>
+                                          </div>
+                                          <span className="text-lg font-bold">
+                                            {getProductPrice(product) * quantity} ₽
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-muted-foreground text-center py-8">
+                              {t.noProductsFound}
+                            </p>
+                          )}
+                        </TabsContent>
+                      );
+                    })}
+                  </Tabs>
+                ) : (
+                  <div className="p-4 border rounded-lg text-center">
+                    {t.noProductsFound}
+                  </div>
+                )}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
+
+        <Card className="p-0">
+          <Collapsible defaultOpen>
+            <CollapsibleTrigger asChild>
+              <div className="p-4 hover:bg-muted/50 cursor-pointer">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Package className="h-5 w-5" />
+                    <h2 className="text-lg font-semibold">{t.orderDetails}</h2>
+                  </div>
+                  <ChevronDown className="h-5 w-5" />
+                </div>
+              </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="p-4 border-t">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  <div className="lg:col-span-2 space-y-6">
+                    {order?.items?.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground flex flex-col items-center">
+                        <Package className="h-8 w-8 mb-2" />
+                        {t.emptyOrder}
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold flex items-center gap-2">
+                          <ShoppingBag className="h-5 w-5" />
+                          {t.originalItems}
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {order.items.filter(item => !item.isReordered && !item.isRefund).map(renderItemCard)}
                         </div>
-                        
-                        {item.product.restaurantPrices[0] && (
-                          <p className="text-sm text-muted-foreground mt-1 flex items-center">
-                            <CircleDollarSign className="h-3 w-3 mr-1" />
-                            {t.price}: {getProductPrice(item.product)} ₽
-                          </p>
+
+                        {order.items.some(item => item.isReordered) && (
+                          <div className="space-y-4 border-t pt-6">
+                            <h3 className="text-lg font-semibold flex items-center gap-2">
+                              <RefreshCw className="h-5 w-5" />
+                              {t.reorderedItem}
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {order.items.filter(item => item.isReordered && !item.isRefund).map(renderItemCard)}
+                            </div>
+                          </div>
                         )}
 
-                          <div className="mt-2 pl-4 border-l-2 border-muted">
-                            {item.additives.length > 0 && (
-                              <div className="text-sm text-muted-foreground mt-1 flex items-center">
-                                <Plus className="h-3 w-3 mr-1" />
-                                {t.additives}: {item.additives.map(a => a.title).join(', ')}
-                              </div>
-                            )}
-                            {item.comment && (
-                              <div className="text-sm text-muted-foreground mt-1 flex items-center">
-                                <MessageSquare className="h-3 w-3 mr-1" />
-                                {t.comment}: {item.comment}
-                              </div>
-                            )}
+                        {order.items.some(item => item.isRefund) && (
+                          <div className="space-y-4 border-t pt-6">
+                            <h3 className="text-lg font-semibold flex items-center gap-2">
+                              <Ban className="h-5 w-5" />
+                              {t.itemReturned}
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {order.items.filter(item => item.isRefund).map(renderItemCard)}
+                            </div>
                           </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="flex flex-wrap gap-4 justify-center">
+                      <div 
+                        className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags.isReordered ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-muted'}`}
+                        title={order.attentionFlags.isReordered ? t.reorder : ''}
+                      >
+                        <ShoppingBag 
+                          className={`h-5 w-5 ${order.attentionFlags.isReordered ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}`} 
+                        />
+                        <span className="text-xs mt-1">{t.reorder}</span>
+                      </div>
+
+                      <div 
+                        className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags.hasDiscount ? 'bg-green-50 dark:bg-green-900/30' : 'bg-muted'}`}
+                        title={order.attentionFlags.hasDiscount ? t.discount : ''}
+                      >
+                        <Tag 
+                          className={`h-5 w-5 ${order.attentionFlags.hasDiscount ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`} 
+                        />
+                        <span className="text-xs mt-1">{t.discount}</span>
+                      </div>
+
+                      <div 
+                        className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags.discountCanceled ? 'bg-red-50 dark:bg-red-900/30' : 'bg-muted'}`}
+                        title={order.attentionFlags.discountCanceled ? t.discountCanceled : ''}
+                      >
+                        <Ban 
+                          className={`h-5 w-5 ${order.attentionFlags.discountCanceled ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`} 
+                        />
+                        <span className="text-xs mt-1">{t.discountCanceled}</span>
+                      </div>
+
+                      <div 
+                        className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags.isPrecheck ? 'bg-purple-50 dark:bg-purple-900/30' : 'bg-muted'}`}
+                        title={order.attentionFlags.isPrecheck ? t.precheck : ''}
+                      >
+                        <Receipt 
+                          className={`h-5 w-5 ${order.attentionFlags.isPrecheck ? 'text-purple-600 dark:text-purple-400' : 'text-muted-foreground'}`} 
+                        />
+                        <span className="text-xs mt-1">{t.precheck}</span>
+                      </div>
+
+                      <div 
+                        className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags.isRefund ? 'bg-orange-50 dark:bg-orange-900/30' : 'bg-muted'}`}
+                        title={order.attentionFlags.isRefund ? t.refund : ''}
+                      >
+                        <RefreshCw 
+                          className={`h-5 w-5 ${order.attentionFlags.isRefund ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`} 
+                        />
+                        <span className="text-xs mt-1">{t.refund}</span>
+                      </div>
+                    </div>
+                    
+                    <Card className="p-0">
+                      <Collapsible>
+                        <CollapsibleTrigger asChild>
+                          <div className="p-4 hover:bg-muted/50 cursor-pointer">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <History className="h-5 w-5" />
+                                <h3 className="text-lg font-semibold">{t.orderHistory}</h3>
+                              </div>
+                              <ChevronDown className="h-5 w-5" />
+                            </div>
+                          </div>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <div className="p-4 border-t">
+                            {renderLogs()}
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    </Card>
+
+                    <Card>
+                      <div className="p-4">
+                        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                          {t.total}
+                        </h3>
                         
-                      </div>
-
-                      <div className="text-right flex flex-col items-end gap-2">
-                        <div className="font-medium text-lg">
-                          {calculateItemPrice(item)} ₽
-                        </div>
-                        <div className="flex gap-2">
-                          {item.status === 'CREATED' && (
-                            <Button 
-                              variant="destructive"
-                              size="sm" 
-                              className="cursor-pointer"
-                              onClick={() => setReturnItemId(item.id)}
-                            >
-                              <RotateCcw className="h-4 w-4 mr-1" />
-                              {t.return}
-                            </Button>
+                        <div className="space-y-4">
+                          {order?.surcharges && order.surcharges.length > 0 && (
+                            <div className="space-y-2">
+                              <div className="text-sm font-medium text-muted-foreground">
+                                {t.surcharges}
+                              </div>
+                              {order.surcharges.map(surcharge => (
+                                <div key={surcharge.id} className="flex justify-between text-sm">
+                                  <span>{surcharge.title}</span>
+                                  <span className="font-medium">
+                                    {surcharge.type === 'FIXED' 
+                                      ? `+${surcharge.amount.toFixed(2)} ₽` 
+                                      : `+${surcharge.amount}%`}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
                           )}
-                          {item.status === 'REFUNDED' && (
-                            <>
-                              <Button 
-                                variant="outline"
-                                size="sm" 
-                                className="cursor-pointer"
-                                onClick={() => handleEditItem(item)}
-                              >
-                                <Edit className="h-4 w-4 mr-1" />
-                                {t.edit}
-                              </Button>
-                              <Button 
-                                variant="default"
-                                size="sm" 
-                                className="cursor-pointer bg-blue-500 hover:bg-blue-600"
-                                onClick={() => setConfirmItemId(item.id)}
-                              >
-                                <Check className="h-4 w-4 mr-1" />
-                                {t.confirm}
-                              </Button>
-                              <Button 
-                                variant="destructive"
-                                size="sm" 
-                                className="cursor-pointer"
-                                onClick={() => handleRemoveItem(item.id)}
-                                disabled={isUpdating}
-                              >
-                                <Trash2 className="h-4 w-4 mr-1" />
-                                {t.delete}
-                              </Button>
-                            </>
+
+                          <div className="flex justify-between items-center pt-2">
+                            <div className="font-medium flex items-center">
+                              {t.total}:
+                            </div>
+                            <div className="text-lg font-bold">{calculateOrderTotal().toFixed(2)} ₽</div>
+                          </div>
+
+                          {order?.payment && (
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <div className="font-medium flex items-center">
+                                  {t.paymentStatus}:
+                                </div>
+                                <Badge variant={order.payment.status === 'PAID' ? 'default' : 'secondary'}>
+                                  {order.payment.status === 'PENDING' ? t.pending : 
+                                   order.payment.status === 'PAID' ? t.paid : t.failed}
+                                </Badge>
+                              </div>
+                              <div className="flex justify-between items-center">
+                                <div className="font-medium flex items-center">
+                                  {t.paymentMethod}:
+                                </div>
+                                <div>
+                                  {order.payment.method === 'CASH' ? t.cash : 
+                                   order.payment.method === 'CARD' ? t.card : t.online}
+                                </div>
+                              </div>
+                            </div>
                           )}
                         </div>
                       </div>
+                    </Card>
+                    <div className="flex gap-2 pt-4">
+                      {order.status === 'CREATED' && (
+                        <div className='flex flex-col w-full space-y-4'>
+                          <Button
+                            disabled={isUpdating}
+                            onClick={handleConfirmOrder}
+                            variant="secondary"
+                            className="bg-emerald-500 hover:bg-emerald-400 text-white gap-2 w-full text-lg h-14"
+                          >
+                            {isUpdating ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Check className="h-4 w-4" />
+                            )}
+                            {t.confirm}
+                          </Button>
+                          <Button
+                            disabled={isUpdating}
+                           onClick={async () => {
+                                if (order.attentionFlags.isPrecheck) return;
+                                
+                                try {
+                                  setIsUpdating(true);
+                                  await OrderService.setPrecheckFlag(order.id, true);
+                                  await fetchOrder();
+                                  
+                                  await createOrderLog(t.logs.precheckPrinted);
+                                  
+                                  toast.success(language === 'ru' ? 'Пречек сформирован' : 'პრეჩეკი ჩამოყალიბებულია');
+                                } catch (error) {
+                                  toast.error(language === 'ru' 
+                                    ? 'Ошибка при формировании пречека' 
+                                    : 'პრეჩეკის ფორმირების შეცდომა');
+                                } finally {
+                                  setIsUpdating(false);
+                                }
+                              }}
+                           variant={order.attentionFlags.isPrecheck ? "default" : "outline"}
+                            className={`gap-2 w-full text-lg h-14 ${order.attentionFlags.isPrecheck ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 hover:bg-green-100 dark:hover:bg-green-900/30' : ''}`}
+                          >
+                            {isUpdating ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : order.attentionFlags.isPrecheck ? (
+                              <CheckCircle className="h-4 w-4" />
+                            ) : (
+                              <Check className="h-4 w-4" />
+                            )}
+                            {order.attentionFlags.isPrecheck ? t.precheckFormed : t.formPrecheck}
+                          </Button>
+
+                          <Button
+                            disabled={isUpdating}
+                            onClick={handleCancelOrder}
+                            variant="secondary"
+                            className="bg-red-300 hover:bg-red-200 text-white gap-2 w-full text-lg h-14"
+                          >
+                            {isUpdating ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <X className="h-4 w-4" />
+                            )}
+                            {t.cancel}
+                          </Button>
+                        </div>
+                      )}
+
+                   {(order.status === 'READY' || order.status === 'DELIVERING') && (
+                      <Button
+                        size="sm"
+                        disabled={isUpdating}
+                        onClick={handleCompleteOrder}
+                        variant="secondary"
+                        className="bg-emerald-500 hover:bg-emerald-400 text-white gap-2 w-full text-lg h-14"
+                      >
+                        {isUpdating ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <CheckCircle className="h-4 w-4" />
+                        )}
+                        {t.complete}
+                      </Button>
+                    )}
                     </div>
-                  </Card>
-                ))
-              )}
-            </div>
-            
-               {order.surcharges && order.surcharges.length > 0 && (
-            <div className="space-y-2 border-t pt-4">
-              <div className="text-sm font-medium text-muted-foreground">
-                {language === 'ru' ? 'Надбавки' : 'დამატებითი გადასახადები'}
-              </div>
-              {order.surcharges.map(surcharge => (
-                <div key={surcharge.id} className="flex justify-between text-sm">
-                  <span>{surcharge.title}</span>
-                  <span className="font-medium">
-                    {surcharge.type === 'FIXED' 
-                      ? `+${surcharge.amount.toFixed(2)} ₽` 
-                      : `+${surcharge.amount}%`}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-            <div className="flex justify-between items-center pt-4 border-t">
-              <div className="font-medium flex items-center">
-                <CircleDollarSign className="h-5 w-5 mr-2" />
-                {t.total}:
-              </div>
-              <div className="text-lg font-bold">{order.totalAmount} ₽</div>
-            </div>
-
-            {order.payment && (
-              <div className="space-y-2 pt-2">
-                <div className="flex justify-between items-center">
-                  <div className="font-medium flex items-center">
-                    <CreditCard className="h-5 w-5 mr-2" />
-                    {t.paymentStatus}:
                   </div>
-                  <Badge variant={order.payment.status === 'PAID' ? 'default' : 'secondary'} className="flex items-center gap-1">
-                    {getPaymentStatusText(order.payment.status)}
-                  </Badge>
                 </div>
-                {order.payment.method && (
-                  <div className="flex justify-between items-center">
-                    <div className="font-medium flex items-center">
-                      {getPaymentMethodIcon(order.payment.method)}
-                      <span className="ml-2">{t.paymentMethod}:</span>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
+
+        <Card className="p-0">
+          <Collapsible open={showEditForm} onOpenChange={setShowEditForm}>
+            <CollapsibleTrigger asChild>
+              <div className="p-4 hover:bg-muted/50 cursor-pointer">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Edit className="h-5 w-5" />
+                    <h2 className="text-lg font-semibold">{t.mainInfo}</h2>
+                  </div>
+                  {showEditForm ? (
+                    <ChevronUp className="h-5 w-5" />
+                  ) : (
+                    <ChevronDown className="h-5 w-5" />
+                  )}
+                </div>
+              </div>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="p-4 border-t space-y-6">
+                <div className="space-y-3">
+                  <Label className="flex items-center gap-2">
+                    <Utensils className="h-4 w-4" />
+                    {t.orderType}
+                  </Label>
+                  <OrderTypeSelector
+                    value={editFormData.type as OrderType}
+                    onChange={(type) => setEditFormData({...editFormData, type})}
+                    language={language}
+                    disabled={!isOrderEditable}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <Label className="text-sm flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      {t.persons}
+                    </Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={editFormData.numberOfPeople}
+                      onChange={(e) => setEditFormData({
+                        ...editFormData,
+                        numberOfPeople: parseInt(e.target.value) || 1
+                      })}
+                      disabled={!isOrderEditable}
+                    />
+                  </div>
+                  <div className="space-y-3">
+                    <Label className="text-sm flex items-center gap-2">
+                      <Table className="h-4 w-4" />
+                      {t.table}
+                    </Label>
+                    <Input
+                      disabled={!isOrderEditable || (editFormData.type === 'TAKEAWAY' || editFormData.type === 'DELIVERY')}
+                      type="number"
+                      min="0"
+                      value={editFormData.tableNumber}
+                      onChange={(e) => setEditFormData({
+                        ...editFormData,
+                        tableNumber: (parseInt(e.target.value).toString())
+                      })}
+                    />
+                  </div>
+                </div>
+
+                {editFormData.type === 'DELIVERY' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <Label className="text-sm flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        {t.deliveryAddress}
+                      </Label>
+                      <Input
+                        value={editFormData.deliveryAddress}
+                        onChange={(e) => setEditFormData({
+                          ...editFormData,
+                          deliveryAddress: e.target.value
+                        })}
+                        placeholder={t.deliveryAddress}
+                        disabled={!isOrderEditable}
+                      />
                     </div>
-                    <div className="flex items-center gap-1">
-                      {getPaymentMethodIcon(order.payment.method)}
-                      {getPaymentMethodText(order.payment.method)}
+                    <div className="space-y-1">
+                      <Label className="text-sm flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        {t.deliveryTime}
+                      </Label>
+                      <Input
+                        type="time"
+                        value={editFormData.deliveryTime}
+                        onChange={(e) => setEditFormData({
+                          ...editFormData,
+                          deliveryTime: e.target.value
+                        })}
+                        disabled={!isOrderEditable}
+                      />
+                    </div>
+                    <div className="md:col-span-2 space-y-1">
+                      <Label className="text-sm flex items-center gap-2">
+                        <MessageSquare className="h-4 w-4" />
+                        {t.deliveryNotes}
+                      </Label>
+                      <Textarea
+                        value={editFormData.deliveryNotes}
+                        onChange={(e) => setEditFormData({
+                          ...editFormData,
+                          deliveryNotes: e.target.value
+                        })}
+                        placeholder={t.callBeforeArrival}
+                        disabled={!isOrderEditable}
+                      />
                     </div>
                   </div>
                 )}
-              </div>
-            )}
 
-            <div className="flex gap-2 pt-4 justify-end">
-              {order.status === EnumOrderStatus.READY && order.payment?.status === 'PENDING' && (
-                <Button 
-                  className="bg-emerald-600 hover:bg-emerald-800"
-                  onClick={() => router.push(`/payments/${order.payment?.id}`)}
-                  disabled={isProcessingPayment}
-                >
-                  <CreditCard className="h-4 w-4 mr-2" />
-                  {t.payment}
-                </Button>
-              )}
-            </div>
-          </Card>
-
-          <div className="space-y-4">
-            {order.customer && (
-              <Card className="p-4">
-                <OrderCustomerInfo customer={order.customer} />
-              </Card>
-            )}
-
-            <Card className="p-4">
-              <h3 className="font-medium mb-2 flex items-center gap-2">
-                <Package className="h-5 w-5" />
-                {t.orderInfo}
-              </h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground flex items-center">
-                    <List className="h-4 w-4 mr-1" />
-                    {t.orderNumber}:
-                  </span>
-                  <span>#{order.number}</span>
+                <div className="space-y-2">
+                  <Label className="text-sm flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4" />
+                    {t.comment}
+                  </Label>
+                  <Textarea 
+                    value={editFormData.comment}
+                    onChange={(e) => setEditFormData({
+                      ...editFormData,
+                      comment: e.target.value
+                    })}
+                    placeholder={t.comment}
+                    disabled={!isOrderEditable}
+                  />
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground flex items-center">
-                    <Calendar className="h-4 w-4 mr-1" />
-                    {t.date}:
-                  </span>
-                  <span>
-                    {new Date(order.createdAt).toLocaleString()}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground flex items-center">
-                    <PackageCheck className="h-4 w-4 mr-1" />
-                    {t.orderStatus}:
-                  </span>
-                  <Badge variant="outline" className="flex items-center gap-1">
-                    {getStatusText(order.status)}
-                  </Badge>
-                </div>
-                {order.tableNumber && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground flex items-center">
-                      <Table className="h-4 w-4 mr-1" />
-                      {t.table}:
-                    </span>
-                    <span>{order.tableNumber}</span>
-                  </div>
-                )}
-                {order.numberOfPeople && (
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground flex items-center">
-                      <Users className="h-4 w-4 mr-1" />
-                      {t.persons}:
-                    </span>
-                    <span>{order.numberOfPeople}</span>
-                  </div>
-                )}
-                <div className="flex justify-between items-center">
-                  <span className="text-muted-foreground flex items-center">
-                    {getOrderTypeIcon(order.type)}
-                    <span className="ml-1">{t.orderType}:</span>
-                  </span>
-                  <span>
-                    {order.type === 'DINE_IN' && t.dineIn}
-                    {order.type === 'TAKEAWAY' && t.takeaway}
-                    {order.type === 'DELIVERY' && t.delivery}
-                  </span>
-                </div>
-              </div>
-            </Card>
-          </div>
-        </div>
-      </div>
-        
-      {/* Диалог возврата позиции */}
-      <Dialog open={!!returnItemId} onOpenChange={(open) => !open && setReturnItemId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <RotateCcw className="h-5 w-5" />
-              {t.returnItem}
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="returnReason" className="mb-2 flex items-center">
-                <AlertCircle className="h-4 w-4 mr-1" />
-                {t.returnReason}
-              </Label>
-              <Input
-                id="returnReason"
-                value={returnReason}
-                onChange={(e) => setReturnReason(e.target.value)}
-                placeholder={t.returnReason}
-              />
-            </div>
-          </div>
-          
-          <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setReturnItemId(null)}
-            >
-              <X className="h-4 w-4 mr-1" />
-              {t.cancel}
-            </Button>
-            <Button 
-              onClick={handleReturnItem}
-              disabled={isReturning || !returnReason}
-            >
-              {isReturning ? (
-                <Clock className="h-4 w-4 mr-1 animate-spin" />
-              ) : (
-                <Check className="h-4 w-4 mr-1" />
-              )}
-              {isReturning ? t.processing : t.confirmReturn}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      {/* Диалог добавления позиции */}
-      <Dialog 
-        open={addItemDialogOpen} 
-        onOpenChange={setAddItemDialogOpen}
-      >
-        <DialogContent 
-          className="w-[70%] max-w-none h-[80vh] max-h-[80vh]"
-          style={{
-            width: '70vw',
-            maxWidth: 'none',
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Plus className="h-5 w-5" />
-              {t.addPosition}
-            </DialogTitle>
-          </DialogHeader>
-          {order?.restaurant && (
-            <AddProductToOrder
-              products={products}
-              categories={categories}
-              restaurantId={order.restaurant.id}
-              onAddItem={handleAddItem}
-              onClose={closeAddItemDialog}
-              language={language}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Диалог редактирования позиции */}
-      <Dialog 
-        open={!!editingItem} 
-        onOpenChange={(open) => !open && setEditingItem(null)}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Edit className="h-5 w-5" />
-              {t.editPosition}
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="itemComment" className="flex items-center">
-                <MessageSquare className="h-4 w-4 mr-1" />
-                {t.comment}
-              </Label>
-              <Input
-                className="mt-2"
-                id="itemComment"
-                value={updatedComment}
-                onChange={(e) => setUpdatedComment(e.target.value)}
-                placeholder={t.comment}
-              />
-            </div>
-            
-            {editingItem?.product?.additives && editingItem.product.additives.length > 0 && (
-              <div>
-                <Label className="flex items-center">
-                  <Plus className="h-4 w-4 mr-1" />
-                  {t.additives}
-                </Label>
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                  {editingItem.product.additives.map(additive => (
-                    <button
-                      key={additive.id}
-                      onClick={() => {
-                        setUpdatedAdditives(prev =>
-                          prev.includes(additive.id)
-                            ? prev.filter(id => id !== additive.id)
-                            : [...prev, additive.id]
-                        );
-                      }}
-                      className={`p-2 border rounded-md text-sm flex justify-between items-center
-                        ${updatedAdditives.includes(additive.id)
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'hover:bg-accent dark:hover:bg-gray-800 dark:border-gray-700'
-                        }`}
+                {isOrderEditable && (
+                  <div className="flex justify-end gap-2">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setShowEditForm(false)}
                     >
-                      <span>{additive.title}</span>
-                      <span className="font-bold ml-2">+{additive.price} ₽</span>
-                    </button>
-                  ))}
-                </div>
+                      {t.cancel}
+                    </Button>
+                    <Button 
+                      onClick={handleEditOrderSubmit}
+                      disabled={isUpdating}
+                    >
+                      {isUpdating ? (
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <Check className="h-4 w-4 mr-1" />
+                      )}
+                      {isUpdating ? t.saving : t.saveChanges}
+                    </Button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          
-          <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setEditingItem(null)}
-            >
-              <X className="h-4 w-4 mr-1" />
-              {t.cancel}
-            </Button>
-            <Button 
-              onClick={handleSaveItemChanges}
-              disabled={isUpdating}
-            >
-              {isUpdating ? (
-                <Clock className="h-4 w-4 mr-1 animate-spin" />
-              ) : (
-                <Check className="h-4 w-4 mr-1" />
-              )}
-              {isUpdating ? t.saving : t.saveChanges}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      
-      {/* Диалог подтверждения позиции */}
-      <Dialog open={!!confirmItemId} onOpenChange={(open) => !open && setConfirmItemId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Check className="h-5 w-5" />
-              {t.confirmPosition}
-            </DialogTitle>
-          </DialogHeader>
-          <DialogDescription>
-            {t.confirmQuestion}
-          </DialogDescription>
-          <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setConfirmItemId(null)}
-            >
-              <X className="h-4 w-4 mr-1" />
-              {t.cancel}
-            </Button>
-            <Button 
-              onClick={handleConfirmItem}
-              disabled={isConfirming}
-              className="bg-blue-500 hover:bg-blue-600"
-            >
-              {isConfirming ? (
-                <Clock className="h-4 w-4 mr-1 animate-spin" />
-              ) : (
-                <Check className="h-4 w-4 mr-1" />
-              )}
-              {isConfirming ? t.confirming : t.confirm}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
+
+        {order.payment && (
+          <PaymentDialog
+            open={showPaymentDialog}
+            onOpenChange={setShowPaymentDialog}
+            paymentId={order.payment.id}
+            orderId={order.id}
+            onPaymentComplete={confirmCompleteOrder}
+          />
+        )}
+
+        <AlertDialog open={showRefundDialog} onOpenChange={setShowRefundDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t.refundItem}
+              </AlertDialogTitle>
+            
+            </AlertDialogHeader>
+            
+            <div className="space-y-4">
+                <Label className="text-sm">
+                  {language === 'ru' ? 'Блюдо:' : 'კერძი:'} {selectedItemForRefund?.product.title} 
+                </Label>
+              
+              <div className="space-y-2">
+                <Label className="text-sm">
+                  {t.refundReason}
+                </Label>
+                <Textarea
+                  value={refundReason}
+                  onChange={(e) => setRefundReason(e.target.value)}
+                  placeholder={t.cookingError}
+                />
+              </div>
+            </div>
+            
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {t.cancel}
+              </AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={handleRefundItem}
+                disabled={!refundReason.trim() || isUpdating}
+              >
+                {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {t.confirmRefund}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t.confirmation}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t.confirmComplete}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {t.cancel}
+              </AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={confirmCompleteOrder}
+                disabled={isUpdating}
+              >
+                {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {t.complete}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t.confirmation}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t.confirmCancel}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {t.cancel}
+              </AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={confirmCancelOrder}
+                disabled={isUpdating}
+              >
+                {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {t.cancel}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={showExitConfirmDialog} onOpenChange={setShowExitConfirmDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t.exitConfirmTitle}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t.exitConfirmMessage}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={cancelExit}>
+                {t.cancel}
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={confirmExit}>
+                {t.exitConfirmLeave}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
     </AccessCheck>
-  )
+  );
 }

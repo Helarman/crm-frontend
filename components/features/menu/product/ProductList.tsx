@@ -1,4 +1,4 @@
-// ProductList.tsx
+
 import { useState, useEffect } from 'react';
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { ProductService } from '@/lib/api/product.service';
@@ -14,11 +14,12 @@ import { ProductPreviewCard } from './ProductPreviewCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { toast } from 'sonner';
-
+import { useRouter } from 'next/navigation';
 const ALL_CATEGORIES_VALUE = "all-categories";
 const ALL_RESTAURANTS_VALUE = "all-restaurants";
 
 export const ProductList = () => {
+  const router = useRouter()
   const { language } = useLanguageStore();
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -88,10 +89,6 @@ export const ProductList = () => {
     setIsModalOpen(true);
   };
 
-  const openEditModal = (product: any) => {
-    setCurrentProductId(product.id);
-    setIsModalOpen(true);
-  };
 
   const handleDelete = async (id: string) => {
     try {
@@ -154,7 +151,6 @@ export const ProductList = () => {
         products={filteredProducts}
         isLoading={isLoading && products.length > 0}
         language={language}
-        onEdit={openEditModal}
         onDelete={handleDelete}
       />
 

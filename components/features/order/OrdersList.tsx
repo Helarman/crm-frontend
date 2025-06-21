@@ -1,11 +1,12 @@
 'use client'
 
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination'
 import { useState, useEffect } from 'react'
 import { OrderCard } from '@/components/features/order/OrderCard'
 import type { OrderItemDto, OrderResponse } from '@/lib/api/order.service'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/hooks/useAuth'
-import { useRestaurantOrders } from '@/lib/hooks/useOrders'
+import { useActiveRestaurantOrders, useRestaurantArchive, useRestaurantOrders } from '@/lib/hooks/useOrders'
 import {
   Select,
   SelectContent,
@@ -20,9 +21,17 @@ import { useRouter } from 'next/navigation'
 import useSWRMutation from 'swr/mutation'
 import { Restaurant } from '../staff/StaffTable'
 import { Button } from '@/components/ui/button'
-import { Utensils, ShoppingBag, Truck, GlassWater, Archive } from 'lucide-react'
+import { Utensils, ShoppingBag, Truck, GlassWater, Archive, Calendar, Filter, X } from 'lucide-react'
 import { useLanguageStore } from '@/lib/stores/language-store'
 import Loading from '../Loading'
+import { DateRange } from 'react-day-picker'
+import { format } from 'date-fns'
+import { Calendar as CalendarComponent } from '@/components/ui/calendar'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { cn } from '@/lib/utils'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { DateRangePicker } from '@/components/ui/data-range-picker'
 
 const ORDER_TYPES = [
   {
@@ -128,6 +137,34 @@ const translations = {
   recentOrders: {
     ru: 'Последние заказы',
     ka: 'ბოლო შეკვეთები'
+  },
+  dateRange: {
+    ru: 'Диапазон дат',
+    ka: 'თარიღების დიაპაზონი'
+  },
+  clearFilters: {
+    ru: 'Очистить фильтры',
+    ka: 'ფილტრების გასუფთავება'
+  },
+  filters: {
+    ru: 'Фильтры',
+    ka: 'ფილტრები'
+  },
+  reordered: {
+    ru: 'Дозаказ',
+    ka: 'განმეორებითი'
+  },
+  discount: {
+    ru: 'Со скидкой',
+    ka: 'ფასდაკლებით'
+  },
+  discountCanceled: {
+    ru: 'Скидка отменена',
+    ka: 'ფასდაკლება გაუქმებული'
+  },
+  refund: {
+    ru: 'Возвраты',
+    ka: 'დაბრუნებები'
   }
 }
 
@@ -140,37 +177,68 @@ export function OrdersList() {
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>('')
   const [selectedOrderType, setSelectedOrderType] = useState<string>('ALL')
   const [showArchive, setShowArchive] = useState<boolean>(false)
-  const { 
-    data: orders = [], 
-    isLoading: ordersLoading, 
-    error: ordersError,
-    mutate 
-  } = useRestaurantOrders(selectedRestaurantId)
+  const [page, setPage] = useState(1)
+  const limit = 12
 
-  // Установка первого ресторана по умолчанию при загрузке пользователя
+  // Фильтры архива
+  const [dateRange, setDateRange] = useState<DateRange | undefined>()
+  const [isReordered, setIsReordered] = useState<boolean | undefined>()
+  const [hasDiscount, setHasDiscount] = useState<boolean | undefined>()
+  const [discountCanceled, setDiscountCanceled] = useState<boolean | undefined>()
+  const [isRefund, setIsRefund] = useState<boolean | undefined>()
+
+  const archiveFilters = {
+    page,
+    limit,
+    status: selectedOrderType === 'ALL' ? undefined : [selectedOrderType as any],
+    startDate: dateRange?.from?.toISOString(),
+    endDate: dateRange?.to?.toISOString(),
+    isReordered,
+    hasDiscount,
+    discountCanceled,
+    isRefund
+  }
+
+  // Хуки для данных
+  const { 
+    data: activeOrders = [], 
+    isLoading: activeLoading,
+    error: activeError,
+    mutate: mutateActive 
+  } = useActiveRestaurantOrders(selectedRestaurantId)
+
+  const { 
+    data: archiveData, 
+    isLoading: archiveLoading,
+    error: archiveError,
+    mutate: mutateArchive
+  } = useRestaurantArchive(selectedRestaurantId, archiveFilters)
+
+  // Установка первого ресторана по умолчанию
   useEffect(() => {
     if (user?.restaurant?.length > 0) {
       setSelectedRestaurantId(user.restaurant[0].id)
     }
   }, [user])
 
-  // Фильтрация заказов по дате (последние 2 дня), если архив не показан
-  const filterByDate = (order: OrderItemDto) => {
-    if (showArchive) return true
-    
-    const twoDaysAgo = new Date()
-    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2)
-    return new Date(order.createdAt) >= twoDaysAgo
-  }
+  // Сбрасываем страницу при изменении фильтров
+  useEffect(() => {
+    setPage(1)
+  }, [selectedOrderType, showArchive, dateRange, isReordered, hasDiscount, discountCanceled, isRefund])
 
-  // Фильтрация заказов по выбранному типу
-  const filteredOrders = (selectedOrderType === 'ALL' 
-    ? orders 
-    : orders.filter((order : OrderItemDto) => order.type === selectedOrderType))
-    .filter(filterByDate)
+  // Определяем текущие данные и состояние загрузки
+  const currentData = showArchive ? archiveData?.data || [] : activeOrders
+  const isLoading = showArchive ? archiveLoading : activeLoading
+  const error = showArchive ? archiveError : activeError
+  const totalPages = archiveData?.meta?.totalPages || 1
 
-  // Сортировка заказов: сначала активные, затем завершенные/отмененные
-  const sortedOrders = [...filteredOrders].sort((a, b) => {
+  // Фильтрация активных заказов по типу
+  const filteredActiveOrders = selectedOrderType === 'ALL' 
+    ? activeOrders 
+    : activeOrders.filter((order: OrderResponse) => order.type === selectedOrderType)
+
+  // Сортировка заказов
+  const sortedOrders = [...(showArchive ? currentData : filteredActiveOrders)].sort((a, b) => {
     const isACompletedOrCancelled = a.status === 'COMPLETED' || a.status === 'CANCELLED'
     const isBCompletedOrCancelled = b.status === 'COMPLETED' || b.status === 'CANCELLED'
 
@@ -189,9 +257,8 @@ export function OrdersList() {
     },
     {
       onSuccess: (updatedOrder: OrderResponse) => {
-        mutate((prevOrders: OrderResponse[] | undefined) => 
-          prevOrders?.map(o => o.id === updatedOrder.id ? updatedOrder : o) || []
-        )
+        const mutator = showArchive ? mutateArchive : mutateActive
+        mutator()
         toast.success(t('statusUpdated'))
       },
       onError: (error) => {
@@ -202,8 +269,70 @@ export function OrdersList() {
   )
 
   const handleStatusChange = (updatedOrder: OrderResponse) => {
-    mutate((prevOrders: OrderResponse[] | undefined) => 
-      prevOrders?.map(o => o.id === updatedOrder.id ? updatedOrder : o) || []
+    const mutator = showArchive ? mutateArchive : mutateActive
+    mutator()
+  }
+
+  const clearFilters = () => {
+    setDateRange(undefined)
+    setIsReordered(undefined)
+    setHasDiscount(undefined)
+    setDiscountCanceled(undefined)
+    setIsRefund(undefined)
+  }
+
+  const hasActiveFilters = () => {
+    return dateRange?.from || dateRange?.to || 
+           isReordered !== undefined || 
+           hasDiscount !== undefined || 
+           discountCanceled !== undefined || 
+           isRefund !== undefined
+  }
+
+  // Рендер пагинации
+  const renderPagination = () => {
+    if (!showArchive || totalPages <= 1) return null
+
+    return (
+      <Pagination className="mt-6">
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious 
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+            />
+          </PaginationItem>
+          
+          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+            let pageNum
+            if (totalPages <= 5) {
+              pageNum = i + 1
+            } else if (page <= 3) {
+              pageNum = i + 1
+            } else if (page >= totalPages - 2) {
+              pageNum = totalPages - 4 + i
+            } else {
+              pageNum = page - 2 + i
+            }
+
+            return (
+              <PaginationItem key={pageNum}>
+                <PaginationLink
+                  isActive={pageNum === page}
+                  onClick={() => setPage(pageNum)}
+                >
+                  {pageNum}
+                </PaginationLink>
+              </PaginationItem>
+            )
+          })}
+
+          <PaginationItem>
+            <PaginationNext 
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            />
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
     )
   }
 
@@ -227,7 +356,7 @@ export function OrdersList() {
     )
   }
 
-  if (ordersLoading || !selectedRestaurantId) {
+  if (isLoading || !selectedRestaurantId) {
     return (
       <div className="space-y-4">
         <Loading/>
@@ -235,16 +364,15 @@ export function OrdersList() {
     )
   }
 
-  if (ordersError) {
+  if (error) {
     return (
       <Card className="p-6 text-center">
         <p className="text-destructive">
-          {t('orderError')}: {ordersError.message}
+          {t('orderError')}: {error.message}
         </p>
       </Card>
     )
   }
-
 
   return (
     <div className="space-y-6">
@@ -253,6 +381,7 @@ export function OrdersList() {
           <h2 className="text-2xl font-bold">
             {showArchive ? t('ordersList') : t('recentOrders')}
           </h2>
+          
           <div className="flex flex-wrap gap-2">
             {ORDER_TYPES.map((type) => {
               const Icon = type.icon
@@ -268,6 +397,7 @@ export function OrdersList() {
               )
             })}
           </div>
+          
           <div className='flex space-x-2'>
             {user.restaurant.length > 1 && (
               <Select
@@ -286,6 +416,7 @@ export function OrdersList() {
                 </SelectContent>
               </Select>
             )}
+            
             <Button 
               variant={showArchive ? 'default' : 'outline'} 
               onClick={() => setShowArchive(!showArchive)}
@@ -293,11 +424,69 @@ export function OrdersList() {
               <Archive className="h-5 w-5 mr-2" />
               {t('showArchive')}
             </Button>
+            
             <Button onClick={() => router.push('/orders/new')}>
               {t('newOrder')}
             </Button>
           </div>
         </div>
+
+        {showArchive && (
+          <div className="flex flex-wrap items-center gap-4 p-4 bg-muted/50 rounded-lg">
+            <DateRangePicker
+              dateRange={dateRange}
+              onDateRangeChange={setDateRange}
+              className="w-[280px]"
+            />
+
+            <div className="flex items-center space-x-2 ml-3">
+              <Switch 
+                id="reordered-filter" 
+                checked={isReordered || false}
+                onCheckedChange={(checked) => setIsReordered(checked ? true : undefined)}
+              />
+              <Label htmlFor="reordered-filter">{t('reordered')}</Label>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Switch 
+                id="discount-filter" 
+                checked={hasDiscount || false}
+                onCheckedChange={(checked) => setHasDiscount(checked ? true : undefined)}
+              />
+              <Label htmlFor="discount-filter">{t('discount')}</Label>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Switch 
+                id="discount-canceled-filter" 
+                checked={discountCanceled || false}
+                onCheckedChange={(checked) => setDiscountCanceled(checked ? true : undefined)}
+              />
+              <Label htmlFor="discount-canceled-filter">{t('discountCanceled')}</Label>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Switch 
+                id="refund-filter" 
+                checked={isRefund || false}
+                onCheckedChange={(checked) => setIsRefund(checked ? true : undefined)}
+              />
+              <Label htmlFor="refund-filter">{t('refund')}</Label>
+            </div>
+
+            {hasActiveFilters() && (
+              <Button 
+                variant="ghost" 
+                onClick={clearFilters}
+                className="text-destructive"
+              >
+                <X className="h-4 w-4 mr-2" />
+                {t('clearFilters')}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {sortedOrders.length === 0 ? (
@@ -307,19 +496,22 @@ export function OrdersList() {
           </p>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-          {sortedOrders.map(order => (
-            <div 
-              key={order.id}
-              className="cursor-pointer transition-transform hover:scale-[1.02]"
-            >
-              <OrderCard
-                order={order}
-                onStatusChange={handleStatusChange}
-              />
-            </div>
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4">
+            {sortedOrders.map(order => (
+              <div 
+                key={order.id}
+                className="cursor-pointer transition-transform hover:scale-[1.02]"
+              >
+                <OrderCard
+                  order={order}
+                  onStatusChange={handleStatusChange}
+                />
+              </div>
+            ))}
+          </div>
+          {renderPagination()}
+        </>
       )}
     </div>
   )
