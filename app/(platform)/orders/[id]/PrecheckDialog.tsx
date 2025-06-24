@@ -171,9 +171,7 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
   };
 
   const getDomain = () => {
-    return order.restaurant?.network?.tenant?.domain || 
-           window.location.hostname || 
-           window.location.origin;
+    return order.restaurant?.network?.tenant?.domain
   };
 const nameParts = user?.name.split(' ')
 const firstName = nameParts[0];
