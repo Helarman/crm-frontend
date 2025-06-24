@@ -19,6 +19,7 @@ interface RestaurantFormValues {
   title: string;
   address: string;
   description: string;
+  legalInfo: string;
   latitude: string;
   longitude: string;
   networkId: string;
@@ -40,7 +41,7 @@ export function EditRestaurantForm({
   const [isUploading, setIsUploading] = useState(false);
   const [networks, setNetworks] = useState<any[]>([]);
   const [isLoadingNetworks, setIsLoadingNetworks] = useState(true);
-  const { language, setLanguage } = useLanguageStore();
+  const { language } = useLanguageStore();
 
   const { register, handleSubmit, setValue, formState: { errors, isDirty }, watch } = useForm<RestaurantFormValues>({
     defaultValues: initialValues
@@ -51,6 +52,7 @@ export function EditRestaurantForm({
       title: 'Название *',
       address: 'Адрес *',
       description: 'Описание',
+      legalInfo: 'Юридическая информация',
       location: 'Местоположение на карте *',
       currentLocation: 'Текущие координаты',
       selectLocation: 'Пожалуйста, выберите местоположение на карте',
@@ -66,6 +68,7 @@ export function EditRestaurantForm({
       title: 'Name *',
       address: 'Address *',
       description: 'Description',
+      legalInfo: 'Legal Information',
       location: 'Location on map *',
       currentLocation: 'Current coordinates',
       selectLocation: 'Please select location on map',
@@ -81,6 +84,7 @@ export function EditRestaurantForm({
       title: 'სახელი *',
       address: 'მისამართი *',
       description: 'აღწერა',
+      legalInfo: 'იურიდიული ინფორმაცია',
       location: 'მდებარეობა რუკაზე *',
       currentLocation: 'მიმდინარე კოორდინატები',
       selectLocation: 'გთხოვთ აირჩიოთ მდებარეობა რუკაზე',
@@ -134,7 +138,7 @@ export function EditRestaurantForm({
         networkId: data.networkId
       });
     } catch (error) {
-      console.error('Ошибка при обновлении ресторана:', error);
+      console.error('Error updating restaurant:', error);
     } finally {
       setIsUploading(false);
     }
@@ -199,7 +203,16 @@ export function EditRestaurantForm({
         <Textarea
           id="description"
           {...register('description')}
-          rows={7}
+          rows={4}
+        />
+      </div>
+
+      <div>
+        <Label htmlFor="legalInfo" className="mb-4">{t.legalInfo}</Label>
+        <Textarea
+          id="legalInfo"
+          {...register('legalInfo')}
+          rows={4}
         />
       </div>
 

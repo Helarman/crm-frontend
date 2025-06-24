@@ -5,24 +5,33 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { UploadCloud, X, Languages } from 'lucide-react';
 import { useLanguageStore } from '@/lib/stores/language-store';
-import { NetworkService } from '@/lib/api/network.service';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { NetworkService } from '@/lib/api/network.service';
 
-// Динамическая загрузка компонента карты
 const MapWithNoSSR = dynamic(
   () => import('@/components/ui/map').then((mod) => mod.Map),
   { ssr: false }
 );
 
+interface RestaurantFormValues {
+  title: string;
+  address: string;
+  description: string;
+  legalInfo: string;
+  latitude: string;
+  longitude: string;
+  networkId: string;
+  images?: string[];
+}
+
 export function CreateRestaurantForm({ 
   onSubmit, 
   onCancel 
 }: { 
-  onSubmit: (values: any) => void;
+  onSubmit: (values: RestaurantFormValues) => void;
   onCancel: () => void;
 }) {
   const [coordinates, setCoordinates] = useState<{ lat: number; lng: number } | undefined>(undefined);
@@ -31,11 +40,12 @@ export function CreateRestaurantForm({
   const [isLoadingNetworks, setIsLoadingNetworks] = useState(true);
   const { language } = useLanguageStore();
 
-  const { register, handleSubmit, setValue, formState: { errors }, watch } = useForm({
+  const { register, handleSubmit, setValue, formState: { errors }, watch } = useForm<RestaurantFormValues>({
     defaultValues: {
       title: '',
       address: '',
       description: '',
+      legalInfo: '',
       latitude: '',
       longitude: '',
       networkId: ''
@@ -47,6 +57,7 @@ export function CreateRestaurantForm({
       title: 'Название *',
       address: 'Адрес *',
       description: 'Описание',
+      legalInfo: 'Юридическая информация',
       location: 'Выберите местоположение на карте *',
       selectedLocation: 'Выбрано',
       selectLocationError: 'Пожалуйста, выберите местоположение на карте',
@@ -62,6 +73,7 @@ export function CreateRestaurantForm({
       title: 'Name *',
       address: 'Address *',
       description: 'Description',
+      legalInfo: 'Legal Information',
       location: 'Select location on map *',
       selectedLocation: 'Selected',
       selectLocationError: 'Please select location on map',
@@ -77,6 +89,7 @@ export function CreateRestaurantForm({
       title: 'სახელი *',
       address: 'მისამართი *',
       description: 'აღწერა',
+      legalInfo: 'იურიდიული ინფორმაცია',
       location: 'აირჩიეთ მდებარეობა რუკაზე *',
       selectedLocation: 'არჩეული',
       selectLocationError: 'გთხოვთ აირჩიოთ მდებარეობა რუკაზე',
@@ -122,12 +135,12 @@ export function CreateRestaurantForm({
           'https://example.com/photo1.jpg',
           'https://example.com/photo2.jpg'
         ],
-        latitude: coordinates?.lat.toString(),
-        longitude: coordinates?.lng.toString(),
+        latitude: coordinates?.lat.toString() as string,
+        longitude: coordinates?.lng.toString() as string,
         networkId: data.networkId
       });
     } catch (error) {
-      console.error('Ошибка при создании ресторана:', error);
+      console.error('Error creating restaurant:', error);
     } finally {
       setIsUploading(false);
     }
@@ -190,7 +203,16 @@ export function CreateRestaurantForm({
         <Textarea
           id="description"
           {...register('description')}
-          rows={7}
+          rows={4}
+        />
+      </div>
+
+      <div>
+        <Label htmlFor="legalInfo" className="mb-4">{t.legalInfo}</Label>
+        <Textarea
+          id="legalInfo"
+          {...register('legalInfo')}
+          rows={4}
         />
       </div>
 
@@ -217,7 +239,10 @@ export function CreateRestaurantForm({
         <Button variant="outline" type="button" onClick={onCancel}>
           {t.cancel}
         </Button>
-        <Button type="submit" disabled={isUploading || !watch('networkId')}>
+        <Button 
+          type="submit" 
+          disabled={isUploading || !watch('networkId') || !coordinates}
+        >
           {isUploading ? t.uploading : t.create}
         </Button>
       </div>

@@ -219,6 +219,8 @@ export interface CustomerDto {
 export interface RestaurantDto {
   id: string;
   title: string;
+  network: any;
+  legalInfo: string;
   address: string;
 }
 

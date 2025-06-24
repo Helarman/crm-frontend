@@ -76,6 +76,7 @@ import { OrderType } from '@/lib/api/discount.service'
 import { PaymentDialog } from '@/components/features/order/PaymentDialog'
 import { format } from 'date-fns'
 import { ru, ka } from 'date-fns/locale'
+import PrecheckDialog from './PrecheckDialog'
 
 export default function WaiterOrderPage() {
   const { id: orderId } = useParams()
@@ -297,7 +298,7 @@ export default function WaiterOrderPage() {
   const [refundReason, setRefundReason] = useState('');
   const [logs, setLogs] = useState<any[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
-
+  const [showPrecheckDialog, setShowPrecheckDialog] = useState(false);
   const [pendingAdditions, setPendingAdditions] = useState<Record<string, {
     quantity: number
     additives: string[]
@@ -692,6 +693,24 @@ export default function WaiterOrderPage() {
     }
   };
 
+  const handlePrecheck = async () => {
+  if (!order) return;
+  
+  try {
+    setIsUpdating(true);
+    await OrderService.setPrecheckFlag(order.id, true);
+    await fetchOrder();
+    setShowPrecheckDialog(true);
+    await createOrderLog(t.logs.precheckPrinted);
+  } catch (error) {
+    toast.error(language === 'ru' 
+      ? 'Ошибка при формировании пречека' 
+      : 'პრეჩეკის ფორმირების შეცდომა');
+  } finally {
+    setIsUpdating(false);
+  }
+};
+
   useEffect(() => {
     if (!orderId) {
       setError('Order ID is missing');
@@ -961,7 +980,6 @@ export default function WaiterOrderPage() {
           <ArrowLeft className="mr-2 h-4 w-4" />
           {t.back}
         </Button>
-
         <OrderHeader order={order} />
         
         <Card className="p-0">
@@ -1343,9 +1361,27 @@ export default function WaiterOrderPage() {
                       </div>
                     </Card>
                     <div className="flex gap-2 pt-4">
-                      {order.status === 'CREATED' && (
                         <div className='flex flex-col w-full space-y-4'>
+                         {order.status != 'CANCELLED' && (
                           <Button
+                            disabled={isUpdating}
+                            onClick={handlePrecheck}
+                            variant={order.attentionFlags.isPrecheck ? "default" : "outline"}
+                            className={`gap-2 w-full text-lg h-14 ${order.attentionFlags.isPrecheck ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 hover:bg-green-100 dark:hover:bg-green-900/30' : ''}`}
+                          >
+                            {isUpdating ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : order.attentionFlags.isPrecheck ? (
+                              <CheckCircle className="h-4 w-4" />
+                            ) : (
+                              <Check className="h-4 w-4" />
+                            )}
+                            {order.attentionFlags.isPrecheck ? t.precheckFormed : t.formPrecheck}
+                          </Button>
+                          )}
+                          {order.status === 'CREATED' && (
+                           <>
+                            <Button
                             disabled={isUpdating}
                             onClick={handleConfirmOrder}
                             variant="secondary"
@@ -1360,40 +1396,6 @@ export default function WaiterOrderPage() {
                           </Button>
                           <Button
                             disabled={isUpdating}
-                           onClick={async () => {
-                                if (order.attentionFlags.isPrecheck) return;
-                                
-                                try {
-                                  setIsUpdating(true);
-                                  await OrderService.setPrecheckFlag(order.id, true);
-                                  await fetchOrder();
-                                  
-                                  await createOrderLog(t.logs.precheckPrinted);
-                                  
-                                  toast.success(language === 'ru' ? 'Пречек сформирован' : 'პრეჩეკი ჩამოყალიბებულია');
-                                } catch (error) {
-                                  toast.error(language === 'ru' 
-                                    ? 'Ошибка при формировании пречека' 
-                                    : 'პრეჩეკის ფორმირების შეცდომა');
-                                } finally {
-                                  setIsUpdating(false);
-                                }
-                              }}
-                           variant={order.attentionFlags.isPrecheck ? "default" : "outline"}
-                            className={`gap-2 w-full text-lg h-14 ${order.attentionFlags.isPrecheck ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 hover:bg-green-100 dark:hover:bg-green-900/30' : ''}`}
-                          >
-                            {isUpdating ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : order.attentionFlags.isPrecheck ? (
-                              <CheckCircle className="h-4 w-4" />
-                            ) : (
-                              <Check className="h-4 w-4" />
-                            )}
-                            {order.attentionFlags.isPrecheck ? t.precheckFormed : t.formPrecheck}
-                          </Button>
-
-                          <Button
-                            disabled={isUpdating}
                             onClick={handleCancelOrder}
                             variant="secondary"
                             className="bg-red-300 hover:bg-red-200 text-white gap-2 w-full text-lg h-14"
@@ -1405,8 +1407,10 @@ export default function WaiterOrderPage() {
                             )}
                             {t.cancel}
                           </Button>
-                        </div>
-                      )}
+                          </>
+                      
+                          )}
+                          </div>
 
                    {(order.status === 'READY' || order.status === 'DELIVERING') && (
                       <Button
@@ -1713,6 +1717,13 @@ export default function WaiterOrderPage() {
           </AlertDialogContent>
         </AlertDialog>
       </div>
+      {showPrecheckDialog && order && (
+          <PrecheckDialog 
+            order={order} 
+            onClose={() => setShowPrecheckDialog(false)} 
+          />
+        )}
+
     </AccessCheck>
   );
 }
