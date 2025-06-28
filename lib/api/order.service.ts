@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { OrderType } from './discount.service';
+import { DiscountResponseDto, OrderType } from './discount.service';
 import { OrderItem } from '../types/order';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
@@ -267,6 +267,9 @@ export interface UpdateOrderStatusDto {
 
 export interface OrderResponse {
   totalAmount: number
+  discountAmount: number
+  bonusPointsUsed: number
+  
   source: string
   tableNumber?: string;
   numberOfPeople?: string;
@@ -279,7 +282,7 @@ export interface OrderResponse {
   scheduledAt?: Date;
   comment?: string;
   
-  customer?: CustomerDto;
+  customer?: Customer;
   restaurant: RestaurantDto;
   items: OrderItem[];
   payment?: PaymentDto;
@@ -392,6 +395,16 @@ export interface OrderLogResponseDto {
 
 
 export interface OrderArchiveResponse extends PaginatedResponse<OrderResponse> {}
+
+export interface Customer {
+  id: string;
+  name: string;
+  bonusPoints: number;
+  pointsUsed: number;
+discountApplied: number;
+personalDiscount: number;
+phone: string;
+}
 
 export const OrderService = {
   /**
@@ -698,6 +711,175 @@ export const OrderService = {
       return data;
     } catch (error) {
       console.error('Failed to fetch order logs:', error);
+      throw error;
+    }
+  },
+
+  applyCustomerToOrder: async (orderId: string, customerId: string): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.patch<OrderResponse>(
+        `/orders/${orderId}/customer`,
+        { customerId }
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to apply customer to order:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Применить скидку клиента к заказу
+   */
+  applyCustomerDiscount: async (orderId: string): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.post<OrderResponse>(
+        `/orders/${orderId}/apply-customer-discount`
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to apply customer discount:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Применить бонусные баллы клиента к заказу
+   */
+  applyCustomerPoints: async (orderId: string, points: number): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.post<OrderResponse>(
+        `/orders/${orderId}/apply-points`,
+        { points }
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to apply customer points:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Удалить бонусные баллы из заказа
+   */
+  removeCustomerPoints: async (orderId: string): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.delete<OrderResponse>(
+        `/orders/${orderId}/remove-points`
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to remove customer points:', error);
+      throw error;
+    }
+  },
+   /**
+   * Отвязать клиента от заказа
+   */
+  removeCustomerFromOrder: async (orderId: string): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.delete<OrderResponse>(
+        `/orders/${orderId}/customer`
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to remove customer from order:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Удалить скидку клиента из заказа
+   */
+  removeCustomerDiscount: async (orderId: string): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.delete<OrderResponse>(
+        `/orders/${orderId}/discount`
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to remove customer discount:', error);
+      throw error;
+    }
+  },
+
+  applyDiscountToOrder: async (orderId: string, discountId: string): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.post<OrderResponse>(
+        `/orders/apply-to-order/${orderId}/${discountId}`,
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to apply discount to order:', error);
+      throw error;
+    }
+  },
+  removeDiscountFromOrder: async (orderId: string): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.delete<OrderResponse>(
+        `/orders/${orderId}/discount`
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to remove discount from order:', error);
+      throw error;
+    }
+  },
+
+  getAvailableDiscounts: async (restaurantId: string): Promise<DiscountResponseDto[]> => {
+    try {
+      const { data } = await api.get<DiscountResponseDto[]>(
+        `/discounts/restaurant/${restaurantId}`
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch available discounts:', error);
+      throw error;
+    }
+  },
+
+  getProductDiscounts: async (productIds: string[]): Promise<DiscountResponseDto[]> => {
+    try {
+      const { data } = await api.post<DiscountResponseDto[]>(
+        '/discounts/products',
+        { productIds }
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to fetch product discounts:', error);
+      throw error;
+    }
+  },
+  validateDiscount: async (orderId: string, discountId: string): Promise<{
+    isValid: boolean;
+    discountAmount?: number;
+    message?: string;
+  }> => {
+    try {
+      const { data } = await api.post<{
+        isValid: boolean;
+        discountAmount?: number;
+        message?: string;
+      }>(`/orders/${orderId}/validate-discount`, { discountId });
+      return data;
+    } catch (error) {
+      console.error('Failed to validate discount:', error);
+      throw error;
+    }
+  },
+
+  calculateDiscountAmount: async (orderId: string, discountId: string): Promise<{
+    amount: number;
+    newTotal: number;
+  }> => {
+    try {
+      const { data } = await api.post<{
+        amount: number;
+        newTotal: number;
+      }>(`/orders/${orderId}/calculate-discount`, { discountId });
+      return data;
+    } catch (error) {
+      console.error('Failed to calculate discount amount:', error);
       throw error;
     }
   },

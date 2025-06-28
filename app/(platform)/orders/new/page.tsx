@@ -110,8 +110,14 @@ export default function NewOrderPage() {
           description: d.title
         })) || []
       }
+      
       const createdOrder = await OrderService.create(orderData)
-      const createLog = await OrderService.createLog({orderId: createdOrder.id as string, action: (language === 'ka' ? 'შეკვეთა  შეიქმნა' : 'Заказ создан'), userId: user.id,});
+      await OrderService.createLog({
+        orderId: createdOrder.id as string, 
+        action: language === 'ka' ? 'შეკვეთა შეიქმნა' : 'Заказ создан', 
+        userId: user.id
+      })
+      
       toast.success(language === 'ka' ? 'შეკვეთა წარმატებით შეიქმნა!' : 'Заказ успешно создан!')
       router.push(`/orders/${createdOrder.id}`)
     } catch (error) { 

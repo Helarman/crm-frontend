@@ -53,7 +53,9 @@ import {
   CookingPot,
   ChefHat,
   Truck,
-  Pencil
+  Pencil,
+  Gift,
+  Sparkles
 } from 'lucide-react'
 import { Category, OrderItem, OrderState } from '@/lib/types/order'
 import { Product } from '@/lib/types/product'
@@ -72,11 +74,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { OrderType } from '@/lib/api/discount.service'
+import { DiscountResponseDto, DiscountService, OrderType } from '@/lib/api/discount.service'
 import { PaymentDialog } from '@/components/features/order/PaymentDialog'
 import { format } from 'date-fns'
 import { ru, ka } from 'date-fns/locale'
 import PrecheckDialog from './PrecheckDialog'
+import { CustomerService } from '@/lib/api/customer.service'
 
 export default function WaiterOrderPage() {
   const { id: orderId } = useParams()
@@ -84,189 +87,348 @@ export default function WaiterOrderPage() {
   const { user } = useAuth()
   const { language } = useLanguageStore()
 
-  const translations = {
-    ru: {
-      back: "Назад к списку заказов",
-      menu: "Меню",
-      additives: "Добавки",
-      comment: "Комментарий",
-      total: "Итого",
-      paymentStatus: "Статус оплаты",
-      paymentMethod: "Способ оплаты",
-      orderType: "Тип заказа",
-      table: "Стол",
-      persons: "Количество персон",
-      confirm: "Подтвердить",
-      complete: "Завершить",
-      cancel: "Отменить",
-      pending: "Ожидает оплаты",
-      paid: "Оплачен",
-      failed: "Ошибка оплаты",
-      cash: "Наличные",
-      card: "Карта",
-      online: "Онлайн",
-      orderNotFound: "Заказ не найден",
-      loadingError: "Не удалось загрузить заказ",
-      emptyOrder: "Заказ пуст",
-      selectAdditives: "Выберите добавки...",
-      searchAdditives: "Поиск добавок...",
-      noAdditivesFound: "Добавки не найдены",
-      noProductsFound: "Продукты не найдены",
-      saveChanges: "Сохранить изменения",
-      saving: "Сохранение...",
-      orderHistory: "История заказа",
-      noHistory: "История изменений пока пуста",
-      confirmComplete: "Вы уверены, что хотите завершить заказ?",
-      confirmCancel: "Вы уверены, что хотите отменить заказ?",
-      paymentRequired: "Сначала необходимо подтвердить оплату",
-      exitConfirmTitle: "Подтверждение выхода",
-      exitConfirmMessage: "Заказ еще не подтвержден. Вы уверены, что хотите уйти? Неподтвержденные заказы могут быть потеряны.",
-      exitConfirmLeave: "Уйти",
-      precheckFormed: "Пречек сформирован",
-      formPrecheck: "Сформировать пречек",
-      refundItem: "Вернуть блюдо",
-      refundReason: "Причина возврата",
-      confirmRefund: "Подтвердить возврат",
-      reorderedItem: "Дозаказ",
-      itemReturned: "Возвращено",
-      originalItems: "Основной заказ",
-      orderDetails: "Детали заказа",
-      statusCreated: "Создан",
-      statusPreparing: "Готовится",
-      statusReady: "Готов",
-      statusDelivering: "Доставляется",
-      statusCompleted: "Завершен",
-      statusCancelled: "Отменен",
-      showLogs: "История заказа",
-      createdAt: "Создан",
-      startedAt: "Начат",
-      completedAt: "Завершен",
-      pausedAt: "Приостановлен",
-      refundedAt: "Возврат",
-      surcharges: "Надбавки",
-      deliveryAddress: "Адрес доставки",
-      deliveryTime: "Время доставки",
-      deliveryNotes: "Примечания к доставке",
-      reorder: "Дозаказ",
-      discount: "Скидка",
-      discountCanceled: "Скидка отменена",
-      precheck: "Пречек",
-      refund: "Возврат",
-      mainInfo: "Основная информация",
-      callBeforeArrival: "Например: Позвоните перед приездом",
-      cookingError: "Например: Ошибка приготовления",
-      confirmation: "Подтверждение",
-      logs: {
-        orderCreated: "Заказ создан",
-        orderConfirmed: "Заказ подтвержден",
-        orderCompleted: "Заказ завершен",
-        orderCancelled: "Заказ отменен",
-        itemAdded: "Добавлено блюдо",
-        itemRemoved: "Удалено блюдо",
-        itemRefunded: "Блюдо возвращено",
-        orderEdited: "Заказ изменен",
-        precheckPrinted: "Пречек распечатан",
-        sentToKitchen: "Отправлено на кухню",
-        readyForDelivery: "Готово к выдаче",
-        deliveryStarted: "Доставка начата",
-        reorderItems: "Сделан дозаказ",
-        paymentCompleted: "Оплата завершена",
-        paymentFailed: "Ошибка оплаты",
-        
-        
-      }
+const translations = {
+  ru: {
+    back: "Назад к списку заказов",
+    menu: "Меню",
+    additives: "Добавки",
+    comment: "Комментарий",
+    total: "Итого",
+    paymentStatus: "Статус оплаты",
+    paymentMethod: "Способ оплаты",
+    orderType: "Тип заказа",
+    table: "Стол",
+    persons: "Количество персон",
+    confirm: "Подтвердить",
+    complete: "Завершить",
+    cancel: "Отменить",
+    pending: "Ожидает оплаты",
+    paid: "Оплачен",
+    failed: "Ошибка оплаты",
+    cash: "Наличные",
+    card: "Карта",
+    online: "Онлайн",
+    orderNotFound: "Заказ не найден",
+    loadingError: "Не удалось загрузить заказ",
+    emptyOrder: "Заказ пуст",
+    selectAdditives: "Выберите добавки...",
+    searchAdditives: "Поиск добавок...",
+    noAdditivesFound: "Добавки не найдены",
+    noProductsFound: "Продукты не найдены",
+    saveChanges: "Сохранить изменения",
+    saving: "Сохранение...",
+    orderHistory: "История заказа",
+    noHistory: "История изменений пока пуста",
+    confirmComplete: "Вы уверены, что хотите завершить заказ?",
+    confirmCancel: "Вы уверены, что хотите отменить заказ?",
+    paymentRequired: "Сначала необходимо подтвердить оплату",
+    exitConfirmTitle: "Подтверждение выхода",
+    exitConfirmMessage: "Заказ еще не подтвержден. Вы уверены, что хотите уйти? Неподтвержденные заказы могут быть потеряны.",
+    exitConfirmLeave: "Уйти",
+    precheckFormed: "Пречек сформирован",
+    formPrecheck: "Сформировать пречек",
+    refundItem: "Вернуть блюдо",
+    refundReason: "Причина возврата",
+    confirmRefund: "Подтвердить возврат",
+    reorderedItem: "Дозаказ",
+    itemReturned: "Возвращено",
+    originalItems: "Основной заказ",
+    orderDetails: "Детали заказа",
+    statusCreated: "Создан",
+    statusPreparing: "Готовится",
+    statusReady: "Готов",
+    statusDelivering: "Доставляется",
+    statusCompleted: "Завершен",
+    statusCancelled: "Отменен",
+    showLogs: "История заказа",
+    createdAt: "Создан",
+    startedAt: "Начат",
+    completedAt: "Завершен",
+    pausedAt: "Приостановлен",
+    refundedAt: "Возврат",
+    surcharges: "Надбавки",
+    deliveryAddress: "Адрес доставки",
+    deliveryTime: "Время доставки",
+    deliveryNotes: "Примечания к доставке",
+    reorder: "Дозаказ",
+    discount: "Скидка",
+    discountCanceled: "Скидка отменена",
+    precheck: "Пречек",
+    refund: "Возврат",
+    mainInfo: "Основная информация",
+    callBeforeArrival: "Например: Позвоните перед приездом",
+    cookingError: "Например: Ошибка приготовления",
+    confirmation: "Подтверждение",
+    customerCode: "Код клиента",
+    enterCustomerCode: "Введите 4-значный код клиента",
+    applyCustomer: "Применить клиента",
+    customerApplied: "Клиент применен",
+    customerNotFound: "Клиент не найден",
+    customerDiscount: "Персональная скидка",
+    bonusPoints: "Бонусные баллы",
+    useBonusPoints: "Использовать баллы",
+    pointsAvailable: "Доступно баллов",
+    applyDiscount: "Применить скидку",
+    removeCustomer: "Удалить клиента",
+    customerInfo: "Информация о клиенте",
+    phoneNumber: "Телефон",
+    personalDiscount: "Персональная скидка",
+    currentBonusPoints: "Текущие баллы",
+    usePoints: "Использовать баллы",
+    pointsToUse: "Количество баллов",
+    maxPointsToUse: "Максимум можно использовать",
+    applyPoints: "Применить баллы",
+    removePoints: "Сбросить баллы",
+    discountApplied: "Скидка применена",
+    pointsApplied: "Баллы применены",
+    logs: {
+      orderCreated: "Заказ создан",
+      orderConfirmed: "Заказ подтвержден",
+      orderCompleted: "Заказ завершен",
+      orderCancelled: "Заказ отменен",
+      itemAdded: "Добавлено блюдо",
+      itemRemoved: "Удалено блюдо",
+      itemRefunded: "Блюдо возвращено",
+      orderEdited: "Заказ изменен",
+      precheckPrinted: "Пречек распечатан",
+      sentToKitchen: "Отправлено на кухню",
+      readyForDelivery: "Готово к выдаче",
+      deliveryStarted: "Доставка начата",
+      reorderItems: "Сделан дозаказ",
+      paymentCompleted: "Оплата завершена",
+      paymentFailed: "Ошибка оплаты",
+      customerApplied: "Клиент применен к заказу",
+      customerRemoved: "Клиент удален из заказа",
+      discountApplied: "Скидка применена",
+      pointsApplied: "Бонусные баллы применены",
+      pointsRemoved: "Бонусные баллы сброшены"
     },
-    ka: {
-      back: "უკან შეკვეთების სიაში",
-      menu: "მენიუ",
-      additives: "დანამატები",
-      comment: "კომენტარი",
-      total: "სულ",
-      paymentStatus: "გადახდის სტატუსი",
-      paymentMethod: "გადახდის მეთოდი",
-      orderType: "შეკვეთის ტიპი",
-      table: "მაგიდა",
-      persons: "პირების რაოდენობა",
-      confirm: "დადასტურება",
-      complete: "დასრულება",
-      cancel: "გაუქმება",
-      pending: "ელოდება გადახდას",
-      paid: "გადახდილი",
-      failed: "გადახდის შეცდომა",
-      cash: "ნაღდი ფული",
-      card: "ბარათი",
-      online: "ონლაინ",
-      orderNotFound: "შეკვეთა ვერ მოიძებნა",
-      loadingError: "შეკვეთის ჩატვირთვა ვერ მოხერხდა",
-      emptyOrder: "შეკვეთა ცარიელია",
-      selectAdditives: "აირჩიეთ დანამატები...",
-      searchAdditives: "დანამატების ძებნა...",
-      noAdditivesFound: "დანამატები არ მოიძებნა",
-      noProductsFound: "პროდუქტები ვერ მოიძებნა",
-      saveChanges: "ცვლილებების შენახვა",
-      saving: "ინახება...",
-      orderHistory: "შეკვეთის ისტორია",
-      noHistory: "ისტორია ცარიელია",
-      confirmComplete: "დარწმუნებული ხართ, რომ გსურთ შეკვეთის დასრულება?",
-      confirmCancel: "დარწმუნებული ხართ, რომ გსურთ შეკვეთის გაუქმება?",
-      paymentRequired: "ჯერ გადახდა უნდა დაადასტუროთ",
-      exitConfirmTitle: "გასვლის დადასტურება",
-      exitConfirmMessage: "შეკვეთა ჯერ არ არის დადასტურებული. დარწმუნებული ხართ, რომ გსურთ გასვლა? დაუდასტურებელი შეკვეთები შეიძლება დაიკარგოს.",
-      exitConfirmLeave: "გასვლა",
-      precheckFormed: "პრეჩეკი ჩამოყალიბებულია",
-      formPrecheck: "პრეჩეკის ფორმირება",
-      refundItem: "კერძის დაბრუნება",
-      refundReason: "დაბრუნების მიზეზი",
-      confirmRefund: "დაბრუნების დადასტურება",
-      reorderedItem: "დამატებითი შეკვეთა",
-      itemReturned: "დაბრუნებულია",
-      originalItems: "მთავარი შეკვეთა",
-      orderDetails: "შეკვეთის დეტალები",
-      statusCreated: "შექმნილია",
-      statusPreparing: "მზადდება",
-      statusReady: "მზადაა",
-      statusDelivering: "იტანება",
-      statusCompleted: "დასრულებულია",
-      statusCancelled: "გაუქმებულია",
-      showLogs: "შეკვეთის ისტორია",
-      createdAt: "შექმნილია",
-      startedAt: "დაწყებულია",
-      completedAt: "დასრულებულია",
-      pausedAt: "დაპაუზებულია",
-      refundedAt: "დაბრუნებულია",
-      surcharges: "დანამატები",
-      deliveryAddress: "მიწოდების მისამართი",
-      deliveryTime: "მიწოდების დრო",
-      deliveryNotes: "მიწოდების შენიშვნები",
-      reorder: "დამატებითი შეკვეთა",
-      discount: "ფასდაკლება",
-      discountCanceled: "ფასდაკლება გაუქმებულია",
-      precheck: "პრეჩეკი",
-      refund: "დაბრუნება",
-      mainInfo: "ძირითადი ინფორმაცია",
-      callBeforeArrival: "მაგალითად: დარეკეთ ჩამოსვლამდე",
-      cookingError: "მაგალითად: მომზადების შეცდომა",
-      confirmation: "დადასტურება",
-      logs: {
-        orderCreated: "შეკვეთა შექმნილია",
-        orderConfirmed: "შეკვეთა დადასტურებულია",
-        orderCompleted: "შეკვეთა დასრულებულია",
-        orderCancelled: "შეკვეთა გაუქმებულია",
-        itemAdded: "კერძი დამატებული",
-        itemRemoved: "კერძი წაშლილია",
-        itemRefunded: "კერძი დაბრუნებულია",
-        orderEdited: "შეკვეთა შეცვლილია",
-        precheckPrinted: "პრეჩეკი დაბეჭდილია",
-        sentToKitchen: "კულინარიაზე გაგზავნილია",
-        readyForDelivery: "მზადაა გაცემისთვის",
-        deliveryStarted: "მიწოდება დაწყებულია",
-        reorderItems: "დამატებითი შეკვეთა გაკეთებულია",
-        paymentCompleted: "გადახდა დასრულებულია",
-        paymentFailed: "გადახდის შეცდომა"
-      }
+    discountCode: "Промокод",
+    enterDiscountCode: "Введите промокод",
+    applyCode: "Применить код",
+    discountRemoved: "Скидка удалена",
+    discountError: "Ошибка применения скидки",
+    discountNotFound: "Скидка не найдена",
+    discountExpired: "Скидка истекла",
+    discountMinAmount: "Минимальная сумма заказа для скидки: {amount} ₽",
+    activeDiscounts: "Активные скидки",
+    selectDiscount: "Выберите скидку",
+    noDiscountsAvailable: "Нет доступных скидок",
+    discountAmount: "Сумма скидки",
+    removeDiscount: "Удалить скидку",
+    noDiscounts: "Нет доступных скидок",
+    target: "Применяется к",
+    unlimited: "Без ограничений",
+    promoCode: "Промокод",
+    minOrder: "Минимальный заказ",
+    period: "Период действия",
+    usesLeft: "Осталось использований",
+    discounts: {
+      title: "Активные скидки",
+      noDiscounts: "Нет доступных скидок",
+      type: "Тип скидки",
+      value: "Значение",
+      target: "Применяется к",
+      minAmount: "Мин. сумма заказа",
+      period: "Период действия",
+      promoCode: "Промокод",
+      conditions: "Условия",
+      allItems: "Все позиции",
+      specificItems: "Конкретные позиции",
+      minOrder: "Минимальный заказ",
+      active: "Активна",
+      expired: "Истекла",
+      unlimited: "Без ограничений",
+      usesLeft: "Осталось использований"
+    },
+    discountTypes: {
+      PERCENTAGE: "Процентная",
+      FIXED: "Фиксированная"
+    },
+    discountTargets: {
+      ALL: "На весь заказ",
+      RESTAURANT: "На ресторан",
+      CATEGORY: "На категорию",
+      PRODUCT: "На продукт",
+      ORDER_TYPE: "По типу заказа"
+    },
+    discountStatus: {
+      ACTIVE: "Активна",
+      INACTIVE: "Неактивна",
+      EXPIRED: "Истекла"
     }
-  } as const;
-
+  },
+  ka: {
+    back: "უკან შეკვეთების სიაში",
+    menu: "მენიუ",
+    additives: "დანამატები",
+    comment: "კომენტარი",
+    total: "სულ",
+    paymentStatus: "გადახდის სტატუსი",
+    paymentMethod: "გადახდის მეთოდი",
+    orderType: "შეკვეთის ტიპი",
+    table: "მაგიდა",
+    persons: "პირების რაოდენობა",
+    confirm: "დადასტურება",
+    complete: "დასრულება",
+    cancel: "გაუქმება",
+    pending: "ელოდება გადახდას",
+    paid: "გადახდილი",
+    failed: "გადახდის შეცდომა",
+    cash: "ნაღდი ფული",
+    card: "ბარათი",
+    online: "ონლაინ",
+    orderNotFound: "შეკვეთა ვერ მოიძებნა",
+    loadingError: "შეკვეთის ჩატვირთვა ვერ მოხერხდა",
+    emptyOrder: "შეკვეთა ცარიელია",
+    selectAdditives: "აირჩიეთ დანამატები...",
+    searchAdditives: "დანამატების ძებნა...",
+    noAdditivesFound: "დანამატები არ მოიძებნა",
+    noProductsFound: "პროდუქტები ვერ მოიძებნა",
+    saveChanges: "ცვლილებების შენახვა",
+    saving: "ინახება...",
+    orderHistory: "შეკვეთის ისტორია",
+    noHistory: "ისტორია ცარიელია",
+    confirmComplete: "დარწმუნებული ხართ, რომ გსურთ შეკვეთის დასრულება?",
+    confirmCancel: "დარწმუნებული ხართ, რომ გსურთ შეკვეთის გაუქმება?",
+    paymentRequired: "ჯერ გადახდა უნდა დაადასტუროთ",
+    exitConfirmTitle: "გასვლის დადასტურება",
+    exitConfirmMessage: "შეკვეთა ჯერ არ არის დადასტურებული. დარწმუნებული ხართ, რომ გსურთ გასვლა? დაუდასტურებელი შეკვეთები შეიძლება დაიკარგოს.",
+    exitConfirmLeave: "გასვლა",
+    precheckFormed: "პრეჩეკი ჩამოყალიბებულია",
+    formPrecheck: "პრეჩეკის ფორმირება",
+    refundItem: "კერძის დაბრუნება",
+    refundReason: "დაბრუნების მიზეზი",
+    confirmRefund: "დაბრუნების დადასტურება",
+    reorderedItem: "დამატებითი შეკვეთა",
+    itemReturned: "დაბრუნებულია",
+    originalItems: "მთავარი შეკვეთა",
+    orderDetails: "შეკვეთის დეტალები",
+    statusCreated: "შექმნილია",
+    statusPreparing: "მზადდება",
+    statusReady: "მზადაა",
+    statusDelivering: "იტანება",
+    statusCompleted: "დასრულებულია",
+    statusCancelled: "გაუქმებულია",
+    showLogs: "შეკვეთის ისტორია",
+    createdAt: "შექმნილია",
+    startedAt: "დაწყებულია",
+    completedAt: "დასრულებულია",
+    pausedAt: "დაპაუზებულია",
+    refundedAt: "დაბრუნებულია",
+    surcharges: "დანამატები",
+    deliveryAddress: "მიწოდების მისამართი",
+    deliveryTime: "მიწოდების დრო",
+    deliveryNotes: "მიწოდების შენიშვნები",
+    reorder: "დამატებითი შეკვეთა",
+    discount: "ფასდაკლება",
+    discountCanceled: "ფასდაკლება გაუქმებულია",
+    precheck: "პრეჩეკი",
+    refund: "დაბრუნება",
+    mainInfo: "ძირითადი ინფორმაცია",
+    callBeforeArrival: "მაგალითად: დარეკეთ ჩამოსვლამდე",
+    cookingError: "მაგალითად: მომზადების შეცდომა",
+    confirmation: "დადასტურება",
+    customerCode: "კლიენტის კოდი",
+    enterCustomerCode: "შეიყვანეთ კლიენტის 4-ნიშნა კოდი",
+    applyCustomer: "კლიენტის გამოყენება",
+    customerApplied: "კლიენტი გამოყენებულია",
+    customerNotFound: "კლიენტი ვერ მოიძებნა",
+    customerDiscount: "პერსონალური ფასდაკლება",
+    bonusPoints: "ბონუს ქულები",
+    useBonusPoints: "ბონუს ქულების გამოყენება",
+    pointsAvailable: "ხელმისაწვდომი ქულები",
+    applyDiscount: "ფასდაკლების გამოყენება",
+    removeCustomer: "კლიენტის წაშლა",
+    customerInfo: "კლიენტის ინფორმაცია",
+    phoneNumber: "ტელეფონი",
+    personalDiscount: "პერსონალური ფასდაკლება",
+    currentBonusPoints: "მიმდინარე ქულები",
+    usePoints: "ქულების გამოყენება",
+    pointsToUse: "გამოსაყენებელი ქულების რაოდენობა",
+    maxPointsToUse: "მაქსიმუმ გამოსაყენებელი ქულები",
+    applyPoints: "ქულების გამოყენება",
+    removePoints: "ქულების გაუქმება",
+    discountApplied: "ფასდაკლება გამოყენებულია",
+    pointsApplied: "ქულები გამოყენებულია",
+    logs: {
+      orderCreated: "შეკვეთა შექმნილია",
+      orderConfirmed: "შეკვეთა დადასტურებულია",
+      orderCompleted: "შეკვეთა დასრულებულია",
+      orderCancelled: "შეკვეთა გაუქმებულია",
+      itemAdded: "კერძი დამატებული",
+      itemRemoved: "კერძი წაშლილია",
+      itemRefunded: "კერძი დაბრუნებულია",
+      orderEdited: "შეკვეთა შეცვლილია",
+      precheckPrinted: "პრეჩეკი დაბეჭდილია",
+      sentToKitchen: "კულინარიაზე გაგზავნილია",
+      readyForDelivery: "მზადაა გაცემისთვის",
+      deliveryStarted: "მიწოდება დაწყებულია",
+      reorderItems: "დამატებითი შეკვეთა გაკეთებულია",
+      paymentCompleted: "გადახდა დასრულებულია",
+      paymentFailed: "გადახდის შეცდომა",
+      customerApplied: "კლიენტი გამოყენებულია შეკვეთაზე",
+      customerRemoved: "კლიენტი წაშლილია შეკვეთიდან",
+      discountApplied: "ფასდაკლება გამოყენებულია",
+      pointsApplied: "ბონუს ქულები გამოყენებულია",
+      pointsRemoved: "ბონუს ქულები გაუქმებულია"
+    },
+    discountCode: "პრომო კოდი",
+    enterDiscountCode: "შეიყვანეთ პრომო კოდი",
+    applyCode: "კოდის გამოყენება",
+    discountRemoved: "ფასდაკლება წაშლილია",
+    discountError: "ფასდაკლების გამოყენების შეცდომა",
+    discountNotFound: "ფასდაკლება ვერ მოიძებნა",
+    discountExpired: "ფასდაკლება ვადაგასულია",
+    discountMinAmount: "ფასდაკლების მინიმალური ოდენობა: {amount} ₽",
+    activeDiscounts: "აქტიური ფასდაკლებები",
+    selectDiscount: "აირჩიეთ ფასდაკლება",
+    noDiscountsAvailable: "ფასდაკლებები არ არის ხელმისაწვდომი",
+    discountAmount: "ფასდაკლების ოდენობა",
+    removeDiscount: "ფასდაკლების წაშლა",
+    noDiscounts: "ფასდაკლებები არ არის",
+    target: "გამოიყენება",
+    period: "მოქმედების პერიოდი",
+    unlimited: "შეუზღუდავი",
+    promoCode: "პრომო კოდი",
+    minOrder: "მინიმალური შეკვეთა",
+    usesLeft: "დარჩენილი გამოყენება",
+    discounts: {
+      title: "აქტიური ფასდაკლებები",
+      noDiscounts: "ფასდაკლებები არ არის",
+      type: "ფასდაკლების ტიპი",
+      value: "მნიშვნელობა",
+      target: "გამოიყენება",
+      minAmount: "მინ. შეკვეთის ოდენობა",
+      period: "მოქმედების პერიოდი",
+      promoCode: "პრომო კოდი",
+      conditions: "პირობები",
+      allItems: "ყველა პოზიცია",
+      specificItems: "კონკრეტული პოზიციები",
+      minOrder: "მინიმალური შეკვეთა",
+      active: "აქტიური",
+      expired: "ვადაგასული",
+      unlimited: "შეუზღუდავი",
+      usesLeft: "დარჩენილი გამოყენება"
+    },
+    discountTypes: {
+      PERCENTAGE: "პროცენტული",
+      FIXED: "ფიქსირებული"
+    },
+    discountTargets: {
+      ALL: "მთელ შეკვეთაზე",
+      RESTAURANT: "რესტორნზე",
+      CATEGORY: "კატეგორიაზე",
+      PRODUCT: "პროდუქტზე",
+      ORDER_TYPE: "შეკვეთის ტიპის მიხედვით"
+    },
+    discountStatus: {
+      ACTIVE: "აქტიური",
+      INACTIVE: "არააქტიური",
+      EXPIRED: "ვადაგასული"
+    }
+  }
+} as const;
   const t = translations[language];
   const [order, setOrder] = useState<OrderResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -304,9 +466,54 @@ export default function WaiterOrderPage() {
     additives: string[]
     comment: string
     timer: NodeJS.Timeout | null
-  }>>({})
+  }>>({});
+  const [customerCode, setCustomerCode] = useState('');
+  const [customerLoading, setCustomerLoading] = useState(false);
+  const [pointsToUse, setPointsToUse] = useState(0);
+  const [discounts, setDiscounts] = useState<DiscountResponseDto[]>([]);
+  const [discountsLoading, setDiscountsLoading] = useState(false);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoCodeLoading, setPromoCodeLoading] = useState(false);
+  const [promoCodeError, setPromoCodeError] = useState('');
 
   const isOrderEditable = order && !['DELIVERING', 'COMPLETED', 'CANCELLED'].includes(order.status);
+
+  const fetchDiscounts = async () => {
+    if (!order?.restaurant?.id) return;
+    
+    try {
+      setDiscountsLoading(true);
+      const data = await DiscountService.getByRestaurant(order.restaurant.id);
+      setDiscounts(data);
+    } catch (error) {
+      console.error('Failed to fetch discounts:', error);
+      toast.error(language === 'ru' 
+        ? 'Ошибка загрузки скидок' 
+        : 'ფასდაკლებების ჩატვირთვის შეცდომა');
+    } finally {
+      setDiscountsLoading(false);
+    }
+  };
+
+  // Вызываем при загрузке заказа
+  useEffect(() => {
+    if (order?.restaurant?.id) {
+      fetchDiscounts();
+    }
+  }, [order?.restaurant?.id]);
+
+
+  // Функция для пересчета скидки
+  const recalculateDiscount = async () => {
+    if (!orderId || !order?.customer) return;
+    
+    try {
+      const updatedOrder = await OrderService.applyCustomerDiscount(orderId as string);
+      setOrder(updatedOrder);
+    } catch (error) {
+      console.error('Ошибка при пересчете скидки:', error);
+    }
+  };
 
   const createOrderLog = async (action: string) => {
     if (!orderId || !user) return;
@@ -388,7 +595,7 @@ export default function WaiterOrderPage() {
       await Promise.all(
         order.items.map(item => 
           OrderService.updateItemStatus(order.id, item.id, { status: OrderItemStatus.IN_PROGRESS })
-      ));
+      ))  ;
       
       const refreshedOrder = await OrderService.getById(order.id);
       setOrder(refreshedOrder);
@@ -473,6 +680,9 @@ export default function WaiterOrderPage() {
       );
       setOrder(updatedOrder);
       
+      // Пересчитываем скидку после возврата
+      await recalculateDiscount();
+      
       await createOrderLog(`${t.logs.itemRefunded} : ${selectedItemForRefund.product.title} x ${selectedItemForRefund.quantity}`);
       
       toast.success(language === 'ru' ? 'Блюдо возвращено' : 'კერძი დაბრუნებულია');
@@ -497,7 +707,6 @@ export default function WaiterOrderPage() {
         type: editFormData.type,
         payment: {
           method: editFormData.paymentMethod,
-          //status: order?.payment?.status || 'PENDING'
         },
         numberOfPeople: editFormData.numberOfPeople,
         tableNumber: editFormData.tableNumber,
@@ -523,14 +732,74 @@ export default function WaiterOrderPage() {
     }
   };
 
+    const handleApplyPromoCode = async () => {
+      if (!orderId || !promoCode.trim()) return;
+      
+      try {
+        setPromoCodeLoading(true);
+        setPromoCodeError('');
+        
+        // Получаем скидку по промокоду
+        const discount = await DiscountService.getByPromoCode(promoCode);
+        
+        
+        if (discount.minOrderAmount && calculateOrderTotal() < discount.minOrderAmount) {
+          setPromoCodeError(t.discountMinAmount.replace('{amount}', discount.minOrderAmount.toString()));
+          return;
+        }
+        
+        // Применяем скидку к заказу
+        const updatedOrder = await OrderService.applyDiscountToOrder(
+          orderId as string,
+          discount.id
+        );
+        
+        setOrder(updatedOrder);
+        setPromoCode('');
+        await createOrderLog(`${t.logs.discountApplied}: ${discount.title}`);
+        
+        toast.success(t.discountApplied);
+      } catch (error) {
+        console.error('Failed to apply promo code:', error);
+        setPromoCodeError(t.discountNotFound);
+      } finally {
+        setPromoCodeLoading(false);
+      }
+    };
+
+    const handleRemoveDiscount = async () => {
+    if (!orderId) return;
+    
+    try {
+      setIsUpdating(true);
+      const updatedOrder = await OrderService.removeDiscountFromOrder(orderId as string);
+      setOrder(updatedOrder);
+      await createOrderLog(t.discountRemoved);
+      
+      toast.success(t.discountRemoved);
+    } catch (error) {
+      console.error('Failed to remove discount:', error);
+      toast.error(t.discountError);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   const calculateItemPrice = (item: OrderItem) => {
     if (item.isRefund) return 0;
     
     const restaurantPrice = item.product.restaurantPrices?.find(
       p => p.restaurantId === order?.restaurant?.id
     );
-    const basePrice = restaurantPrice?.price ?? item.product.price;
+    let basePrice = restaurantPrice?.price ?? item.product.price;
+    
+    // Применяем скидку клиента, если она есть
+    if (order?.customer?.discountApplied) {
+      basePrice = basePrice * (1 - order.customer.personalDiscount / 100);
+    }
+    
     const additivesPrice = item.additives.reduce((sum, a) => sum + a.price, 0);
+    
     return (basePrice + additivesPrice) * item.quantity;
   };
 
@@ -538,7 +807,14 @@ export default function WaiterOrderPage() {
     const restaurantPrice = product.restaurantPrices?.find(
       p => p.restaurantId === order?.restaurant?.id
     );
-    return restaurantPrice?.price ?? product.price;
+    let price = restaurantPrice?.price ?? product.price;
+    
+    // Apply customer discount if exists
+    if (order?.customer?.discountApplied) {
+      price = price * (1 - order.customer.personalDiscount / 100);
+    }
+    
+    return price;
   };
 
   const calculateOrderTotal = () => {
@@ -556,8 +832,21 @@ export default function WaiterOrderPage() {
       }
     }, 0) || 0;
 
-    return itemsTotal + surchargesTotal;
+    let total = itemsTotal + surchargesTotal;
+
+    // Apply discount if exists (either fixed amount or percentage)
+    if (order.discountAmount && order.discountAmount > 0) {
+      total = Math.max(0, total - order.discountAmount);
+    }
+
+    // Deduct bonus points if used
+    if (order.bonusPointsUsed && order.bonusPointsUsed > 0) {
+      total = Math.max(0, total - order.bonusPointsUsed);
+    }
+
+    return total;
   };
+  
 
   const handleQuantityChange = useCallback(async (product: Product, newQuantity: number, additives: string[], comment: string) => {
     if (!orderId || !isOrderEditable) return;
@@ -579,23 +868,25 @@ export default function WaiterOrderPage() {
 
     const timer = setTimeout(async () => {
       try {
-        setIsUpdating(true);
+      setIsUpdating(true);
+      await OrderService.updateStatus(orderId as string, { status: 'CREATED' });
 
-        await OrderService.updateStatus(orderId as string, { status: 'CREATED' });
+      await OrderService.addItemToOrder(
+        orderId as string,
+        {
+          productId: product.id,
+          quantity: newQuantity,
+          additiveIds: additives,
+          comment,
+        }
+      );
 
-        await OrderService.addItemToOrder(
-          orderId as string,
-          {
-            productId: product.id,
-            quantity: newQuantity,
-            additiveIds: additives,
-            comment,
-          }
-        );
-
-        const updatedOrder = await OrderService.getById(orderId as string);
-        setOrder(updatedOrder);
-        
+      const updatedOrder = await OrderService.getById(orderId as string);
+      setOrder(updatedOrder);
+      
+      // Автоматическое применение скидок после изменения заказа
+      await applyAutoDiscounts(updatedOrder);
+      
         await createOrderLog(`${t.logs.itemAdded}: ${product.title} x ${newQuantity}`);
       
         setPendingAdditions(prev => {
@@ -652,7 +943,7 @@ export default function WaiterOrderPage() {
       const data = await OrderService.getById(orderId as string);
       setOrder(data);
       
-    setEditFormData(prev => ({
+      setEditFormData(prev => ({
         ...prev,
         type: data.type || 'DINE_IN',
         paymentMethod: data.payment?.method || EnumPaymentMethod.CASH,
@@ -694,22 +985,167 @@ export default function WaiterOrderPage() {
   };
 
   const handlePrecheck = async () => {
-  if (!order) return;
+    if (!order) return;
+    
+    try {
+      setIsUpdating(true);
+      await OrderService.setPrecheckFlag(order.id, true);
+      await fetchOrder();
+      setShowPrecheckDialog(true);
+      await createOrderLog(t.logs.precheckPrinted);
+    } catch (error) {
+      toast.error(language === 'ru' 
+        ? 'Ошибка при формировании пречека' 
+        : 'პრეჩეკის ფორმირების შეცდომა');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const applyAutoDiscounts = async (currentOrder: OrderResponse) => {
+  if (!currentOrder || !orderId) return;
+
+  try {
+    // 1. Применяем скидку клиента, если он есть
+    if (currentOrder.customer) {
+      await OrderService.applyCustomerDiscount(orderId as string);
+    }
+
+    // 2. Проверяем активные скидки и применяем подходящие
+    const activeDiscounts = await DiscountService.getByRestaurant(currentOrder.restaurant.id);
+    const applicableDiscounts = activeDiscounts.filter(discount => {
+      // Проверяем условия скидки (минимальная сумма, период действия и т.д.)
+      const now = new Date();
+      const isActive = !discount.endDate || new Date(discount.endDate) > now;
+      const meetsMinAmount = !discount.minOrderAmount || 
+                            calculateOrderTotal() >= discount.minOrderAmount;
+      return isActive && meetsMinAmount;
+    });
+
+    // Применяем первую подходящую скидку (или можно применить все подходящие)
+    if (applicableDiscounts.length > 0) {
+      await OrderService.applyDiscountToOrder(
+        orderId as string,
+        applicableDiscounts[0].id
+      );
+    }
+
+    // Обновляем данные заказа после применения скидок
+    const updatedOrder = await OrderService.getById(orderId as string);
+    setOrder(updatedOrder);
+  } catch (error) {
+    console.error('Ошибка при автоматическом применении скидок:', error);
+  }
+};
+
+const handleApplyCustomer = async () => {
+  if (!orderId || !customerCode) return;
+  
+  try {
+    setCustomerLoading(true);
+    const customer = await CustomerService.getCustomerByShortCode(customerCode);
+    
+    await OrderService.applyCustomerToOrder(
+      orderId as string,
+      customer.id
+    );
+    
+    const updatedOrder = await OrderService.getById(orderId as string);
+    setOrder(updatedOrder);
+    
+    // Автоматическое применение скидок после добавления клиента
+    await applyAutoDiscounts(updatedOrder);
+    
+    setCustomerCode('');
+    toast.success(t.customerApplied);
+    
+  } catch (error) {
+    toast.error(t.customerNotFound);
+  } finally {
+    setCustomerLoading(false);
+  }
+};
+
+  const handleRemoveCustomer = async () => {
+    if (!orderId || !order?.customer) return;
+    
+    try {
+      setIsUpdating(true);
+      const updatedOrder = await OrderService.removeCustomerFromOrder(orderId as string);
+      setOrder(updatedOrder);
+      setPointsToUse(0);
+      await createOrderLog(t.logs.customerRemoved);
+      
+      toast.success(language === 'ru' ? 'Клиент удален из заказа' : 'კლიენტი წაშლილია შეკვეთიდან');
+    } catch (error) {
+      toast.error(language === 'ru' 
+        ? 'Ошибка при удалении клиента' 
+        : 'კლიენტის წაშლის შეცდომა');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleApplyDiscount = async () => {
+    try {
+      setIsUpdating(true);
+      const updatedOrder = await OrderService.applyCustomerDiscount(orderId as string);
+      setOrder(updatedOrder);
+      await createOrderLog(t.logs.discountApplied);
+      toast.success(t.discountApplied);
+    } catch (error) {
+      toast.error(language === 'ru' 
+        ? 'Ошибка при применении скидки' 
+        : 'ფასდაკლების გამოყენების შეცდომა');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleApplyPoints = async () => {
+  if (!orderId || !order?.customer || pointsToUse <= 0) return;
   
   try {
     setIsUpdating(true);
-    await OrderService.setPrecheckFlag(order.id, true);
-    await fetchOrder();
-    setShowPrecheckDialog(true);
-    await createOrderLog(t.logs.precheckPrinted);
+    const updatedOrder = await OrderService.applyCustomerPoints(
+      orderId as string,
+      pointsToUse
+    );
+    setOrder(updatedOrder);
+    
+    // Автоматическое применение скидок после изменения баллов
+    await applyAutoDiscounts(updatedOrder);
+    
+    await createOrderLog(`${t.logs.pointsApplied}: ${pointsToUse}`);
+    toast.success(t.pointsApplied);
   } catch (error) {
     toast.error(language === 'ru' 
-      ? 'Ошибка при формировании пречека' 
-      : 'პრეჩეკის ფორმირების შეცდომა');
+      ? 'Ошибка при применении баллов' 
+      : 'ქულების გამოყენების შეცდომა');
   } finally {
     setIsUpdating(false);
   }
 };
+
+  const handleRemovePoints = async () => {
+    if (!orderId || !order?.customer) return;
+    
+    try {
+      setIsUpdating(true);
+      const updatedOrder = await OrderService.removeCustomerPoints(orderId as string);
+      setOrder(updatedOrder);
+      setPointsToUse(0);
+      await createOrderLog(t.logs.pointsRemoved);
+      
+      toast.success(language === 'ru' ? 'Баллы сброшены' : 'ქულები გაუქმებულია');
+    } catch (error) {
+      toast.error(language === 'ru' 
+        ? 'Ошибка при сбросе баллов' 
+        : 'ქულების გაუქმების შეცდომა');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   useEffect(() => {
     if (!orderId) {
@@ -783,90 +1219,89 @@ export default function WaiterOrderPage() {
   };
 
   const renderItemCard = (item: OrderItem) => (
-   <Card 
-    key={item.id} 
-    className={`p-4 ${item.isReordered ? 'border-l-4 border-blue-500 dark:border-blue-400' : ''} ${item.isRefund ? 'bg-red-50 dark:bg-red-900/20' : 'bg-card'}`}
-  >  
-    <div className="flex justify-between items-start gap-4">
-      <div className="flex-1">
-        <div className="flex items-center gap-2">
-          <h3 className="font-medium">
-            {item.quantity} × {item.product.title}
-          </h3>
-          {item.isReordered && (
-            <Badge variant="secondary" className="text-xs">
-              {t.reorderedItem}
-            </Badge>
+    <Card 
+      key={item.id} 
+      className={`p-4 ${item.isReordered ? 'border-l-4 border-blue-500 dark:border-blue-400' : ''} ${item.isRefund ? 'bg-red-50 dark:bg-red-900/20' : 'bg-card'}`}
+    >  
+      <div className="flex justify-between items-start gap-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="font-medium">
+              {item.quantity} × {item.product.title}
+            </h3>
+            {item.isReordered && (
+              <Badge variant="secondary" className="text-xs">
+                {t.reorderedItem}
+              </Badge>
+            )}
+          </div>
+          
+          {item.product.restaurantPrices[0] && (
+            <p className="text-sm text-muted-foreground mt-1">
+              {getProductPrice(item.product)} ₽ × {item.quantity}шт. = {calculateItemPrice(item)} ₽
+            </p>
           )}
-        </div>
-        
-        {item.product.restaurantPrices[0] && (
-          <p className="text-sm text-muted-foreground mt-1">
-            {getProductPrice(item.product)} ₽ × {item.quantity}шт. = {getProductPrice(item.product) * item.quantity} ₽
-          </p>
-        )}
 
-        <div className="mt-2 pl-4 border-l-2 border-muted">
-          {item.additives.length > 0 && (
-            <div className="text-sm text-muted-foreground mt-1 flex items-center">
-              <Plus className="h-3 w-3 mr-1" />
-              {t.additives}: {item.additives.map(a => a.title).join(', ')}
-            </div>
-          )}
-          {item.comment && (
-            <div className="text-sm text-muted-foreground mt-1 flex items-center">
-              <MessageSquare className="h-3 w-3 mr-1" />
-              {t.comment}: {item.comment}
-            </div>
-          )}
-          {item.isRefund && item.refundReason && (
-            <div className="text-sm text-red-500 dark:text-red-400 mt-1 flex items-center">
-              <AlertCircle className="h-3 w-3 mr-1" />
-              {language === 'ru' ? 'Причина' : 'მიზეზი'}: {item.refundReason}
-            </div>
-          )}
+          <div className="mt-2 pl-4 border-l-2 border-muted">
+            {item.additives.length > 0 && (
+              <div className="text-sm text-muted-foreground mt-1 flex items-center">
+                <Plus className="h-3 w-3 mr-1" />
+                {t.additives}: {item.additives.map(a => a.title).join(', ')}
+              </div>
+            )}
+            {item.comment && (
+              <div className="text-sm text-muted-foreground mt-1 flex items-center">
+                <MessageSquare className="h-3 w-3 mr-1" />
+                {t.comment}: {item.comment}
+              </div>
+            )}
+            {item.isRefund && item.refundReason && (
+              <div className="text-sm text-red-500 dark:text-red-400 mt-1 flex items-center">
+                <AlertCircle className="h-3 w-3 mr-1" />
+                {language === 'ru' ? 'Причина' : 'მიზეზი'}: {item.refundReason}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
 
-   <details className="text-sm text-muted-foreground">
-    <summary className="cursor-pointer">{t.showLogs}</summary>
-    <div className="mt-2 space-y-1">
-      <div className="flex items-center">
-        <Clock className="h-3 w-3 mr-2" />
-        {t.createdAt}: {new Date(item.timestamps.createdAt).toLocaleString()}
-      </div>
-      {item.timestamps.startedAt && (
-        <div className="flex items-center">
-          <Play className="h-3 w-3 mr-2" />
-          {t.startedAt}: {new Date(item.timestamps.startedAt).toLocaleString()}
+      <details className="text-sm text-muted-foreground">
+        <summary className="cursor-pointer">{t.showLogs}</summary>
+        <div className="mt-2 space-y-1">
+          <div className="flex items-center">
+            <Clock className="h-3 w-3 mr-2" />
+            {t.createdAt}: {new Date(item.timestamps.createdAt).toLocaleString()}
+          </div>
+          {item.timestamps.startedAt && (
+            <div className="flex items-center">
+              <Play className="h-3 w-3 mr-2" />
+              {t.startedAt}: {new Date(item.timestamps.startedAt).toLocaleString()}
+            </div>
+          )}
+          {item.timestamps.completedAt && (
+            <div className="flex items-center">
+              <Check className="h-3 w-3 mr-2" />
+              {t.completedAt}: {new Date(item.timestamps.completedAt).toLocaleString()}
+            </div>
+          )}
+          {item.timestamps.pausedAt && (
+            <div className="flex items-center">
+              <Pause className="h-3 w-3 mr-2" />
+              {t.pausedAt}: {new Date(item.timestamps.pausedAt).toLocaleString()}
+            </div>
+          )}
+          {item.timestamps.refundedAt && (
+            <div className="flex items-center text-red-500 dark:text-red-400">
+              <Undo className="h-3 w-3 mr-2" />
+              {t.refundedAt}: {new Date(item.timestamps.refundedAt).toLocaleString()}
+            </div>
+          )}
         </div>
-      )}
-      {item.timestamps.completedAt && (
-        <div className="flex items-center">
-          <Check className="h-3 w-3 mr-2" />
-          {t.completedAt}: {new Date(item.timestamps.completedAt).toLocaleString()}
-        </div>
-      )}
-      {item.timestamps.pausedAt && (
-        <div className="flex items-center">
-          <Pause className="h-3 w-3 mr-2" />
-          {t.pausedAt}: {new Date(item.timestamps.pausedAt).toLocaleString()}
-        </div>
-      )}
-      {item.timestamps.refundedAt && (
-        <div className="flex items-center text-red-500 dark:text-red-400">
-          <Undo className="h-3 w-3 mr-2" />
-          {t.refundedAt}: {new Date(item.timestamps.refundedAt).toLocaleString()}
-        </div>
-      )}
-    </div>
-  </details>
+      </details>
 
-    {renderItemActions(item)}
-  </Card>
+      {renderItemActions(item)}
+    </Card>
   );
-
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -894,34 +1329,259 @@ export default function WaiterOrderPage() {
 
     return (
       <div className="space-y-4 h-96 overflow-y-auto">
-      {logs.map((log) => (
-        <div key={log.id} className="pb-4 px-2 last:pb-0">
-          <div className="flex items-start gap-3">
-            <div className="flex-1 flex justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <div className="font-medium">{log.action}</div>
-                {log.userName && (
-                  <div className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                    <User className="h-3 w-3" />
-                    {log.userName}
-                  </div>
-                )}
-                {log.details && (
-                  <div className="mt-2 text-sm bg-muted/50 p-2 rounded">
-                    <pre className="whitespace-pre-wrap break-words">
-                      {JSON.stringify(log.details, null, 2)}
-                    </pre>
-                  </div>
-                )}
-              </div>
-              <div className="flex-shrink-0 text-sm text-muted-foreground w-32 text-center"> 
-                {formatDate(log.createdAt)}
+        {logs.map((log) => (
+          <div key={log.id} className="pb-4 px-2 last:pb-0">
+            <div className="flex items-start gap-3">
+              <div className="flex-1 flex justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium">{log.action}</div>
+                  {log.userName && (
+                    <div className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
+                      <User className="h-3 w-3" />
+                      {log.userName}
+                    </div>
+                  )}
+                  {log.details && (
+                    <div className="mt-2 text-sm bg-muted/50 p-2 rounded">
+                      <pre className="whitespace-pre-wrap break-words">
+                        {JSON.stringify(log.details, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+                <div className="flex-shrink-0 text-sm text-muted-foreground w-32 text-center"> 
+                  {formatDate(log.createdAt)}
+                </div>
               </div>
             </div>
           </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderDiscountsBlock = () => {
+    if (!order?.restaurant?.id) return null;
+    const t = translations[language];
+
+    return (
+      <div>
+          <Card className="p-4 space-y-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <Tag className="h-5 w-5" />
+              {t.discountCode}
+            </h3>
+            
+            {order.discountAmount > 0 ? (
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm">{t.discount}:</span>
+                  <span className="font-medium text-green-600 dark:text-green-400">
+                    -{order.discountAmount.toFixed(2)} ₽
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleRemoveDiscount}
+                  disabled={!isOrderEditable || isUpdating}
+                >
+                  {t.removeDiscount}
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label className="text-sm">{t.enterDiscountCode}</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={promoCode}
+                    onChange={(e) => {
+                      setPromoCode(e.target.value);
+                      setPromoCodeError('');
+                    }}
+                    placeholder={t.enterDiscountCode}
+                    disabled={!isOrderEditable || promoCodeLoading}
+                  />
+                  <Button
+                    onClick={handleApplyPromoCode}
+                    disabled={!isOrderEditable || promoCodeLoading || !promoCode.trim()}
+                  >
+                    {promoCodeLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      t.applyCode
+                    )}
+                  </Button>
+                </div>
+                {promoCodeError && (
+                  <p className="text-sm text-red-500 dark:text-red-400">{promoCodeError}</p>
+                )}
+              </div>
+            )}
+          </Card>
+      </div>
+    );
+  };
+
+
+  const renderCustomerSection = () => {
+    if (!order) return null;
+
+    if (order.customer) {
+      return (
+        <Card className="p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <User className="h-5 w-5" />
+              {t.customerInfo}
+            </h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRemoveCustomer}
+              disabled={!isOrderEditable || isUpdating}
+            >
+              {t.removeCustomer}
+            </Button>
+          </div>
+          <div className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-sm text-muted-foreground">{t.personalDiscount}:</span>
+              <span className="font-medium">
+                {order.customer.personalDiscount}%
+               
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-sm text-muted-foreground">{t.bonusPoints}:</span>
+              <span className="font-medium">
+                {order.customer.bonusPoints}
+                {order.customer.pointsUsed ? (
+                  <span className="text-red-500 dark:text-red-400 ml-2">
+                    (-{order.customer.pointsUsed})
+                  </span>
+                ) : null}
+              </span>
+            </div>
+          </div>
+          {!order.customer.pointsUsed && (
+            <div className="space-y-2 pt-2">
+              <Label className="text-sm flex items-center gap-2">
+                <Gift className="h-4 w-4" />
+                {t.usePoints}
+              </Label>
+              <div className="flex items-center gap-2">
+               <div className="flex items-center gap-2 w-full">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => {
+                    if (!order.customer) return;
+                    const newValue = Math.max(0, pointsToUse - 1);
+                    setPointsToUse(newValue);
+                  }}
+                  disabled={pointsToUse <= 0 || !isOrderEditable}
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                
+                <Input
+                  type="number"
+                  min="0"
+                  max={Math.min(order.customer?.bonusPoints || 0, calculateOrderTotal())}
+                  value={pointsToUse}
+                  onChange={(e) => {
+                    if (!order.customer) return;
+                    setPointsToUse(Math.max(0, Math.min(
+                      order.customer.bonusPoints,
+                      calculateOrderTotal(),
+                      parseInt(e.target.value) || 0
+                    )))
+                  }}
+                  disabled={!isOrderEditable}
+                  className="text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => {
+                    if (!order.customer) return;
+                    const maxValue = Math.min(
+                      order.customer.bonusPoints,
+                      calculateOrderTotal()
+                    );
+                    const newValue = Math.min(maxValue, pointsToUse + 1);
+                    setPointsToUse(newValue);
+                  }}
+                  disabled={
+                    !order.customer || 
+                    pointsToUse >= order.customer.bonusPoints || 
+                    pointsToUse >= calculateOrderTotal() ||
+                    !isOrderEditable
+                  }
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+                <Button
+                  onClick={handleApplyPoints}
+                  disabled={!isOrderEditable || isUpdating || pointsToUse <= 0}
+                >
+                  {t.applyPoints}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t.maxPointsToUse}: {Math.min(order.customer.bonusPoints, calculateOrderTotal())}
+              </p>
+            </div>
+          )}
+
+          {order.customer.pointsUsed > 0 && (
+            <Button
+              variant="outline"
+              className="w-full mt-2"
+              onClick={handleRemovePoints}
+              disabled={!isOrderEditable || isUpdating}
+            >
+              {t.removePoints}
+            </Button>
+          )}
+        </Card>
+      );
+    }
+
+    return (
+      <Card className="p-4 space-y-4">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+          <User className="h-5 w-5" />
+          {t.customerCode}
+        </h3>
+        <div className="space-y-2">
+          <Label className="text-sm">{t.enterCustomerCode}</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              value={customerCode}
+              onChange={(e) => setCustomerCode(e.target.value)}
+              placeholder="XXXX"
+              maxLength={4}
+              disabled={!isOrderEditable || customerLoading}
+            />
+            <Button
+              onClick={handleApplyCustomer}
+              disabled={!isOrderEditable || customerLoading || customerCode.length !== 4}
+            >
+              {customerLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                t.applyCustomer
+              )}
+            </Button>
+          </div>
         </div>
-      ))}
-    </div>
+      </Card>
     );
   };
 
@@ -1230,6 +1890,8 @@ export default function WaiterOrderPage() {
                   </div>
 
                   <div className="space-y-6">
+                    
+
                     <div className="flex flex-wrap gap-4 justify-center">
                       <div 
                         className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags.isReordered ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-muted'}`}
@@ -1281,7 +1943,9 @@ export default function WaiterOrderPage() {
                         <span className="text-xs mt-1">{t.refund}</span>
                       </div>
                     </div>
-                    
+
+                
+
                     <Card className="p-0">
                       <Collapsible>
                         <CollapsibleTrigger asChild>
@@ -1302,7 +1966,11 @@ export default function WaiterOrderPage() {
                         </CollapsibleContent>
                       </Collapsible>
                     </Card>
+                    
+                        {renderCustomerSection()}
 
+                        {renderDiscountsBlock()}
+                          
                     <Card>
                       <div className="p-4">
                         <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -1312,13 +1980,10 @@ export default function WaiterOrderPage() {
                         <div className="space-y-4">
                           {order?.surcharges && order.surcharges.length > 0 && (
                             <div className="space-y-2">
-                              <div className="text-sm font-medium text-muted-foreground">
-                                {t.surcharges}
-                              </div>
                               {order.surcharges.map(surcharge => (
                                 <div key={surcharge.id} className="flex justify-between text-sm">
                                   <span>{surcharge.title}</span>
-                                  <span className="font-medium">
+                                  <span className="font-medium text-red-600">
                                     {surcharge.type === 'FIXED' 
                                       ? `+${surcharge.amount.toFixed(2)} ₽` 
                                       : `+${surcharge.amount}%`}
@@ -1327,7 +1992,25 @@ export default function WaiterOrderPage() {
                               ))}
                             </div>
                           )}
+                          {order.discountAmount && order.discountAmount > 0 && (
+                            <div className="flex justify-between text-sm">
+                              <span>{t.discount}:</span>
+                              
+                              <span className="font-medium text-green-600 dark:text-green-400">
+                                -{order.discountAmount.toFixed(2)} ₽
+                              </span>
+                            </div>
+                          )}
 
+                           {order.bonusPointsUsed && order.bonusPointsUsed > 0 && (
+                            <div className="flex justify-between text-sm">
+                              <span>{t.bonusPoints}:</span>
+                              <span className="font-medium text-green-600 dark:text-green-400">
+                                - {order.bonusPointsUsed.toFixed(2)} ₽
+                              </span>
+                            </div>
+                          )}
+                          
                           <div className="flex justify-between items-center pt-2">
                             <div className="font-medium flex items-center">
                               {t.total}:
@@ -1388,9 +2071,9 @@ export default function WaiterOrderPage() {
                             className="bg-emerald-500 hover:bg-emerald-400 text-white gap-2 w-full text-lg h-14"
                           >
                             {isUpdating ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                             ) : (
-                              <Check className="h-4 w-4" />
+                              <Check className="h-4 w-4 mr-1" />
                             )}
                             {t.confirm}
                           </Button>
@@ -1401,9 +2084,9 @@ export default function WaiterOrderPage() {
                             className="bg-red-300 hover:bg-red-200 text-white gap-2 w-full text-lg h-14"
                           >
                             {isUpdating ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                             ) : (
-                              <X className="h-4 w-4" />
+                              <X className="h-4 w-4 mr-1" />
                             )}
                             {t.cancel}
                           </Button>
@@ -1723,7 +2406,6 @@ export default function WaiterOrderPage() {
             onClose={() => setShowPrecheckDialog(false)} 
           />
         )}
-
     </AccessCheck>
   );
 }

@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { CustomerTable } from '@/components/features/customer/CustomerTable';
-import { CustomerDto, CustomerService } from '@/lib/api/customer.service';
+import { CustomerDto } from '@/lib/api/customer.service';
 import { Language, useLanguageStore } from '@/lib/stores/language-store';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
+import { CustomerService } from '@/lib/api/customer.service';
 
- const CustomersPage = () => {
+export default function CustomersPage() {
   const [customers, setCustomers] = useState<CustomerDto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -17,7 +18,6 @@ import { Plus } from 'lucide-react';
   const fetchCustomers = async () => {
     try {
       setIsLoading(true);
-      // Assuming you have a service method like this
       const response = await CustomerService.getAllCustomers(page, limit);
       setCustomers(response.data);
     } catch (error) {
@@ -30,7 +30,6 @@ import { Plus } from 'lucide-react';
   useEffect(() => {
     fetchCustomers();
   }, [page, limit]);
-
 
   return (
     <div className="space-y-4">
@@ -47,11 +46,10 @@ import { Plus } from 'lucide-react';
       <CustomerTable
         customers={customers}
         isLoading={isLoading}
-        language={language as Language} 
-        onRefresh={() => fetchCustomers()}
+        language={language}
+        onRefresh={fetchCustomers}
       />
 
-      {/* Pagination controls can be added here */}
       <div className="flex justify-end gap-2">
         <Button
           variant="outline"
@@ -70,6 +68,4 @@ import { Plus } from 'lucide-react';
       </div>
     </div>
   );
-};
-
-export default CustomersPage;
+}

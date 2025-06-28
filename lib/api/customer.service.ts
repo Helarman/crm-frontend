@@ -113,12 +113,14 @@ function redirectToLogin() {
   }
 }
 
-
 export interface CustomerDto {
   id: string;
   phone: string;
   createdAt?: Date;
-  bonusPoints?: number
+  bonusPoints?: number;
+  personalDiscount?: number;
+  shortCode?: string;
+  shortCodeExpires?: Date;
 }
 
 export const CustomerService = {
@@ -187,4 +189,75 @@ export const CustomerService = {
       throw error;
     }
   },
+
+  // Получение информации о клиенте по 4-символьному коду
+  getCustomerByShortCode: async (shortCode: string): Promise<CustomerDto> => {
+    try {
+      const { data } = await api.get<CustomerDto>(`/customer-verification/short-code/${shortCode}`);
+      return data;
+    } catch (error) {
+      console.error('Failed to get customer by short code:', error);
+      throw error;
+    }
+  },
+
+  // Генерация нового 4-символьного кода для клиента
+  generateShortCode: async (customerId: string): Promise<{ shortCode: string; shortCodeExpires: Date }> => {
+    try {
+      const { data } = await api.post<{ shortCode: string; shortCodeExpires: Date }>(
+        `/customer-verification/customer/${customerId}/short-code`
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to generate short code:', error);
+      throw error;
+    }
+  },
+
+  // Получение текущего размера персональной скидки
+  getPersonalDiscount: async (customerId: string): Promise<number> => {
+    try {
+      const { data } = await api.get<CustomerDto>(`/customer-verification/customer/${customerId}`);
+      return data.personalDiscount || 0;
+    } catch (error) {
+      console.error('Failed to get personal discount:', error);
+      throw error;
+    }
+  },
+
+  updatePersonalDiscount: async (customerId: string, discount: number): Promise<CustomerDto> => {
+    try {
+      const { data } = await api.patch<CustomerDto>(
+        `/customer-verification/customer/${customerId}/personal-discount`,
+        { discount }
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to update personal discount:', error);
+      throw error;
+    }
+  },
+
+  incrementPersonalDiscount: async (customerId: string, increment: number): Promise<CustomerDto> => {
+    try {
+      const currentDiscount = await CustomerService.getPersonalDiscount(customerId);
+      const newDiscount = Math.min(100, Math.max(0, currentDiscount + increment));
+      return await CustomerService.updatePersonalDiscount(customerId, newDiscount);
+    } catch (error) {
+      console.error('Failed to increment personal discount:', error);
+      throw error;
+    }
+  },
+
+  decrementPersonalDiscount: async (customerId: string, decrement: number): Promise<CustomerDto> => {
+    try {
+      const currentDiscount = await CustomerService.getPersonalDiscount(customerId);
+      const newDiscount = Math.min(100, Math.max(0, currentDiscount - decrement));
+      return await CustomerService.updatePersonalDiscount(customerId, newDiscount);
+    } catch (error) {
+      console.error('Failed to decrement personal discount:', error);
+      throw error;
+    }
+  }
+
 };

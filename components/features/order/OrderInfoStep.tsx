@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { OrderState } from '@/lib/types/order'
+import { useState, useEffect } from 'react'
+import { OrderState, Surcharge } from '@/lib/types/order'
 import { OrderTypeSelector } from './OrderTypeSelector'
 import { PaymentSelector } from './PaymentSelector'
 import { Button } from '@/components/ui/button'
@@ -20,12 +20,14 @@ import {
   Table,
   MessageSquare,
   MapPin,
-  Clock
+  Clock,
+  PlusCircle
 } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { format } from 'date-fns'
 import { CustomerService } from '@/lib/api/customer.service'
 import { DeliveryZoneService } from '@/lib/api/delivery-zone.service'
+import { useSurcharges } from '@/lib/hooks/useSurcharges'
 
 interface OrderInfoStepProps {
   order: OrderState
@@ -47,10 +49,27 @@ export const OrderInfoStep = ({
   const [isCheckingDeliveryZone, setIsCheckingDeliveryZone] = useState(false)
   const [isScheduled, setIsScheduled] = useState(false)
   const [scheduledTime, setScheduledTime] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"))
+  
+  const { surcharges: availableSurcharges } = useSurcharges(order.type, order.restaurantId)
 
   const t = (text: string | undefined, textGe: string | undefined) => {
     return language === 'ka' && textGe ? textGe : text || ''
   }
+
+  useEffect(() => {
+    // Автоматически применяем надбавки при изменении типа заказа или ресторана
+    if (availableSurcharges.length > 0) {
+      const autoAppliedSurcharges = availableSurcharges.filter(s => 
+        !order.surcharges.some(os => os.id === s.id))
+      
+      if (autoAppliedSurcharges.length > 0) {
+        setOrder({
+          ...order,
+          surcharges: [...order.surcharges, ...autoAppliedSurcharges]
+        })
+      }
+    }
+  }, [availableSurcharges, order.type, order.restaurantId])
 
   const handleRestaurantChange = (value: string) => {
     const restaurant = user?.restaurant?.find((r: any) => r.id === value)
@@ -288,87 +307,87 @@ export const OrderInfoStep = ({
         ) : null}
       </div>
 
-     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-  <div className="space-y-3">
-    <Label className="text-sm flex items-center gap-2">
-      <Users className="h-4 w-4" />
-      {language === 'ka' ? 'მომხმარებლების რაოდენობა' : 'Количество посетителей'}
-    </Label>
-    <div className="flex items-center gap-2" >
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={() => setOrder({
-          ...order,
-          numberOfPeople: Math.max(1, order.numberOfPeople - 1)
-        })}
-      >
-        -
-      </Button>
-      <Input
-        type="number"
-        min="1"
-        value={order.numberOfPeople}
-        onChange={(e) => setOrder({
-          ...order,
-          numberOfPeople: parseInt(e.target.value) || 1
-        })}
-        className="text-center"
-      />
-      <Button
-        variant="outline"
-        size="icon"
-        onClick={() => setOrder({
-          ...order,
-          numberOfPeople: order.numberOfPeople + 1
-        })}
-      >
-        +
-      </Button>
-    </div>
-  </div>
-  <div className="space-y-3">
-    <Label className="text-sm flex items-center gap-2">
-      <Table className="h-4 w-4" />
-      {language === 'ka' ? 'სტოლის ნომერი' : 'Номер стола'}
-    </Label>
-    <div className="flex items-center gap-2">
-      <Button
-        variant="outline"
-        size="icon"
-        disabled={order.type === 'TAKEAWAY' || order.type === 'DELIVERY'}
-        onClick={() => setOrder({
-          ...order,
-          tableNumber: Math.max(0, order.tableNumber - 1)
-        })}
-      >
-        -
-      </Button>
-      <Input
-        disabled={order.type === 'TAKEAWAY' || order.type === 'DELIVERY'}
-        type="number"
-        min="0"
-        value={order.tableNumber}
-        onChange={(e) => setOrder({
-          ...order,
-          tableNumber: parseInt(e.target.value) || 0
-        })}
-        className="text-center"
-      />
-      <Button
-        variant="outline"
-        size="icon"
-        disabled={order.type === 'TAKEAWAY' || order.type === 'DELIVERY'}
-        onClick={() => setOrder({
-          ...order,
-          tableNumber: order.tableNumber + 1
-        })}
-      >
-        +
-      </Button>
-    </div>
-  </div>
-</div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-3">
+          <Label className="text-sm flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            {language === 'ka' ? 'მომხმარებლების რაოდენობა' : 'Количество посетителей'}
+          </Label>
+          <div className="flex items-center gap-2" >
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setOrder({
+                ...order,
+                numberOfPeople: Math.max(1, order.numberOfPeople - 1)
+              })}
+            >
+              -
+            </Button>
+            <Input
+              type="number"
+              min="1"
+              value={order.numberOfPeople}
+              onChange={(e) => setOrder({
+                ...order,
+                numberOfPeople: parseInt(e.target.value) || 1
+              })}
+              className="text-center"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setOrder({
+                ...order,
+                numberOfPeople: order.numberOfPeople + 1
+              })}
+            >
+              +
+            </Button>
+          </div>
+        </div>
+        <div className="space-y-3">
+          <Label className="text-sm flex items-center gap-2">
+            <Table className="h-4 w-4" />
+            {language === 'ka' ? 'სტოლის ნომერი' : 'Номер стола'}
+          </Label>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={order.type === 'TAKEAWAY' || order.type === 'DELIVERY'}
+              onClick={() => setOrder({
+                ...order,
+                tableNumber: Math.max(0, order.tableNumber - 1)
+              })}
+            >
+              -
+            </Button>
+            <Input
+              disabled={order.type === 'TAKEAWAY' || order.type === 'DELIVERY'}
+              type="number"
+              min="0"
+              value={order.tableNumber}
+              onChange={(e) => setOrder({
+                ...order,
+                tableNumber: parseInt(e.target.value) || 0
+              })}
+              className="text-center"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={order.type === 'TAKEAWAY' || order.type === 'DELIVERY'}
+              onClick={() => setOrder({
+                ...order,
+                tableNumber: order.tableNumber + 1
+              })}
+            >
+              +
+            </Button>
+          </div>
+        </div>
+      </div>
 
       {order.type === 'DELIVERY' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -438,6 +457,36 @@ export const OrderInfoStep = ({
           </div>
         </div>
       )}
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-medium flex items-center gap-2">
+            <PlusCircle className="h-4 w-4" />
+            {language === 'ka' ? 'დამატებები' : 'Надбавки'}
+          </h3>
+        </div>
+        
+        {order.surcharges.length > 0 ? (
+          <ul className="space-y-2 border rounded-lg p-4">
+            {order.surcharges.map(surcharge => (
+              <li key={surcharge.id} className="flex justify-between">
+                <span>{surcharge.title}</span>
+                <span className="font-medium">
+                  {surcharge.type === 'FIXED' 
+                    ? `${surcharge.amount} ₽` 
+                    : `${surcharge.amount}%`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            {language === 'ka' 
+              ? 'არ არის გამოყენებული დამატებები' 
+              : 'Нет примененных надбавок'}
+          </p>
+        )}
+      </div>
 
       <div className="mb-6 p-4 rounded-lg">
         <div className="flex items-center justify-between">

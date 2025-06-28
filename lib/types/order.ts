@@ -1,6 +1,18 @@
 import { OrderItemStatus } from "../api/order.service"
 import { Product } from "./product"
 
+export type OrderType = 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET'
+
+export type SurchargeType = 'FIXED' | 'PERCENTAGE'
+
+export interface Surcharge {
+  id: string
+  title: string
+  amount: number
+  type: SurchargeType
+}
+
+
 export interface OrderState {
   restaurantId: string
   items: OrderItem[]

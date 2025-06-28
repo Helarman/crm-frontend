@@ -11,7 +11,7 @@ import { Language, useLanguageStore } from '@/lib/stores/language-store'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { Button } from '@/components/ui/button'
-import { ChevronDown, Check, Clock, Package, AlertCircle } from 'lucide-react'
+import { ChevronDown, Check, Clock, Package, AlertCircle, Tag, Gift, ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/hooks/useAuth'
@@ -40,6 +40,7 @@ type OrderItemWithStatus = {
   quantity: number
   additives: {
     title: string
+    price: number
   }[]
   comment?: string
   currentStatus: OrderItemStatus
@@ -48,6 +49,7 @@ type OrderItemWithStatus = {
     name: string
   } | null
   isReordered?: boolean
+  isRefund?: boolean
 }
 
 type WriteOffItem = {
@@ -146,7 +148,6 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
   const router = useRouter()
   const { user } = useAuth()
   const { language } = useLanguageStore()
-  const totalAmount = order.totalAmount
   const [showAllItems, setShowAllItems] = useState(false)
   const [contentHeight, setContentHeight] = useState(0)
   const [isUpdating, setIsUpdating] = useState(false)
@@ -223,7 +224,13 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
       reorderInKitchen: "Дозаказ на кухне",
       reorderNotConfirmed: "Дозаказ не подтвержден",
       wasRefund: "Был возврат",
-      discountCanceled: "Была отмена скидки"
+      discountCanceled: "Была отмена скидки",
+      discount: "Скидка",
+      bonusPoints: "Бонусные баллы",
+      surcharges: "Надбавки",
+      total: "Итого",
+      itemsTotal: "Сумма блюд",
+      refundedItems: "Возвращенные блюда"
     },
     ka: {
       back: "უკან შეკვეთების სიაში",
@@ -270,13 +277,62 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
       reorderInKitchen: "რეორდერი სამზარეულოში",
       reorderNotConfirmed: "რეორდერი არ არის დადასტურებული",
       wasRefund: "იყო დაბრუნება",
-      discountCanceled: "ფასდაკლების გაუქმება"
+      discountCanceled: "ფასდაკლების გაუქმება",
+      discount: "ფასდაკლება",
+      bonusPoints: "ბონუს ქულები",
+      surcharges: "დანამატები",
+      total: "სულ",
+      itemsTotal: "კერძების ჯამი",
+      refundedItems: "დაბრუნებული კერძები"
     }
   } as const;
 
   const t = translations[language as Language];
 
   const currentStatusStyle = statusColors[order.status] || statusColors.CREATED
+
+  // Calculate order totals
+  const calculateItemsTotal = () => {
+    return order.items.reduce((sum, item) => {
+      if (item.isRefund) return sum;
+      
+      const itemPrice = item.product.price;
+      const additivesPrice = item.additives.reduce((addSum, additive) => addSum + additive.price, 0);
+      return sum + (itemPrice + additivesPrice) * item.quantity;
+    }, 0);
+  };
+
+  const calculateRefundedTotal = () => {
+    return order.items.reduce((sum, item) => {
+      if (!item.isRefund) return sum;
+      
+      const itemPrice = item.product.price;
+      const additivesPrice = item.additives.reduce((addSum, additive) => addSum + additive.price, 0);
+      return sum + (itemPrice + additivesPrice) * item.quantity;
+    }, 0);
+  };
+
+  const calculateSurchargesTotal = () => {
+    if (!order.surcharges) return 0;
+    
+    const itemsTotal = calculateItemsTotal();
+    return order.surcharges.reduce((sum, surcharge) => {
+      if (surcharge.type === 'FIXED') {
+        return sum + surcharge.amount;
+      } else {
+        return sum + (itemsTotal * surcharge.amount) / 100;
+      }
+    }, 0);
+  };
+
+  const calculateFinalTotal = () => {
+    const itemsTotal = calculateItemsTotal();
+    const surchargesTotal = calculateSurchargesTotal();
+    const discountAmount = order.discountAmount || 0;
+    const bonusPointsUsed = order.bonusPointsUsed || 0;
+    
+    return itemsTotal + surchargesTotal - discountAmount - bonusPointsUsed;
+  };
 
   const getWarningMessages = (): WarningMessage[] => {
     const warnings: WarningMessage[] = [];
@@ -353,12 +409,14 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
         },
         quantity: item.quantity,
         additives: item.additives.map(add => ({
-          title: add.title 
+          title: add.title,
+          price: add.price
         })),
         comment: item.comment,
         currentStatus: item.status || 'CREATED',
         assignedTo: null,
         isReordered: item.isReordered,
+        isRefund: item.isRefund
       })))
     }
   }, [order])
@@ -384,7 +442,6 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
       console.error('Ошибка при создании лога:', err);
     }
   };
-
 
   const handleItemClick = async (itemId: string) => {
     try {
@@ -437,17 +494,15 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
         )
       )
 
-      // Find the item being prepared
-    const preparedItem = items.find(item => item.id === currentItemId);
-    
-    // Create log entry for dish preparation
-    if (preparedItem && user) {
-      await createOrderLog(
-        language === 'ru' 
-          ? `Блюдо приготовлено: ${preparedItem.product.title} × ${preparedItem.quantity}` 
-          : `კერძი მზადაა: ${preparedItem.product.title} × ${preparedItem.quantity}`
-      );
-    }
+      const preparedItem = items.find(item => item.id === currentItemId);
+      
+      if (preparedItem && user) {
+        await createOrderLog(
+          language === 'ru' 
+            ? `Блюдо приготовлено: ${preparedItem.product.title} × ${preparedItem.quantity}` 
+            : `კერძი მზადაა: ${preparedItem.product.title} × ${preparedItem.quantity}`
+        );
+      }
 
       const updatedOrder = await handleStatusChange(currentItemId, OrderItemStatus.COMPLETED)
 
@@ -575,7 +630,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
               </AnimatePresence>
             </div>
           )}
-
+      
           <div className="p-3 space-y-3">
             <div>
               {isUpdating ? (
@@ -583,98 +638,206 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
                   {t.loading}
                 </div>
               ) : (
-                variant === 'kitchen' &&
-                <div>
-                  {filteredItems.length > 0 ? (
-                    filteredItems.map(item => (
-                      <div 
-                        key={item.id} 
-                        className={cn(
-                          "mb-2 last:mb-0 p-2 rounded-lg border border-dashed cursor-pointer py-7 transition-colors hover:bg-opacity-90 border-2",
-                          item.status === OrderItemStatus.COMPLETED ? "opacity-70" : "" , 
-                          item.isReordered ? 'border-red-500 ' : 'border-black'
-                        )}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (item.status !== OrderItemStatus.COMPLETED) {
-                            handleItemClick(item.id);
-                          }
-                        }}
-                      >
-                        <div className="flex justify-between items-start">
+                variant === 'kitchen' ? (
+                  <div>
+                    {filteredItems.length > 0 ? (
+                      filteredItems.map(item => (
+                        <div 
+                          key={item.id} 
+                          className={cn(
+                            "mb-2 last:mb-0 p-2 rounded-lg border border-dashed cursor-pointer py-7 transition-colors hover:bg-opacity-90 border-2",
+                            item.status === OrderItemStatus.COMPLETED ? "opacity-70" : "" , 
+                            item.isReordered ? 'border-red-500 ' : 'border-black'
+                          )}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (item.status !== OrderItemStatus.COMPLETED) {
+                              handleItemClick(item.id);
+                            }
+                          }}
+                        >
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="font-medium flex items-center gap-1">
+                                {item.product.title} × {item.quantity}
+                              </div>
+                              {item.additives.length > 0 && (
+                                <div className="text-xs text-muted-foreground">
+                                  {language === 'ru' ? 'Добавки:' : 'დანამატები:'} {item.additives.map(a => a.title).join(', ')}
+                                </div>
+                              )}
+                              {item.comment && (
+                                <div className="text-xs text-muted-foreground">
+                                  {language === 'ru' ? 'Коммент:' : 'კომენტარი:'} {item.comment}
+                                </div>
+                              )}
+                            </div>
+                            <Badge 
+                              variant="outline" 
+                              className="text-xs"
+                            >
+                              {getStatusText(item.status, language)}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center text-muted-foreground py-4">
+                        {t.noDishes}
+                      </div>
+                    )}
+
+                    {otherItems.length > 0 && (
+                      <div className="mt-4">
+                        <details className="group">
+                          <summary className="flex items-center justify-between cursor-pointer list-none text-sm text-muted-foreground">
+                            <span>
+                              {t.otherDishes} ({otherItems.length})
+                            </span>
+                            <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                          </summary>
+                          <div className="mt-2 space-y-2">
+                            {otherItems.map(item => (
+                              <div 
+                                key={item.id} 
+                                className={cn(
+                                  "p-2 rounded-lg border border-dashed border-gray-300 py-4 opacity-70",
+                                  item.status === OrderItemStatus.COMPLETED ? "opacity-50" : ""
+                                )}
+                              >
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <div className="font-medium flex items-center gap-1">
+                                      {item.product.title} × {item.quantity}
+                                    </div>
+                                    {item.additives.length > 0 && (
+                                      <div className="text-xs text-muted-foreground">
+                                        {language === 'ru' ? 'Добавки:' : 'დანამატები:'} {item.additives.map(a => a.title).join(', ')}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <Badge variant="outline" className="text-xs">
+                                    {getStatusText(item.status, language)}
+                                  </Badge>
+                                </div>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {t.responsibleWorkshop}: {item.product.workshops?.[0]?.workshop.name || (language === 'ru' ? 'Не указан' : 'არ არის მითითებული')}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  // Default variant - show detailed order info
+                  <div className="space-y-4">
+                    {/* Order items */}
+                    <div className="space-y-2">
+                      {order.items.filter(i => !i.isRefund).map(item => (
+                        <div key={item.id} className="flex justify-between items-start p-2 bg-muted/10 rounded">
                           <div>
-                            <div className="font-medium flex items-center gap-1">
-                              {item.product.title} × {item.quantity}
+                            <div className="font-medium">
+                              {item.quantity} × {item.product.title}
                             </div>
                             {item.additives.length > 0 && (
                               <div className="text-xs text-muted-foreground">
-                                {language === 'ru' ? 'Добавки:' : 'დანამატები:'} {item.additives.map(a => a.title).join(', ')}
+                                {t.additives}: {item.additives.map(a => a.title).join(', ')}
                               </div>
                             )}
                             {item.comment && (
                               <div className="text-xs text-muted-foreground">
-                                {language === 'ru' ? 'Коммент:' : 'კომენტარი:'} {item.comment}
+                                {t.comment}: {item.comment}
                               </div>
                             )}
                           </div>
-                          <Badge 
-                            variant="outline" 
-                            className="text-xs"
-                          >
-                            {getStatusText(item.status, language)}
-                          </Badge>
+                          <div className="font-medium">
+                            {((item.product.price + item.additives.reduce((sum, a) => sum + a.price, 0)) * item.quantity).toFixed(2)} ₽
+                          </div>
                         </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center text-muted-foreground py-4">
-                      {t.noDishes}
+                      ))}
                     </div>
-                  )}
 
-                  {otherItems.length > 0 && (
-                    <div className="mt-4">
-                      <details className="group">
-                        <summary className="flex items-center justify-between cursor-pointer list-none text-sm text-muted-foreground">
-                          <span>
-                            {t.otherDishes} ({otherItems.length})
-                          </span>
-                          <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
-                        </summary>
-                        <div className="mt-2 space-y-2">
-                          {otherItems.map(item => (
-                            <div 
-                              key={item.id} 
-                              className={cn(
-                                "p-2 rounded-lg border border-dashed border-gray-300 py-4 opacity-70",
-                                item.status === OrderItemStatus.COMPLETED ? "opacity-50" : ""
-                              )}
-                            >
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <div className="font-medium flex items-center gap-1">
-                                    {item.product.title} × {item.quantity}
-                                  </div>
-                                  {item.additives.length > 0 && (
-                                    <div className="text-xs text-muted-foreground">
-                                      {language === 'ru' ? 'Добавки:' : 'დანამატები:'} {item.additives.map(a => a.title).join(', ')}
-                                    </div>
-                                  )}
+                    {/* Refunded items */}
+                    {order.items.some(i => i.isRefund) && (
+                      <div className="border-t pt-2">
+                        <div className="text-sm font-medium text-red-500 dark:text-red-400 mb-1">
+                          {t.refundedItems}
+                        </div>
+                        <div className="space-y-1">
+                          {order.items.filter(i => i.isRefund).map(item => (
+                            <div key={item.id} className="flex justify-between items-start p-2 bg-red-50 dark:bg-red-900/10 rounded">
+                              <div>
+                                <div className="font-medium line-through">
+                                  {item.quantity} × {item.product.title}
                                 </div>
-                                <Badge variant="outline" className="text-xs">
-                                  {getStatusText(item.status, language)}
-                                </Badge>
+                                {item.additives.length > 0 && (
+                                  <div className="text-xs text-muted-foreground">
+                                    {t.additives}: {item.additives.map(a => a.title).join(', ')}
+                                  </div>
+                                )}
                               </div>
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {t.responsibleWorkshop}: {item.product.workshops?.[0]?.workshop.name || (language === 'ru' ? 'Не указан' : 'არ არის მითითებული')}
+                              <div className="font-medium line-through">
+                                -{((item.product.price + item.additives.reduce((sum, a) => sum + a.price, 0)) * item.quantity).toFixed(2)} ₽
                               </div>
                             </div>
                           ))}
                         </div>
-                      </details>
+                      </div>
+                    )}
+
+                    {/* Order summary */}
+                    <div className="border-t pt-2 space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-sm">{t.itemsTotal}:</span>
+                        <span className="text-sm font-medium">{calculateItemsTotal().toFixed(2)} ₽</span>
+                      </div>
+
+                      {order.surcharges && order.surcharges.length > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-sm">{t.surcharges}:</span>
+                          <span className="text-sm font-medium text-green-600 dark:text-green-400">
+                            +{calculateSurchargesTotal().toFixed(2)} ₽
+                          </span>
+                        </div>
+                      )}
+                      {(order.discountAmount !== undefined && order.discountAmount !== null && order.discountAmount > 0) && (
+                        <div className="flex justify-between">
+                          <span className="text-sm flex items-center gap-1">
+                            <Tag className="h-3 w-3" />
+                            {t.discount}:
+                          </span>
+                          <span className={cn(
+                            "text-sm font-medium",
+                            order.discountAmount > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
+                          )}>
+                            {order.discountAmount > 0 ? `-${order.discountAmount.toFixed(2)}` : '0.00'} ₽
+                          </span>
+                        </div>
+                      )}
+
+                      {order.bonusPointsUsed != 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-sm flex items-center gap-1">
+                            <Gift className="h-3 w-3" />
+                            {t.bonusPoints}:
+                          </span>
+                          <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                            -{order.bonusPointsUsed.toFixed(2)} ₽
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between border-t pt-2">
+                        <span className="font-medium">{t.total}:</span>
+                        <span className="font-bold">
+                          {calculateFinalTotal().toFixed(2)} ₽
+                        </span>
+                      </div>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )
               )}
             </div>
             
@@ -697,17 +860,6 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
               </div>
             ) : null}
             
-            {variant === 'default' && (
-              <div className="flex justify-between items-center border-t pt-2">
-                <div className="font-medium text-sm">
-                  {language === 'ru' ? 'Итого:' : 'სულ:'}
-                </div>
-                <div className="font-bold">
-                  {totalAmount.toFixed(2)}{language === 'ru' ? '₽' : '₽'}
-                </div>
-              </div>
-            )}
-
             {variant === 'default' && order.payment && (
               <OrderPaymentStatus payment={order.payment} order={order} compact />
             )}

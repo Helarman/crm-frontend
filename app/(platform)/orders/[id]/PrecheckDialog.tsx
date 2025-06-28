@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import { ru, ka } from 'date-fns/locale';
 import { QRCodeSVG } from 'qrcode.react';
 import { useLanguageStore } from '@/lib/stores/language-store';
-import { toast } from 'sonner'; // or your preferred toast library
+import { toast } from 'sonner';
 
 interface PrecheckDialogProps {
   order: OrderResponse;
@@ -40,7 +40,10 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
         DINE_IN: "В заведении",
         TAKEAWAY: "На вынос",
         DELIVERY: "Доставка"
-      }
+      },
+      discount: "Скидка",
+      bonusPoints: "Бонусные баллы",
+      surcharges: "Надбавки"
     },
     ka: {
       orderNumber: "შეკვეთა №",
@@ -61,7 +64,10 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
         DINE_IN: "დაწესებულებაში",
         TAKEAWAY: "წინასწარ",
         DELIVERY: "მიწოდება"
-      }
+      },
+      discount: "ფასდაკლება",
+      bonusPoints: "ბონუს ქულები",
+      surcharges: "დანამატები"
     }
   };
 
@@ -79,6 +85,34 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
   };
 
   const calculateTotal = () => {
+    // Calculate items total
+    const itemsTotal = order.items.reduce((sum, item) => sum + calculateItemPrice(item), 0);
+
+    // Add surcharges
+    const surchargesTotal = order.surcharges?.reduce((sum, surcharge) => {
+      if (surcharge.type === 'FIXED') {
+        return sum + surcharge.amount;
+      } else {
+        return sum + (itemsTotal * surcharge.amount) / 100;
+      }
+    }, 0) || 0;
+
+    let total = itemsTotal + surchargesTotal;
+
+    // Apply discount if exists
+    if (order.discountAmount && order.discountAmount > 0) {
+      total = Math.max(0, total - order.discountAmount);
+    }
+
+    // Deduct bonus points if used
+    if (order.bonusPointsUsed && order.bonusPointsUsed > 0) {
+      total = Math.max(0, total - order.bonusPointsUsed);
+    }
+
+    return total;
+  };
+
+  const calculateSubtotal = () => {
     return order.items.reduce((sum, item) => sum + calculateItemPrice(item), 0);
   };
 
@@ -171,10 +205,12 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
   };
 
   const getDomain = () => {
-    return order.restaurant?.network?.tenant?.domain
+    return order.restaurant?.network?.tenant?.domain;
   };
-const nameParts = user?.name.split(' ')
-const firstName = nameParts[0];
+
+  const nameParts = user?.name.split(' ');
+  const firstName = nameParts[0];
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white dark:bg-gray-900 rounded-lg p-6 w-full max-w-md">
@@ -226,10 +262,59 @@ const firstName = nameParts[0];
             </table>
           </div>
 
+          {/* Surcharges */}
+          {order.surcharges && order.surcharges.length > 0 && (
+            <div className="border-t border-gray-300 pt-2 mb-2">
+              <div className="text-sm font-medium mb-1">{t.surcharges}:</div>
+              {order.surcharges.map(surcharge => (
+                <div key={surcharge.id} className="flex justify-between text-sm">
+                  <span>{surcharge.title}</span>
+                  <span>
+                    {surcharge.type === 'FIXED' 
+                      ? `+${surcharge.amount.toFixed(2)} ₽` 
+                      : `+${surcharge.amount}%`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Discount */}
+          {order.discountAmount && order.discountAmount > 0 && (
+            <div className="flex justify-between text-sm ">
+              <span>{t.discount}:</span>
+              <span>-{order.discountAmount.toFixed(2)} ₽</span>
+            </div>
+          )}
+
+          {/* Bonus Points */}
+          {order.bonusPointsUsed && order.bonusPointsUsed > 0 && (
+            <div className="flex justify-between text-sm ">
+              <span>{t.bonusPoints}:</span>
+              <span>-{order.bonusPointsUsed.toFixed(2)} ₽</span>
+            </div>
+          )}
+
+            {order.surcharges && order.surcharges.length > 0 && (
+              <div className="mt-2">
+                <div className="text-sm font-medium mb-1">{t.surcharges}:</div>
+                {order.surcharges.map(surcharge => (
+                  <div key={surcharge.id} className="flex justify-between text-sm">
+                    <span>{surcharge.title}</span>
+                    <span>
+                      {surcharge.type === 'FIXED' 
+                        ? `+${surcharge.amount.toFixed(2)} ₽` 
+                        : `+${surcharge.amount}%`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
           <div className="border-t border-gray-300 pt-2 mb-4">
             <div className="flex justify-between font-medium">
               <span>{t.total}:</span>
-              <span>{calculateTotal().toFixed(2)} ₽</span>
+              <span>{calculateSubtotal().toFixed(2)} ₽</span>
             </div>
             <div className="flex justify-between text-lg font-bold">
               <span>{t.toPay}:</span>
@@ -240,18 +325,16 @@ const firstName = nameParts[0];
           <div className="text-center text-xl mb-4">
             <p>{t.thanks}</p>
           </div>
-            <div className="text-center text-xl mb-4 font-semibold">
+          <div className="text-center text-xl mb-4 font-semibold">
             {getDomain()}
           </div>
           <div className="flex justify-center mb-4">
             <QRCodeSVG 
               value={getDomain()}
               size={240}
-              level="H" // Higher error correction
+              level="H"
             />
           </div>
-
-          
         </div>
 
         <div className="flex justify-end gap-2 mt-4 no-print">

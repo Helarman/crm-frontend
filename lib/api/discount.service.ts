@@ -7,101 +7,19 @@ const api = axios.create({
   withCredentials: true,
 });
 
-api.interceptors.request.use((config) => {
-  const token = getAccessTokenFromCookie(); // Ваша функция для получения токена из кук
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
-let isRefreshing = false;
-let failedRequestsQueue: Array<{
-  resolve: (token: string) => void;
-  reject: (error: any) => void;
-}> = [];
-
-api.interceptors.response.use(
-  response => response,
-  async (error) => {
-    const originalRequest = error.config;
-    
-    if (error.response?.status === 401 && !originalRequest._retry) {
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          failedRequestsQueue.push({ resolve, reject });
-        })
-          .then((token) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            return api(originalRequest);
-          })
-          .catch(err => Promise.reject(err));
-      }
-
-      originalRequest._retry = true;
-      isRefreshing = true;
-
-      try {
-        const { data } = await api.post('/auth/refresh');
-        setNewAccessToken(data.accessToken); // Сохраняем новый токен
-        
-        // Обновляем заголовок для оригинального запроса
-        originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
-        
-        // Повторяем запросы из очереди
-        failedRequestsQueue.forEach(pending => pending.resolve(data.accessToken));
-        
-        return api(originalRequest);
-      } catch (refreshError) {
-        failedRequestsQueue.forEach(pending => pending.reject(refreshError));
-        clearAuthData(); // Очищаем данные аутентификации
-        redirectToLogin(); // Перенаправляем на страницу входа
-        return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
-        failedRequestsQueue = [];
-      }
-    }
-    
-    return Promise.reject(error);
-  }
-);
-
-
-function getAccessTokenFromCookie(): string | null {
-  if (typeof document === 'undefined') return null; // Для SSR
-  const value = `; ${document.cookie}`;
-  const parts = value.split(`; accessToken=`);
-  return parts.length === 2 ? parts.pop()?.split(';').shift() || null : null;
-}
-
-// Сохранение нового токена
-function setNewAccessToken(token: string) {
-  document.cookie = `accessToken=${token}; path=/; max-age=3600`; // Пример
-}
-
-// Очистка данных аутентификации
-function clearAuthData() {
-  document.cookie = 'accessToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-  document.cookie = 'refreshToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
-}
-
-// Перенаправление на страницу входа
-function redirectToLogin() {
-  if (typeof window !== 'undefined') {
-    window.location.href = '/login';
-  }
-}
 export type DiscountType = 'PERCENTAGE' | 'FIXED';
 export type DiscountTargetType = 'ALL' | 'RESTAURANT' | 'CATEGORY' | 'PRODUCT' | 'ORDER_TYPE';
 export type OrderType = 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET';
 
 export interface CreateDiscountDto {
-  title: string;
+  title?: string;
   description?: string;
-  type: DiscountType;
-  value: number;
-  targetType: DiscountTargetType;
+  restaurantIds?: string[];
+  productIds?: string[];
+  type?: DiscountType;
+  value?: number;
+  targetType?: DiscountTargetType;
   minOrderAmount?: number;
   restaurants?: { restaurantId: string }[];
   categories?: { categoryId: string }[];
@@ -109,16 +27,18 @@ export interface CreateDiscountDto {
   orderTypes?: OrderType[];
   daysOfWeek?: number[];
   code?: string;
+  startTime?: number;
+  endTime?: number;
   maxUses?: number;
-  startDate?: Date;
-  endDate?: Date;
+  startDate?: Date | null;
+  endDate?: Date | null;
   isActive?: boolean;
 }
 
 export interface UpdateDiscountDto extends Partial<CreateDiscountDto> {}
 
 export interface DiscountFormState extends Omit<Partial<CreateDiscountDto>, 'restaurants' | 'categories' | 'products'> {
-  restaurantIds: string[]; // Simplified for form handling
+  restaurantIds: string[];
   categoryIds: string[];
   productIds: string[];
 }
@@ -141,6 +61,8 @@ export interface DiscountResponseDto {
   currentUses: number;
   startDate?: Date;
   endDate?: Date;
+  startTime: number;
+  endTime: number;
   restaurants?: {
     restaurant: {
       id: string;
@@ -160,11 +82,13 @@ export interface DiscountResponseDto {
     };
   }[];
 }
-
 export const DiscountService = {
+  /**
+   * Создание новой скидки
+   */
   create: async (dto: CreateDiscountDto): Promise<DiscountResponseDto> => {
     try {
-      const { data } = await axios.post<DiscountResponseDto>(`${API_URL}/discounts`, dto);
+      const { data } = await api.post<DiscountResponseDto>('/discounts', dto);
       return data;
     } catch (error) {
       console.error('Failed to create discount:', error);
@@ -177,10 +101,10 @@ export const DiscountService = {
    */
   getAll: async (): Promise<DiscountResponseDto[]> => {
     try {
-      const { data } = await axios.get<DiscountResponseDto[]>(`${API_URL}/discounts`);
+      const { data } = await api.get<DiscountResponseDto[]>('/discounts');
       return data;
     } catch (error) {
-      console.error('Failed to fetch discounts:', error);
+      console.error('Failed to get discounts:', error);
       throw error;
     }
   },
@@ -190,104 +114,10 @@ export const DiscountService = {
    */
   getById: async (id: string): Promise<DiscountResponseDto> => {
     try {
-      const { data } = await axios.get<DiscountResponseDto>(`${API_URL}/discounts/${id}`);
+      const { data } = await api.get<DiscountResponseDto>(`/discounts/${id}`);
       return data;
     } catch (error) {
-      console.error(`Failed to fetch discount with ID ${id}:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Получение скидки по коду
-   */
-  getByCode: async (code: string): Promise<DiscountResponseDto> => {
-    try {
-      const { data } = await axios.get<DiscountResponseDto>(`${API_URL}/discounts/code/${code}`);
-      return data;
-    } catch (error) {
-      console.error(`Failed to fetch discount with code ${code}:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Получение скидок для ресторана
-   */
-  getByRestaurant: async (restaurantId: string): Promise<DiscountResponseDto[]> => {
-    try {
-      const { data } = await axios.get<DiscountResponseDto[]>(
-        `${API_URL}/discounts/restaurant/${restaurantId}`
-      );
-      return data;
-    } catch (error) {
-      console.error(`Failed to fetch discounts for restaurant ${restaurantId}:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Получение активных скидок
-   */
-  getActiveDiscounts: async (): Promise<DiscountResponseDto[]> => {
-    try {
-      const { data } = await axios.get<DiscountResponseDto[]>(
-        `${API_URL}/discounts/active`
-      );
-      return data;
-    } catch (error) {
-      console.error('Failed to fetch active discounts:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Применение скидки к заказу
-   */
-  applyToOrder: async (
-    discountId: string,
-    orderId: string,
-    customerId?: string
-  ): Promise<{ discountAmount: number }> => {
-    try {
-      const { data } = await axios.post<{ discountAmount: number }>(
-        `${API_URL}/discounts/${discountId}/apply/${orderId}`,
-        { customerId }
-      );
-      return data;
-    } catch (error) {
-      console.error(`Failed to apply discount ${discountId} to order ${orderId}:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Генерация промокода для клиента
-   */
-  generatePromoCode: async (discountId: string, customerId: string): Promise<string> => {
-    try {
-      const { data } = await axios.post<{ code: string }>(
-        `${API_URL}/discounts/${discountId}/generate-code`,
-        { customerId }
-      );
-      return data.code;
-    } catch (error) {
-      console.error(`Failed to generate promo code for discount ${discountId}:`, error);
-      throw error;
-    }
-  },
-
-  /**
-   * Получение промокодов клиента
-   */
-  getCustomerPromoCodes: async (customerId: string): Promise<DiscountResponseDto[]> => {
-    try {
-      const { data } = await axios.get<DiscountResponseDto[]>(
-        `${API_URL}/discounts/customer/${customerId}/promocodes`
-      );
-      return data;
-    } catch (error) {
-      console.error(`Failed to fetch promocodes for customer ${customerId}:`, error);
+      console.error(`Failed to get discount with ID ${id}:`, error);
       throw error;
     }
   },
@@ -295,15 +125,9 @@ export const DiscountService = {
   /**
    * Обновление скидки
    */
-  update: async (
-    id: string,
-    dto: UpdateDiscountDto
-  ): Promise<DiscountResponseDto> => {
+  update: async (id: string, dto: UpdateDiscountDto): Promise<DiscountResponseDto> => {
     try {
-      const { data } = await api.put<DiscountResponseDto>(
-        `/discounts/${id}`,
-        dto
-      );
+      const { data } = await api.put<DiscountResponseDto>(`/discounts/${id}`, dto);
       return data;
     } catch (error) {
       console.error(`Failed to update discount with ID ${id}:`, error);
@@ -314,100 +138,65 @@ export const DiscountService = {
   /**
    * Удаление скидки
    */
-  delete: async (id: string): Promise<void> => {
+  delete: async (id: string): Promise<DiscountResponseDto> => {
     try {
-      await api.delete(`/discounts/${id}`);
+      const { data } = await api.delete<DiscountResponseDto>(`/discounts/${id}`);
+      return data;
     } catch (error) {
       console.error(`Failed to delete discount with ID ${id}:`, error);
       throw error;
     }
   },
-   /**
-   * Получение скидок для конкретных продуктов
+
+  /**
+   * Получение скидок по ресторану
    */
-  getForProducts: async (productIds: string[]): Promise<DiscountResponseDto[]> => {
+  getByRestaurant: async (restaurantId: string): Promise<DiscountResponseDto[]> => {
     try {
-      const { data } = await axios.post<DiscountResponseDto[]>(
-        `${API_URL}/discounts/for-products`,
-        { productIds }
-      );
-      return data;
+      const { data } = await api.get<DiscountResponseDto[]>(`/discounts/restaurant/${restaurantId}`);
+       return data.filter(discount => !discount.code || discount.code === "");
     } catch (error) {
-      console.error('Failed to fetch discounts for products:', error);
+      console.error(`Failed to get discounts for restaurant ${restaurantId}:`, error);
       throw error;
     }
   },
 
   /**
-   * Получение скидок для конкретных категорий
+   * Получение скидок по продукту
    */
-  getForCategories: async (categoryIds: string[]): Promise<DiscountResponseDto[]> => {
+  getByProduct: async (productId: string): Promise<DiscountResponseDto[]> => {
     try {
-      const { data } = await axios.post<DiscountResponseDto[]>(
-        `${API_URL}/discounts/for-categories`,
-        { categoryIds }
-      );
+      const { data } = await api.get<DiscountResponseDto[]>(`/discounts/product/${productId}`);
       return data;
     } catch (error) {
-      console.error('Failed to fetch discounts for categories:', error);
+      console.error(`Failed to get discounts for product ${productId}:`, error);
       throw error;
     }
   },
 
   /**
-   * Проверка минимальной суммы для скидки
+   * Получение скидок по массиву продуктов
    */
-  checkMinAmount: async (discountId: string, amount: number): Promise<boolean> => {
+  getByProducts: async (productIds: string[]): Promise<DiscountResponseDto[]> => {
     try {
-      const { data } = await axios.get<{ isValid: boolean }>(
-        `${API_URL}/discounts/${discountId}/check-min-amount?amount=${amount}`
-      );
-      return data.isValid;
-    } catch (error) {
-      console.error(`Failed to check min amount for discount ${discountId}:`, error);
-      throw error;
-    }
-  },
-
-  getForOrderType: async (
-    orderType: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET',
-    restaurantId?: string
-  ): Promise<DiscountResponseDto[]> => {
-    try {
-      const params = new URLSearchParams();
-      params.append('orderType', orderType);
-      if (restaurantId) params.append('restaurantId', restaurantId);
-      
-      const { data } = await api.get<DiscountResponseDto[]>(
-        `${API_URL}/discounts/for-order-type?${params.toString()}`
-      );
+      const { data } = await api.post<DiscountResponseDto[]>('/discounts/products', { productIds });
       return data;
     } catch (error) {
-      console.error(`Failed to fetch discounts for order type ${orderType}:`, error);
+      console.error('Failed to get discounts for products:', error);
       throw error;
     }
   },
 
   /**
-   * Получение скидок для текущего заказа
+   * Получение скидки по промокоду
    */
-  getForCurrentOrder: async (
-    orderType: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET',
-    productIds: string[],
-    categoryIds: string[],
-    restaurantId?: string
-  ): Promise<DiscountResponseDto[]> => {
+  getByPromoCode: async (code: string): Promise<DiscountResponseDto> => {
     try {
-      const { data } = await api.post<DiscountResponseDto[]>(
-        `${API_URL}/discounts/for-current-order`,
-        { orderType, productIds, categoryIds, restaurantId }
-      );
+      const { data } = await api.get<DiscountResponseDto>(`/discounts/promo/${code}`);
       return data;
     } catch (error) {
-      console.error('Failed to fetch discounts for current order:', error);
+      console.error(`Failed to get discount by promo code ${code}:`, error);
       throw error;
     }
-  }
-
-  
+  },
 };

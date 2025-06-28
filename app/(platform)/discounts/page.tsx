@@ -48,18 +48,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useLanguageStore } from '@/lib/stores/language-store'
 import { toast } from 'sonner'
 import { ProductService } from '@/lib/api/product.service'
-import { CategoryService } from '@/lib/api/category.service'
 import { Switch } from '@/components/ui/switch'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 
 type OrderType = "DINE_IN" | "TAKEAWAY" | "DELIVERY" | "BANQUET";
 type DiscountType = "FIXED" | "PERCENTAGE";
-type DiscountTargetType = "ALL" | "CATEGORY" | "PRODUCT" | "ORDER_TYPE";
-
-interface Category {
-  id: string;
-  title: string;
-}
+type DiscountTargetType = "ALL" | "PRODUCT";
 
 interface Product {
   id: string;
@@ -69,16 +63,6 @@ interface Product {
 interface Restaurant {
   id: string;
   title: string;
-}
-
-interface OrderTypeOption {
-  value: OrderType;
-  label: string;
-}
-
-interface TargetTypeOption {
-  value: DiscountTargetType;
-  label: string;
 }
 
 interface Translations {
@@ -94,18 +78,14 @@ const translations: Translations = {
     value: 'Размер скидки',
     targetType: 'Применение скидки',
     minOrderAmount: 'Мин. сумма заказа',
-    orderTypes: 'Типы заказов',
     restaurants: 'Рестораны',
-    categories: 'Категории',
     products: 'Продукты',
     status: 'Статус',
     actions: 'Действия',
     fixed: 'Фиксированная сумма',
     percentage: 'Процент',
     all: 'Ко всему меню',
-    category: 'По категориям',
     product: 'По продуктам',
-    order_type: 'По типу заказа',
     active: 'Активна',
     inactive: 'Неактивна',
     noData: 'Нет данных для отображения',
@@ -117,49 +97,32 @@ const translations: Translations = {
     description: 'Описание',
     startDate: 'Дата начала',
     endDate: 'Дата окончания',
+    startTime: 'Время начала',
+    endTime: 'Время окончания',
     cancel: 'Отмена',
     save: 'Сохранить',
     add: 'Добавить',
     selectType: 'Выберите тип',
     selectTargetType: 'Выберите применение скидки',
     selectDate: 'Выберите дату',
-    selectOrderTypes: 'Выберите типы заказов',
     selectRestaurants: 'Выберите рестораны',
-    selectCategories: 'Выберите категории',
     selectProducts: 'Выберите продукты',
-    dineIn: 'В зале',
-    takeaway: 'На вынос',
-    delivery: 'Доставка',
-    banquet: 'Банкет',
     selected: 'выбрано',
     code: 'Промокод (если требуется)',
     maxUses: 'Макс. использований',
     currentUses: 'Использовано',
-    daysOfWeek: 'Дни недели',
-    monday: 'Понедельник',
-    tuesday: 'Вторник',
-    wednesday: 'Среда',
-    thursday: 'Четверг',
-    friday: 'Пятница',
-    saturday: 'Суббота',
-    sunday: 'Воскресенье',
     toggleStatus: 'Активировать/деактивировать',
     activePeriod: 'Период действия',
     activeRestaurants: 'Действует в ресторанах',
-    applicableTo: 'Применяется к',
     promoCode: 'Промокод',
     usageLimit: 'Лимит',
-    usePromoCode: 'Использовать промокод',
-    timeRestrictions: 'Ограничения по времени',
-    applyTo: 'Применить к',
-    allRestaurants: 'Все рестораны',
-    specificRestaurants: 'Конкретные рестораны',
     searchPlaceholder: 'Поиск...',
     noResults: 'Ничего не найдено',
     requiredField: 'Обязательное поле',
     restaurantsRequired: 'Необходимо выбрать хотя бы один ресторан',
     datesRequired: 'Необходимо указать даты начала и окончания',
-    invalidDateRange: 'Дата окончания должна быть после даты начала'
+    invalidDateRange: 'Дата окончания должна быть после даты начала',
+    invalidTimeRange: 'Время окончания должно быть после времени начала'
   },
   ka: {
     title: 'სახელი',
@@ -167,18 +130,14 @@ const translations: Translations = {
     value: 'ფასდაკლების ზომა',
     targetType: 'ფასდაკლების გამოყენება',
     minOrderAmount: 'მინ. შეკვეთის თანხა',
-    orderTypes: 'შეკვეთის ტიპები',
     restaurants: 'რესტორნები',
-    categories: 'კატეგორიები',
     products: 'პროდუქტები',
     status: 'სტატუსი',
     actions: 'მოქმედებები',
     fixed: 'ფიქსირებული თანხა',
     percentage: 'პროცენტი',
     all: 'მთელ მენიუზე',
-    category: 'კატეგორიების მიხედვით',
     product: 'პროდუქტების მიხედვით',
-    order_type: 'შეკვეთის ტიპის მიხედვით',
     active: 'აქტიური',
     inactive: 'არააქტიური',
     noData: 'მონაცემები არ მოიძებნა',
@@ -190,49 +149,32 @@ const translations: Translations = {
     description: 'აღწერა',
     startDate: 'დაწყების თარიღი',
     endDate: 'დასრულების თარიღი',
+    startTime: 'დაწყების დრო',
+    endTime: 'დასრულების დრო',
     cancel: 'გაუქმება',
     save: 'შენახვა',
     add: 'დამატება',
     selectType: 'აირჩიეთ ტიპი',
     selectTargetType: 'აირჩიეთ ფასდაკლების გამოყენება',
     selectDate: 'აირჩიეთ თარიღი',
-    selectOrderTypes: 'აირჩიეთ შეკვეთის ტიპები',
     selectRestaurants: 'აირჩიეთ რესტორნები',
-    selectCategories: 'აირჩიეთ კატეგორიები',
     selectProducts: 'აირჩიეთ პროდუქტები',
-    dineIn: 'დარბაზში',
-    takeaway: 'წასაღები',
-    delivery: 'მიტანა',
-    banquet: 'ბანკეტი',
     selected: 'არჩეული',
     code: 'პრომო კოდი (საჭიროების შემთხვევაში)',
     maxUses: 'მაქს. გამოყენება',
     currentUses: 'გამოყენებულია',
-    daysOfWeek: 'კვირის დღეები',
-    monday: 'ორშაბათი',
-    tuesday: 'სამშაბათი',
-    wednesday: 'ოთხშაბათი',
-    thursday: 'ხუთშაბათი',
-    friday: 'პარასკევი',
-    saturday: 'შაბათი',
-    sunday: 'კვირა',
     toggleStatus: 'გააქტიურება/გამორთვა',
     activePeriod: 'მოქმედების პერიოდი',
     activeRestaurants: 'მოქმედებს რესტორნებში',
-    applicableTo: 'გამოიყენება',
     promoCode: 'პრომო კოდი',
     usageLimit: 'ლიმიტი',
-    usePromoCode: 'პრომო კოდის გამოყენება',
-    timeRestrictions: 'დროის შეზღუდვები',
-    applyTo: 'გამოიყენება',
-    allRestaurants: 'ყველა რესტორანი',
-    specificRestaurants: 'კონკრეტული რესტორნები',
     searchPlaceholder: 'ძებნა...',
     noResults: 'ვერ მოიძებნა',
     requiredField: 'სავალდებულო ველი',
     restaurantsRequired: 'მინიმუმ ერთი რესტორანი უნდა აირჩიოთ',
     datesRequired: 'დაწყების და დასრულების თარიღები აუცილებელია',
-    invalidDateRange: 'დასრულების თარიღი უნდა იყოს დაწყების თარიღის შემდეგ'
+    invalidDateRange: 'დასრულების თარიღი უნდა იყოს დაწყების თარიღის შემდეგ',
+    invalidTimeRange: 'დასრულების დრო უნდა იყოს დაწყების დროის შემდეგ'
   }
 };
 
@@ -243,7 +185,7 @@ const DatePickerWithTime = ({
   locale,
   error
 }: {
-  date: Date | undefined;
+  date: Date | undefined | null;
   onChange: (date: Date | undefined) => void;
   placeholder: string;
   locale: Locale;
@@ -293,7 +235,7 @@ const DatePickerWithTime = ({
         <div className="absolute z-50 mt-1 bg-white border rounded-md shadow-lg p-2">
           <Calendar
             mode="single"
-            selected={date}
+            selected={date  || undefined}
             onSelect={handleDateSelect}
             initialFocus
           />
@@ -416,60 +358,26 @@ const DiscountsTable = () => {
     value: 0,
     targetType: 'ALL',
     minOrderAmount: 0,
-    orderTypes: [],
     restaurantIds: [],
-    categoryIds: [],
     productIds: [],
     isActive: true,
     code: '',
     maxUses: 0,
-    daysOfWeek: [],
-    startDate: undefined,
-    endDate: undefined,
+     startDate: null,  
+  endDate: null,   
+  startTime: 0,   
+  endTime: 0      
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const { data: discounts, error: discountsError, isLoading } = useSWR<DiscountResponseDto[]>('discounts', () => DiscountService.getAll());
   const { data: restaurants, error: restaurantsError } = useSWR<Restaurant[]>('restaurants', () => RestaurantService.getAll());
-  const { data: categories } = useSWR<Category[]>('categories', () => CategoryService.getAll());
   const { data: products } = useSWR<Product[]>('products', () => ProductService.getAll());
 
-  const orderTypeOptions: OrderTypeOption[] = [
-    { value: 'DINE_IN', label: t.dineIn },
-    { value: 'TAKEAWAY', label: t.takeaway },
-    { value: 'DELIVERY', label: t.delivery },
-    { value: 'BANQUET', label: t.banquet },
-  ];
-
-  const targetTypeOptions: TargetTypeOption[] = [
+  const targetTypeOptions = [
     { value: 'ALL', label: t.all },
-    { value: 'CATEGORY', label: t.category },
     { value: 'PRODUCT', label: t.product },
-    { value: 'ORDER_TYPE', label: t.order_type },
   ];
-
-  const daysOfWeekOptions = [
-    { value: 0, label: t.monday },
-    { value: 1, label: t.tuesday },
-    { value: 2, label: t.wednesday },
-    { value: 3, label: t.thursday },
-    { value: 4, label: t.friday },
-    { value: 5, label: t.saturday },
-    { value: 6, label: t.sunday },
-  ];
-
-  const getTranslatedDay = (day: number) => {
-    const dayTranslations: Record<string, string> = {
-      "SUNDAY": t.sunday,
-      "MONDAY": t.monday,
-      "TUESDAY": t.tuesday,
-      "WEDNESDAY": t.wednesday,
-      "THURSDAY": t.thursday,
-      "FRIDAY": t.friday,
-      "SATURDAY": t.saturday
-    };
-    return dayTranslations[day] || day;
-  };
 
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
@@ -490,20 +398,16 @@ const DiscountsTable = () => {
       errors.endDate = t.invalidDateRange;
     }
     
+    if (formData.startTime !== undefined && formData.endTime !== undefined && formData.startTime >= formData.endTime) {
+      errors.endTime = t.invalidTimeRange;
+    }
+    
     if (!formData.restaurantIds || formData.restaurantIds.length === 0) {
       errors.restaurantIds = t.restaurantsRequired;
     }
     
-    if (formData.targetType === 'CATEGORY' && (!formData.categoryIds || formData.categoryIds.length === 0)) {
-      errors.categoryIds = t.requiredField;
-    }
-    
     if (formData.targetType === 'PRODUCT' && (!formData.productIds || formData.productIds.length === 0)) {
       errors.productIds = t.requiredField;
-    }
-    
-    if (formData.targetType === 'ORDER_TYPE' && (!formData.orderTypes || formData.orderTypes.length === 0)) {
-      errors.orderTypes = t.requiredField;
     }
     
     setFormErrors(errors);
@@ -514,7 +418,7 @@ const DiscountsTable = () => {
     const { name, value } = e.target;
     setFormData((prev : any) => ({ 
       ...prev, 
-      [name]: name === 'value' || name === 'minOrderAmount' || name === 'maxUses' 
+      [name]: name === 'value' || name === 'minOrderAmount' || name === 'maxUses' || name === 'startTime' || name === 'endTime'
         ? Number(value) 
         : value 
     }));
@@ -528,9 +432,7 @@ const DiscountsTable = () => {
     if (name === 'targetType') {
       setFormData((prev : any) => ({
         ...prev,
-        categoryIds: [],
-        productIds: [],
-        orderTypes: []
+        productIds: []
       }));
     }
   };
@@ -549,71 +451,52 @@ const DiscountsTable = () => {
       value: discount.value,
       targetType: discount.targetType,
       minOrderAmount: discount.minOrderAmount || 0,
-      orderTypes: discount.orderTypes || [],
       restaurantIds: discount.restaurants?.map(r => r.restaurant.id) || [],
-      categoryIds: discount.categories?.map(c => c.category.id) || [],
       productIds: discount.products?.map(p => p.product.id) || [],
       isActive: discount.isActive,
       code: discount.code || '',
       maxUses: discount.maxUses || 0,
-      daysOfWeek: discount.daysOfWeek || [],
       startDate: discount.startDate ? new Date(discount.startDate) : undefined,
       endDate: discount.endDate ? new Date(discount.endDate) : undefined,
+      startTime: discount.startTime,
+      endTime: discount.endTime
     });
     setFormErrors({});
     setIsDialogOpen(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent): Promise<void> => {
+ const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
-  
-  if (!validateForm()) return;
-  
-  try {
-    const requestData = {
-      title: formData.title as string,
-      description: formData.description,
-      type: formData.type || "PERCENTAGE",
-      value: formData.value as number,
-      targetType: formData.targetType || "ALL",
-      minOrderAmount: formData.minOrderAmount,
-      orderTypes: formData.orderTypes,
-      isActive: formData.isActive,
-      code: formData.code,
-      maxUses: formData.maxUses,
-      daysOfWeek: formData.daysOfWeek,
-      startDate: formData.startDate,
-      endDate: formData.endDate,
-      
-      restaurants: formData.restaurantIds && formData.restaurantIds.map(id => ({ restaurantId: id })),
-      
-      ...(formData.targetType === 'CATEGORY' && {
-        categories: formData.categoryIds && formData.categoryIds.map(id => ({ categoryId: id }))
-      }),
-      
-      ...(formData.targetType === 'PRODUCT' && {
-        products: formData.productIds && formData.productIds.map(id => ({ productId: id }))
-      })
-    };
 
+  // Проверяем, что restaurantIds и productIds — это массивы
+  const restaurantIds = Array.isArray(formData.restaurantIds) 
+    ? formData.restaurantIds.filter(Boolean) // Удаляем пустые значения
+    : [];
+
+  const productIds = formData.targetType === 'PRODUCT' && Array.isArray(formData.productIds)
+    ? formData.productIds.filter(Boolean)
+    : undefined;
+
+  const requestData: CreateDiscountDto = {
+    ...formData,
+    restaurantIds: restaurantIds.length > 0 ? restaurantIds : undefined, // Если пусто — отправляем undefined
+    productIds,
+    startDate: formData.startDate, // Преобразуем Date в строку
+    endDate: formData.endDate,
+  };
+
+  try {
     if (editingDiscount) {
       await DiscountService.update(editingDiscount.id, requestData);
-      toast.success(language === 'ru' ? 'Скидка успешно обновлена' : 'ფასდაკლება წარმატებით განახლდა');
     } else {
       await DiscountService.create(requestData);
-      toast.success(language === 'ru' ? 'Скидка успешно создана' : 'ფასდაკლება წარმატებით შეიქმნა');
     }
-    
-    mutate('discounts');
-    setIsDialogOpen(false);
-    setEditingDiscount(null);
-    resetForm();
+    // ... остальная логика
   } catch (error) {
-    console.error('Ошибка при сохранении скидки:', error);
-    toast.error(language === 'ru' ? 'Ошибка при сохранении скидки' : 'ფასდაკლების შენახვის შეცდომა');
+    console.error("Ошибка при сохранении:", error);
+    toast.error("Не удалось сохранить скидку");
   }
 };
-
   const resetForm = () => {
     setFormData({
       title: '',
@@ -622,16 +505,15 @@ const DiscountsTable = () => {
       value: 0,
       targetType: 'ALL',
       minOrderAmount: 0,
-      orderTypes: [],
       restaurantIds: [],
-      categoryIds: [],
       productIds: [],
       isActive: true,
       code: '',
       maxUses: 0,
-      daysOfWeek: [],
       startDate: undefined,
       endDate: undefined,
+      startTime: undefined,
+      endTime: undefined
     });
     setFormErrors({});
   };
@@ -769,23 +651,6 @@ const DiscountsTable = () => {
                 />
               </div>
 
-              {formData.targetType === 'CATEGORY' && (
-                <div>
-                  <Label className="mb-2">{t.categories}</Label>
-                  <SearchableSelect
-                    options={categories?.map(c => ({ id: c.id, label: c.title })) || []}
-                    value={formData.categoryIds || []}
-                    onChange={(ids) => {
-                      handleSelectChange('categoryIds', ids);
-                    }}
-                    placeholder={t.selectCategories}
-                    searchPlaceholder={t.searchPlaceholder}
-                    emptyText={t.noResults}
-                    error={formErrors.categoryIds}
-                  />
-                </div>
-              )}
-
               {formData.targetType === 'PRODUCT' && (
                 <div>
                   <Label className="mb-2">{t.products}</Label>
@@ -803,28 +668,8 @@ const DiscountsTable = () => {
                 </div>
               )}
 
-              {formData.targetType === 'ORDER_TYPE' && (
-                <div>
-                  <Label className="mb-2">{t.orderTypes}</Label>
-                  <SearchableSelect
-                    options={orderTypeOptions.map(ot => ({ 
-                      id: ot.value, 
-                      label: ot.label 
-                    }))}
-                    value={formData.orderTypes || []}
-                    onChange={(values) => {
-                      handleSelectChange('orderTypes', values);
-                    }}
-                    placeholder={t.selectOrderTypes}
-                    searchPlaceholder={t.searchPlaceholder}
-                    emptyText={t.noResults}
-                    error={formErrors.orderTypes}
-                  />
-                </div>
-              )}
-
               <div className="space-y-4">
-                <Label>{t.timeRestrictions}</Label>
+                <Label>{t.activePeriod}</Label>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="mb-2">{t.startDate}</Label>
@@ -848,21 +693,39 @@ const DiscountsTable = () => {
                   </div>
                 </div>
 
-                <div>
-                  <Label className="mb-2">{t.daysOfWeek}</Label>
-                  <SearchableSelect
-                    options={daysOfWeekOptions.map(d => ({ 
-                      id: d.value.toString(), 
-                      label: d.label 
-                    }))}
-                    value={formData.daysOfWeek?.map(d => d.toString()) || []}
-                    onChange={(values) => {
-                      handleSelectChange('daysOfWeek', values.map(v => parseInt(v)));
-                    }}
-                    placeholder={t.daysOfWeek}
-                    searchPlaceholder={t.searchPlaceholder}
-                    emptyText={t.noResults}
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="mb-2" htmlFor="startTime">{t.startTime}</Label>
+                    <Input
+                      id="startTime"
+                      name="startTime"
+                      type="number"
+                      min="0"
+                      max="23"
+                      value={formData.startTime}
+                      onChange={handleInputChange}
+                      placeholder="0-23"
+                    />
+                    {formErrors.startTime && (
+                      <p className="mt-1 text-sm text-red-500">{formErrors.startTime}</p>
+                    )}
+                  </div>
+                  <div>
+                    <Label className="mb-2" htmlFor="endTime">{t.endTime}</Label>
+                    <Input
+                      id="endTime"
+                      name="endTime"
+                      type="number"
+                      min="0"
+                      max="23"
+                      value={formData.endTime}
+                      onChange={handleInputChange}
+                      placeholder="0-23"
+                    />
+                    {formErrors.endTime && (
+                      <p className="mt-1 text-sm text-red-500">{formErrors.endTime}</p>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -994,23 +857,11 @@ const DiscountsTable = () => {
                     <div className="flex flex-col gap-1">
                       <Badge variant="outline">
                         {discount.targetType === 'ALL' && t.all}
-                        {discount.targetType === 'CATEGORY' && t.category}
                         {discount.targetType === 'PRODUCT' && t.product}
-                        {discount.targetType === 'ORDER_TYPE' && t.order_type}
                       </Badge>
-                      {discount.targetType === 'CATEGORY' && discount.categories?.length && (
-                        <div className="text-xs text-muted-foreground">
-                          {discount.categories.length} {t.categories}
-                        </div>
-                      )}
                       {discount.targetType === 'PRODUCT' && discount.products?.length && (
                         <div className="text-xs text-muted-foreground">
                           {discount.products.length} {t.products}
-                        </div>
-                      )}
-                      {discount.targetType === 'ORDER_TYPE' && discount.orderTypes?.length && (
-                        <div className="text-xs text-muted-foreground">
-                          {discount.orderTypes.length} {t.orderTypes}
                         </div>
                       )}
                     </div>
@@ -1026,13 +877,9 @@ const DiscountsTable = () => {
                           ? format(new Date(discount.endDate), 'PP', { locale }) 
                           : '-'}
                       </div>
-                      {discount.daysOfWeek?.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {discount.daysOfWeek.map(day => (
-                            <Badge key={day} variant="secondary" className="text-xs">
-                              {getTranslatedDay(day)}
-                            </Badge>
-                          ))}
+                      {discount.startTime !== undefined && discount.endTime !== undefined && (
+                        <div className="text-xs text-muted-foreground">
+                          {discount.startTime}:00 - {discount.endTime}:00
                         </div>
                       )}
                     </div>
