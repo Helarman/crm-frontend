@@ -113,7 +113,7 @@ export enum EnumOrderType {
 export enum EnumPaymentMethod {
   CASH = 'CASH',
   CARD = 'CARD',
-  ONLINE = 'ONLINE'
+  //ONLINE = 'ONLINE'
 }
 
 export interface UpdateOrderItemStatusDto {

@@ -2043,28 +2043,32 @@ const handleApplyCustomer = async () => {
                         </div>
                       </div>
                     </Card>
-                    <div className="flex gap-2 pt-4">
-                        <div className='flex flex-col w-full space-y-4'>
-                         {order.status != 'CANCELLED' && (
-                          <Button
-                            disabled={isUpdating}
-                            onClick={handlePrecheck}
-                            variant={order.attentionFlags.isPrecheck ? "default" : "outline"}
-                            className={`gap-2 w-full text-lg h-14 ${order.attentionFlags.isPrecheck ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 hover:bg-green-100 dark:hover:bg-green-900/30' : ''}`}
-                          >
-                            {isUpdating ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : order.attentionFlags.isPrecheck ? (
-                              <CheckCircle className="h-4 w-4" />
-                            ) : (
-                              <Check className="h-4 w-4" />
-                            )}
-                            {order.attentionFlags.isPrecheck ? t.precheckFormed : t.formPrecheck}
-                          </Button>
+                    <div className="flex flex-col gap-4 pt-4">
+                      {order.status !== 'CANCELLED' && (
+                        <Button
+                          disabled={isUpdating}
+                          onClick={handlePrecheck}
+                          variant={order.attentionFlags.isPrecheck ? "default" : "outline"}
+                          className={`gap-2 w-full text-lg h-14 ${
+                            order.attentionFlags.isPrecheck 
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 hover:bg-green-100 dark:hover:bg-green-900/30' 
+                              : ''
+                          }`}
+                        >
+                          {isUpdating ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : order.attentionFlags.isPrecheck ? (
+                            <CheckCircle className="h-4 w-4" />
+                          ) : (
+                            <Check className="h-4 w-4" />
                           )}
-                          {order.status === 'CREATED' && (
-                           <>
-                            <Button
+                          {order.attentionFlags.isPrecheck ? t.precheckFormed : t.formPrecheck}
+                        </Button>
+                      )}
+
+                      {order.status === 'CREATED' && (
+                        <>
+                          <Button
                             disabled={isUpdating}
                             onClick={handleConfirmOrder}
                             variant="secondary"
@@ -2077,6 +2081,7 @@ const handleApplyCustomer = async () => {
                             )}
                             {t.confirm}
                           </Button>
+                          
                           <Button
                             disabled={isUpdating}
                             onClick={handleCancelOrder}
@@ -2090,27 +2095,24 @@ const handleApplyCustomer = async () => {
                             )}
                             {t.cancel}
                           </Button>
-                          </>
-                      
-                          )}
-                          </div>
+                        </>
+                      )}
 
-                   {(order.status === 'READY' || order.status === 'DELIVERING') && (
-                      <Button
-                        size="sm"
-                        disabled={isUpdating}
-                        onClick={handleCompleteOrder}
-                        variant="secondary"
-                        className="bg-emerald-500 hover:bg-emerald-400 text-white gap-2 w-full text-lg h-14"
-                      >
-                        {isUpdating ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <CheckCircle className="h-4 w-4" />
-                        )}
-                        {t.complete}
-                      </Button>
-                    )}
+                      {(order.status === 'READY' || order.status === 'DELIVERING') && (
+                        <Button
+                          disabled={isUpdating}
+                          onClick={handleCompleteOrder}
+                          variant="secondary"
+                          className="bg-emerald-500 hover:bg-emerald-400 text-white gap-2 w-full text-lg h-14"
+                        >
+                          {isUpdating ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <CheckCircle className="h-4 w-4" />
+                          )}
+                          {t.complete}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>
