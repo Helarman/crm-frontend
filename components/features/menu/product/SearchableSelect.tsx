@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 interface SearchableSelectProps {
   options: { id: string; label: string }[];
   value: string[];
-  onChange: (value: string[]) => void;
+  onChange: (value: string[]) => void ;
   placeholder: string;
   searchPlaceholder: string;
   emptyText: string;
