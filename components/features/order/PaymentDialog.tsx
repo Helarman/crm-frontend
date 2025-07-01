@@ -15,15 +15,24 @@ import { ka } from 'date-fns/locale/ka'
 import { Button } from '@/components/ui/button'
 import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
-type PaymentStatus =  'PENDING' |  'PAID' |  'FAILED' | 'REFUNDED';
+type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
 
 interface PaymentState {
   loading: boolean
   updating: boolean
+  updatingMethod: boolean
   data: Payment | null
   received: number
   change: number
+  newMethod: PaymentMethod | null
 }
 
 interface PaymentDialogProps {
@@ -45,9 +54,11 @@ export function PaymentDialog({
   const [paymentState, setPaymentState] = useState<PaymentState>({
     loading: false,
     updating: false,
+    updatingMethod: false,
     data: null,
     received: 0,
-    change: 0
+    change: 0,
+    newMethod: null
   })
 
   const loadPayment = useCallback(async () => {
@@ -59,9 +70,11 @@ export function PaymentDialog({
       setPaymentState(prev => ({
         ...prev,
         data: paymentData,
+        newMethod: paymentData.method,
         received: 0,
         loading: false,
-        updating: false
+        updating: false,
+        updatingMethod: false
       }))
     } catch (error) {
       console.error('Failed to fetch payment:', error)
@@ -78,9 +91,11 @@ export function PaymentDialog({
       setPaymentState({
         loading: false,
         updating: false,
+        updatingMethod: false,
         data: null,
         received: 0,
-        change: 0
+        change: 0,
+        newMethod: null
       })
     }
   }, [open, loadPayment])
@@ -124,6 +139,35 @@ export function PaymentDialog({
     }
   }
 
+  const handlePaymentMethodUpdate = async () => {
+  if (!paymentState.data || !paymentState.newMethod || paymentState.newMethod === paymentState.data.method) return
+
+  try {
+    setPaymentState(prev => ({ ...prev, updatingMethod: true }))
+    const updatedPayment = await PaymentService.updateMethod(
+      paymentState.data.id, 
+      paymentState.newMethod
+    )
+    
+    setPaymentState(prev => ({
+      ...prev,
+      data: updatedPayment,
+      newMethod: updatedPayment.method, // Sync the newMethod with the updated value
+      updatingMethod: false
+    }))
+
+    toast.success(language === 'ka' ? 'გადახდის მეთოდი წარმატებით განახლდა' : 'Метод оплаты успешно обновлен')
+  } catch (error) {
+    console.error('Failed to update payment method:', error)
+    toast.error(language === 'ka' ? 'გადახდის მეთოდის განახლება ვერ მოხერხდა' : 'Не удалось обновить метод оплаты')
+    setPaymentState(prev => ({ 
+      ...prev, 
+      updatingMethod: false,
+      newMethod: prev.data?.method || null // Reset to original method on error
+    }))
+  }
+}
+
   const t = (key: string) => {
     const translations: Record<string, { ru: string; ka: string }> = {
       PENDING: { ru: 'В обработке', ka: 'მუშავდება' },
@@ -140,7 +184,9 @@ export function PaymentDialog({
       mark_failed: { ru: 'Отметить ошибку', ka: 'შეცდომის მონიშვნა' },
       payment_details: { ru: 'Детали платежа', ka: 'გადახდის დეტალები' },
       payment_not_found: { ru: 'Платеж не найден', ka: 'გადახდა ვერ მოიძებნა' },
-      method: {ru: 'Способ оплаты' , ka: 'method'}
+      method: { ru: 'Способ оплаты', ka: 'ოპლიკაციის მეთოდი' },
+      update_method: { ru: 'Обновить метод', ka: 'მეთოდის განახლება' },
+      select_method: { ru: 'Выберите метод оплаты', ka: 'აირჩიეთ გადახდის მეთოდი' }
     }
     return translations[key]?.[language] || key
   }
@@ -194,7 +240,41 @@ export function PaymentDialog({
 
               <div className="space-y-2">
                 <Label>{t('method')}</Label>
-                <Input value={t(paymentState.data.method)} readOnly />
+                <div className="flex gap-2">
+                  <Select
+                    value={paymentState.newMethod || paymentState.data.method}
+                    onValueChange={(value: PaymentMethod) => 
+                      setPaymentState(prev => ({ ...prev, newMethod: value }))
+                    }
+                    disabled={paymentState.updatingMethod}
+                  >
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder={t('select_method')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.values(PaymentMethod).map((method) => (
+                        <SelectItem key={method} value={method}>
+                          {t(method)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    onClick={handlePaymentMethodUpdate}
+                    disabled={
+                      paymentState.updatingMethod || 
+                      !paymentState.newMethod || 
+                      paymentState.newMethod === paymentState.data.method
+                    }
+                    className="w-32"
+                  >
+                    {paymentState.updatingMethod ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      t('update_method')
+                    )}
+                  </Button>
+                </div>
               </div>
 
               {paymentState.data.method === 'CASH' && paymentState.data.status === 'PENDING' && (

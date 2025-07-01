@@ -208,7 +208,7 @@ export const OrderInfoStep = ({
           language={language as any}
         />
       </div>
-
+      {order.type === 'DELIVERY' &&
       <div className="space-y-3">
         <Label className="flex items-center gap-2">
           <Banknote className="h-4 w-4" />
@@ -224,7 +224,7 @@ export const OrderInfoStep = ({
           language={language as any}
         />
       </div>
-
+      }
       {user?.restaurant && user.restaurant.length > 1 && (
         <div className="mb-6 space-y-2">
           <Label className="flex items-center gap-2">
@@ -249,63 +249,6 @@ export const OrderInfoStep = ({
         </div>
       )}
 
-      <div className="space-y-2">
-        <Label className="flex items-center gap-2">
-          <Phone className="h-5 w-5" />
-          {language === 'ka' ? 'ტელეფონის ნომერი' : 'Номер телефона'}
-        </Label>
-        <div className="flex gap-2">
-          <Input
-            placeholder="+7 (___) ___-__-__"
-            value={order.customerPhone}
-            onChange={(e) => setOrder({ 
-              ...order, 
-              customerPhone: e.target.value, 
-              customerId: null 
-            })}
-            maxLength={18}
-          />
-          <Button 
-            onClick={async () => {
-              if (!order.customerPhone) {
-                toast.error(language === 'ka' 
-                  ? 'შეიყვანეთ ტელეფონის ნომერი' 
-                  : 'Введите номер телефона')
-                return
-              }
-              try {
-                const phoneNumber = order.customerPhone.replace(/\D/g, '')
-                const customer = await CustomerService.getCustomerByPhone(phoneNumber)
-                setOrder({
-                  ...order,
-                  customerId: customer.id,
-                })
-                toast.success(language === 'ka' 
-                  ? 'კლიენტი წარმატებით მოიძებნა' 
-                  : 'Клиент успешно найден')
-              } catch (error) {
-                console.error('Customer search error:', error)
-                setOrder({ ...order, customerId: null })
-                toast.error(language === 'ka' 
-                  ? 'კლიენტი არ მოიძებნა' 
-                  : 'Клиент не найден')
-              }
-            }}
-            variant="secondary"
-          >
-            {language === 'ka' ? 'ძებნა' : 'Найти'}
-          </Button>
-        </div>
-        {order.customerId ? (
-          <p className="text-sm text-green-600">
-            {language === 'ka' ? 'კლიენტი ნაპოვნია' : 'Клиент найден'}
-          </p>
-        ) : order.customerPhone ? (
-          <p className="text-sm text-yellow-600">
-            {language === 'ka' ? 'კლიენტი არ არის ნაპოვნი' : 'Клиент не найден'}
-          </p>
-        ) : null}
-      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-3">

@@ -1,4 +1,3 @@
-// app/(dashboard)/warehouse/page.tsx
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -61,6 +60,18 @@ export default function WarehousePage() {
   const [currentItem, setCurrentItem] = useState<any>(null);
   const quantityRef = useRef<HTMLInputElement>(null);
   const reasonRef = useRef<HTMLInputElement>(null);
+
+  // Для диалога редактирования
+  const [editItemDialogOpen, setEditItemDialogOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<any>(null);
+  const [editItemData, setEditItemData] = useState({
+    name: '',
+    unit: 'kg',
+    storageLocationId: 'none',
+  });
+  const [editItemErrors, setEditItemErrors] = useState({
+    name: '',
+  });
 
   useEffect(() => {
     loadWarehouseData();
@@ -125,6 +136,19 @@ export default function WarehousePage() {
     return isValid;
   };
 
+  const validateEditItem = () => {
+    let isValid = true;
+    const newErrors = { name: '' };
+
+    if (!editItemData.name.trim()) {
+      newErrors.name = t('nameRequired');
+      isValid = false;
+    }
+
+    setEditItemErrors(newErrors);
+    return isValid;
+  };
+
   const handleAddItem = async () => {
     if (!validateItem()) return;
 
@@ -186,6 +210,43 @@ export default function WarehousePage() {
     setCurrentItem(item);
     setTransactionDialogOpen(true);
     setTransactionType('receipt');
+  };
+
+  const handleOpenEditDialog = (item: any) => {
+    setEditingItem(item);
+    setEditItemData({
+      name: item.name,
+      unit: item.unit,
+      storageLocationId: item.storageLocationId || 'none',
+    });
+    setEditItemDialogOpen(true);
+  };
+
+  const handleSaveItemChanges = async () => {
+    if (!validateEditItem() || !editingItem) return;
+
+    try {
+      const updatedItem = {
+        name: editItemData.name,
+        unit: editItemData.unit,
+        storageLocationId: editItemData.storageLocationId === 'none' ? null : editItemData.storageLocationId
+      };
+      
+      await WarehouseService.updateInventoryItem(editingItem.id, updatedItem);
+      await loadWarehouseData();
+      
+      setEditItemDialogOpen(false);
+      toast.success(t('itemUpdated'));
+    } catch (error: any) {
+      console.error('Failed to update item:', error);
+      
+      let errorMessage = t('updateItemError');
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      
+      toast.error(errorMessage);
+    }
   };
 
   const handleSubmitTransaction = async () => {
@@ -442,9 +503,16 @@ export default function WarehousePage() {
                           <Button 
                             variant="ghost" 
                             size="sm"
-                            onClick={() => handleOpenTransactionDialog(item)}
+                            onClick={() => handleOpenEditDialog(item)}
                           >
                             {t('edit')}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenTransactionDialog(item)}
+                          >
+                            {t('adjustQuantity')}
                           </Button>
                           <Button
                             variant="ghost"
@@ -556,6 +624,64 @@ export default function WarehousePage() {
             <Button onClick={handleSubmitTransaction}>
               {transactionType === 'receipt' ? t('confirmReceipt') : t('confirmWriteOff')}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editItemDialogOpen} onOpenChange={setEditItemDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('editItem')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className='mb-1'>{t('name')}</Label>
+              <Input
+                value={editItemData.name}
+                onChange={(e) => setEditItemData({ ...editItemData, name: e.target.value })}
+              />
+              {editItemErrors.name && (
+                <p className="text-sm text-red-500 mt-1">{editItemErrors.name}</p>
+              )}
+            </div>
+            <div>
+              <Label className='mb-1'>{t('unit')}</Label>
+              <Select
+                value={editItemData.unit}
+                onValueChange={(value) => setEditItemData({ ...editItemData, unit: value })}
+              >
+                <SelectTrigger className='w-full'>
+                  <SelectValue placeholder={t('unit')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="kg">kg</SelectItem>
+                  <SelectItem value="g">g</SelectItem>
+                  <SelectItem value="l">l</SelectItem>
+                  <SelectItem value="ml">ml</SelectItem>
+                  <SelectItem value="pcs">pcs</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className='mb-1'>{t('location')}</Label>
+              <Select
+                value={editItemData.storageLocationId}
+                onValueChange={(value) => setEditItemData({ ...editItemData, storageLocationId: value })}
+              >
+                <SelectTrigger className='w-full'>
+                  <SelectValue placeholder={t('filterByLocation')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t('noLocation')}</SelectItem>
+                  {locations.map((location) => (
+                    <SelectItem key={location.id} value={location.id}>
+                      {location.name} ({location.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={handleSaveItemChanges}>{t('saveChanges')}</Button>
           </div>
         </DialogContent>
       </Dialog>
