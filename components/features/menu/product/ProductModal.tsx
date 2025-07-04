@@ -363,9 +363,6 @@ export const ProductModal = ({
       }
     }
     
-    if (currentStep === 'images' && !formData.images.some(img => img.trim())) {
-      errors.push(language === 'ru' ? 'Добавьте хотя бы одно изображение' : 'დაამატეთ ერთი სურათი მაინც');
-    }
     
     if (currentStep === 'prices' && selectedRestaurants.length === 0) {
       errors.push(language === 'ru' ? 'Выберите хотя бы один ресторан' : 'აირჩიეთ ერთი რესტორნი მაინც');

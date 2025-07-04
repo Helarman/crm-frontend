@@ -473,7 +473,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
 
       setWriteOffItems(validIngredients)
       setCurrentItemId(itemId)
-      setWriteOffDialogOpen(true)
+      handleConfirmWriteOff()
     } catch (error) {
       console.error('Error preparing write-off:', error)
       toast.error(t.writeOffError)
@@ -730,113 +730,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
                       </div>
                     )}
                   </div>
-                ) : (
-                  // Default variant - show detailed order info
-                  <div className="space-y-4">
-                    {/* Order items */}
-                    <div className="space-y-2">
-                      {order.items.filter(i => !i.isRefund).map(item => (
-                        <div key={item.id} className="flex justify-between items-start p-2 bg-muted/10 rounded">
-                          <div>
-                            <div className="font-medium">
-                              {item.quantity} × {item.product.title}
-                            </div>
-                            {item.additives.length > 0 && (
-                              <div className="text-xs text-muted-foreground">
-                                {t.additives}: {item.additives.map(a => a.title).join(', ')}
-                              </div>
-                            )}
-                            {item.comment && (
-                              <div className="text-xs text-muted-foreground">
-                                {t.comment}: {item.comment}
-                              </div>
-                            )}
-                          </div>
-                          <div className="font-medium">
-                            {((item.product.price + item.additives.reduce((sum, a) => sum + a.price, 0)) * item.quantity).toFixed(2)} ₽
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Refunded items */}
-                    {order.items.some(i => i.isRefund) && (
-                      <div className="border-t pt-2">
-                        <div className="text-sm font-medium text-red-500 dark:text-red-400 mb-1">
-                          {t.refundedItems}
-                        </div>
-                        <div className="space-y-1">
-                          {order.items.filter(i => i.isRefund).map(item => (
-                            <div key={item.id} className="flex justify-between items-start p-2 bg-red-50 dark:bg-red-900/10 rounded">
-                              <div>
-                                <div className="font-medium line-through">
-                                  {item.quantity} × {item.product.title}
-                                </div>
-                                {item.additives.length > 0 && (
-                                  <div className="text-xs text-muted-foreground">
-                                    {t.additives}: {item.additives.map(a => a.title).join(', ')}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="font-medium line-through">
-                                -{((item.product.price + item.additives.reduce((sum, a) => sum + a.price, 0)) * item.quantity).toFixed(2)} ₽
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Order summary */}
-                    <div className="border-t pt-2 space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-sm">{t.itemsTotal}:</span>
-                        <span className="text-sm font-medium">{calculateItemsTotal().toFixed(2)} ₽</span>
-                      </div>
-
-                      {order.surcharges && order.surcharges.length > 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-sm">{t.surcharges}:</span>
-                          <span className="text-sm font-medium text-green-600 dark:text-green-400">
-                            +{calculateSurchargesTotal().toFixed(2)} ₽
-                          </span>
-                        </div>
-                      )}
-                      {(order.discountAmount !== undefined && order.discountAmount !== null && order.discountAmount > 0) && (
-                        <div className="flex justify-between">
-                          <span className="text-sm flex items-center gap-1">
-                            <Tag className="h-3 w-3" />
-                            {t.discount}:
-                          </span>
-                          <span className={cn(
-                            "text-sm font-medium",
-                            order.discountAmount > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
-                          )}>
-                            {order.discountAmount > 0 ? `-${order.discountAmount.toFixed(2)}` : '0.00'} ₽
-                          </span>
-                        </div>
-                      )}
-
-                      {order.bonusPointsUsed != 0 && (
-                        <div className="flex justify-between">
-                          <span className="text-sm flex items-center gap-1">
-                            <Gift className="h-3 w-3" />
-                            {t.bonusPoints}:
-                          </span>
-                          <span className="text-sm font-medium text-red-600 dark:text-red-400">
-                            -{order.bonusPointsUsed.toFixed(2)} ₽
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="flex justify-between border-t pt-2">
-                        <span className="font-medium">{t.total}:</span>
-                        <span className="font-bold">
-                          {calculateFinalTotal().toFixed(2)} ₽
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+                ) : ( <></>
                 )
               )}
             </div>
