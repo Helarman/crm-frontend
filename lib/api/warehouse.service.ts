@@ -436,6 +436,7 @@ interface PremixDetails extends Premix {
 }
 
 interface PremixIngredient {
+  inventoryItemId: string;
   inventoryItem: {
     id: string;
     name: string;

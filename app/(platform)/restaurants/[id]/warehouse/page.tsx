@@ -105,6 +105,19 @@ export default function WarehousePage() {
   });
   const [prepareQuantity, setPrepareQuantity] = useState(1);
   const [prepareDialogOpen, setPrepareDialogOpen] = useState(false);
+  const [editPremixDialogOpen, setEditPremixDialogOpen] = useState(false);
+  const [editingPremix, setEditingPremix] = useState<any>(null);
+  const [editPremixData, setEditPremixData] = useState({
+    name: '',
+    description: '',
+    unit: 'kg',
+    yield: 1,
+  });
+  const [editPremixErrors, setEditPremixErrors] = useState({
+    name: '',
+    unit: '',
+  });
+
 
   useEffect(() => {
     loadWarehouseData();
@@ -118,9 +131,11 @@ export default function WarehousePage() {
 
   useEffect(() => {
     if (locationFilter === 'all') {
-      setFilteredItems(items);
+      setFilteredItems(items.filter(item => item.premixId === null));
     } else {
-      setFilteredItems(items.filter(item => item.storageLocationId === locationFilter));
+      setFilteredItems(items.filter(item =>
+        item.storageLocationId === locationFilter && item.premixId === null
+      ));
     }
   }, [items, locationFilter]);
 
@@ -500,6 +515,99 @@ export default function WarehousePage() {
     }
   };
 
+  const handleOpenEditPremixDialog = (premix: any) => {
+    setEditingPremix(premix);
+    setEditPremixData({
+      name: premix.name,
+      description: premix.description || '',
+      unit: premix.unit,
+      yield: premix.yield,
+    });
+    setPremixIngredients(premix.ingredients || []);
+    setEditPremixDialogOpen(true);
+  };
+
+  const validateEditPremix = () => {
+    let isValid = true;
+    const newErrors = { name: '', unit: '' };
+
+    if (!editPremixData.name.trim()) {
+      newErrors.name = t('nameRequired');
+      isValid = false;
+    }
+
+    if (!editPremixData.unit) {
+      newErrors.unit = t('unitRequired');
+      isValid = false;
+    }
+
+    setEditPremixErrors(newErrors);
+    return isValid;
+  };
+
+  const handleSavePremixChanges = async () => {
+    if (!validateEditPremix() || !editingPremix) return;
+
+    try {
+      // Подготовка данных для обновления
+      const updateData = {
+        ...editPremixData,
+        ingredients: premixIngredients.map(ing => ({
+          inventoryItemId: ing.inventoryItem?.id || ing.inventoryItemId,
+          quantity: ing.quantity
+        })),
+      };
+
+      // Обновляем основной данные премикса
+      await WarehouseService.updatePremix(editingPremix.id, {
+        name: updateData.name,
+        description: updateData.description,
+        unit: updateData.unit,
+        yield: updateData.yield,
+      });
+
+      // Обновляем ингредиенты
+      // Сначала получаем текущие ингредиенты
+      const currentDetails = await WarehouseService.getPremixDetails(editingPremix.id);
+      const currentIngredients = currentDetails.ingredients || [];
+
+      // Удаляем отсутствующие ингредиенты
+      for (const currentIng of currentIngredients) {
+        if (!premixIngredients.some(ing =>
+          (ing.inventoryItem?.id || ing.inventoryItemId) === currentIng.inventoryItemId
+        )) {
+          await WarehouseService.removePremixIngredient(editingPremix.id, currentIng.inventoryItemId);
+        }
+      }
+
+      // Добавляем/обновляем новые ингредиенты
+      for (const ing of premixIngredients) {
+        const ingredientId = ing.inventoryItem?.id || ing.inventoryItemId;
+        const existingIng = currentIngredients.find(i => i.inventoryItemId === ingredientId);
+
+        if (existingIng) {
+          // Обновляем существующий ингредиент
+          await WarehouseService.updatePremixIngredient(editingPremix.id, ingredientId, {
+            quantity: ing.quantity
+          });
+        } else {
+          // Добавляем новый ингредиент
+          await WarehouseService.addPremixIngredient(editingPremix.id, {
+            inventoryItemId: ingredientId,
+            quantity: ing.quantity
+          });
+        }
+      }
+
+      await loadWarehouseData();
+      setEditPremixDialogOpen(false);
+      toast.success(t('premixUpdated'));
+    } catch (error: any) {
+      console.error('Failed to update premix:', error);
+      toast.error(error.response?.data?.message || t('updatePremixError'));
+    }
+  };
+
   const handleDateRangeChange = (range: DateRange | undefined) => {
     setDateRange(range);
     if (range?.from && range?.to) {
@@ -695,7 +803,8 @@ export default function WarehousePage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredItems.map((item) => (
+                  {filteredItems.map((item) =>
+                  (
                     <TableRow key={item.id}>
                       <TableCell>{item.name}</TableCell>
                       <TableCell>
@@ -735,7 +844,8 @@ export default function WarehousePage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                  )
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -852,7 +962,7 @@ export default function WarehousePage() {
                                 <TableBody>
                                   {premixIngredients.map((ingredient, index) => (
                                     <TableRow key={index}>
-                                      <TableCell>{ingredient.inventoryItem.name}</TableCell>
+                                      <TableCell>{ingredient.inventoryItem.name} </TableCell>
                                       <TableCell>{ingredient.quantity} {ingredient.inventoryItem.unit}</TableCell>
                                       <TableCell>
                                         <Button
@@ -911,6 +1021,7 @@ export default function WarehousePage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t('name')}</TableHead>
+                    <TableHead>{t('quantity')}</TableHead>
                     <TableHead>{t('unit')}</TableHead>
                     <TableHead>{t('yield')}</TableHead>
                     <TableHead className="text-right">{t('actions')}</TableHead>
@@ -920,10 +1031,11 @@ export default function WarehousePage() {
                   {premixes.map((premix) => (
                     <TableRow key={premix.id}>
                       <TableCell>{premix.name}</TableCell>
-                      <TableCell>{premix.unit}</TableCell>
-                      <TableCell>{premix.yield}
+                      <TableCell>
+                        {premix.inventoryItem?.quantity || 0}
                       </TableCell>
-
+                      <TableCell>{premix.unit}</TableCell>
+                      <TableCell>{premix.yield}</TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
                           <Button
@@ -936,6 +1048,24 @@ export default function WarehousePage() {
                             }}
                           >
                             {t('prepare')}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenEditPremixDialog(premix)}
+                          >
+                            {t('edit')}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              if (premix.inventoryItem?.id) {
+                                loadItemTransactions(premix.inventoryItem.id);
+                              }
+                            }}
+                          >
+                            {t('transactions')}
                           </Button>
                         </div>
                       </TableCell>
@@ -1113,6 +1243,131 @@ export default function WarehousePage() {
               </Select>
             </div>
             <Button onClick={handleSaveItemChanges}>{t('saveChanges')}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editPremixDialogOpen} onOpenChange={setEditPremixDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{t('editPremix')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className='mb-1'>{t('name')}</Label>
+              <Input
+                value={editPremixData.name}
+                onChange={(e) => setEditPremixData({ ...editPremixData, name: e.target.value })}
+              />
+              {editPremixErrors.name && (
+                <p className="text-sm text-red-500 mt-1">{editPremixErrors.name}</p>
+              )}
+            </div>
+            <div>
+              <Label className='mb-1'>{t('description')}</Label>
+              <Input
+                value={editPremixData.description}
+                onChange={(e) => setEditPremixData({ ...editPremixData, description: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className='mb-1'>{t('unit')}</Label>
+                <Select
+                  value={editPremixData.unit}
+                  onValueChange={(value) => setEditPremixData({ ...editPremixData, unit: value })}
+                >
+                  <SelectTrigger className='w-full'>
+                    <SelectValue placeholder={t('unit')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="kg">kg</SelectItem>
+                    <SelectItem value="g">g</SelectItem>
+                    <SelectItem value="l">l</SelectItem>
+                    <SelectItem value="ml">ml</SelectItem>
+                    <SelectItem value="pcs">pcs</SelectItem>
+                  </SelectContent>
+                </Select>
+                {editPremixErrors.unit && (
+                  <p className="text-sm text-red-500 mt-1">{editPremixErrors.unit}</p>
+                )}
+              </div>
+              <div>
+                <Label className='mb-1'>{t('yield')}</Label>
+                <Input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  value={editPremixData.yield}
+                  onChange={(e) => setEditPremixData({ ...editPremixData, yield: Number(e.target.value) })}
+                />
+              </div>
+            </div>
+            <div>
+              <Label className='mb-1'>{t('ingredients')}</Label>
+              <div className="space-y-2">
+                {premixIngredients.length > 0 && (
+                  <div className="border rounded-md p-2">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{t('name')}</TableHead>
+                          <TableHead>{t('quantity')}</TableHead>
+                          <TableHead>{t('actions')}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {premixIngredients.map((ingredient, index) => (
+                          <TableRow key={index}>
+                            <TableCell>{ingredient.inventoryItem?.name || items.find(i => i.id === ingredient.inventoryItemId)?.name}</TableCell>
+                            <TableCell>{ingredient.quantity} {ingredient.inventoryItem?.unit || items.find(i => i.id === ingredient.inventoryItemId)?.unit}</TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRemoveIngredient(index)}
+                              >
+                                {t('remove')}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <Select
+                    value={newIngredient.inventoryItemId}
+                    onValueChange={(value) => setNewIngredient({ ...newIngredient, inventoryItemId: value })}
+                  >
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder={t('selectIngredient')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {items.map(item => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name} ({item.unit})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    placeholder={t('quantity')}
+                    value={newIngredient.quantity}
+                    onChange={(e) => setNewIngredient({ ...newIngredient, quantity: Number(e.target.value) })}
+                    className="w-32"
+                  />
+                  <Button onClick={handleAddIngredient}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <Button onClick={handleSavePremixChanges}>{t('saveChanges')}</Button>
           </div>
         </DialogContent>
       </Dialog>

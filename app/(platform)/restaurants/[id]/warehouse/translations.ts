@@ -291,6 +291,18 @@ export const warehouseTranslations = {
   description: {
     ru: 'Описание',
     ka: 'აღწერა'
-  }
+  },
+    editPremix: {
+    ka: '',
+    ru: 'Редактировать'
+  },
+  premixUpdated: {
+    ka: '',
+    ru: 'Заготовка успешно обновлен'
+  },
+  updatePremixError: {
+    ka: '',
+    ru: 'Ошибка при обновлении заготовки'
+  },
 
 };
