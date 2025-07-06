@@ -10,6 +10,9 @@ interface Transaction {
   type: 'RECEIPT' | 'WRITE_OFF';
   quantity: number;
   createdAt: string;
+  inventoryItem: {
+    name: string
+  }
   user?: {
     name: string;
   };
@@ -39,6 +42,7 @@ export function TransactionsTable({ transactions }: { transactions: Transaction[
       <TableHeader>
         <TableRow>
           <TableHead>{t('type')}</TableHead>
+          <TableHead>{t('name')}</TableHead>
           <TableHead>{t('quantity')}</TableHead>
           <TableHead>{t('date')}</TableHead>
           <TableHead>{t('user')}</TableHead>
@@ -54,6 +58,7 @@ export function TransactionsTable({ transactions }: { transactions: Transaction[
                 {getTransactionTypeTranslation(tx.type)}
               </Badge>
             </TableCell>
+            <TableCell>{tx.inventoryItem?.name}</TableCell>
             <TableCell>{tx.quantity}</TableCell>
             <TableCell>{new Date(tx.createdAt).toLocaleString()}</TableCell>
             <TableCell>{tx.user?.name || '-'}</TableCell>

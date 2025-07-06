@@ -30,5 +30,9 @@ export const transactionsTranslations = {
   writeOff: {
     ru: 'Списание',
     ka: 'ჩამოწერა'
-  }
+  }, 
+  name: {
+    ru: 'Название',
+    ka: 'სახელი'
+  },
 };
