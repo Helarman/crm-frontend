@@ -7,39 +7,17 @@ export interface InputProps
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, type, onKeyDown, ...props }, ref) => {
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (type === "number") {
-        if (
-          !/[0-9]/.test(e.key) &&
-          ![
-            "Backspace",
-            "Delete",
-            "Tab",
-            "Escape",
-            "Enter",
-            "ArrowLeft",
-            "ArrowRight",
-            "ArrowUp",
-            "ArrowDown",
-            ".",
-            ","
-          ].includes(e.key)
-        ) {
-          e.preventDefault()
-        }
+      if (type === "number" && e.key === "Backspace" && e.currentTarget.value === "0") {
+        e.currentTarget.value = "";
       }
-      
-      if (onKeyDown) {
-        onKeyDown(e)
-      }
-    }
+      onKeyDown?.(e);
+    };
 
     return (
       <input
-        type={type === "number" ? "text" : type}
-        inputMode={type === "number" ? "decimal" : undefined}
+        type={type}
         className={cn(
           "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-          type === "number" ? "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" : "", // Стили для скрытия стрелок в type="number"
           className
         )}
         ref={ref}

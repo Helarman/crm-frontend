@@ -297,7 +297,6 @@ export default function WarehousePage() {
     if (!validatePremix()) return;
 
     try {
-      // Правильно формируем массив ингредиентов
       const ingredients = premixIngredients.map(ing => ({
         inventoryItemId: ing.inventoryItem?.id || ing.inventoryItemId,
         quantity: ing.quantity
@@ -305,11 +304,11 @@ export default function WarehousePage() {
 
       const dto = {
         ...newPremix,
-        ingredients, // передаём подготовленные ингредиенты
+        ingredients,
         warehouseId: warehouse.id
       };
 
-      console.log('Sending premix data:', dto); // Добавьте для отладки
+      console.log('Sending premix data:', dto);
 
       await WarehouseService.createPremix(dto);
       await loadWarehouseData();
@@ -342,8 +341,8 @@ export default function WarehousePage() {
     setPremixIngredients([
       ...premixIngredients,
       {
-        inventoryItem: item, // сохраняем весь объект item
-        inventoryItemId: item.id, // дублируем id для удобства
+        inventoryItem: item,
+        inventoryItemId: item.id,
         quantity: newIngredient.quantity
       }
     ]);
@@ -549,7 +548,6 @@ export default function WarehousePage() {
     if (!validateEditPremix() || !editingPremix) return;
 
     try {
-      // Подготовка данных для обновления
       const updateData = {
         ...editPremixData,
         ingredients: premixIngredients.map(ing => ({
@@ -558,7 +556,6 @@ export default function WarehousePage() {
         })),
       };
 
-      // Обновляем основной данные премикса
       await WarehouseService.updatePremix(editingPremix.id, {
         name: updateData.name,
         description: updateData.description,
@@ -566,12 +563,9 @@ export default function WarehousePage() {
         yield: updateData.yield,
       });
 
-      // Обновляем ингредиенты
-      // Сначала получаем текущие ингредиенты
       const currentDetails = await WarehouseService.getPremixDetails(editingPremix.id);
       const currentIngredients = currentDetails.ingredients || [];
 
-      // Удаляем отсутствующие ингредиенты
       for (const currentIng of currentIngredients) {
         if (!premixIngredients.some(ing =>
           (ing.inventoryItem?.id || ing.inventoryItemId) === currentIng.inventoryItemId
@@ -580,18 +574,15 @@ export default function WarehousePage() {
         }
       }
 
-      // Добавляем/обновляем новые ингредиенты
       for (const ing of premixIngredients) {
         const ingredientId = ing.inventoryItem?.id || ing.inventoryItemId;
         const existingIng = currentIngredients.find(i => i.inventoryItemId === ingredientId);
 
         if (existingIng) {
-          // Обновляем существующий ингредиент
           await WarehouseService.updatePremixIngredient(editingPremix.id, ingredientId, {
             quantity: ing.quantity
           });
         } else {
-          // Добавляем новый ингредиент
           await WarehouseService.addPremixIngredient(editingPremix.id, {
             inventoryItemId: ingredientId,
             quantity: ing.quantity
@@ -940,6 +931,7 @@ export default function WarehousePage() {
                           <Input
                             type="number"
                             min="0.1"
+                            defaultValue={0}
                             step="0.1"
                             value={newPremix.yield}
                             onChange={(e) => setNewPremix({ ...newPremix, yield: Number(e.target.value) })}
