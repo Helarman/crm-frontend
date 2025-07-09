@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Check, ChevronsUpDown, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
@@ -18,7 +18,8 @@ interface SearchableSelectProps {
   disabled?: boolean;
   className?: string;
 }
- const SearchableSelect = ({
+
+const SearchableSelect = ({
   disabled,
   options,
   value,
@@ -31,6 +32,7 @@ interface SearchableSelectProps {
 }: SearchableSelectProps) => {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const filteredOptions = options.filter(option =>
     option.label.toLowerCase().includes(searchValue.toLowerCase())
@@ -49,6 +51,15 @@ interface SearchableSelectProps {
       setSearchValue('');
     }
   };
+
+  useEffect(() => {
+    if (open && inputRef.current) {
+      // Небольшая задержка для гарантии, что модальное окно полностью отрендерилось
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 0);
+    }
+  }, [open]);
 
   return (
     <div className="space-y-2">
@@ -85,9 +96,11 @@ interface SearchableSelectProps {
           >
             <Command className="h-full">
               <CommandInput
+                ref={inputRef}
                 placeholder={searchPlaceholder}
                 value={searchValue}
                 onValueChange={setSearchValue}
+                autoFocus
               />
               <CommandList className="max-h-[300px] overflow-auto">
                 <CommandEmpty className="text-sm px-2 py-1.5">
@@ -148,4 +161,5 @@ interface SearchableSelectProps {
     </div>
   );
 };
-export default SearchableSelect;    
+
+export default SearchableSelect;

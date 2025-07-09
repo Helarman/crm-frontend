@@ -292,7 +292,7 @@ export const warehouseTranslations = {
     ru: 'Описание',
     ka: 'აღწერა'
   },
-    editPremix: {
+  editPremix: {
     ka: '',
     ru: 'Редактировать'
   },
@@ -304,5 +304,14 @@ export const warehouseTranslations = {
     ka: '',
     ru: 'Ошибка при обновлении заготовки'
   },
+  searchIngredient: {
+    ru: "Поиск ингредиента...",
+    ka: "ინგრედიენტის ძებნა..."
+  },
+  noIngredientsFound: {
+    ru: "Ингредиенты не найдены",
+    ka: "ინგრედიენტები ვერ მოიძებნა"
+  },
+
 
 };

@@ -20,6 +20,7 @@ import { DateRange } from 'react-day-picker';
 import { format, subDays } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import SearchableSelect from '@/components/features/menu/product/SearchableSelect';
 
 export default function WarehousePage() {
   const params = useParams();
@@ -972,28 +973,33 @@ export default function WarehousePage() {
                             </div>
                           )}
                           <div className="flex gap-2">
-                            <Select
-                              value={newIngredient.inventoryItemId}
-                              onValueChange={(value) => setNewIngredient({ ...newIngredient, inventoryItemId: value })}
-                            >
-                              <SelectTrigger className="flex-1">
-                                <SelectValue placeholder={t('selectIngredient')} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {items.map(item => (
-                                  <SelectItem key={item.id} value={item.id}>
-                                    {item.name} ({item.unit})
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                            <div className="flex-1">
+                              <SearchableSelect
+                                options={items.map(item => ({
+                                  id: item.id,
+                                  label: `${item.name} (${item.unit})`
+                                }))}
+                                value={newIngredient.inventoryItemId ? [newIngredient.inventoryItemId] : []}
+                                onChange={(ids) => setNewIngredient({
+                                  ...newIngredient,
+                                  inventoryItemId: ids[0] || ''
+                                })}
+                                placeholder={t('selectIngredient')}
+                                searchPlaceholder={t('searchIngredient')}
+                                emptyText={t('noIngredientsFound')}
+                                multiple={false}
+                              />
+                            </div>
                             <Input
                               type="number"
                               min="0.01"
                               step="0.01"
                               placeholder={t('quantity')}
                               value={newIngredient.quantity}
-                              onChange={(e) => setNewIngredient({ ...newIngredient, quantity: Number(e.target.value) })}
+                              onChange={(e) => setNewIngredient({
+                                ...newIngredient,
+                                quantity: Number(e.target.value)
+                              })}
                               className="w-32"
                             />
                             <Button onClick={handleAddIngredient}>
@@ -1329,28 +1335,33 @@ export default function WarehousePage() {
                   </div>
                 )}
                 <div className="flex gap-2">
-                  <Select
-                    value={newIngredient.inventoryItemId}
-                    onValueChange={(value) => setNewIngredient({ ...newIngredient, inventoryItemId: value })}
-                  >
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder={t('selectIngredient')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {items.map(item => (
-                        <SelectItem key={item.id} value={item.id}>
-                          {item.name} ({item.unit})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex-1">
+                    <SearchableSelect
+                      options={items.map(item => ({
+                        id: item.id,
+                        label: `${item.name} (${item.unit})`
+                      }))}
+                      value={newIngredient.inventoryItemId ? [newIngredient.inventoryItemId] : []}
+                      onChange={(ids) => setNewIngredient({
+                        ...newIngredient,
+                        inventoryItemId: ids[0] || ''
+                      })}
+                      placeholder={t('selectIngredient') as string}
+                      searchPlaceholder={t('searchIngredient') as string}
+                      emptyText={t('noIngredientsFound') as string}
+                      multiple={false}
+                    />
+                  </div>
                   <Input
                     type="number"
                     min="0.01"
                     step="0.01"
-                    placeholder={t('quantity')}
+                    placeholder={t('quantity') as string}
                     value={newIngredient.quantity}
-                    onChange={(e) => setNewIngredient({ ...newIngredient, quantity: Number(e.target.value) })}
+                    onChange={(e) => setNewIngredient({
+                      ...newIngredient,
+                      quantity: Number(e.target.value)
+                    })}
                     className="w-32"
                   />
                   <Button onClick={handleAddIngredient}>
