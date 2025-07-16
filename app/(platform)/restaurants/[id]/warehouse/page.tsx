@@ -1246,7 +1246,7 @@ export default function WarehousePage() {
       </Dialog>
 
       <Dialog open={editPremixDialogOpen} onOpenChange={setEditPremixDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('editPremix')}</DialogTitle>
           </DialogHeader>
