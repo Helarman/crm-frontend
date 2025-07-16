@@ -883,7 +883,7 @@ export default function WarehousePage() {
                   <DialogTrigger asChild>
                     <Button>{t('addPremix')}</Button>
                   </DialogTrigger>
-                  <DialogContent className="max-w-2xl">
+                  <DialogContent className="max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto">
                     <DialogHeader>
                       <DialogTitle>{t('addPremix')}</DialogTitle>
                     </DialogHeader>
