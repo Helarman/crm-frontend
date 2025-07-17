@@ -110,15 +110,15 @@ export interface CreateDeliveryZoneDto {
   title: string;
   price: number;
   minOrder?: number;
-  polygon: string; // WKT формат
-  restaurantId: string;
+  polygon: string; 
+  restaurantId?: string ;
 }
 
 export interface UpdateDeliveryZoneDto {
   title?: string;
   price?: number;
   minOrder?: number;
-  polygon?: string; // WKT формат
+  polygon?: string; 
 }
 
 export interface CheckCoverageDto {

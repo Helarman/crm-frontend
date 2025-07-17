@@ -26,7 +26,7 @@ import { toast } from 'sonner';
 import dynamic from 'next/dynamic';
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { useAuth } from '@/lib/hooks/useAuth';
-import { Trash2 } from 'lucide-react';
+import { Trash2, Edit } from 'lucide-react';
 import { Restaurant } from '@/components/features/staff/StaffTable';
 
 const MapEditor = dynamic(() => import('@/components/features/MapEditor'), {
@@ -127,7 +127,7 @@ export default function DeliveryZonePage() {
   const [zones, setZones] = useState<DeliveryZone[]>([]);
   const [filteredZones, setFilteredZones] = useState<DeliveryZone[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>(user.restaurant[0].id );
+  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string | undefined>(undefined);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingZone, setEditingZone] = useState<DeliveryZone | null>(null);
   const [isPolygonValid, setIsPolygonValid] = useState(false);
@@ -138,29 +138,32 @@ export default function DeliveryZonePage() {
     price: 0,
     minOrder: 0,
     polygon: '',
-    restaurantId: user.restaurant[0].id ,
+    restaurantId: undefined,
   });
 
   // Загрузка зон доставки
   useEffect(() => {
     async function loadZones() {
       try {
+        setLoading(true);
         if (!user?.restaurant?.length) return;
         
+        // Устанавливаем первый ресторан по умолчанию для формы
+        const defaultRestaurantId = user.restaurant[0].id;
+        setFormData(prev => ({ ...prev, restaurantId: defaultRestaurantId }));
+        
+        // Загружаем зоны для всех ресторанов пользователя
         const allZones = await Promise.all(
-          user.restaurant.map(( rest : Restaurant) => 
-            DeliveryZoneService.findAllByRestaurant(rest.id))
+          user.restaurant.map((rest: Restaurant) => 
+            DeliveryZoneService.findAllByRestaurant(rest.id)
+          )
         );
         
         const flattenedZones = allZones.flat();
         setZones(flattenedZones);
-        
-        if (user.restaurant.length === 1) {
-          setSelectedRestaurantId(user.restaurant[0].id);
-        }
       } catch (error) {
-        //toast.error(t.errors.loadError);
-        //console.error(error);
+        toast.error(t.errors.loadError);
+        console.error('Failed to load delivery zones:', error);
       } finally {
         setLoading(false);
       }
@@ -193,8 +196,13 @@ export default function DeliveryZonePage() {
     }));
   };
 
+  const handleFilterRestaurantChange = (value: string) => {
+    setSelectedRestaurantId(value === "all" ? undefined : value);
+  };
+
   const handleSaveZone = async () => {
     try {
+      // Валидация
       if (!formData.polygon) {
         toast.error(t.errors.noPolygon);
         return;
@@ -225,7 +233,7 @@ export default function DeliveryZonePage() {
       resetForm();
     } catch (error) {
       toast.error(t.errors.saveError);
-      console.error(error);
+      console.error('Failed to save delivery zone:', error);
     }
   };
 
@@ -248,7 +256,7 @@ export default function DeliveryZonePage() {
       toast.success(t.errors.deleteSuccess);
     } catch (error) {
       toast.error(t.errors.deleteError);
-      console.error(error);
+      console.error('Failed to delete delivery zone:', error);
     }
   };
 
@@ -258,46 +266,51 @@ export default function DeliveryZonePage() {
       price: 0,
       minOrder: 0,
       polygon: '',
-      restaurantId: user?.restaurant?.length === 1 ? user.restaurant[0].id : '',
+      restaurantId: user?.restaurant?.[0]?.id || undefined,
     });
     setEditingZone(null);
   };
 
   const handlePolygonChange = useCallback((polygon: string | null) => {
-    console.log('Polygon changed:', polygon); // 🚨 Логируем
     setFormData(prev => ({
       ...prev,
       polygon: polygon || '',
     }));
   }, []);
 
+  const getRestaurantName = (restaurantId: string) => {
+    return user?.restaurant?.find((r : Restaurant) => r.id === restaurantId)?.title || restaurantId;
+  }; 
+
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6 gap-4">
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
         <h1 className="text-2xl font-bold">{t.title}</h1>
         
-        <div className="flex items-center gap-4">
-          {user?.restaurant?.length > 1 && (
-            <Select 
-              value={selectedRestaurantId} 
-              onValueChange={setSelectedRestaurantId}
-            >
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder={t.selectRestaurant} />
-              </SelectTrigger>
-              <SelectContent>
-                {user.restaurant.map((rest : Restaurant) => (
-                  <SelectItem key={rest.id} value={rest.id}>
-                    {rest.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-4 w-full md:w-auto">
+          <Select 
+            value={selectedRestaurantId || "all"}
+            onValueChange={handleFilterRestaurantChange}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder={t.selectRestaurant} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t.allRestaurants}</SelectItem>
+              {user?.restaurant?.map((rest: Restaurant) => (
+                <SelectItem key={rest.id} value={rest.id}>
+                  {rest.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           
-          <Dialog open={openDialog} onOpenChange={setOpenDialog}>
+          <Dialog open={openDialog} onOpenChange={(open) => {
+            if (!open) resetForm();
+            setOpenDialog(open);
+          }}>
             <DialogTrigger asChild>
-              <Button onClick={() => setOpenDialog(true)}>
+              <Button className="w-full md:w-auto">
                 {t.createButton}
               </Button>
             </DialogTrigger>
@@ -349,30 +362,28 @@ export default function DeliveryZonePage() {
                   />
                 </div>
                 
-                {user?.restaurant?.length > 1 && (
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="restaurant" className="text-right">
-                      {t.dialog.labels.restaurant}
-                    </Label>
-                    <Select
-                      value={formData.restaurantId}
-                      onValueChange={handleRestaurantChange}
-                    >
-                      <SelectTrigger className="col-span-3">
-                        <SelectValue placeholder={t.selectRestaurant} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {user.restaurant.map((rest: Restaurant) => (
-                          <SelectItem key={rest.id} value={rest.id}>
-                            {rest.title}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="restaurant" className="text-right">
+                    {t.dialog.labels.restaurant}
+                  </Label>
+                  <Select
+                    value={formData.restaurantId}
+                    onValueChange={handleRestaurantChange}
+                  >
+                    <SelectTrigger className="col-span-3">
+                      <SelectValue placeholder={t.selectRestaurant} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {user?.restaurant?.map((rest: Restaurant) => (
+                        <SelectItem key={rest.id} value={rest.id}>
+                          {rest.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 
-                <div className="h-96 w-full">
+                <div className="h-96 w-full rounded-md border">
                   <MapEditor 
                     key={editingZone?.id || 'create'}
                     initialPolygon={editingZone?.polygon} 
@@ -398,39 +409,63 @@ export default function DeliveryZonePage() {
       </div>
 
       {loading ? (
-        <p>Loading...</p>
+        <div className="flex justify-center items-center h-64">
+          <p>Loading...</p>
+        </div>
       ) : filteredZones.length === 0 ? (
-        <p>{t.noZones}</p>
+        <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+          <p>{t.noZones}</p>
+          <Button 
+            className="mt-4" 
+            onClick={() => setOpenDialog(true)}
+          >
+            {t.createButton}
+          </Button>
+        </div>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t.tableHeaders.title}</TableHead>
-              <TableHead>{t.tableHeaders.price}</TableHead>
-              <TableHead>{t.tableHeaders.minOrder}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredZones.map(zone => (
-              <TableRow key={zone.id}>
-                <TableCell>{zone.title}</TableCell>
-                <TableCell>{zone.price.toFixed(2)}₽</TableCell>
-                <TableCell>
-                  {zone.minOrder ? `${zone.minOrder.toFixed(2)}₽` : '-'}
-                </TableCell>
-                <TableCell className="space-x-2 text-right">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                     onClick={() => handleDeleteZone(zone.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </TableCell>
+        <div className="border rounded-lg overflow-hidden">
+          <Table>
+            <TableHeader className="bg-gray-100">
+              <TableRow>
+                <TableHead>{t.tableHeaders.title}</TableHead>
+                <TableHead>{t.tableHeaders.price}</TableHead>
+                <TableHead>{t.tableHeaders.minOrder}</TableHead>
+                <TableHead>{t.tableHeaders.restaurant}</TableHead>
+                <TableHead className="text-right">{t.tableHeaders.actions}</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {filteredZones.map(zone => (
+                <TableRow key={zone.id}>
+                  <TableCell>{zone.title}</TableCell>
+                  <TableCell>{zone.price.toFixed(2)}₽</TableCell>
+                  <TableCell>
+                    {zone.minOrder ? `${zone.minOrder.toFixed(2)}₽` : '-'}
+                  </TableCell>
+                  <TableCell>{getRestaurantName(zone.restaurantId)}</TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEditZone(zone)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteZone(zone.id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
     </div>
   );
