@@ -8,7 +8,7 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = getAccessTokenFromCookie(); // Ваша функция для получения токена из кук
+  const token = getAccessTokenFromCookie(); 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -175,5 +175,25 @@ export interface ProductDto {
   const { data } = await api.get(`/products/${productId}/ingredients`);
   console.log(data)
   return data;
-  }
+  },
+  togglePrintLabels: async (id: string) => {
+    const { data } = await api.put(`/products/${id}/toggle-print-labels`);
+    return data;
+  },
+
+  togglePublishedOnWebsite: async (id: string) => {
+    const { data } = await api.put(`/products/${id}/toggle-published-on-website`);
+    return data;
+  },
+
+  togglePublishedInApp: async (id: string) => {
+    const { data } = await api.put(`/products/${id}/toggle-published-in-app`);
+    return data;
+  },
+
+  toggleStopList: async (id: string) => {
+    const { data } = await api.put(`/products/${id}/toggle-stop-list`);
+    return data;
+  },
+
 };

@@ -80,6 +80,7 @@ import { format } from 'date-fns'
 import { ru, ka } from 'date-fns/locale'
 import PrecheckDialog from './PrecheckDialog'
 import { CustomerService } from '@/lib/api/customer.service'
+import React from 'react'
 
 export default function WaiterOrderPage() {
   const { id: orderId } = useParams()
@@ -99,7 +100,7 @@ const translations = {
     orderType: "Тип заказа",
     table: "Стол",
     persons: "Количество персон",
-    confirm: "Подтвердить",
+    confirm: "Готовить",
     complete: "Завершить",
     cancel: "Отменить",
     pending: "Ожидает оплаты",
@@ -181,6 +182,12 @@ const translations = {
     removePoints: "Сбросить баллы",
     discountApplied: "Скидка применена",
     pointsApplied: "Баллы применены",
+    cookedIn: 'Приготовлено за',
+    cookingFor: 'Готовится',
+    minutes: 'минут',
+    minutesForm1: 'минуту',    // для 1 минуты
+    minutesForm2: 'минуты',    // для 2-4 минут
+    minutesForm5: 'минут',     // для 5+ минут
     logs: {
       orderCreated: "Заказ создан",
       orderConfirmed: "Заказ подтвержден",
@@ -351,6 +358,12 @@ const translations = {
     removePoints: "ქულების გაუქმება",
     discountApplied: "ფასდაკლება გამოყენებულია",
     pointsApplied: "ქულები გამოყენებულია",
+    cookedIn: 'მომზადდა',
+    cookingFor: 'მზადდება',
+    minutes: 'წუთში',
+    minutesForm1: 'წუთი',      // для 1 минуты
+    minutesForm2: 'წუთი',      // для 2-4 минут
+    minutesForm5: 'წუთი',      // для 5+ минут
     logs: {
       orderCreated: "შეკვეთა შექმნილია",
       orderConfirmed: "შეკვეთა დადასტურებულია",
@@ -475,6 +488,7 @@ const translations = {
   const [promoCode, setPromoCode] = useState('');
   const [promoCodeLoading, setPromoCodeLoading] = useState(false);
   const [promoCodeError, setPromoCodeError] = useState('');
+  const [showDiscountOptions, setShowDiscountOptions] = useState(false);
 
   const isOrderEditable = order && !['DELIVERING', 'COMPLETED', 'CANCELLED'].includes(order.status);
 
@@ -609,6 +623,31 @@ const translations = {
         : 'შეკვეთის დადასტურების შეცდომა');
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  const getCookingTimeText = (minutes: number, language: 'ru' | 'ka') => {
+    if (language === 'ru') {
+      // Русские правила склонения
+      const lastDigit = minutes % 10;
+      const lastTwoDigits = minutes % 100;
+      
+      if (lastTwoDigits >= 11 && lastTwoDigits <= 19) {
+        return `${minutes} ${t.minutesForm5}`;
+      }
+      
+      if (lastDigit === 1) {
+        return `${minutes} ${t.minutesForm1}`;
+      }
+      
+      if (lastDigit >= 2 && lastDigit <= 4) {
+        return `${minutes} ${t.minutesForm2}`;
+      }
+      
+      return `${minutes} ${t.minutesForm5}`;
+    } else {
+      // Грузинский - склонение одинаковое
+      return `${minutes} ${t.minutes}`;
     }
   };
 
@@ -937,6 +976,8 @@ const translations = {
     }))
   }
 
+  console.log(categories)
+
   const fetchOrder = async () => {
     try {
       setLoading(true);
@@ -961,7 +1002,7 @@ const translations = {
           CategoryService.getAll()
         ]);
         setProducts(products);
-        setCategories(categories);
+        setCategories(categories as any);
 
         const additives: Record<string, string[]> = {};
         const comments: Record<string, string> = {};
@@ -1053,7 +1094,6 @@ const handleApplyCustomer = async () => {
     const updatedOrder = await OrderService.getById(orderId as string);
     setOrder(updatedOrder);
     
-    // Автоматическое применение скидок после добавления клиента
     await applyAutoDiscounts(updatedOrder);
     
     setCustomerCode('');
@@ -1218,7 +1258,24 @@ const handleApplyCustomer = async () => {
     );
   };
 
-  const renderItemCard = (item: OrderItem) => (
+ const renderItemCard = (item: OrderItem) => {
+  const getCookingTime = () => {
+    if (!item.timestamps.startedAt) return null;
+    
+    const startTime = new Date(item.timestamps.startedAt).getTime();
+    let endTime = item.timestamps.completedAt 
+      ? new Date(item.timestamps.completedAt).getTime() 
+      : Date.now();
+    
+    
+    const cookingTimeMinutes = Math.round((endTime - startTime) / (1000 * 60));
+    
+    return cookingTimeMinutes;
+  };
+
+  const cookingTime = getCookingTime();
+
+  return (
     <Card 
       key={item.id} 
       className={`p-4 ${item.isReordered ? 'border-l-4 border-blue-500 dark:border-blue-400' : ''} ${item.isRefund ? 'bg-red-50 dark:bg-red-900/20' : 'bg-card'}`}
@@ -1240,6 +1297,14 @@ const handleApplyCustomer = async () => {
             <p className="text-sm text-muted-foreground mt-1">
               {getProductPrice(item.product)} ₽ × {item.quantity}шт. = {calculateItemPrice(item)} ₽
             </p>
+          )}
+
+          {item.timestamps.startedAt && cookingTime !== null && (
+            <p className="text-sm text-muted-foreground mt-1">
+            {item.timestamps.completedAt 
+              ? `${t.cookedIn} ${getCookingTimeText(cookingTime, language)}`
+              : `${t.cookingFor} ${getCookingTimeText(cookingTime, language)}`}
+          </p>
           )}
 
           <div className="mt-2 pl-4 border-l-2 border-muted">
@@ -1302,6 +1367,7 @@ const handleApplyCustomer = async () => {
       {renderItemActions(item)}
     </Card>
   );
+};
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -1360,18 +1426,26 @@ const handleApplyCustomer = async () => {
     );
   };
 
-  const renderDiscountsBlock = () => {
-    if (!order?.restaurant?.id) return null;
-    const t = translations[language];
+const renderDiscountsBlock = () => {
+  if (!order?.restaurant?.id) return null;
+  const t = translations[language];
 
-    return (
-      <div>
-          <Card className="p-4 space-y-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Tag className="h-5 w-5" />
-              {t.discountCode}
-            </h3>
-            
+  return (
+    <Card className="p-0">
+      <Collapsible>
+        <CollapsibleTrigger asChild>
+          <div className="p-4 hover:bg-muted/50 cursor-pointer">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Tag className="h-5 w-5" />
+                <h3 className="text-lg font-semibold">{t.discount}</h3>
+              </div>
+              <ChevronDown className="h-5 w-5" />
+            </div>
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="p-4 border-t space-y-4">
             {order.discountAmount > 0 ? (
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
@@ -1390,200 +1464,67 @@ const handleApplyCustomer = async () => {
                 </Button>
               </div>
             ) : (
-              <div className="space-y-2">
-                <Label className="text-sm">{t.enterDiscountCode}</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={promoCode}
-                    onChange={(e) => {
-                      setPromoCode(e.target.value);
-                      setPromoCodeError('');
-                    }}
-                    placeholder={t.enterDiscountCode}
-                    disabled={!isOrderEditable || promoCodeLoading}
-                  />
-                  <Button
-                    onClick={handleApplyPromoCode}
-                    disabled={!isOrderEditable || promoCodeLoading || !promoCode.trim()}
-                  >
-                    {promoCodeLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      t.applyCode
-                    )}
-                  </Button>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-sm">{t.enterDiscountCode}</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={promoCode}
+                      onChange={(e) => {
+                        setPromoCode(e.target.value);
+                        setPromoCodeError('');
+                      }}
+                      placeholder={t.enterDiscountCode}
+                      disabled={!isOrderEditable || promoCodeLoading}
+                    />
+                    <Button
+                      onClick={handleApplyPromoCode}
+                      disabled={!isOrderEditable || promoCodeLoading || !promoCode.trim()}
+                    >
+                      {promoCodeLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        t.applyCode
+                      )}
+                    </Button>
+                  </div>
+                  {promoCodeError && (
+                    <p className="text-sm text-red-500 dark:text-red-400">{promoCodeError}</p>
+                  )}
                 </div>
-                {promoCodeError && (
-                  <p className="text-sm text-red-500 dark:text-red-400">{promoCodeError}</p>
-                )}
+
+                <div className="space-y-2">
+                  <Label className="text-sm">{t.enterCustomerCode}</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={customerCode}
+                      onChange={(e) => setCustomerCode(e.target.value)}
+                      placeholder="XXXX"
+                      maxLength={4}
+                      disabled={!isOrderEditable || customerLoading}
+                    />
+                    <Button
+                      onClick={handleApplyCustomer}
+                      disabled={!isOrderEditable || customerLoading || customerCode.length !== 4}
+                    >
+                      {customerLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        t.applyCustomer
+                      )}
+                    </Button>
+                  </div>
+                </div>
               </div>
             )}
-          </Card>
-      </div>
-    );
-  };
-
-
-  const renderCustomerSection = () => {
-    if (!order) return null;
-
-    if (order.customer) {
-      return (
-        <Card className="p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <User className="h-5 w-5" />
-              {t.customerInfo}
-            </h3>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleRemoveCustomer}
-              disabled={!isOrderEditable || isUpdating}
-            >
-              {t.removeCustomer}
-            </Button>
           </div>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-sm text-muted-foreground">{t.personalDiscount}:</span>
-              <span className="font-medium">
-                {order.customer.personalDiscount}%
-               
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-sm text-muted-foreground">{t.bonusPoints}:</span>
-              <span className="font-medium">
-                {order.customer.bonusPoints}
-                {order.customer.pointsUsed ? (
-                  <span className="text-red-500 dark:text-red-400 ml-2">
-                    (-{order.customer.pointsUsed})
-                  </span>
-                ) : null}
-              </span>
-            </div>
-          </div>
-          {!order.customer.pointsUsed && (
-            <div className="space-y-2 pt-2">
-              <Label className="text-sm flex items-center gap-2">
-                <Gift className="h-4 w-4" />
-                {t.usePoints}
-              </Label>
-              <div className="flex items-center gap-2">
-               <div className="flex items-center gap-2 w-full">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 w-8 p-0"
-                  onClick={() => {
-                    if (!order.customer) return;
-                    const newValue = Math.max(0, pointsToUse - 1);
-                    setPointsToUse(newValue);
-                  }}
-                  disabled={pointsToUse <= 0 || !isOrderEditable}
-                >
-                  <Minus className="h-4 w-4" />
-                </Button>
-                
-                <Input
-                  type="number"
-                  min="0"
-                  max={Math.min(order.customer?.bonusPoints || 0, calculateOrderTotal())}
-                  value={pointsToUse}
-                  onChange={(e) => {
-                    if (!order.customer) return;
-                    setPointsToUse(Math.max(0, Math.min(
-                      order.customer.bonusPoints,
-                      calculateOrderTotal(),
-                      parseInt(e.target.value) || 0
-                    )))
-                  }}
-                  disabled={!isOrderEditable}
-                  className="text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                />
-                
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 w-8 p-0"
-                  onClick={() => {
-                    if (!order.customer) return;
-                    const maxValue = Math.min(
-                      order.customer.bonusPoints,
-                      calculateOrderTotal()
-                    );
-                    const newValue = Math.min(maxValue, pointsToUse + 1);
-                    setPointsToUse(newValue);
-                  }}
-                  disabled={
-                    !order.customer || 
-                    pointsToUse >= order.customer.bonusPoints || 
-                    pointsToUse >= calculateOrderTotal() ||
-                    !isOrderEditable
-                  }
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-                <Button
-                  onClick={handleApplyPoints}
-                  disabled={!isOrderEditable || isUpdating || pointsToUse <= 0}
-                >
-                  {t.applyPoints}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t.maxPointsToUse}: {Math.min(order.customer.bonusPoints, calculateOrderTotal())}
-              </p>
-            </div>
-          )}
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+};
 
-          {order.customer.pointsUsed > 0 && (
-            <Button
-              variant="outline"
-              className="w-full mt-2"
-              onClick={handleRemovePoints}
-              disabled={!isOrderEditable || isUpdating}
-            >
-              {t.removePoints}
-            </Button>
-          )}
-        </Card>
-      );
-    }
 
-    return (
-      <Card className="p-4 space-y-4">
-        <h3 className="text-lg font-semibold flex items-center gap-2">
-          <User className="h-5 w-5" />
-          {t.customerCode}
-        </h3>
-        <div className="space-y-2">
-          <Label className="text-sm">{t.enterCustomerCode}</Label>
-          <div className="flex items-center gap-2">
-            <Input
-              value={customerCode}
-              onChange={(e) => setCustomerCode(e.target.value)}
-              placeholder="XXXX"
-              maxLength={4}
-              disabled={!isOrderEditable || customerLoading}
-            />
-            <Button
-              onClick={handleApplyCustomer}
-              disabled={!isOrderEditable || customerLoading || customerCode.length !== 4}
-            >
-              {customerLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                t.applyCustomer
-              )}
-            </Button>
-          </div>
-        </div>
-      </Card>
-    );
-  };
 
   if (loading) {
     return (
@@ -1662,7 +1603,8 @@ const handleApplyCustomer = async () => {
             <CollapsibleContent>
               <div className="p-4 border-t">
                 {categories.length > 0 && products.length > 0 ? (
-                  <Tabs defaultValue={categories[0].id} className="w-full">
+                <Tabs defaultValue={categories[0].id} className="w-full">
+                  <div className="space-y-4">
                     <div className="relative group">
                       <div className="absolute left-0 top-0 bottom-0 flex items-center z-10">
                         <button 
@@ -1678,17 +1620,19 @@ const handleApplyCustomer = async () => {
 
                       <TabsList 
                         id="scrollContainer"
-                        className="flex w-full overflow-x-auto overflow-y-hidden scrollbar-hide whitespace-nowrap py-8 gap-4 px-8 scroll-smooth"
+                        className="flex w-full justify-start overflow-x-auto overflow-y-hidden scrollbar-hide whitespace-nowrap py-8 gap-4 px-8 scroll-smooth"
                       >
-                        {categories.map(category => (
-                          <TabsTrigger 
-                            key={category.id} 
-                            value={category.id}
-                            className="flex-shrink-0 px-6 py-6 text-lg font-medium rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                          >
-                            {category.title}
-                          </TabsTrigger>
-                        ))}
+                        {categories
+                          .filter(category => !category.parentId)
+                          .map(category => (
+                            <TabsTrigger 
+                              key={category.id} 
+                              value={category.id}
+                              className="flex-shrink-0 px-6 py-6 text-lg font-medium rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground max-w-2/12"
+                            >
+                              {category.title}
+                            </TabsTrigger>
+                          ))}
                       </TabsList>
 
                       <div className="absolute right-0 top-0 bottom-0 flex items-center z-10">
@@ -1703,123 +1647,165 @@ const handleApplyCustomer = async () => {
                         </button>
                       </div>
                     </div>
-                                  
+                    
                     {categories.map(category => {
-                      const categoryProducts = products.filter(p => p.categoryId === category.id);
+                      const isParentCategory = !category.parentId;
+                      const subCategories = isParentCategory 
+                        ? categories.filter(c => c.parentId === category.id)
+                        : [];
+
                       return (
-                        <TabsContent key={category.id} value={category.id} className="mt-4">
-                          {categoryProducts.length > 0 ? (
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                              {categoryProducts.map(product => {
-                                const additives = productAdditives[product.id] || []
-                                const comment = productComments[product.id] || ''
-                                const quantity = getDisplayQuantity(product, additives, comment)
-
-                                return (
-                                  <div key={product.id} className="bg-card rounded-xl shadow-sm overflow-hidden border hover:shadow-md transition-shadow flex flex-col h-full">
-                                    <div className="relative aspect-square">
-                                      {product.images?.[0] ? (
-                                        <Image
-                                          src={product.images[0]}
-                                          alt={product.title}
-                                          width={300}
-                                          height={300}
-                                          className="w-full h-full object-cover"
-                                        />
-                                      ) : (
-                                        <div className="w-full h-full bg-muted flex items-center justify-center">
-                                          <Utensils className="h-12 w-12 text-muted-foreground" />
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="p-4 flex flex-col flex-grow">
-                                      <div className="flex-grow">
-                                        <div className="mb-2">
-                                          <h3 className="font-semibold text-lg">
-                                            {product.title}
-                                          </h3>
-                                        </div>
-
-                                        {product.additives && product.additives.length > 0 && (
-                                          <div className="mb-3">
-                                            <div className="text-sm font-medium text-muted-foreground mb-1">
-                                              {t.additives}
-                                            </div>
-                                            <SearchableSelect
-                                              options={product.additives.map(additive => ({
-                                                id: additive.id,
-                                                label: `${additive.title} (+${additive.price} ₽)`
-                                              }))}
-                                              value={additives}
-                                              onChange={(newAdditives) => {
-                                                handleAdditivesChange(product.id, newAdditives)
-                                                if (quantity > 0) {
-                                                  handleQuantityChange(
-                                                    product,
-                                                    quantity,
-                                                    newAdditives,
-                                                    comment
-                                                  )
-                                                }
-                                              }}
-                                              placeholder={t.selectAdditives}
-                                              searchPlaceholder={t.searchAdditives}
-                                              emptyText={t.noAdditivesFound}
-                                              multiple={true}
-                                              disabled={!isOrderEditable}
-                                            />
-                                          </div>
-                                        )}
-                                      </div>
-
-                                      <div className="mt-auto">
-                                        <div className="flex items-center justify-between mb-4">
-                                          <div className="flex items-center gap-2">
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              className="h-8 w-8 p-0"
-                                              onClick={() => {
-                                                const newQuantity = Math.max(0, quantity - 1)
-                                                handleQuantityChange(product, newQuantity, additives, comment)
-                                              }}
-                                              disabled={quantity === 0 || !isOrderEditable || order?.attentionFlags.isPrecheck}
-                                            >
-                                              <Minus className="h-4 w-4" />
-                                            </Button>
-                                            <span className="font-medium w-8 text-center">{quantity}</span>
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              className="h-8 w-8 p-0"
-                                              onClick={() => {
-                                                const newQuantity = quantity + 1
-                                                handleQuantityChange(product, newQuantity, additives, comment)
-                                              }}
-                                              disabled={!isOrderEditable}
-                                            >
-                                              <Plus className="h-4 w-4" />
-                                            </Button>
-                                          </div>
-                                          <span className="text-lg font-bold">
-                                            {getProductPrice(product) * quantity} ₽
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                );
-                              })}
+                        <React.Fragment key={category.id}>
+                          {isParentCategory && subCategories.length > 0 && (
+                            <div className="relative group">
+                              <TabsList 
+                                className="justify-start flex w-full overflow-x-auto overflow-y-hidden scrollbar-hide whitespace-nowrap py-4 gap-2 px-4 scroll-smooth"
+                              >
+                                <TabsTrigger 
+                                  value={category.id}
+                                  className="max-w-1/12 flex-shrink-0 px-4 py-4 text-sm font-medium rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                                >
+                                  {language === 'ru' ? 'Все' : 'ყველა'}
+                                </TabsTrigger>
+                                {subCategories.map(subCategory => (
+                                  <TabsTrigger 
+                                    key={subCategory.id} 
+                                    value={subCategory.id}
+                                    className="max-w-2/12 flex-shrink-0 px-2 py-4 text-sm font-medium rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                                  >
+                                    {subCategory.title}
+                                  </TabsTrigger>
+                                ))}
+                              </TabsList>
                             </div>
-                          ) : (
-                            <p className="text-muted-foreground text-center py-8">
-                              {t.noProductsFound}
-                            </p>
                           )}
-                        </TabsContent>
+
+                          <TabsContent value={category.id} className="mt-4">
+                            {(() => {
+                              const categoryProducts = products.filter(p => p.categoryId === category.id);
+                              
+                              const allProducts = isParentCategory
+                                ? [
+                                    ...categoryProducts,
+                                    ...products.filter(p => subCategories.some(sc => sc.id === p.categoryId))
+                                  ]
+                                : categoryProducts;
+
+                              return allProducts.length > 0 ? (
+                                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                                  {allProducts.map(product => {
+                                    const additives = productAdditives[product.id] || []
+                                    const comment = productComments[product.id] || ''
+                                    const quantity = getDisplayQuantity(product, additives, comment)
+
+                                    return (
+                                        <div key={product.id} className="bg-card rounded-xl shadow-sm overflow-hidden border hover:shadow-md transition-shadow flex flex-col h-full">
+                                          <div className="relative aspect-square">
+                                                                                        {product.images?.[0] ? (
+                                                                                          <Image
+                                                                                            src={product.images[0]}
+                                                                                            alt={product.title}
+                                                                                            width={300}
+                                                                                            height={300}
+                                                                                            className="w-full h-full object-cover"
+                                                                                          />
+                                                                                        ) : (
+                                                                                          <div className="w-full h-full bg-muted flex items-center justify-center">
+                                                                                            <Utensils className="h-12 w-12 text-muted-foreground" />
+                                                                                          </div>
+                                                                                        )}
+                                          </div>
+                                          <div className="p-4 flex flex-col flex-grow">
+                                                                                        <div className="flex-grow">
+                                                                                          <div className="mb-2">
+                                                                                            <h3 className="font-semibold text-lg">
+                                                                                              {product.title}
+                                                                                            </h3>
+                                                                                          </div>
+
+                                                                                          {product.additives && product.additives.length > 0 && (
+                                                                                            <div className="mb-3">
+                                                                                              <div className="text-sm font-medium text-muted-foreground mb-1">
+                                                                                                {t.additives}
+                                                                                              </div>
+                                                                                              <SearchableSelect
+                                                                                                options={product.additives.map(additive => ({
+                                                                                                  id: additive.id,
+                                                                                                  label: `${additive.title} (+${additive.price} ₽)`
+                                                                                                }))}
+                                                                                                value={additives}
+                                                                                                onChange={(newAdditives) => {
+                                                                                                  handleAdditivesChange(product.id, newAdditives)
+                                                                                                  if (quantity > 0) {
+                                                                                                    handleQuantityChange(
+                                                                                                      product,
+                                                                                                      quantity,
+                                                                                                      newAdditives,
+                                                                                                      comment
+                                                                                                    )
+                                                                                                  }
+                                                                                                }}
+                                                                                                placeholder={t.selectAdditives}
+                                                                                                searchPlaceholder={t.searchAdditives}
+                                                                                                emptyText={t.noAdditivesFound}
+                                                                                                multiple={true}
+                                                                                                disabled={!isOrderEditable}
+                                                                                              />
+                                                                                            </div>
+                                                                                          )}
+                                                                                        </div>
+
+                                                                                        <div className="mt-auto">
+                                                                                          <div className="flex items-center justify-between mb-4">
+                                                                                            <div className="flex items-center gap-2">
+                                                                                              <Button
+                                                                                                variant="outline"
+                                                                                                size="sm"
+                                                                                                className="h-8 w-8 p-0"
+                                                                                                onClick={() => {
+                                                                                                  const newQuantity = Math.max(0, quantity - 1)
+                                                                                                  handleQuantityChange(product, newQuantity, additives, comment)
+                                                                                                }}
+                                                                                                disabled={quantity === 0 || !isOrderEditable || order?.attentionFlags.isPrecheck}
+                                                                                              >
+                                                                                                <Minus className="h-4 w-4" />
+                                                                                              </Button>
+                                                                                              <span className="font-medium w-8 text-center">{quantity}</span>
+                                                                                              <Button
+                                                                                                variant="outline"
+                                                                                                size="sm"
+                                                                                                className="h-8 w-8 p-0"
+                                                                                                onClick={() => {
+                                                                                                  const newQuantity = quantity + 1
+                                                                                                  handleQuantityChange(product, newQuantity, additives, comment)
+                                                                                                }}
+                                                                                                disabled={!isOrderEditable}
+                                                                                              >
+                                                                                                <Plus className="h-4 w-4" />
+                                                                                              </Button>
+                                                                                            </div>
+                                                                                            <span className="text-lg font-bold">
+                                                                                              {getProductPrice(product) * quantity} ₽
+                                                                                            </span>
+                                                                                          </div>
+                                                                                        </div>
+                                          </div>
+                                        </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <p className="text-muted-foreground text-center py-8">
+                                  {t.noProductsFound}
+                                </p>
+                              );
+                            })()}
+                          </TabsContent>
+                        </React.Fragment>
                       );
                     })}
-                  </Tabs>
+                  </div>
+                </Tabs>
                 ) : (
                   <div className="p-4 border rounded-lg text-center">
                     {t.noProductsFound}
@@ -1858,21 +1844,11 @@ const handleApplyCustomer = async () => {
                           <ShoppingBag className="h-5 w-5" />
                           {t.originalItems}
                         </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {order.items.filter(item => !item.isReordered && !item.isRefund).map(renderItemCard)}
+                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                          {order.items.filter(item => !item.isRefund).map(renderItemCard)}
                         </div>
 
-                        {order.items.some(item => item.isReordered) && (
-                          <div className="space-y-4 border-t pt-6">
-                            <h3 className="text-lg font-semibold flex items-center gap-2">
-                              <RefreshCw className="h-5 w-5" />
-                              {t.reorderedItem}
-                            </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {order.items.filter(item => item.isReordered && !item.isRefund).map(renderItemCard)}
-                            </div>
-                          </div>
-                        )}
+                       
 
                         {order.items.some(item => item.isRefund) && (
                           <div className="space-y-4 border-t pt-6">
@@ -1880,7 +1856,7 @@ const handleApplyCustomer = async () => {
                               <Ban className="h-5 w-5" />
                               {t.itemReturned}
                             </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
                               {order.items.filter(item => item.isRefund).map(renderItemCard)}
                             </div>
                           </div>
@@ -1967,20 +1943,38 @@ const handleApplyCustomer = async () => {
                       </Collapsible>
                     </Card>
                     
-                        {renderCustomerSection()}
 
                         {renderDiscountsBlock()}
                           
-                    <Card>
-                      <div className="p-4">
-                        <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                          {t.total}
-                        </h3>
-                        
-                        <div className="space-y-4">
-                          {order?.surcharges && order.surcharges.length > 0 && (
-                            <div className="space-y-2">
-                              {order.surcharges.map(surcharge => (
+                  <Card className="p-0">
+                    <div className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Receipt className="h-5 w-5" />
+                          <h3 className="text-lg font-semibold">
+                            {t.total}: {calculateOrderTotal().toFixed(2)} ₽
+                          </h3>
+                        </div>
+                        {(order.surcharges!.length > 0 || order.discountAmount > 0) && (
+                          <Collapsible>
+                            <CollapsibleTrigger asChild>
+                              <Button variant="ghost" size="sm" className="h-8 px-2">
+                                <ChevronDown className="h-4 w-4" />
+                              </Button>
+                            </CollapsibleTrigger>
+                          </Collapsible>
+                        )}
+                      </div>
+                    </div>
+
+                    {(order!.surcharges!.length > 0 || order.discountAmount > 0) && (
+                      <CollapsibleContent>
+                        <div className="p-4 border-t space-y-2">
+                          {/* Надбавки */}
+                          {order.surcharges!.length > 0 && (
+                            <div className="space-y-1">
+                              <div className="text-sm font-medium text-muted-foreground">{t.surcharges}:</div>
+                              {order!.surcharges!.map(surcharge => (
                                 <div key={surcharge.id} className="flex justify-between text-sm">
                                   <span>{surcharge.title}</span>
                                   <span className="font-medium text-red-600">
@@ -1992,17 +1986,19 @@ const handleApplyCustomer = async () => {
                               ))}
                             </div>
                           )}
-                          {order.discountAmount && order.discountAmount > 0 && (
+
+                          {/* Скидки */}
+                          {order.discountAmount > 0 && (
                             <div className="flex justify-between text-sm">
                               <span>{t.discount}:</span>
-                              
                               <span className="font-medium text-green-600 dark:text-green-400">
                                 -{order.discountAmount.toFixed(2)} ₽
                               </span>
                             </div>
                           )}
 
-                           {order.bonusPointsUsed && order.bonusPointsUsed > 0 && (
+                          {/* Бонусные баллы */}
+                          {order.bonusPointsUsed > 0 && (
                             <div className="flex justify-between text-sm">
                               <span>{t.bonusPoints}:</span>
                               <span className="font-medium text-green-600 dark:text-green-400">
@@ -2010,39 +2006,11 @@ const handleApplyCustomer = async () => {
                               </span>
                             </div>
                           )}
-                          
-                          <div className="flex justify-between items-center pt-2">
-                            <div className="font-medium flex items-center">
-                              {t.total}:
-                            </div>
-                            <div className="text-lg font-bold">{calculateOrderTotal().toFixed(2)} ₽</div>
-                          </div>
-
-                          {order?.payment && (
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <div className="font-medium flex items-center">
-                                  {t.paymentStatus}:
-                                </div>
-                                <Badge variant={order.payment.status === 'PAID' ? 'default' : 'secondary'}>
-                                  {order.payment.status === 'PENDING' ? t.pending : 
-                                   order.payment.status === 'PAID' ? t.paid : t.failed}
-                                </Badge>
-                              </div>
-                              <div className="flex justify-between items-center">
-                                <div className="font-medium flex items-center">
-                                  {t.paymentMethod}:
-                                </div>
-                                <div>
-                                  {order.payment.method === 'CASH' ? t.cash : 
-                                   order.payment.method === 'CARD' ? t.card : t.online}
-                                </div>
-                              </div>
-                            </div>
-                          )}
                         </div>
-                      </div>
-                    </Card>
+                      </CollapsibleContent>
+                    )}
+                  </Card>
+
                     <div className="flex flex-col gap-4 pt-4">
                       {order.status !== 'CANCELLED' && (
                         <Button

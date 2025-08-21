@@ -117,25 +117,25 @@ export const AdditiveService = {
     return data;
   },
 
-  // Получение добавки по ID
+  // Получение Модификаторы по ID
   getById: async (id: string) => {
     const { data } = await api.get(`/additives/${id}`);
     return data;
   },
 
-  // Создание новой добавки
+  // Создание новой Модификаторы
   create: async (dto: AdditiveDto) => {
     const { data } = await api.post('/additives', dto);
     return data;
   },
 
-  // Обновление добавки
+  // Обновление Модификаторы
   update: async (id: string, dto: Partial<AdditiveDto>) => {
     const { data } = await api.patch(`/additives/${id}`, dto);
     return data;
   },
 
-  // Удаление добавки
+  // Удаление Модификаторы
   delete: async (id: string) => {
     const { data } = await api.delete(`/additives/${id}`);
     return data;
@@ -147,7 +147,7 @@ export const AdditiveService = {
     return data;
   },
 
-  // Добавление добавки к продукту
+  // Добавление Модификаторы к продукту
   addToProduct: async (additiveId: string, productId: string) => {
     const { data } = await api.post(
       `/additives/${additiveId}/products/${productId}`
@@ -155,7 +155,7 @@ export const AdditiveService = {
     return data;
   },
 
-  // Удаление добавки из продукта
+  // Удаление Модификаторы из продукта
   removeFromProduct: async (additiveId: string, productId: string) => {
     const { data } = await api.delete(
       `/additives/${additiveId}/products/${productId}`

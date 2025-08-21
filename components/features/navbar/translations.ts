@@ -63,7 +63,7 @@ export const navTranslations = {
       staff: "პერსონალი",
       shifts: "ცვლები",
       discounts: "ფასდაკლებები",
-      bonuses: "დანამატები",
+      bonuses: "მოდიფიკატორები",
       analytics: "სტატისტიკა",
       settings: "პარამეტრები",
       logout: "გამოსვლა",

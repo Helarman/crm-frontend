@@ -29,8 +29,8 @@ const MenuPage = () => {
     },
     additives: {
       title: {
-        ru: 'Добавки',
-        ka: 'დანამატები',
+        ru: 'Модификаторы',
+        ka: 'მოდიფიკატორები',
       },
     },
     categories: {

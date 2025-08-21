@@ -10,7 +10,6 @@ import { Plus } from 'lucide-react';
 import { ProductFilters } from './ProductFilters';
 import { ProductTable } from './ProductTable';
 import { ProductModal } from './ProductModal';
-import { ProductPreviewCard } from './ProductPreviewCard';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { toast } from 'sonner';
@@ -49,7 +48,7 @@ export const ProductList = () => {
       setProducts(productsData);
       setCategories(categoriesData);
       
-      // Загружаем добавки только если они нужны для модального окна
+      // Загружаем Модификаторы только если они нужны для модального окна
       try {
         const additivesData = await AdditiveService.getAll();
         setAdditives(additivesData || []);
@@ -147,12 +146,13 @@ export const ProductList = () => {
         language={language}
       />
 
-      <ProductTable
-        products={filteredProducts}
-        isLoading={isLoading && products.length > 0}
-        language={language}
-        onDelete={handleDelete}
-      />
+    <ProductTable
+      products={filteredProducts}
+      isLoading={isLoading && products.length > 0}
+      language={language}
+      onDelete={handleDelete}
+      fetchData={fetchData}
+    />  
 
       <ProductModal
         productId={currentProductId}

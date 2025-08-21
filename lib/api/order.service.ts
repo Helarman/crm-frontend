@@ -107,7 +107,8 @@ export interface UpdateOrderItemDto {
 export enum EnumOrderType {
   DINE_IN = 'DINE_IN',
   TAKEAWAY = 'TAKEAWAY',
-  DELIVERY = 'DELIVERY'
+  DELIVERY = 'DELIVERY',
+  BANQUET = 'BANQUET'
 }
 
 export enum EnumPaymentMethod {

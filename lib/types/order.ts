@@ -79,6 +79,7 @@ export interface Additive {
 }
 
 export interface Category {
+  parentId: string;
   id: string
   title: string
   order?: number

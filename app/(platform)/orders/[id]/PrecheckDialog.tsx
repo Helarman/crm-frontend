@@ -67,7 +67,7 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
       },
       discount: "ფასდაკლება",
       bonusPoints: "ბონუს ქულები",
-      surcharges: "დანამატები"
+      surcharges: "მოდიფიკატორები"
     }
   };
 

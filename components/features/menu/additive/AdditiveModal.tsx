@@ -23,11 +23,11 @@ import { Language } from '@/lib/stores/language-store';
   
   const translations = {
     addAdditive: {
-      ru: 'Добавить добавку',
-      ka: 'დანამატის დამატება',
+      ru: 'Добавить модификатор',
+      ka: 'მოდიფიკატორის დამატება',
     },
     editAdditive: {
-      ru: 'Редактировать добавку',
+      ru: 'Редактировать модификатор',
       ka: 'დანამატის რედაქტირება',
     },
     title: {

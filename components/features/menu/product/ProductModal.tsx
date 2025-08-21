@@ -764,7 +764,7 @@ export const ProductModal = ({
         return (
          <div className="space-y-2">
           <Label className="text-sm">
-            {language === 'ru' ? 'Выберите добавки' : 'აირჩიეთ დანამატები'}
+            {language === 'ru' ? 'Выберите Модификаторы' : 'აირჩიეთ მოდიფიკატორები'}
           </Label>
           {isAdditivesLoading ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -773,9 +773,9 @@ export const ProductModal = ({
               options={additives.map(a => ({ id: a.id, label: `${a.title} (+${a.price}₽)` }))}
               value={selectedAdditives}
               onChange={setSelectedAdditives}
-              placeholder={language === 'ru' ? 'Выберите добавки' : 'აირჩიეთ დანამატები'}
-              searchPlaceholder={language === 'ru' ? 'Поиск добавок...' : 'დანამატების ძებნა...'}
-              emptyText={language === 'ru' ? 'Добавки не найдены' : 'დანამატები ვერ მოიძებნა'}
+              placeholder={language === 'ru' ? 'Выберите Модификаторы' : 'აირჩიეთ მოდიფიკატორები'}
+              searchPlaceholder={language === 'ru' ? 'Поиск добавок...' : 'მოდიფიკატორების ძებნა...'}
+              emptyText={language === 'ru' ? 'Модификаторы не найдены' : 'მოდიფიკატორები ვერ მოიძებნა'}
             />
           )}
         </div>
@@ -996,7 +996,7 @@ export const ProductModal = ({
       case 'images':
         return language === 'ru' ? 'Изображения' : 'სურათები';
       case 'additives':
-        return language === 'ru' ? 'Добавки' : 'დანამატები';
+        return language === 'ru' ? 'Модификаторы' : 'მოდიფიკატორები';
       case 'ingredients':
         return language === 'ru' ? 'Ингредиенты' : 'ინგრედიენტები';
       case 'prices':

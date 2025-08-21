@@ -202,7 +202,7 @@ const ProductEditPage = () => {
     setIsCategoriesLoading(true)
     try {
       const data = await CategoryService.getAll()
-      setCategories(data)
+      setCategories(data as any)
     } catch (error) {
       console.error('Failed to load categories', error)
     } finally {
@@ -443,8 +443,8 @@ const ProductEditPage = () => {
       ka: 'სურათები',
     },
     additives: {
-      ru: 'Добавки',
-      ka: 'დანამატები',
+      ru: 'Модификаторы',
+      ka: 'მოდიფიკატორები',
     },
     ingredients: {
       ru: 'Ингредиенты',
@@ -760,7 +760,7 @@ const ProductEditPage = () => {
         return (
           <div className="space-y-2">
             <Label className="text-sm">
-              {language === 'ru' ? 'Выберите добавки' : 'აირჩიეთ დანამატები'}
+              {language === 'ru' ? 'Выберите Модификаторы' : 'აირჩიეთ მოდიფიკატორები'}
             </Label>
             {isAdditivesLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -769,9 +769,9 @@ const ProductEditPage = () => {
                 options={additives.map(a => ({ id: a.id, label: `${a.title} (+${a.price}₽)` }))}
                 value={selectedAdditives}
                 onChange={setSelectedAdditives}
-                placeholder={language === 'ru' ? 'Выберите добавки' : 'აირჩიეთ დანამატები'}
-                searchPlaceholder={language === 'ru' ? 'Поиск добавок...' : 'დანამატების ძებნა...'}
-                emptyText={language === 'ru' ? 'Добавки не найдены' : 'დანამატები ვერ მოიძებნა'}
+                placeholder={language === 'ru' ? 'Выберите Модификаторы' : 'აირჩიეთ მოდიფიკატორები'}
+                searchPlaceholder={language === 'ru' ? 'Поиск добавок...' : 'მოდიფიკატორების ძებნა...'}
+                emptyText={language === 'ru' ? 'Модификаторы не найдены' : 'მოდიფიკატორები ვერ მოიძებნა'}
               />
             )}
           </div>

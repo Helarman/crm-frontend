@@ -103,7 +103,7 @@ export default function KitchenOrderPage() {
       back: "Назад к списку заказов",
       orderComposition: "Состав заказа",
       noDishes: "Нет блюд для приготовления",
-      additives: "Добавки",
+      additives: "Модификаторы",
       comment: "Комментарий",
       orderInfo: "Информация о заказе",
       orderNumber: "Номер заказа",
@@ -141,7 +141,7 @@ export default function KitchenOrderPage() {
       back: "უკან შეკვეთების სიაში",
       orderComposition: "შეკვეთის შემადგენლობა",
       noDishes: "მომზადებისთვის კერძები არ არის",
-      additives: "დანამატები",
+      additives: "მოდიფიკატორები",
       comment: "კომენტარი",
       orderInfo: "შეკვეთის ინფორმაცია",
       orderNumber: "შეკვეთის ნომერი",
@@ -207,7 +207,7 @@ export default function KitchenOrderPage() {
           },
           quantity: item.quantity,
           additives: item.additives.map(add => ({
-            title: add.title || 'Добавка'
+            title: add.title || 'Модификатор'
           })),
           comment: item.comment,
           currentStatus: item.status || 'CREATED',

@@ -21,7 +21,8 @@ import {
   MessageSquare,
   MapPin,
   Clock,
-  PlusCircle
+  PlusCircle,
+  MessageCircle
 } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { format } from 'date-fns'
@@ -249,7 +250,6 @@ export const OrderInfoStep = ({
         </div>
       )}
 
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-3">
           <Label className="text-sm flex items-center gap-2">
@@ -384,24 +384,27 @@ export const OrderInfoStep = ({
               })}
             />
           </div>
-          <div className="space-y-1 md:col-span-2">
-            <Label className="text-sm flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" />
-              {language === 'ka' ? 'დამატებითი ინსტრუქციები' : 'Дополнительные инструкции'}
-            </Label>
-            <Textarea
-              value={order.deliveryNotes}
-              onChange={(e) => setOrder({
-                ...order,
-                deliveryNotes: e.target.value
-              })}
-              placeholder={language === 'ka' ? 'მაგ. დარეკეთ შესვლამდე' : 'Например: Позвоните перед приездом'}
-            />
-          </div>
+          
         </div>
       )}
 
-      <div className="space-y-4">
+      {/* New Comment Field */}
+      <div className="space-y-1">
+        <Label className="text-sm flex items-center gap-2">
+          <MessageCircle className="h-4 w-4" />
+          {language === 'ka' ? 'კომენტარი' : 'Комментарий'}
+        </Label>
+        <Textarea
+          value={order.comment || ''}
+          onChange={(e) => setOrder({
+            ...order,
+            comment: e.target.value
+          })}
+          
+        />
+      </div>
+
+      {/*<div className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-medium flex items-center gap-2">
             <PlusCircle className="h-4 w-4" />
@@ -429,7 +432,7 @@ export const OrderInfoStep = ({
               : 'Нет примененных надбавок'}
           </p>
         )}
-      </div>
+      </div>*/}
 
       <div className="mb-6 p-4 rounded-lg">
         <div className="flex items-center justify-between">

@@ -1,17 +1,38 @@
-// app/restaurants/page.tsx
 'use client';
 
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth'
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Language, useLanguageStore } from '@/lib/stores/language-store';
+import { WarehouseService } from '@/lib/api/warehouse.service';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 
 export default function RestaurantsPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
   const { language } = useLanguageStore();
+  const [isCopying, setIsCopying] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [sourceRestaurantId, setSourceRestaurantId] = useState('');
+  const [targetRestaurantId, setTargetRestaurantId] = useState('');
 
   const translations = {
     ru: {
@@ -19,14 +40,40 @@ export default function RestaurantsPage() {
       description: 'Выберите ресторан для управления складом',
       createButton: 'Добавить ресторан',
       noRestaurants: 'У вас нет ресторанов',
-      loading: 'Загрузка...'
+      loading: 'Загрузка...',
+      copyWarehouse: 'Копировать склад',
+      copyWarehouseButton: 'Копировать склад',
+      selectSource: 'Выберите источник',
+      selectTarget: 'Выберите назначение',
+      copySuccess: 'Склад успешно скопирован',
+      copyError: 'Ошибка при копировании склада',
+      actions: 'Действия',
+      copyDialogTitle: 'Копирование склада',
+      copyDialogDescription: 'Выберите ресторан-источник и ресторан-назначение для копирования склада',
+      cancel: 'Отмена',
+      confirmCopy: 'Копировать',
+      source: 'Источник',
+      target: ' Назначение'
     },
     ka: {
       title: 'ჩემი რესტორნები',
       description: 'აირჩიეთ რესტორნი საწყობის მართვისთვის',
       createButton: 'რესტორნის დამატება',
       noRestaurants: 'არ გაქვთ რესტორნები',
-      loading: 'იტვირთება...'
+      loading: 'იტვირთება...',
+      copyWarehouse: 'საწყობის კოპირება',
+      copyWarehouseButton: 'საწყობის კოპირება',
+      selectSource: 'აირჩიეთ წყარო',
+      selectTarget: 'აირჩიეთ დანიშნულება',
+      copySuccess: 'საწყობი წარმატებით დაკოპირდა',
+      copyError: 'საწყობის კოპირების შეცდომა',
+      actions: 'მოქმედებები',
+      copyDialogTitle: 'საწყობის კოპირება',
+      copyDialogDescription: 'აირჩიეთ წყაროს და დანიშნულების რესტორნები საწყობის კოპირებისთვის',
+      cancel: 'გაუქმება',
+      confirmCopy: 'კოპირება',
+      source: 'წყარო',
+      target: ' მიზანი'
     }
   };
 
@@ -34,6 +81,37 @@ export default function RestaurantsPage() {
 
   const handleRestaurantClick = (restaurantId: string) => {
     router.push(`/restaurants/${restaurantId}/warehouse`);
+  };
+
+  const canCopyWarehouse = user?.role && ['SUPERVISOR', 'MANAGER'].includes(user.role);
+
+  const handleCopyWarehouse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!sourceRestaurantId || !targetRestaurantId) {
+      toast.error(t.selectSource + ' & ' + t.selectTarget);
+      return;
+    }
+
+    try {
+      setIsCopying(true);
+      
+      await WarehouseService.copyWarehouse({
+        sourceRestaurantId,
+        targetRestaurantId,
+        userId: user?.id
+      });
+
+      toast.success(t.copySuccess);
+      setIsDialogOpen(false);
+      setSourceRestaurantId('');
+      setTargetRestaurantId('');
+    } catch (error) {
+      console.error('Copy warehouse error:', error);
+      toast.error(t.copyError);
+    } finally {
+      setIsCopying(false);
+    }
   };
 
   if (loading) {
@@ -54,8 +132,13 @@ export default function RestaurantsPage() {
 
   return (
     <div>
-      <div className='mb-6'>
+      <div className='mb-6 flex justify-between items-center'>
         <h1 className="text-2xl font-bold">{t.title}</h1>
+        {canCopyWarehouse && user?.restaurant?.length > 1 && (
+          <Button onClick={() => setIsDialogOpen(true)}>
+            {t.copyWarehouseButton}
+          </Button>
+        )}
       </div>
 
       {user?.restaurant?.length ? (
@@ -76,9 +159,90 @@ export default function RestaurantsPage() {
       ) : (
         <div className="flex flex-col items-center justify-center py-12 space-y-4">
           <p className="text-lg text-muted-foreground">{t.noRestaurants}</p>
-          {JSON.stringify(user)}
         </div>
       )}
+
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.copyDialogTitle}</DialogTitle>
+          </DialogHeader>
+          
+         <form onSubmit={handleCopyWarehouse}>
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-4 sm:items-center">
+                <Label htmlFor="source" className="sm:text-right">
+                  {t.source}
+                </Label>
+                <div className="sm:col-span-3">
+                  <Select 
+                    value={sourceRestaurantId} 
+                    onValueChange={setSourceRestaurantId}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={t.selectSource} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {user?.restaurant?.map((restaurant: any) => (
+                        <SelectItem key={`source-${restaurant.id}`} value={restaurant.id}>
+                          {restaurant.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-4 sm:items-center">
+                <Label htmlFor="target" className="sm:text-right">
+                  {t.target}
+                </Label>
+                <div className="sm:col-span-3">
+                  <Select 
+                    value={targetRestaurantId} 
+                    onValueChange={setTargetRestaurantId}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={t.selectTarget} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {user?.restaurant?.map((restaurant: any) => (
+                        <SelectItem key={`target-${restaurant.id}`} value={restaurant.id}>
+                          {restaurant.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="gap-3">
+              <Button 
+                type="button" 
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={() => {
+                  setIsDialogOpen(false);
+                  setSourceRestaurantId('');
+                  setTargetRestaurantId('');
+                }}
+              >
+                {t.cancel}
+              </Button>
+              <Button 
+                type="submit"
+                className="w-full sm:w-auto"
+                disabled={isCopying || !sourceRestaurantId || !targetRestaurantId}
+              >
+                {isCopying ? t.loading : t.confirmCopy}
+              </Button>
+            </DialogFooter>
+          </div>
+        </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

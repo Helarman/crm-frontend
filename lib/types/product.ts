@@ -1,3 +1,5 @@
+import { Category } from "./order"
+
 export interface Additive {
   id: string
   title: string
@@ -7,6 +9,11 @@ export interface Additive {
 
 export interface Product {
   id: string
+  category: Category
+  publishedOnWebsite: boolean
+  printLabels: boolean
+  publishedInApp: boolean
+  isStopList: boolean
   title: string
   titleGe?: string
   price: number

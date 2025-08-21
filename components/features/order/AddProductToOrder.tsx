@@ -313,7 +313,7 @@ export function AddProductToOrder({
                 {selectedProduct.additives.length > 0 && (
                   <div>
                     <Label className="text-base">
-                      {t('Добавки', 'დამატებები')}
+                      {t('Модификаторы', 'დამატებები')}
                     </Label>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-1">
                       {selectedProduct.additives.map(additive => (

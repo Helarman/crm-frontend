@@ -10,10 +10,10 @@ interface CategoryFiltersProps {
 
 const translations = {
   ru: {
-    searchPlaceholder: 'Поиск по названию',
+    searchPlaceholder: 'Поиск по названию или slug',
   },
   ka: {
-    searchPlaceholder: 'ძებნა სახელით',
+    searchPlaceholder: 'ძებნა სახელით ან slug-ით',
   }
 };
 
@@ -22,10 +22,10 @@ export function CategoryFilters({
   onSearchChange,
   language
 }: CategoryFiltersProps) {
-  const t = translations[language  as Language];
+  const t = translations[language as Language];
 
   return (
-    <div className="mb-4">
+    <div className="mb-4 flex gap-4">
       <div className="relative flex-1">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input

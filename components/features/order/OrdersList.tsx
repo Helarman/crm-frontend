@@ -168,6 +168,8 @@ const translations = {
   }
 }
 
+const RESTAURANT_STORAGE_KEY = 'selectedRestaurantId';
+
 export function OrdersList() {
   const { language } = useLanguageStore()
   const t = (key: keyof typeof translations) => translations[key][language]
@@ -214,30 +216,43 @@ export function OrdersList() {
     mutate: mutateArchive
   } = useRestaurantArchive(selectedRestaurantId, archiveFilters)
 
-  // Установка первого ресторана по умолчанию
   useEffect(() => {
     if (user?.restaurant?.length > 0) {
-      setSelectedRestaurantId(user.restaurant[0].id)
+      const savedRestaurantId = localStorage.getItem(RESTAURANT_STORAGE_KEY);
+      const defaultRestaurantId = user.restaurant[0].id;
+      
+      const isValidSavedRestaurant = savedRestaurantId && 
+        user.restaurant.some((r : Restaurant) => r.id === savedRestaurantId);
+      
+      const newRestaurantId = isValidSavedRestaurant ? savedRestaurantId : defaultRestaurantId;
+      
+      setSelectedRestaurantId(newRestaurantId);
+      
+      if (!isValidSavedRestaurant || savedRestaurantId !== newRestaurantId) {
+        localStorage.setItem(RESTAURANT_STORAGE_KEY, newRestaurantId);
+      }
     }
   }, [user])
 
-  // Сбрасываем страницу при изменении фильтров
+  useEffect(() => {
+    if (selectedRestaurantId) {
+      localStorage.setItem(RESTAURANT_STORAGE_KEY, selectedRestaurantId);
+    }
+  }, [selectedRestaurantId])
+
   useEffect(() => {
     setPage(1)
   }, [selectedOrderType, showArchive, dateRange, isReordered, hasDiscount, discountCanceled, isRefund])
 
-  // Определяем текущие данные и состояние загрузки
   const currentData = showArchive ? archiveData?.data || [] : activeOrders
   const isLoading = showArchive ? archiveLoading : activeLoading
   const error = showArchive ? archiveError : activeError
   const totalPages = archiveData?.meta?.totalPages || 1
 
-  // Фильтрация активных заказов по типу
   const filteredActiveOrders = selectedOrderType === 'ALL' 
     ? activeOrders 
     : activeOrders.filter((order: OrderResponse) => order.type === selectedOrderType)
 
-  // Сортировка заказов
   const sortedOrders = [...(showArchive ? currentData : filteredActiveOrders)].sort((a, b) => {
     const isACompletedOrCancelled = a.status === 'COMPLETED' || a.status === 'CANCELLED'
     const isBCompletedOrCancelled = b.status === 'COMPLETED' || b.status === 'CANCELLED'

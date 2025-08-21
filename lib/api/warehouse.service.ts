@@ -85,242 +85,37 @@ function redirectToLogin() {
     window.location.href = '/login';
   }
 }
-export const WarehouseService = {
-  // Методы для склада
-  getRestaurantWarehouse: async (restaurantId: string) => {
-    const { data } = await api.get(`/warehouse/restaurant/${restaurantId}`);
-    return data;
-  },
-
-  createWarehouse: async (dto: CreateWarehouseDto) => {
-    const { data } = await api.post('/warehouse', dto);
-    return data;
-  },
-
-  updateWarehouse: async (id: string, dto: UpdateWarehouseDto) => {
-    const { data } = await api.put(`/warehouse/${id}`, dto);
-    return data;
-  },
-
-  // Методы для мест хранения
-  createStorageLocation: async (warehouseId: string, dto: CreateStorageLocationDto) => {
-    const { data } = await api.post(`/warehouse/${warehouseId}/locations`, dto);
-    return data;
-  },
-
-  updateStorageLocation: async (id: string, dto: UpdateStorageLocationDto) => {
-    const { data } = await api.put(`/warehouse/locations/${id}`, dto);
-    return data;
-  },
-
-  deleteStorageLocation: async (id: string) => {
-    await api.delete(`/warehouse/locations/${id}`);
-  },
-
-  // Методы для позиций на складе
-  createInventoryItem: async (warehouseId: string, dto: CreateInventoryItemDto) => {
-    const { data } = await api.post(`/warehouse/${warehouseId}/items`, dto);
-    return data;
-  },
-
-  getInventoryItemsByProduct: async (productId: string) => {
-    const { data } = await api.get(`/warehouse/items/product/${productId}`);
-    return data;
-  },
-
-  updateInventoryItem: async (id: string, dto: UpdateInventoryItemDto) => {
-    const { data } = await api.put(`/warehouse/items/${id}`, dto);
-    return data;
-  },
-
-  deleteInventoryItem: async (id: string) => {
-    await api.delete(`/warehouse/items/${id}`);
-  },
-
-  // Методы для операций с количеством
-  receiveInventory: async (itemId: string, dto: InventoryTransactionDto) => {
-    const { data } = await api.post(`/warehouse/items/${itemId}/receive`, dto);
-    return data;
-  },
-
-  writeOffInventory: async (itemId: string, dto: InventoryTransactionDto) => {
-    const { data } = await api.post(`/warehouse/items/${itemId}/write-off`, dto);
-    return data;
-  },
-
-  bulkReceiveInventory: async (items: BulkInventoryTransactionDto) => {
-    const { data } = await api.post('/warehouse/items/bulk/receive', items);
-    return data;
-  },
-
-  bulkWriteOffInventory: async (items: BulkInventoryTransactionDto) => {
-    const { data } = await api.post('/warehouse/items/bulk/write-off', items);
-    return data;
-  },
-
-  // Методы для получения истории операций
-  getInventoryItemTransactions: async (itemId: string) => {
-    const { data } = await api.get(`/warehouse/items/${itemId}/transactions`);
-    return data;
-  },
-  updateItemQuantity: async (itemId: string, quantity: number) => {
-    const { data } = await api.patch(`/warehouse/items/${itemId}/quantity`, { quantity });
-    return data;
-  },
-  getInventoryItems: async (): Promise<WarehouseItem[]> => {
-    const { data } = await api.get('/warehouse/items');
-    return data;
-  },
-
-  getWarehouseTransactionsByPeriod: async (
-    restaurantId: string,
-    startDate: string,
-    endDate: string
-  ): Promise<InventoryTransaction[]> => {
-    const { data } = await api.get(
-      `/warehouse/transactions/restaurant/${restaurantId}`,
-      {
-        params: {
-          startDate,
-          endDate
-        }
-      }
-    );
-    return data;
-  },
-
-  // Методы для заготовок (premixes)
-  createPremix: async (dto: CreatePremixDto) => {
-    const { data } = await api.post('/warehouse/premixes', dto);
-    return data;
-  },
-
-  preparePremix: async (premixId: string, dto: PreparePremixDto) => {
-    const { data } = await api.post(`/warehouse/premixes/${premixId}/prepare`, dto);
-    return data;
-  },
-
-  getPremixDetails: async (premixId: string): Promise<PremixDetails> => {
-    const { data } = await api.get(`/warehouse/premixes/${premixId}`);
-    return data;
-  },
-
-  listPremixes: async (warehouseId?: string): Promise<Premix[]> => {
-    const params = warehouseId ? { warehouseId } : {};
-    const { data } = await api.get('/warehouse/premixes', { params });
-    return data;
-  },
-
-  updatePremix: async (premixId: string, dto: UpdatePremixDto) => {
-    const { data } = await api.put(`/warehouse/premixes/${premixId}`, dto);
-    return data;
-  },
-
-  deletePremix: async (premixId: string) => {
-    await api.delete(`/warehouse/premixes/${premixId}`);
-  },
-
-  // Дополнительные методы для работы с заготовками
-  getPremixIngredients: async (premixId: string): Promise<PremixIngredient[]> => {
-    const { data } = await api.get(`/warehouse/premixes/${premixId}/ingredients`);
-    return data;
-  },
-
-  addPremixIngredient: async (premixId: string, dto: AddPremixIngredientDto) => {
-    const { data } = await api.post(`/warehouse/premixes/${premixId}/ingredients`, dto);
-    return data;
-  },
-
-  updatePremixIngredient: async (
-    premixId: string,
-    ingredientId: string,
-    dto: UpdatePremixIngredientDto
-  ) => {
-    const { data } = await api.put(
-      `/warehouse/premixes/${premixId}/ingredients/${ingredientId}`,
-      dto
-    );
-    return data;
-  },
-
-  removePremixIngredient: async (premixId: string, ingredientId: string) => {
-    await api.delete(`/warehouse/premixes/${premixId}/ingredients/${ingredientId}`);
-  },
-
-  getPremixTransactions: async (premixId: string): Promise<PremixTransaction[]> => {
-    const { data } = await api.get(`/warehouse/premixes/${premixId}/transactions`);
-    return data;
-  },
-
-};
-
-export interface WarehouseItem {
-    id: string;
-    name: string;
-    description?: string;
-    quantity: number;
-    reserved: number;
-    minQuantity?: number;
-    unit: string;
-    cost?: number;
-    isActive: boolean;
-    storageLocation?: {
-        id: string;
-        name: string;
-        code?: string;
-    };
-    product?: {
-        id: string;
-        title: string;
-    };
-    premix?: {
-        id: string;
-        yield: number;
-    };
-}
-
-export interface InventoryTransaction {
-    id: string;
-    type: 'RECEIPT' | 'WRITE_OFF' | 'CORRECTION' | 'TRANSFER';
-    quantity: number;
-    previousQuantity: number;
-    newQuantity: number;
-    reason?: string;
-    documentId?: string;
-    createdAt: string;
-    user?: {
-        id: string;
-        name: string;
-        email: string;
-    };
-    inventoryItem: {
-        id: string;
-        name: string;
-        product?: {
-            id: string;
-            title: string;
-        };
-    };
-}
-
-export interface StorageLocation {
+interface WarehouseDto {
   id: string;
   name: string;
-  code: string;
   description?: string;
+  isActive: boolean;
+  restaurantId: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-
 interface CreateWarehouseDto {
-  restaurantId: string;
   name: string;
   description?: string;
+  restaurantId?: string;
 }
 
 interface UpdateWarehouseDto {
   name?: string;
   description?: string;
   isActive?: boolean;
+}
+
+interface StorageLocationDto {
+  id: string;
+  name: string;
+  code?: string;
+  description?: string;
+  isActive: boolean;
+  warehouseId: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 interface CreateStorageLocationDto {
@@ -336,14 +131,24 @@ interface UpdateStorageLocationDto {
   isActive?: boolean;
 }
 
+interface InventoryItemDto {
+  id: string;
+  name: string;
+  description?: string;
+  unit: string;
+  cost?: number;
+  productId?: string;
+  premixId?: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 interface CreateInventoryItemDto {
   name: string;
   description?: string;
   unit: string;
-  quantity?: number;
-  minQuantity?: number;
   cost?: number;
-  storageLocationId?: string | null;
   productId?: string;
 }
 
@@ -351,46 +156,78 @@ interface UpdateInventoryItemDto {
   name?: string;
   description?: string;
   unit?: string;
-  minQuantity?: number;
   cost?: number;
-  storageLocationId?: string | null;
   productId?: string;
   isActive?: boolean;
 }
 
+interface WarehouseItemDto {
+  id: string;
+  warehouseId: string;
+  inventoryItemId: string;
+  storageLocationId?: string;
+  quantity: number;
+  reserved: number;
+  minQuantity?: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface CreateWarehouseItemDto {
+  warehouseId: string;
+  inventoryItemId: string;
+  storageLocationId?: string;
+  quantity: number;
+  minQuantity?: number;
+}
+
+interface UpdateWarehouseItemDto {
+  storageLocationId?: string;
+  quantity?: number;
+  reserved?: number;
+  minQuantity?: number;
+}
+
 interface InventoryTransactionDto {
+  id: string;
+  inventoryItemId: string;
+  userId?: string;
+  type: InventoryTransactionType;
+  quantity: number;
+  previousQuantity: number;
+  newQuantity: number;
+  reason?: string;
+  documentId?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface CreateInventoryTransactionDto {
+  inventoryItemId: string;
+  userId?: string;
+  type: InventoryTransactionType;
+  warehouseId: string;
   quantity: number;
   reason?: string;
   documentId?: string;
-  userId?: string;
 }
 
-interface BulkInventoryTransactionDto {
-  items: Array<{
-    id: string;
-    quantity: number;
-    reason?: string;
-    documentId?: string;
-  }>;
-  userId?: string;
+interface PremixDto {
+  id: string;
+  name: string;
+  description?: string;
+  unit: string;
+  yield: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
-// Типы для заготовок
 interface CreatePremixDto {
   name: string;
   description?: string;
   unit: string;
   yield?: number;
-  ingredients: Array<{
-    inventoryItemId: string;
-    quantity: number;
-  }>;
-  warehouseId: string;
-}
-
-interface PreparePremixDto {
-  quantity: number;
-  userId?: string;
+  ingredients: AddPremixIngredientDto[];
 }
 
 interface UpdatePremixDto {
@@ -398,7 +235,12 @@ interface UpdatePremixDto {
   description?: string;
   unit?: string;
   yield?: number;
-  isActive?: boolean;
+}
+
+interface PremixIngredientDto {
+  premixId: string;
+  inventoryItemId: string;
+  quantity: number;
 }
 
 interface AddPremixIngredientDto {
@@ -406,58 +248,359 @@ interface AddPremixIngredientDto {
   quantity: number;
 }
 
-interface UpdatePremixIngredientDto {
-  quantity: number;
-}
-
-interface Premix {
-  id: string;
-  name: string;
-  description?: string;
-  unit: string;
-  yield: number;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-  inventoryItem?: {
-    id: string;
-    quantity: number;
-    warehouseId: string;
-  };
-}
-
-interface PremixDetails extends Premix {
-  ingredients: PremixIngredient[];
-  inventoryItem: {
-    id: string;
-    quantity: number;
-    warehouseId: string;
-  };
-}
-
-interface PremixIngredient {
+interface ProductIngredientDto {
+  productId: string;
   inventoryItemId: string;
-  inventoryItem: {
-    id: string;
-    name: string;
-    quantity: number;
-    unit: string;
-  };
   quantity: number;
 }
 
-interface PremixTransaction {
-  id: string;
-  type: 'PREPARATION' | 'USAGE';
+interface AddProductIngredientDto {
+  inventoryItemId: string;
   quantity: number;
-  date: string;
-  user?: {
-    id: string;
-    name: string;
-  };
-  ingredients: Array<{
-    inventoryItemId: string;
-    name: string;
-    quantityUsed: number;
-  }>;
 }
+
+interface InventoryAvailabilityDto {
+  productId: string;
+  productName: string;
+  quantity: number;
+  allAvailable: boolean;
+  ingredients: {
+    ingredientId: string;
+    ingredientName: string;
+    required: number;
+    available: number;
+    isAvailable: boolean;
+  }[];
+}
+
+enum InventoryTransactionType {
+  RECEIPT = 'RECEIPT',
+  WRITE_OFF = 'WRITE_OFF',
+  CORRECTION = 'CORRECTION',
+  TRANSFER = 'TRANSFER',
+  PREPARATION = 'PREPARATION',
+  USAGE = 'USAGE'
+}
+
+// Обновленный сервис с правильными типами
+export const WarehouseService = {
+  // ==================== Warehouse Methods ====================
+  createWarehouse: async (dto: CreateWarehouseDto): Promise<WarehouseDto> => {
+    const { data } = await api.post('/warehouses', dto);
+    return data;
+  },
+
+  getWarehouse: async (id: string): Promise<WarehouseDto> => {
+    const { data } = await api.get(`/warehouses/${id}`);
+    return data;
+  },
+
+  getRestaurantWarehouse: async (restaurantId: string): Promise<WarehouseDto> => {
+    const { data } = await api.get(`/warehouses/restaurant/${restaurantId}`);
+    return data;
+  },
+
+  updateWarehouse: async (id: string, dto: UpdateWarehouseDto): Promise<WarehouseDto> => {
+    const { data } = await api.put(`/warehouses/${id}`, dto);
+    return data;
+  },
+
+  deleteWarehouse: async (id: string): Promise<void> => {
+    await api.delete(`/warehouses/${id}`);
+  },
+
+  // ==================== Storage Location Methods ====================
+  createStorageLocation: async (
+    warehouseId: string, 
+    dto: CreateStorageLocationDto
+  ): Promise<StorageLocationDto> => {
+    const { data } = await api.post(`/warehouses/${warehouseId}/locations`, dto);
+    return data;
+  },
+
+  getStorageLocation: async (id: string): Promise<StorageLocationDto> => {
+    const { data } = await api.get(`/warehouses/locations/${id}`);
+    return data;
+  },
+
+  updateStorageLocation: async (
+    id: string, 
+    dto: UpdateStorageLocationDto
+  ): Promise<StorageLocationDto> => {
+    const { data } = await api.put(`/warehouses/locations/${id}`, dto);
+    return data;
+  },
+
+  deleteStorageLocation: async (id: string): Promise<void> => {
+    await api.delete(`/warehouses/locations/${id}`);
+  },
+
+  // ==================== Inventory Item Methods ====================
+  createInventoryItem: async (dto: CreateInventoryItemDto): Promise<InventoryItemDto> => {
+    const { data } = await api.post('/warehouses/items', dto);
+    return data;
+  },
+
+  getInventoryItem: async (id: string): Promise<InventoryItemDto> => {
+    const { data } = await api.get(`/warehouses/items/${id}`);
+    return data;
+  },
+
+  updateInventoryItem: async (
+    id: string, 
+    dto: UpdateInventoryItemDto
+  ): Promise<InventoryItemDto> => {
+    const { data } = await api.put(`/warehouses/items/${id}`, dto);
+    return data;
+  },
+
+  deleteInventoryItem: async (id: string): Promise<void> => {
+    await api.delete(`/warehouses/items/${id}`);
+  },
+
+  // ==================== Warehouse Item Methods ====================
+  createWarehouseItem: async (dto: CreateWarehouseItemDto): Promise<WarehouseItemDto> => {
+    const { data } = await api.post('/warehouses/warehouse-items', dto);
+    return data;
+  },
+
+  getWarehouseItem: async (id: string): Promise<WarehouseItemDto> => {
+    const { data } = await api.get(`/warehouses/warehouse-items/${id}`);
+    return data;
+  },
+
+  updateWarehouseItem: async (
+    id: string, 
+    dto: UpdateWarehouseItemDto
+  ): Promise<WarehouseItemDto> => {
+    const { data } = await api.put(`/warehouses/warehouse-items/${id}`, dto);
+    return data;
+  },
+
+  deleteWarehouseItem: async (id: string): Promise<void> => {
+    await api.delete(`/warehouses/warehouse-items/${id}`);
+  },
+
+  // ==================== Transaction Methods ====================
+  createTransaction: async (
+    dto: CreateInventoryTransactionDto
+  ): Promise<InventoryTransactionDto> => {
+    const { data } = await api.post('/warehouses/transactions', dto);
+    return data;
+  },
+
+  getTransaction: async (id: string): Promise<InventoryTransactionDto> => {
+    const { data } = await api.get(`/warehouses/transactions/${id}`);
+    return data;
+  },
+
+  getItemTransactions: async (itemId: string): Promise<InventoryTransactionDto[]> => {
+    const { data } = await api.get(`/warehouses/items/${itemId}/transactions`);
+    return data;
+  },
+
+  getWarehouseTransactions: async (
+    warehouseId: string,
+    filters?: {
+      startDate?: Date;
+      endDate?: Date;
+      type?: InventoryTransactionType;
+    }
+  ): Promise<InventoryTransactionDto[]> => {
+    const { data } = await api.get(`/warehouses/warehouse/${warehouseId}/transactions`, {
+      params: {
+        startDate: filters?.startDate?.toISOString(),
+        endDate: filters?.endDate?.toISOString(),
+        type: filters?.type,
+      },
+    });
+    return data;
+  },
+
+  // ==================== Premix Methods ====================
+  createPremix: async (dto: CreatePremixDto): Promise<PremixDto> => {
+    const { data } = await api.post('/warehouses/premixes', dto);
+    return data;
+  },
+
+  getPremix: async (id: string): Promise<PremixDto> => {
+    const { data } = await api.get(`/warehouses/premixes/${id}`);
+    return data;
+  },
+
+  updatePremix: async (id: string, dto: UpdatePremixDto): Promise<PremixDto> => {
+    const { data } = await api.put(`/warehouses/premixes/${id}`, dto);
+    return data;
+  },
+
+  deletePremix: async (id: string): Promise<void> => {
+    await api.delete(`/warehouses/premixes/${id}`);
+  },
+
+  preparePremix: async (
+    id: string, 
+    quantity: number, 
+    userId?: string
+  ): Promise<void> => {
+    await api.post(`/warehouses/premixes/${id}/prepare`, { quantity, userId });
+  },
+
+  // ==================== Premix Ingredient Methods ====================
+  addPremixIngredient: async (
+    premixId: string, 
+    dto: AddPremixIngredientDto
+  ): Promise<PremixIngredientDto> => {
+    const { data } = await api.post(`/warehouses/premixes/${premixId}/ingredients`, dto);
+    return data;
+  },
+
+  updatePremixIngredient: async (
+    premixId: string,
+    inventoryItemId: string,
+    quantity: number
+  ): Promise<PremixIngredientDto> => {
+    const { data } = await api.put(
+      `/warehouses/premixes/${premixId}/ingredients/${inventoryItemId}`,
+      { quantity }
+    );
+    return data;
+  },
+
+  removePremixIngredient: async (
+    premixId: string, 
+    inventoryItemId: string
+  ): Promise<void> => {
+    await api.delete(`/warehouses/premixes/${premixId}/ingredients/${inventoryItemId}`);
+  },
+
+  // ==================== Product Ingredient Methods ====================
+  addProductIngredient: async (
+    productId: string,
+    dto: AddProductIngredientDto
+  ): Promise<ProductIngredientDto> => {
+    const { data } = await api.post(`/warehouses/products/${productId}/ingredients`, dto);
+    return data;
+  },
+
+  updateProductIngredient: async (
+    productId: string,
+    inventoryItemId: string,
+    quantity: number
+  ): Promise<ProductIngredientDto> => {
+    const { data } = await api.put(
+      `/warehouses/products/${productId}/ingredients/${inventoryItemId}`,
+      { quantity }
+    );
+    return data;
+  },
+
+  removeProductIngredient: async (
+    productId: string,
+    inventoryItemId: string
+  ): Promise<void> => {
+    await api.delete(`/warehouses/products/${productId}/ingredients/${inventoryItemId}`);
+  },
+
+  // ==================== Utility Methods ====================
+  checkProductAvailability: async (
+    productId: string, 
+    quantity: number = 1
+  ): Promise<InventoryAvailabilityDto> => {
+    const { data } = await api.get(`/warehouses/products/${productId}/availability`, {
+      params: { quantity },
+    });
+    return data;
+  },
+
+  listInventoryItems: async (filters?: {
+  search?: string;
+  isActive?: boolean;
+}): Promise<InventoryItemDto[]> => {
+  const { data } = await api.get('/warehouses/items', {
+    params: {
+      search: filters?.search,
+      isActive: filters?.isActive,
+    },
+  });
+  return data;
+},
+
+listStorageLocations: async (
+  warehouseId: string,
+  filters?: {
+    search?: string;
+  }
+): Promise<StorageLocationDto[]> => {
+  const { data } = await api.get(`/warehouses/${warehouseId}/locations`, {
+    params: {
+      search: filters?.search,
+    },
+  });
+  return data;
+},
+
+listPremixes: async (filters?: {
+  search?: string;
+}): Promise<PremixDto[]> => {
+  const { data } = await api.get('/warehouses/premixes', {
+    params: {
+      search: filters?.search,
+    },
+  });
+  return data;
+},
+
+// ==================== Warehouse Item Methods ====================
+getWarehouseItems: async (
+  warehouseId: string,
+  filters?: {
+    search?: string;
+    storageLocationId?: string;
+  }
+): Promise<WarehouseItemDto[]> => {
+  const { data } = await api.get(`/warehouses/${warehouseId}/warehouse-items`, {
+    params: {
+      search: filters?.search,
+      storageLocationId: filters?.storageLocationId,
+    },
+  });
+  return data;
+},
+
+// ==================== Inventory Item Methods ====================
+searchInventoryItems: async (
+  search: string
+): Promise<InventoryItemDto[]> => {
+  const { data } = await api.get('/warehouses/items/search', {
+    params: { search },
+  });
+  return data;
+},
+
+// ==================== Premix Methods ====================
+getPremixDetails: async (id: string): Promise<PremixDto> => {
+  const { data } = await api.get(`/warehouses/premixes/${id}/details`);
+  return data;
+},
+
+// ==================== Transaction Methods ====================
+getPremixTransactions: async (premixId: string): Promise<InventoryTransactionDto[]> => {
+  const { data } = await api.get(`/warehouses/premixes/${premixId}/transactions`);
+  return data;
+},
+
+getWarehouseTransactionsByPeriod: async (
+  warehouseId: string,
+  startDate: string,
+  endDate: string
+): Promise<InventoryTransactionDto[]> => {
+  const { data } = await api.get(`/warehouses/${warehouseId}/transactions/period`, {
+    params: {
+      startDate,
+      endDate,
+    },
+  });
+  return data;
+},
+
+};
