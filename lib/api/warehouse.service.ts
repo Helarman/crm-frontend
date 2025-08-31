@@ -131,7 +131,7 @@ interface UpdateStorageLocationDto {
   isActive?: boolean;
 }
 
-interface InventoryItemDto {
+export interface InventoryItemDto {
   id: string;
   name: string;
   description?: string;
@@ -142,6 +142,7 @@ interface InventoryItemDto {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+  inventoryItemId?: string;
 }
 
 interface CreateInventoryItemDto {
@@ -200,6 +201,9 @@ interface InventoryTransactionDto {
   documentId?: string;
   createdAt: Date;
   updatedAt: Date;
+   warehouseItem?: {
+    warehouseId?: string
+  }
 }
 
 interface CreateInventoryTransactionDto {
@@ -220,6 +224,7 @@ interface PremixDto {
   yield: number;
   createdAt: Date;
   updatedAt: Date;
+  ingredients: any;
 }
 
 interface CreatePremixDto {
@@ -273,7 +278,7 @@ interface InventoryAvailabilityDto {
   }[];
 }
 
-enum InventoryTransactionType {
+export enum InventoryTransactionType {
   RECEIPT = 'RECEIPT',
   WRITE_OFF = 'WRITE_OFF',
   CORRECTION = 'CORRECTION',
@@ -512,14 +517,19 @@ export const WarehouseService = {
     return data;
   },
 
-  listInventoryItems: async (filters?: {
-  search?: string;
-  isActive?: boolean;
-}): Promise<InventoryItemDto[]> => {
-  const { data } = await api.get('/warehouses/items', {
+getWarehouseItems: async (
+  warehouseId: string,
+  filters?: {
+    search?: string;
+    lowStock?: boolean;
+    storageLocationId?: string;
+  }
+): Promise<WarehouseItemDto[]> => {
+  const { data } = await api.get(`/warehouses/${warehouseId}/items`, {
     params: {
       search: filters?.search,
-      isActive: filters?.isActive,
+      lowStock: filters?.lowStock,
+      storageLocationId: filters?.storageLocationId,
     },
   });
   return data;
@@ -550,23 +560,28 @@ listPremixes: async (filters?: {
   return data;
 },
 
-// ==================== Warehouse Item Methods ====================
-getWarehouseItems: async (
+listWarehousePremixes: async (
   warehouseId: string,
   filters?: {
     search?: string;
-    storageLocationId?: string;
   }
-): Promise<WarehouseItemDto[]> => {
-  const { data } = await api.get(`/warehouses/${warehouseId}/warehouse-items`, {
+): Promise<PremixDto[]> => {
+  const { data } = await api.get(`/warehouses/${warehouseId}/premixes`, {
     params: {
       search: filters?.search,
-      storageLocationId: filters?.storageLocationId,
     },
   });
   return data;
 },
+ async getPremixWithWarehouseDetails(premixId: string, warehouseId: string): Promise<any> {
+  const response = await api.get(`/warehouses/${warehouseId}/premixes/${premixId}/details`);
+  return response.data;
+},
 
+ async getPremixTransactions(premixId: string, warehouseId: string): Promise<any[]> {
+  const response = await api.get(`/warehouses/${warehouseId}/premixes/${premixId}/transactions`);
+  return response.data;
+},
 // ==================== Inventory Item Methods ====================
 searchInventoryItems: async (
   search: string
@@ -583,11 +598,7 @@ getPremixDetails: async (id: string): Promise<PremixDto> => {
   return data;
 },
 
-// ==================== Transaction Methods ====================
-getPremixTransactions: async (premixId: string): Promise<InventoryTransactionDto[]> => {
-  const { data } = await api.get(`/warehouses/premixes/${premixId}/transactions`);
-  return data;
-},
+
 
 getWarehouseTransactionsByPeriod: async (
   warehouseId: string,
@@ -602,5 +613,6 @@ getWarehouseTransactionsByPeriod: async (
   });
   return data;
 },
+
 
 };

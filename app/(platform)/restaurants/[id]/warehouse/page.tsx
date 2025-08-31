@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
-import { WarehouseService } from '@/lib/api/warehouse.service';
+import { InventoryItemDto, InventoryTransactionType, WarehouseService } from '@/lib/api/warehouse.service';
 import { useLanguageStore } from '@/lib/stores/language-store';
-import { TranslationKey, warehouseTranslations } from './translations';
+import { transactionsTranslations, warehouseTranslations } from './translations';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,138 +14,98 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TransactionsTable } from '@/components/features/warehouse/TransactionsTable';
-import { Refrigerator, Package, ArrowLeftRight, CalendarDays, ChefHat, List, Plus, Trash2, Edit, ArrowRight, Check } from 'lucide-react';
+import { Refrigerator, Package, ArrowLeftRight, CalendarDays, ChefHat, List, Plus, Edit } from 'lucide-react';
 import { toast } from 'sonner';
 import { DateRange } from 'react-day-picker';
 import { format, subDays } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import SearchableSelect from '@/components/features/menu/product/SearchableSelect';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Separator } from '@/components/ui/separator';
-import { Textarea } from '@/components/ui/textarea';
-
-// Типы для данных
-interface InventoryItemWithRelations extends InventoryItem {
-  warehouseItems: WarehouseItem[];
-  ingredients: any[];
-  premixIgredients: any[];
-}
-
-interface PremixWithRelations extends Premix {
-  ingredients: {
-    inventoryItemId: string;
-    quantity: number;
-    inventoryItem: InventoryItem;
-  }[];
-  inventoryItem?: InventoryItem;
-}
-
-interface WarehouseWithRelations {
-  id: string;
-  name: string;
-  description: string | null;
-  restaurantId: string;
-  storageLocations: StorageLocation[];
-  warehouseItems: (WarehouseItem & {
-    inventoryItem: InventoryItem;
-    storageLocation: StorageLocation | null;
-  })[];
-}
 
 export default function WarehousePage() {
   const params = useParams();
   const { language } = useLanguageStore();
-  const t = (key: TranslationKey) => {
-    const translation = warehouseTranslations[key];
-    return translation?.[language as 'ru' | 'en'] || translation?.ru || key;
-  };
+ const t = (key: string) => {
+  // Проверяем оба объекта переводов
+  const transactionsTranslation = transactionsTranslations[key as keyof typeof transactionsTranslations];
+  const warehouseTranslation = warehouseTranslations[key as keyof typeof warehouseTranslations];
+  
+  return transactionsTranslation?.[language] || 
+         warehouseTranslation?.[language] || 
+         key;
+};
   const restaurantId = params.id as string;
 
-  // Состояния для данных
-  const [warehouse, setWarehouse] = useState<WarehouseWithRelations | null>(null);
-  const [items, setItems] = useState<InventoryItemWithRelations[]>([]);
-  const [filteredItems, setFilteredItems] = useState<InventoryItemWithRelations[]>([]);
-  const [locations, setLocations] = useState<StorageLocation[]>([]);
+  const [warehouse, setWarehouse] = useState<any>(null);
+  const [items, setItems] = useState<any[]>([]);
+  const [filteredItems, setFilteredItems] = useState<any[]>([]);
+  const [locations, setLocations] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
-  const [premixes, setPremixes] = useState<PremixWithRelations[]>([]);
+  const [premixes, setPremixes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('items');
   const [locationFilter, setLocationFilter] = useState('all');
-  const [searchTerm, setSearchTerm] = useState('');
 
-  // Фильтрация по дате
+  // Для фильтрации транзакций по дате
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: subDays(new Date(), 30),
     to: new Date(),
   });
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
 
-  // Формы
+  // Формы и ошибки
   const [newItem, setNewItem] = useState({
     name: '',
-    description: '',
     unit: 'kg',
-    cost: 0,
+    quantity: 0,
+    storageLocationId: 'none',
   });
   const [itemErrors, setItemErrors] = useState({
     name: '',
-    unit: '',
+    quantity: '',
   });
 
   const [newLocation, setNewLocation] = useState({
     name: '',
     code: '',
-    description: '',
   });
   const [locationErrors, setLocationErrors] = useState({
     name: '',
+    code: '',
   });
 
-  // Диалоги транзакций
+  // Для диалога операций
   const [transactionDialogOpen, setTransactionDialogOpen] = useState(false);
   const [transactionType, setTransactionType] = useState<'receipt' | 'writeoff'>('receipt');
-  const [currentItem, setCurrentItem] = useState<InventoryItemWithRelations | null>(null);
-  const [currentWarehouseItem, setCurrentWarehouseItem] = useState<WarehouseItem | null>(null);
+  const [currentItem, setCurrentItem] = useState<any>(null);
   const quantityRef = useRef<HTMLInputElement>(null);
   const reasonRef = useRef<HTMLInputElement>(null);
 
-  // Редактирование
+  // Для диалога редактирования
   const [editItemDialogOpen, setEditItemDialogOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<InventoryItemWithRelations | null>(null);
+  const [editingItem, setEditingItem] = useState<any>(null);
   const [editItemData, setEditItemData] = useState({
     name: '',
-    description: '',
     unit: 'kg',
-    cost: 0,
+    storageLocationId: 'none',
   });
   const [editItemErrors, setEditItemErrors] = useState({
     name: '',
   });
 
-  // Управление складскими позициями
-  const [warehouseItemDialogOpen, setWarehouseItemDialogOpen] = useState(false);
-  const [warehouseItemData, setWarehouseItemData] = useState({
-    warehouseId: '',
-    inventoryItemId: '',
-    storageLocationId: '',
-    quantity: 0,
-    minQuantity: 0,
-  });
-
-  // Премиксы
+  // Для работы с заготовками
   const [newPremix, setNewPremix] = useState({
     name: '',
     description: '',
     unit: 'kg',
     yield: 1,
+    warehouseId: warehouse?.id || '',
   });
   const [premixErrors, setPremixErrors] = useState({
     name: '',
     unit: '',
   });
-  const [selectedPremix, setSelectedPremix] = useState<PremixWithRelations | null>(null);
+  const [selectedPremix, setSelectedPremix] = useState<any>(null);
   const [premixIngredients, setPremixIngredients] = useState<any[]>([]);
   const [newIngredient, setNewIngredient] = useState({
     inventoryItemId: '',
@@ -154,7 +114,7 @@ export default function WarehousePage() {
   const [prepareQuantity, setPrepareQuantity] = useState(1);
   const [prepareDialogOpen, setPrepareDialogOpen] = useState(false);
   const [editPremixDialogOpen, setEditPremixDialogOpen] = useState(false);
-  const [editingPremix, setEditingPremix] = useState<PremixWithRelations | null>(null);
+  const [editingPremix, setEditingPremix] = useState<any>(null);
   const [editPremixData, setEditPremixData] = useState({
     name: '',
     description: '',
@@ -166,83 +126,87 @@ export default function WarehousePage() {
     unit: '',
   });
 
-  // Загрузка данных
   useEffect(() => {
     loadWarehouseData();
   }, [restaurantId]);
 
   useEffect(() => {
     if (warehouse?.id) {
-      setWarehouseItemData(prev => ({ ...prev, warehouseId: warehouse.id }));
+      setNewPremix(prev => ({ ...prev, warehouseId: warehouse.id }));
     }
   }, [warehouse]);
 
   useEffect(() => {
-    let filtered = items;
-    
-    if (locationFilter !== 'all') {
-      filtered = filtered.filter(item => 
-        item.warehouseItems.some(wi => wi.storageLocationId === locationFilter)
-      );
+    if (locationFilter === 'all') {
+      setFilteredItems(items.filter(item => !item.premixId));
+    } else {
+      setFilteredItems(items.filter(item =>
+        item.storageLocationId === locationFilter && !item.premixId
+      ));
     }
-    
-    if (searchTerm) {
-      filtered = filtered.filter(item => 
-        item.name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-    
-    setFilteredItems(filtered);
-  }, [items, locationFilter, searchTerm]);
+  }, [items, locationFilter]);
 
   const loadWarehouseData = async () => {
     try {
       setLoading(true);
       const warehouseData = await WarehouseService.getRestaurantWarehouse(restaurantId);
+      const items = await WarehouseService.getWarehouseItems(warehouseData.id);
+      const locations = await WarehouseService.listStorageLocations(warehouseData.id);
+      
       setWarehouse(warehouseData);
+      setItems(items || []);
+      setLocations(locations || []);
 
-      const inventoryItems = await WarehouseService.listInventoryItems();
-      setItems(inventoryItems || []);
-
-      const storageLocations = await WarehouseService.listStorageLocations(warehouseData.id);
-      setLocations(storageLocations || []);
-
-      const premixesData = await WarehouseService.listPremixes();
-      setPremixes(premixesData || []);
+      // Загружаем заготовки
+      const premixesData = await WarehouseService.listWarehousePremixes(warehouseData.id);
+      setPremixes(premixesData);
     } catch (error) {
       console.error('Failed to load warehouse data:', error);
       toast.error(t('loadError'));
-      setItems([]);
-      setLocations([]);
-      setPremixes([]);
     } finally {
       setLoading(false);
     }
   };
 
   const loadPremixDetails = async (premixId: string) => {
-    try {
-      const details = await WarehouseService.getPremix(premixId);
-      setSelectedPremix(details);
-      setPremixIngredients(details.ingredients || []);
-    } catch (error) {
-      console.error('Failed to load premix details:', error);
-      toast.error(t('loadError'));
-    }
-  };
+  try {
+    const details = await WarehouseService.getPremixWithWarehouseDetails(
+      premixId, 
+      warehouse.id
+    );
+    setSelectedPremix(details);
+    setPremixIngredients(details.ingredients || []);
+  } catch (error) {
+    console.error('Failed to load premix details:', error);
+    toast.error(t('loadError'));
+  }
+};
 
-  // Валидация форм
+const loadPremixTransactions = async (premixId: string) => {
+  try {
+    const data = await WarehouseService.getPremixTransactions(
+      premixId, 
+      warehouse.id
+    );
+    setTransactions(data);
+    setActiveTab('transactions');
+  } catch (error) {
+    console.error('Failed to load premix transactions:', error);
+    toast.error(t('loadTransactionsError'));
+  }
+};
+
   const validateItem = () => {
-    const newErrors = { name: '', unit: '' };
     let isValid = true;
+    const newErrors = { name: '', quantity: '' };
 
     if (!newItem.name.trim()) {
       newErrors.name = t('nameRequired');
       isValid = false;
     }
 
-    if (!newItem.unit) {
-      newErrors.unit = t('unitRequired');
+    if (newItem.quantity < 0) {
+      newErrors.quantity = t('quantityPositive');
       isValid = false;
     }
 
@@ -251,11 +215,16 @@ export default function WarehousePage() {
   };
 
   const validateLocation = () => {
-    const newErrors = { name: '' };
     let isValid = true;
+    const newErrors = { name: '', code: '' };
 
     if (!newLocation.name.trim()) {
       newErrors.name = t('nameRequired');
+      isValid = false;
+    }
+
+    if (!newLocation.code.trim()) {
+      newErrors.code = t('codeRequired');
       isValid = false;
     }
 
@@ -264,8 +233,8 @@ export default function WarehousePage() {
   };
 
   const validatePremix = () => {
-    const newErrors = { name: '', unit: '' };
     let isValid = true;
+    const newErrors = { name: '', unit: '' };
 
     if (!newPremix.name.trim()) {
       newErrors.name = t('nameRequired');
@@ -281,24 +250,58 @@ export default function WarehousePage() {
     return isValid;
   };
 
-  // Обработчики для добавления данных
+  const validateEditItem = () => {
+    let isValid = true;
+    const newErrors = { name: '' };
+
+    if (!editItemData.name.trim()) {
+      newErrors.name = t('nameRequired');
+      isValid = false;
+    }
+
+    setEditItemErrors(newErrors);
+    return isValid;
+  };
+
   const handleAddItem = async () => {
     if (!validateItem()) return;
 
     try {
-      await WarehouseService.createInventoryItem({
+      // Сначала создаем инвентарный элемент
+      const inventoryItem = await WarehouseService.createInventoryItem({
         name: newItem.name,
-        description: newItem.description,
         unit: newItem.unit,
-        cost: newItem.cost,
+        description: '',
       });
-      
+
+      // Затем создаем запись на складе
+      await WarehouseService.createWarehouseItem({
+        warehouseId: warehouse.id,
+        inventoryItemId: inventoryItem.id,
+        storageLocationId: newItem.storageLocationId === 'none' ? undefined : newItem.storageLocationId,
+        quantity: newItem.quantity,
+        minQuantity: 0,
+      });
+
       await loadWarehouseData();
-      setNewItem({ name: '', description: '', unit: 'kg', cost: 0 });
+
+      setNewItem({
+        name: '',
+        unit: 'kg',
+        quantity: 0,
+        storageLocationId: 'none',
+      });
+
       toast.success(t('itemAdded'));
     } catch (error: any) {
       console.error('Failed to add item:', error);
-      toast.error(error.response?.data?.message || t('addItemError'));
+
+      let errorMessage = t('addItemError');
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+
+      toast.error(errorMessage);
     }
   };
 
@@ -306,13 +309,24 @@ export default function WarehousePage() {
     if (!validateLocation()) return;
 
     try {
-      await WarehouseService.createStorageLocation(warehouse!.id, newLocation);
+      await WarehouseService.createStorageLocation(warehouse.id, newLocation);
       await loadWarehouseData();
-      setNewLocation({ name: '', code: '', description: '' });
+
+      setNewLocation({
+        name: '',
+        code: '',
+      });
+
       toast.success(t('locationAdded'));
     } catch (error: any) {
       console.error('Failed to add location:', error);
-      toast.error(error.response?.data?.message || t('addLocationError'));
+
+      let errorMessage = t('addLocationError');
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+
+      toast.error(errorMessage);
     }
   };
 
@@ -320,19 +334,31 @@ export default function WarehousePage() {
     if (!validatePremix()) return;
 
     try {
+      const ingredients = premixIngredients.map(ing => ({
+        inventoryItemId: ing.inventoryItem?.id || ing.inventoryItemId,
+        quantity: ing.quantity
+      }));
+
       const dto = {
-        ...newPremix,
-        ingredients: premixIngredients.map(ing => ({
-          inventoryItemId: ing.inventoryItemId,
-          quantity: ing.quantity
-        })),
+        name: newPremix.name,
+        description: newPremix.description,
+        unit: newPremix.unit,
+        yield: newPremix.yield,
+        ingredients,
       };
 
       await WarehouseService.createPremix(dto);
       await loadWarehouseData();
 
-      setNewPremix({ name: '', description: '', unit: 'kg', yield: 1 });
+      setNewPremix({
+        name: '',
+        description: '',
+        unit: 'kg',
+        yield: 1,
+        warehouseId: warehouse.id,
+      });
       setPremixIngredients([]);
+
       toast.success(t('premixAdded'));
     } catch (error: any) {
       console.error('Failed to add premix:', error);
@@ -340,22 +366,28 @@ export default function WarehousePage() {
     }
   };
 
-  // Управление ингредиентами премиксов
   const handleAddIngredient = () => {
     if (!newIngredient.inventoryItemId || newIngredient.quantity <= 0) {
       toast.error(t('fillAllFields'));
       return;
     }
 
+    const item = items.find(i => i.inventoryItem?.id === newIngredient.inventoryItemId || i.id === newIngredient.inventoryItemId);
+    if (!item) return;
+
     setPremixIngredients([
       ...premixIngredients,
       {
-        inventoryItemId: newIngredient.inventoryItemId,
+        inventoryItem: item.inventoryItem || item,
+        inventoryItemId: item.inventoryItem?.id || item.id,
         quantity: newIngredient.quantity
       }
     ]);
 
-    setNewIngredient({ inventoryItemId: '', quantity: 0 });
+    setNewIngredient({
+      inventoryItemId: '',
+      quantity: 0,
+    });
   };
 
   const handleRemoveIngredient = (index: number) => {
@@ -364,51 +396,18 @@ export default function WarehousePage() {
     setPremixIngredients(newIngredients);
   };
 
-  // Транзакции
-  const handleOpenTransactionDialog = (item: InventoryItemWithRelations, warehouseItem: WarehouseItem) => {
+  const handleOpenTransactionDialog = (item: any) => {
     setCurrentItem(item);
-    setCurrentWarehouseItem(warehouseItem);
     setTransactionDialogOpen(true);
     setTransactionType('receipt');
   };
 
-  const handleSubmitTransaction = async () => {
-    if (!currentItem || !currentWarehouseItem || !quantityRef.current) return;
-
-    const quantity = Number(quantityRef.current.value);
-    const reason = reasonRef.current?.value || '';
-
-    if (quantity <= 0) {
-      toast.error(t('quantityPositive'));
-      return;
-    }
-
-    try {
-      await WarehouseService.createTransaction({
-        inventoryItemId: currentItem.id,
-        type: transactionType === 'receipt' ? 'RECEIPT' : 'WRITE_OFF',
-        warehouseId: warehouse!.id,
-        quantity,
-        reason,
-      });
-
-      await loadWarehouseData();
-      setTransactionDialogOpen(false);
-      toast.success(transactionType === 'receipt' ? t('receiptSuccess') : t('writeOffSuccess'));
-    } catch (error: any) {
-      console.error('Transaction error:', error);
-      toast.error(error.response?.data?.message || t('transactionError'));
-    }
-  };
-
-  // Редактирование
-  const handleOpenEditDialog = (item: InventoryItemWithRelations) => {
+  const handleOpenEditDialog = (item: any) => {
     setEditingItem(item);
     setEditItemData({
-      name: item.name,
-      description: item.description || '',
-      unit: item.unit,
-      cost: item.cost || 0,
+      name: item.inventoryItem?.name || item.name,
+      unit: item.inventoryItem?.unit || item.unit,
+      storageLocationId: item.storageLocationId || 'none',
     });
     setEditItemDialogOpen(true);
   };
@@ -417,45 +416,72 @@ export default function WarehousePage() {
     if (!validateEditItem() || !editingItem) return;
 
     try {
-      await WarehouseService.updateInventoryItem(editingItem.id, editItemData);
+      // Обновляем инвентарный элемент
+      await WarehouseService.updateInventoryItem(
+        editingItem.inventoryItem?.id || editingItem.id, 
+        {
+          name: editItemData.name,
+          unit: editItemData.unit,
+        }
+      );
+
+      // Обновляем запись на складе
+      await WarehouseService.updateWarehouseItem(editingItem.id, {
+        storageLocationId: editItemData.storageLocationId === 'none' ? undefined : editItemData.storageLocationId
+      });
+
       await loadWarehouseData();
+
       setEditItemDialogOpen(false);
       toast.success(t('itemUpdated'));
     } catch (error: any) {
       console.error('Failed to update item:', error);
-      toast.error(error.response?.data?.message || t('updateItemError'));
+
+      let errorMessage = t('updateItemError');
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+
+      toast.error(errorMessage);
     }
   };
 
-  // Управление складскими позициями
-  const handleOpenWarehouseItemDialog = (item: InventoryItemWithRelations) => {
-    setCurrentItem(item);
-    setWarehouseItemData({
-      warehouseId: warehouse!.id,
-      inventoryItemId: item.id,
-      storageLocationId: '',
-      quantity: 0,
-      minQuantity: 0,
+  const handleSubmitTransaction = async () => {
+  if (!currentItem || !quantityRef.current || !warehouse?.id) return;
+
+  const quantity = Number(quantityRef.current.value);
+  const reason = reasonRef.current?.value || '';
+
+  if (quantity <= 0) {
+    toast.error(t('quantityPositive'));
+    return;
+  }
+
+  try {
+    const transactionTypeEnum = transactionType === 'receipt' ? 'RECEIPT' : 'WRITE_OFF';
+    
+    await WarehouseService.createTransaction({
+      inventoryItemId: currentItem.inventoryItem?.id || currentItem.id,
+      type: transactionTypeEnum as InventoryTransactionType,
+      warehouseId: warehouse.id, // Убедимся, что передается
+      quantity: quantity,
+      reason: reason,
     });
-    setWarehouseItemDialogOpen(true);
-  };
 
-  const handleAddWarehouseItem = async () => {
-    try {
-      await WarehouseService.createWarehouseItem({
-        ...warehouseItemData,
-        storageLocationId: warehouseItemData.storageLocationId || undefined,
-      });
-      await loadWarehouseData();
-      setWarehouseItemDialogOpen(false);
-      toast.success(t('itemAddedToWarehouse'));
-    } catch (error: any) {
-      console.error('Failed to add warehouse item:', error);
-      toast.error(error.response?.data?.message || t('addItemError'));
+    if (transactionType === 'receipt') {
+      toast.success(t('receiptSuccess'));
+    } else {
+      toast.success(t('writeOffSuccess'));
     }
-  };
+    
+    await loadWarehouseData();
+    setTransactionDialogOpen(false);
+  } catch (error: any) {
+    console.error('Transaction error:', error);
+    toast.error(error.response?.data?.message || t('transactionError'));
+  }
+};
 
-  // Премиксы
   const handlePreparePremix = async () => {
     if (!selectedPremix || prepareQuantity <= 0) {
       toast.error(t('invalidQuantity'));
@@ -469,11 +495,82 @@ export default function WarehousePage() {
       setPrepareDialogOpen(false);
     } catch (error: any) {
       console.error('Failed to prepare premix:', error);
-      toast.error(error.response?.data?.message || t('preparePremixError'));
+
+      let errorMessage = t('preparePremixError');
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+
+      toast.error(errorMessage);
     }
   };
 
-  const handleOpenEditPremixDialog = (premix: PremixWithRelations) => {
+const [transactionFilters, setTransactionFilters] = useState({
+  type: undefined as InventoryTransactionType | undefined,
+  includeTransfers: true,
+});
+
+// Обновим функцию загрузки транзакций склада
+const loadWarehouseTransactions = async () => {
+  if (!warehouse?.id) return;
+
+  try {
+    const data = await WarehouseService.getWarehouseTransactions(
+      warehouse.id,
+      {
+        startDate: dateRange?.from,
+        endDate: dateRange?.to,
+        type: transactionFilters.type,
+      }
+    );
+    console.log(data)
+    setTransactions(data);
+  } catch (error) {
+    console.error('Failed to load warehouse transactions:', error);
+    toast.error(t('loadTransactionsError'));
+  }
+};
+
+// Обновим функцию загрузки по дате
+const loadWarehouseTransactionsByDate = async () => {
+  if (!dateRange?.from || !dateRange?.to || !warehouse?.id) return;
+
+  try {
+    const data = await WarehouseService.getWarehouseTransactions(
+      warehouse.id,
+      {
+        startDate: dateRange.from,
+        endDate: dateRange.to,
+        type: transactionFilters.type,
+      }
+    );
+
+    setTransactions(data);
+    setActiveTab('transactions');
+  } catch (error) {
+    console.error('Failed to load transactions by date:', error);
+    toast.error(t('loadTransactionsError'));
+  }
+};
+
+// Обновим функцию загрузки транзакций элемента
+const loadItemTransactions = async (itemId: string) => {
+  try {
+    const data = await WarehouseService.getItemTransactions(itemId);
+    // Фильтруем только транзакции текущего склада
+    const filteredTransactions = data.filter(
+      transaction => transaction.warehouseItem?.warehouseId === warehouse?.id
+    );
+    console.log(filteredTransactions)
+    setTransactions(filteredTransactions);
+    setActiveTab('transactions');
+  } catch (error) {
+    console.error('Failed to load transactions:', error);
+    toast.error(t('loadTransactionsError'));
+  }
+};
+
+  const handleOpenEditPremixDialog = (premix: any) => {
     setEditingPremix(premix);
     setEditPremixData({
       name: premix.name,
@@ -485,43 +582,63 @@ export default function WarehousePage() {
     setEditPremixDialogOpen(true);
   };
 
+  const validateEditPremix = () => {
+    let isValid = true;
+    const newErrors = { name: '', unit: '' };
+
+    if (!editPremixData.name.trim()) {
+      newErrors.name = t('nameRequired');
+      isValid = false;
+    }
+
+    if (!editPremixData.unit) {
+      newErrors.unit = t('unitRequired');
+      isValid = false;
+    }
+
+    setEditPremixErrors(newErrors);
+    return isValid;
+  };
+
   const handleSavePremixChanges = async () => {
     if (!validateEditPremix() || !editingPremix) return;
 
     try {
-      // Обновляем базовую информацию
-      await WarehouseService.updatePremix(editingPremix.id, editPremixData);
+      // Обновляем основную информацию о премиксе
+      await WarehouseService.updatePremix(editingPremix.id, {
+        name: editPremixData.name,
+        description: editPremixData.description,
+        unit: editPremixData.unit,
+        yield: editPremixData.yield,
+      });
 
       // Обновляем ингредиенты
-      const currentIngredients = editingPremix.ingredients || [];
-      
+      const currentDetails = await WarehouseService.getPremixDetails(editingPremix.id);
+      const currentIngredients = currentDetails.ingredients || [];
+
       // Удаляем удаленные ингредиенты
       for (const currentIng of currentIngredients) {
-        if (!premixIngredients.some(ing => 
-          ing.inventoryItemId === currentIng.inventoryItemId
+        if (!premixIngredients.some(ing =>
+          (ing.inventoryItem?.id || ing.inventoryItemId) === currentIng.inventoryItemId
         )) {
-          await WarehouseService.removePremixIngredient(
-            editingPremix.id, 
-            currentIng.inventoryItemId
-          );
+          await WarehouseService.removePremixIngredient(editingPremix.id, currentIng.inventoryItemId);
         }
       }
 
       // Добавляем или обновляем ингредиенты
       for (const ing of premixIngredients) {
-        const existingIng = currentIngredients.find(
-          (i: any) => i.inventoryItemId === ing.inventoryItemId
-        );
+        const ingredientId = ing.inventoryItem?.id || ing.inventoryItemId;
+        const existingIng = currentIngredients.find(( i: InventoryItemDto) => i.inventoryItemId === ingredientId);
 
         if (existingIng) {
           await WarehouseService.updatePremixIngredient(
-            editingPremix.id, 
-            ing.inventoryItemId, 
+            editingPremix.id,
+            ingredientId,
             ing.quantity
           );
         } else {
           await WarehouseService.addPremixIngredient(editingPremix.id, {
-            inventoryItemId: ing.inventoryItemId,
+            inventoryItemId: ingredientId,
             quantity: ing.quantity
           });
         }
@@ -536,55 +653,16 @@ export default function WarehousePage() {
     }
   };
 
-  // Загрузка транзакций
-  const loadItemTransactions = async (itemId: string) => {
-    try {
-      const data = await WarehouseService.getItemTransactions(itemId);
-      setTransactions(data);
-      setActiveTab('transactions');
-    } catch (error) {
-      console.error('Failed to load transactions:', error);
-      toast.error(t('loadTransactionsError'));
-    }
-  };
-
-  const loadWarehouseTransactions = async () => {
-    if (!dateRange?.from || !dateRange?.to) return;
-
-    try {
-      const data = await WarehouseService.getWarehouseTransactions(warehouse!.id, {
-        startDate: dateRange.from,
-        endDate: dateRange.to,
-      });
-      setTransactions(data);
-      setActiveTab('transactions');
-    } catch (error) {
-      console.error('Failed to load transactions:', error);
-      toast.error(t('loadTransactionsError'));
-    }
-  };
-
-  // Фильтрация по дате
   const handleDateRangeChange = (range: DateRange | undefined) => {
     setDateRange(range);
     if (range?.from && range?.to) {
       setDateFilterOpen(false);
-      loadWarehouseTransactions();
+      loadWarehouseTransactionsByDate();
     }
   };
 
-  // Загрузка скелетона
   if (loading) {
-    return (
-      <div className="p-4 space-y-4">
-        <Skeleton className="h-10 w-1/3" />
-        <div className="flex gap-4">
-          <Skeleton className="h-10 w-32" />
-          <Skeleton className="h-10 w-32" />
-        </div>
-        <Skeleton className="h-64 w-full" />
-      </div>
-    );
+    return <div className="p-4">{t('loading')}</div>;
   }
 
   if (!warehouse) {
@@ -593,22 +671,12 @@ export default function WarehousePage() {
 
   return (
     <div className="p-4 space-y-6">
-      {/* Заголовок и кнопки действий */}
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold">{warehouse.name}</h1>
-          {warehouse.description && (
-            <p className="text-sm text-muted-foreground">{warehouse.description}</p>
-          )}
-        </div>
-        
+        <h1 className="text-2xl font-bold">{warehouse.name}</h1>
         <div className="flex gap-2">
           <Dialog>
             <DialogTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <Refrigerator className="h-4 w-4" />
-                {t('addLocation')}
-              </Button>
+              <Button variant="outline">{t('addLocation')}</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -616,7 +684,7 @@ export default function WarehousePage() {
               </DialogHeader>
               <div className="space-y-4">
                 <div>
-                  <Label>{t('name')}*</Label>
+                  <Label className='mb-1'>{t('name')}</Label>
                   <Input
                     value={newLocation.name}
                     onChange={(e) => setNewLocation({ ...newLocation, name: e.target.value })}
@@ -626,18 +694,14 @@ export default function WarehousePage() {
                   )}
                 </div>
                 <div>
-                  <Label>{t('code')}</Label>
+                  <Label className='mb-1'>{t('code')}</Label>
                   <Input
                     value={newLocation.code}
                     onChange={(e) => setNewLocation({ ...newLocation, code: e.target.value })}
                   />
-                </div>
-                <div>
-                  <Label>{t('description')}</Label>
-                  <Textarea
-                    value={newLocation.description}
-                    onChange={(e) => setNewLocation({ ...newLocation, description: e.target.value })}
-                  />
+                  {locationErrors.code && (
+                    <p className="text-sm text-red-500 mt-1">{locationErrors.code}</p>
+                  )}
                 </div>
                 <Button onClick={handleAddLocation}>{t('addLocation')}</Button>
               </div>
@@ -646,10 +710,7 @@ export default function WarehousePage() {
 
           <Dialog>
             <DialogTrigger asChild>
-              <Button className="gap-2">
-                <Plus className="h-4 w-4" />
-                {t('addItem')}
-              </Button>
+              <Button>{t('addItem')}</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -657,7 +718,7 @@ export default function WarehousePage() {
               </DialogHeader>
               <div className="space-y-4">
                 <div>
-                  <Label>{t('name')}*</Label>
+                  <Label className='mb-1'>{t('name')}</Label>
                   <Input
                     value={newItem.name}
                     onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
@@ -667,19 +728,12 @@ export default function WarehousePage() {
                   )}
                 </div>
                 <div>
-                  <Label>{t('description')}</Label>
-                  <Textarea
-                    value={newItem.description}
-                    onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <Label>{t('unit')}*</Label>
+                  <Label className='mb-1'>{t('unit')}</Label>
                   <Select
                     value={newItem.unit}
                     onValueChange={(value) => setNewItem({ ...newItem, unit: value })}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className='w-full'>
                       <SelectValue placeholder={t('unit')} />
                     </SelectTrigger>
                     <SelectContent>
@@ -690,19 +744,37 @@ export default function WarehousePage() {
                       <SelectItem value="pcs">pcs</SelectItem>
                     </SelectContent>
                   </Select>
-                  {itemErrors.unit && (
-                    <p className="text-sm text-red-500 mt-1">{itemErrors.unit}</p>
-                  )}
                 </div>
                 <div>
-                  <Label>{t('cost')}</Label>
+                  <Label className='mb-1'>{t('quantity')}</Label>
                   <Input
                     type="number"
                     min="0"
-                    step="0.01"
-                    value={newItem.cost}
-                    onChange={(e) => setNewItem({ ...newItem, cost: Number(e.target.value) })}
+                    value={newItem.quantity}
+                    onChange={(e) => setNewItem({ ...newItem, quantity: Number(e.target.value) })}
                   />
+                  {itemErrors.quantity && (
+                    <p className="text-sm text-red-500 mt-1">{itemErrors.quantity}</p>
+                  )}
+                </div>
+                <div>
+                  <Label className='mb-1'>{t('location')}</Label>
+                  <Select
+                    value={newItem.storageLocationId}
+                    onValueChange={(value) => setNewItem({ ...newItem, storageLocationId: value })}
+                  >
+                    <SelectTrigger className='w-full' >
+                      <SelectValue placeholder={t('filterByLocation')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">{t('noLocation')}</SelectItem>
+                      {locations.map((location) => (
+                        <SelectItem key={location.id} value={location.id}>
+                          {location.name} ({location.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <Button onClick={handleAddItem}>{t('addItem')}</Button>
               </div>
@@ -711,7 +783,6 @@ export default function WarehousePage() {
         </div>
       </div>
 
-      {/* Табы для навигации */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="items">
@@ -740,31 +811,24 @@ export default function WarehousePage() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Контент табов */}
         <TabsContent value="items">
           <Card>
             <CardHeader>
-              <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+              <div className="flex justify-between items-center">
                 <CardTitle>{t('inventory')}</CardTitle>
-                <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
-                  <Input
-                    placeholder={t('searchItems')}
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full md:w-64"
-                  />
+                <div className="w-48">
                   <Select
                     value={locationFilter}
                     onValueChange={setLocationFilter}
                   >
-                    <SelectTrigger className="w-full md:w-48">
+                    <SelectTrigger className='w-full'>
                       <SelectValue placeholder={t('filterByLocation')} />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">{t('allLocations')}</SelectItem>
                       {locations.map(location => (
                         <SelectItem key={location.id} value={location.id}>
-                          {location.name} {location.code && `(${location.code})`}
+                          {location.name} ({location.code})
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -773,109 +837,82 @@ export default function WarehousePage() {
               </div>
             </CardHeader>
             <CardContent>
-              {filteredItems.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">{t('noItemsFound')}</p>
-                </div>
-              ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>{t('name')}</TableHead>
-                        <TableHead>{t('quantity')}</TableHead>
-                        <TableHead>{t('unit')}</TableHead>
-                        <TableHead>{t('location')}</TableHead>
-                        <TableHead className="text-right">{t('actions')}</TableHead>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('name')}</TableHead>
+                    <TableHead>{t('quantity')}</TableHead>
+                    <TableHead>{t('unit')}</TableHead>
+                    <TableHead>{t('location')}</TableHead>
+                    <TableHead>{t('status')}</TableHead>
+                    <TableHead className="text-right">{t('actions')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredItems.length > 0 ? (
+                    filteredItems.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell className="font-medium">{item.inventoryItem?.name || item.name}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            {item.quantity}
+                            {item.minQuantity !== null && item.minQuantity !== undefined && (
+                              <span className="text-xs text-muted-foreground">
+                                (min: {item.minQuantity})
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
+                        
+                        <TableCell>{item.inventoryItem?.unit || item.unit}</TableCell>
+                        <TableCell>
+                          {item.storageLocationId
+                            ? locations.find(l => l.id === item.storageLocationId)?.name
+                            : t('noLocation')}
+                        </TableCell>
+                        <TableCell>
+                          {item.inventoryItem?.isActive !== false ? (
+                            <span className="text-green-600">{t('active')}</span>
+                          ) : (
+                            <span className="text-red-600">{t('inactive')}</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenEditDialog(item)}
+                            >
+                              {t('edit')}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenTransactionDialog(item)}
+                            >
+                              {t('adjustQuantity')}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => loadItemTransactions(item.inventoryItem?.id || item.id)}
+                            >
+                              {t('transactions')}
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredItems.map((item) => {
-                        const warehouseItem = item.warehouseItems.find(wi => wi.warehouseId === warehouse.id);
-                        const quantity = warehouseItem?.quantity || 0;
-                        const minQuantity = warehouseItem?.minQuantity || 0;
-                        const location = warehouseItem?.storageLocationId 
-                          ? locations.find(l => l.id === warehouseItem.storageLocationId)
-                          : null;
-
-                        return (
-                          <TableRow key={item.id}>
-                            <TableCell className="font-medium">
-                              <div className="flex items-center gap-2">
-                                {item.name}
-                                {quantity <= minQuantity && minQuantity > 0 && (
-                                  <Badge variant="destructive">{t('lowStock')}</Badge>
-                                )}
-                              </div>
-                              {item.description && (
-                                <p className="text-sm text-muted-foreground">{item.description}</p>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                {quantity.toFixed(2)}
-                                {minQuantity > 0 && (
-                                  <span className="text-xs text-muted-foreground">
-                                    / {minQuantity.toFixed(2)}
-                                  </span>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>{item.unit}</TableCell>
-                            <TableCell>
-                              {location ? (
-                                <div className="flex items-center gap-2">
-                                  {location.name}
-                                  {location.code && (
-                                    <Badge variant="outline">{location.code}</Badge>
-                                  )}
-                                </div>
-                              ) : (
-                                t('noLocation')
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleOpenEditDialog(item)}
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                                {warehouseItem ? (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleOpenTransactionDialog(item, warehouseItem)}
-                                  >
-                                    <ArrowLeftRight className="h-4 w-4" />
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleOpenWarehouseItemDialog(item)}
-                                  >
-                                    <Plus className="h-4 w-4" />
-                                  </Button>
-                                )}
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => loadItemTransactions(item.id)}
-                                >
-                                  <List className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-4">
+                        {t('noItemsFound')}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
@@ -886,44 +923,26 @@ export default function WarehousePage() {
               <CardTitle>{t('locations')}</CardTitle>
             </CardHeader>
             <CardContent>
-              {locations.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">{t('noLocationsFound')}</p>
-                </div>
-              ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>{t('name')}</TableHead>
-                        <TableHead>{t('code')}</TableHead>
-                        <TableHead>{t('description')}</TableHead>
-                        <TableHead>{t('itemCount')}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {locations.map((location) => (
-                        <TableRow key={location.id}>
-                          <TableCell className="font-medium">{location.name}</TableCell>
-                          <TableCell>{location.code || '-'}</TableCell>
-                          <TableCell>
-                            {location.description ? (
-                              <p className="line-clamp-2">{location.description}</p>
-                            ) : (
-                              '-'
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {items.filter(i => 
-                              i.warehouseItems.some(wi => wi.storageLocationId === location.id)
-                            ).length}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('name')}</TableHead>
+                    <TableHead>{t('code')}</TableHead>
+                    <TableHead>{t('itemCount')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {locations.map((location) => (
+                    <TableRow key={location.id}>
+                      <TableCell>{location.name}</TableCell>
+                      <TableCell>{location.code}</TableCell>
+                      <TableCell>
+                        {items.filter(i => i.storageLocationId === location.id).length}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
@@ -935,10 +954,7 @@ export default function WarehousePage() {
                 <CardTitle>{t('premixes')}</CardTitle>
                 <Dialog>
                   <DialogTrigger asChild>
-                    <Button className="gap-2">
-                      <Plus className="h-4 w-4" />
-                      {t('addPremix')}
-                    </Button>
+                    <Button>{t('addPremix')}</Button>
                   </DialogTrigger>
                   <DialogContent className="max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto">
                     <DialogHeader>
@@ -946,7 +962,7 @@ export default function WarehousePage() {
                     </DialogHeader>
                     <div className="space-y-4">
                       <div>
-                        <Label>{t('name')}*</Label>
+                        <Label className='mb-1'>{t('name')}</Label>
                         <Input
                           value={newPremix.name}
                           onChange={(e) => setNewPremix({ ...newPremix, name: e.target.value })}
@@ -956,20 +972,20 @@ export default function WarehousePage() {
                         )}
                       </div>
                       <div>
-                        <Label>{t('description')}</Label>
-                        <Textarea
+                        <Label className='mb-1'>{t('description')}</Label>
+                        <Input
                           value={newPremix.description}
                           onChange={(e) => setNewPremix({ ...newPremix, description: e.target.value })}
                         />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <Label>{t('unit')}*</Label>
+                          <Label className='mb-1'>{t('unit')}</Label>
                           <Select
                             value={newPremix.unit}
                             onValueChange={(value) => setNewPremix({ ...newPremix, unit: value })}
                           >
-                            <SelectTrigger>
+                            <SelectTrigger className='w-full'>
                               <SelectValue placeholder={t('unit')} />
                             </SelectTrigger>
                             <SelectContent>
@@ -985,10 +1001,11 @@ export default function WarehousePage() {
                           )}
                         </div>
                         <div>
-                          <Label>{t('yield')}</Label>
+                          <Label className='mb-1'>{t('yield')}</Label>
                           <Input
                             type="number"
                             min="0.1"
+                            defaultValue={0}
                             step="0.1"
                             value={newPremix.yield}
                             onChange={(e) => setNewPremix({ ...newPremix, yield: Number(e.target.value) })}
@@ -996,7 +1013,7 @@ export default function WarehousePage() {
                         </div>
                       </div>
                       <div>
-                        <Label>{t('ingredients')}</Label>
+                        <Label className='mb-1'>{t('ingredients')}</Label>
                         <div className="space-y-2">
                           {premixIngredients.length > 0 && (
                             <div className="border rounded-md p-2">
@@ -1009,24 +1026,21 @@ export default function WarehousePage() {
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                  {premixIngredients.map((ingredient, index) => {
-                                    const item = items.find(i => i.id === ingredient.inventoryItemId);
-                                    return (
-                                      <TableRow key={index}>
-                                        <TableCell>{item?.name || ingredient.inventoryItemId}</TableCell>
-                                        <TableCell>{ingredient.quantity} {item?.unit || ''}</TableCell>
-                                        <TableCell>
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleRemoveIngredient(index)}
-                                          >
-                                            <Trash2 className="h-4 w-4" />
-                                          </Button>
-                                        </TableCell>
-                                      </TableRow>
-                                    );
-                                  })}
+                                  {premixIngredients.map((ingredient, index) => (
+                                    <TableRow key={index}>
+                                      <TableCell>{ingredient.inventoryItem?.name || items.find(i => i.id === ingredient.inventoryItemId)?.inventoryItem?.name} </TableCell>
+                                      <TableCell>{ingredient.quantity} {ingredient.inventoryItem?.unit || items.find(i => i.id === ingredient.inventoryItemId)?.inventoryItem?.unit}</TableCell>
+                                      <TableCell>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => handleRemoveIngredient(index)}
+                                        >
+                                          {t('remove')}
+                                        </Button>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
                                 </TableBody>
                               </Table>
                             </div>
@@ -1035,8 +1049,8 @@ export default function WarehousePage() {
                             <div className="flex-1">
                               <SearchableSelect
                                 options={items.map(item => ({
-                                  id: item.id,
-                                  label: `${item.name} (${item.unit})`
+                                  id: item.inventoryItem?.id || item.id,
+                                  label: `${item.inventoryItem?.name || item.name} (${item.inventoryItem?.unit || item.unit})`
                                 }))}
                                 value={newIngredient.inventoryItemId ? [newIngredient.inventoryItemId] : []}
                                 onChange={(ids) => setNewIngredient({
@@ -1074,39 +1088,33 @@ export default function WarehousePage() {
               </div>
             </CardHeader>
             <CardContent>
-              {premixes.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">{t('noPremixesFound')}</p>
-                </div>
-              ) : (
-                <div className="rounded-md border">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>{t('name')}</TableHead>
-                        <TableHead>{t('description')}</TableHead>
-                        <TableHead>{t('unit')}</TableHead>
-                        <TableHead>{t('yield')}</TableHead>
-                        <TableHead>{t('ingredients')}</TableHead>
-                        <TableHead className="text-right">{t('actions')}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {premixes.map((premix) => (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('name')}</TableHead>
+                    <TableHead>{t('quantity')}</TableHead>
+                    <TableHead>{t('unit')}</TableHead>
+                    <TableHead>{t('yield')}</TableHead>
+                    <TableHead>{t('ingredients')}</TableHead>
+                    <TableHead className="text-right">{t('actions')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {premixes.map((premix) => {
+                      const premixItem = items.find(item => item.premixId === premix.id);
+                      
+                      // Подсчет количества ингредиентов
+                      const ingredientsCount = premix.ingredients?.length || 0;
+                      
+                      return (
                         <TableRow key={premix.id}>
                           <TableCell className="font-medium">{premix.name}</TableCell>
                           <TableCell>
-                            {premix.description ? (
-                              <p className="line-clamp-2">{premix.description}</p>
-                            ) : (
-                              '-'
-                            )}
+                            {premixItem?.quantity || 0}
                           </TableCell>
                           <TableCell>{premix.unit}</TableCell>
                           <TableCell>{premix.yield}</TableCell>
-                          <TableCell>
-                            {premix.ingredients.length} {t('ingredients')}
-                          </TableCell>
+                          <TableCell>{ingredientsCount}</TableCell>
                           <TableCell>
                             <div className="flex justify-end gap-2">
                               <Button
@@ -1114,106 +1122,139 @@ export default function WarehousePage() {
                                 size="sm"
                                 onClick={() => {
                                   loadPremixDetails(premix.id);
+                                  setSelectedPremix(premix);
                                   setPrepareDialogOpen(true);
                                 }}
+                                title={t('prepare')}
                               >
-                                <ChefHat className="h-4 w-4" />
+                                {t('prepare')}
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleOpenEditPremixDialog(premix)}
+                                title={t('edit')}
                               >
-                                <Edit className="h-4 w-4" />
+                                {t('edit')}
                               </Button>
+
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => loadItemTransactions(premix.id)}
+                                onClick={() => {
+                                  loadPremixTransactions(premix.id);
+                                }}
+                                title={t('transactions')}
                               >
-                                <List className="h-4 w-4" />
+                                {t('transactions')}
                               </Button>
                             </div>
                           </TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
+                      );
+                  })}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="transactions">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-                <CardTitle>{t('transactions')}</CardTitle>
-                <div className="flex gap-2">
-                  <Popover open={dateFilterOpen} onOpenChange={setDateFilterOpen}>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="gap-2">
-                        <CalendarDays className="h-4 w-4" />
-                        {dateRange?.from ? (
-                          dateRange.to ? (
-                            <>
-                              {format(dateRange.from, 'LLL dd, y')} -{' '}
-                              {format(dateRange.to, 'LLL dd, y')}
-                            </>
-                          ) : (
-                            format(dateRange.from, 'LLL dd, y')
-                          )
-                        ) : (
-                          <span>{t('selectDateRange')}</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="end">
-                      <Calendar
-                        initialFocus
-                        mode="range"
-                        defaultMonth={dateRange?.from}
-                        selected={dateRange}
-                        onSelect={handleDateRangeChange}
-                        numberOfMonths={2}
-                      />
-                      <div className="p-2 border-t flex justify-end">
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            if (dateRange?.from && dateRange?.to) {
-                              loadWarehouseTransactions();
-                              setDateFilterOpen(false);
-                            }
-                          }}
-                          disabled={!dateRange?.from || !dateRange?.to}
-                        >
-                          {t('apply')}
-                        </Button>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                </div>
+  <Card>
+    <CardHeader>
+      <div className="flex flex-col gap-4">
+        <CardTitle>{t('transactions')}</CardTitle>
+        
+        <div className="flex flex-wrap gap-4 items-center">
+          <Popover open={dateFilterOpen} onOpenChange={setDateFilterOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="flex gap-2">
+                <CalendarDays className="h-4 w-4" />
+                {dateRange?.from ? (
+                  dateRange.to ? (
+                    <>
+                      {format(dateRange.from, 'LLL dd, y')} -{' '}
+                      {format(dateRange.to, 'LLL dd, y')}
+                    </>
+                  ) : (
+                    format(dateRange.from, 'LLL dd, y')
+                  )
+                ) : (
+                  <span>{t('selectDateRange')}</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                initialFocus
+                mode="range"
+                defaultMonth={dateRange?.from}
+                selected={dateRange}
+                onSelect={handleDateRangeChange}
+                numberOfMonths={2}
+              />
+              <div className="p-2 border-t flex justify-end">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (dateRange?.from && dateRange?.to) {
+                      loadWarehouseTransactionsByDate();
+                      setDateFilterOpen(false);
+                    }
+                  }}
+                  disabled={!dateRange?.from || !dateRange?.to}
+                >
+                  {t('apply')}
+                </Button>
               </div>
-            </CardHeader>
-            <CardContent>
-              <TransactionsTable transactions={transactions} />
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </PopoverContent>
+          </Popover>
+
+          <Select
+            value={transactionFilters.type || 'all'}
+            onValueChange={(value) => {
+              setTransactionFilters(prev => ({
+                ...prev,
+                type: value === 'all' ? undefined : value as InventoryTransactionType
+              }));
+            }}
+          >
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder={t('filterByType')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('allTypes')}</SelectItem>
+              <SelectItem value="RECEIPT">{t('receipt')}</SelectItem>
+              <SelectItem value="WRITE_OFF">{t('writeOff')}</SelectItem>
+              <SelectItem value="CORRECTION">{t('correction')}</SelectItem>
+              <SelectItem value="TRANSFER">{t('transfer')}</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            onClick={loadWarehouseTransactions}
+            variant="outline"
+            size="sm"
+          >
+            {t('applyFilters')}
+          </Button>
+        </div>
+      </div>
+    </CardHeader>
+    <CardContent>
+      <TransactionsTable 
+        transactions={transactions} 
+      />
+    </CardContent>
+  </Card>
+</TabsContent>
       </Tabs>
 
-      {/* Диалог транзакций */}
       <Dialog open={transactionDialogOpen} onOpenChange={setTransactionDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
               {transactionType === 'receipt' ? t('receiptTitle') : t('writeOffTitle')}
             </DialogTitle>
-            <DialogDescription>
-              {currentItem?.name} ({currentItem?.unit})
-            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -1233,7 +1274,7 @@ export default function WarehousePage() {
             </div>
 
             <div>
-              <Label>{t('quantity')} ({currentItem?.unit})*</Label>
+              <Label className='mb-1'>{t('quantity')} ({currentItem?.inventoryItem?.unit || currentItem?.unit})</Label>
               <Input
                 type="number"
                 min="0"
@@ -1241,15 +1282,15 @@ export default function WarehousePage() {
                 defaultValue="0"
                 ref={quantityRef}
               />
-              {transactionType === 'writeoff' && currentWarehouseItem && (
-                <p className="text-sm text-muted-foreground mt-1">
-                  {t('available')}: {currentWarehouseItem.quantity.toFixed(2)} {currentItem?.unit}
+              {transactionType === 'writeoff' && currentItem && (
+                <p className="text-sm text-muted-foreground">
+                  {t('available')}: {currentItem.quantity} {currentItem.inventoryItem?.unit || currentItem.unit}
                 </p>
               )}
             </div>
 
             <div>
-              <Label>{t('reason')}</Label>
+              <Label className='mb-1'>{t('reason')}</Label>
               <Input
                 placeholder={t('reasonPlaceholder')}
                 ref={reasonRef}
@@ -1263,7 +1304,6 @@ export default function WarehousePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Диалог редактирования товара */}
       <Dialog open={editItemDialogOpen} onOpenChange={setEditItemDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -1271,7 +1311,7 @@ export default function WarehousePage() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>{t('name')}*</Label>
+              <Label className='mb-1'>{t('name')}</Label>
               <Input
                 value={editItemData.name}
                 onChange={(e) => setEditItemData({ ...editItemData, name: e.target.value })}
@@ -1281,19 +1321,12 @@ export default function WarehousePage() {
               )}
             </div>
             <div>
-              <Label>{t('description')}</Label>
-              <Textarea
-                value={editItemData.description}
-                onChange={(e) => setEditItemData({ ...editItemData, description: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>{t('unit')}</Label>
+              <Label className='mb-1'>{t('unit')}</Label>
               <Select
                 value={editItemData.unit}
                 onValueChange={(value) => setEditItemData({ ...editItemData, unit: value })}
               >
-                <SelectTrigger>
+                <SelectTrigger className='w-full'>
                   <SelectValue placeholder={t('unit')} />
                 </SelectTrigger>
                 <SelectContent>
@@ -1306,85 +1339,37 @@ export default function WarehousePage() {
               </Select>
             </div>
             <div>
-              <Label>{t('cost')}</Label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={editItemData.cost}
-                onChange={(e) => setEditItemData({ ...editItemData, cost: Number(e.target.value) })}
-              />
+              <Label className='mb-1'>{t('location')}</Label>
+              <Select
+                value={editItemData.storageLocationId}
+                onValueChange={(value) => setEditItemData({ ...editItemData, storageLocationId: value })}
+              >
+                <SelectTrigger className='w-full'>
+                  <SelectValue placeholder={t('filterByLocation')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t('noLocation')}</SelectItem>
+                  {locations.map((location) => (
+                    <SelectItem key={location.id} value={location.id}>
+                      {location.name} ({location.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <Button onClick={handleSaveItemChanges}>{t('saveChanges')}</Button>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Диалог добавления на склад */}
-      <Dialog open={warehouseItemDialogOpen} onOpenChange={setWarehouseItemDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {t('addToWarehouse')}: {currentItem?.name}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>{t('location')}</Label>
-              <Select
-                value={warehouseItemData.storageLocationId}
-                onValueChange={(value) => setWarehouseItemData({ ...warehouseItemData, storageLocationId: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={t('selectLocation')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">{t('noLocation')}</SelectItem>
-                  {locations.map((location) => (
-                    <SelectItem key={location.id} value={location.id}>
-                      {location.name} {location.code && `(${location.code})`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>{t('quantity')}*</Label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={warehouseItemData.quantity}
-                onChange={(e) => setWarehouseItemData({ ...warehouseItemData, quantity: Number(e.target.value) })}
-              />
-            </div>
-            <div>
-              <Label>{t('minQuantity')}</Label>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={warehouseItemData.minQuantity}
-                onChange={(e) => setWarehouseItemData({ ...warehouseItemData, minQuantity: Number(e.target.value) })}
-              />
-            </div>
-            <Button onClick={handleAddWarehouseItem}>{t('addToWarehouse')}</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Диалог редактирования премикса */}
       <Dialog open={editPremixDialogOpen} onOpenChange={setEditPremixDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{t('editPremix')}</DialogTitle>
-            <DialogDescription>
-              {editingPremix?.name}
-            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>{t('name')}*</Label>
+              <Label className='mb-1'>{t('name')}</Label>
               <Input
                 value={editPremixData.name}
                 onChange={(e) => setEditPremixData({ ...editPremixData, name: e.target.value })}
@@ -1394,20 +1379,20 @@ export default function WarehousePage() {
               )}
             </div>
             <div>
-              <Label>{t('description')}</Label>
-              <Textarea
+              <Label className='mb-1'>{t('description')}</Label>
+              <Input
                 value={editPremixData.description}
                 onChange={(e) => setEditPremixData({ ...editPremixData, description: e.target.value })}
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>{t('unit')}*</Label>
+                <Label className='mb-1'>{t('unit')}</Label>
                 <Select
                   value={editPremixData.unit}
                   onValueChange={(value) => setEditPremixData({ ...editPremixData, unit: value })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className='w-full'>
                     <SelectValue placeholder={t('unit')} />
                   </SelectTrigger>
                   <SelectContent>
@@ -1423,7 +1408,7 @@ export default function WarehousePage() {
                 )}
               </div>
               <div>
-                <Label>{t('yield')}</Label>
+                <Label className='mb-1'>{t('yield')}</Label>
                 <Input
                   type="number"
                   min="0.1"
@@ -1434,7 +1419,7 @@ export default function WarehousePage() {
               </div>
             </div>
             <div>
-              <Label>{t('ingredients')}</Label>
+              <Label className='mb-1'>{t('ingredients')}</Label>
               <div className="space-y-2">
                 {premixIngredients.length > 0 && (
                   <div className="border rounded-md p-2">
@@ -1447,24 +1432,21 @@ export default function WarehousePage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {premixIngredients.map((ingredient, index) => {
-                          const item = items.find(i => i.id === ingredient.inventoryItemId);
-                          return (
-                            <TableRow key={index}>
-                              <TableCell>{item?.name || ingredient.inventoryItemId}</TableCell>
-                              <TableCell>{ingredient.quantity} {item?.unit || ''}</TableCell>
-                              <TableCell>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleRemoveIngredient(index)}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
+                        {premixIngredients.map((ingredient, index) => (
+                          <TableRow key={index}>
+                            <TableCell>{ingredient.inventoryItem?.name || items.find(i => i.id === ingredient.inventoryItemId)?.inventoryItem?.name}</TableCell>
+                            <TableCell>{ingredient.quantity} {ingredient.inventoryItem?.unit || items.find(i => i.id === ingredient.inventoryItemId)?.inventoryItem?.unit}</TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRemoveIngredient(index)}
+                              >
+                                {t('remove')}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
                       </TableBody>
                     </Table>
                   </div>
@@ -1473,17 +1455,17 @@ export default function WarehousePage() {
                   <div className="flex-1">
                     <SearchableSelect
                       options={items.map(item => ({
-                        id: item.id,
-                        label: `${item.name} (${item.unit})`
+                        id: item.inventoryItem?.id || item.id,
+                        label: `${item.inventoryItem?.name || item.name} (${item.inventoryItem?.unit || item.unit})`
                       }))}
                       value={newIngredient.inventoryItemId ? [newIngredient.inventoryItemId] : []}
                       onChange={(ids) => setNewIngredient({
                         ...newIngredient,
                         inventoryItemId: ids[0] || ''
                       })}
-                      placeholder={t('selectIngredient')}
-                      searchPlaceholder={t('searchIngredient')}
-                      emptyText={t('noIngredientsFound')}
+                      placeholder={t('selectIngredient') as string}
+                      searchPlaceholder={t('searchIngredient') as string}
+                      emptyText={t('noIngredientsFound') as string}
                       multiple={false}
                     />
                   </div>
@@ -1491,7 +1473,7 @@ export default function WarehousePage() {
                     type="number"
                     min="0.01"
                     step="0.01"
-                    placeholder={t('quantity')}
+                    placeholder={t('quantity') as string}
                     value={newIngredient.quantity}
                     onChange={(e) => setNewIngredient({
                       ...newIngredient,
@@ -1510,20 +1492,17 @@ export default function WarehousePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Диалог приготовления премикса */}
       <Dialog open={prepareDialogOpen} onOpenChange={setPrepareDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {t('preparePremix')}: {selectedPremix?.name}
-            </DialogTitle>
+            <DialogTitle>{t('preparePremix')}: {selectedPremix?.name}</DialogTitle>
             <DialogDescription>
               {t('preparePremixDescription')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>{t('quantity')} ({selectedPremix?.unit})*</Label>
+              <Label className='mb-1'>{t('quantity')} ({selectedPremix?.unit})</Label>
               <Input
                 type="number"
                 min="0.1"
@@ -1534,7 +1513,7 @@ export default function WarehousePage() {
             </div>
             {selectedPremix?.ingredients && (
               <div>
-                <Label>{t('requiredIngredients')}</Label>
+                <Label className='mb-1'>{t('requiredIngredients')}</Label>
                 <div className="border rounded-md p-2">
                   <Table>
                     <TableHeader>
@@ -1542,37 +1521,27 @@ export default function WarehousePage() {
                         <TableHead>{t('name')}</TableHead>
                         <TableHead>{t('required')}</TableHead>
                         <TableHead>{t('available')}</TableHead>
-                        <TableHead>{t('status')}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {selectedPremix.ingredients.map((ingredient: any, index: number) => {
                         const required = (ingredient.quantity * prepareQuantity) / selectedPremix.yield;
-                        const item = items.find(i => i.id === ingredient.inventoryItemId);
-                        const warehouseItem = item?.warehouseItems.find(wi => wi.warehouseId === warehouse.id);
-                        const available = warehouseItem?.quantity || 0;
+                        const availableItem = items.find(i => 
+                          i.inventoryItem?.id === ingredient.inventoryItemId || i.id === ingredient.inventoryItemId
+                        );
+                        const available = availableItem?.quantity || 0;
                         const isEnough = available >= required;
 
                         return (
                           <TableRow key={index} className={!isEnough ? 'bg-red-50' : ''}>
-                            <TableCell>{item?.name || ingredient.inventoryItemId}</TableCell>
+                            <TableCell>{ingredient.inventoryItem?.name || availableItem?.inventoryItem?.name}</TableCell>
                             <TableCell>
-                              {required.toFixed(2)} {item?.unit || ''}
+                              {required.toFixed(2)} {ingredient.inventoryItem?.unit || availableItem?.inventoryItem?.unit}
                             </TableCell>
                             <TableCell>
-                              {available.toFixed(2)} {item?.unit || ''}
-                            </TableCell>
-                            <TableCell>
-                              {isEnough ? (
-                                <Badge variant="outline" className="gap-1">
-                                  <Check className="h-3 w-3" />
-                                  {t('enough')}
-                                </Badge>
-                              ) : (
-                                <Badge variant="destructive" className="gap-1">
-                                  <Trash2 className="h-3 w-3" />
-                                  {t('insufficient')}
-                                </Badge>
+                              {available.toFixed(2)} {ingredient.inventoryItem?.unit || availableItem?.inventoryItem?.unit}
+                              {!isEnough && (
+                                <span className="text-red-500 ml-2">({t('insufficient')})</span>
                               )}
                             </TableCell>
                           </TableRow>
@@ -1585,22 +1554,56 @@ export default function WarehousePage() {
             )}
           </div>
           <DialogFooter>
-            <Button 
-              onClick={handlePreparePremix} 
-              disabled={
-                prepareQuantity <= 0 || 
-                selectedPremix?.ingredients.some((ingredient: any) => {
-                  const required = (ingredient.quantity * prepareQuantity) / selectedPremix.yield;
-                  const item = items.find(i => i.id === ingredient.inventoryItemId);
-                  const warehouseItem = item?.warehouseItems.find(wi => wi.warehouseId === warehouse.id);
-                  const available = warehouseItem?.quantity || 0;
-                  return available < required;
-                })
-              }
-            >
+            <Button onClick={handlePreparePremix} disabled={prepareQuantity <= 0}>
               {t('prepare')}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{selectedPremix?.name}</DialogTitle>
+            <DialogDescription>
+              {selectedPremix?.description || t('noDescription')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className='mb-1'>{t('unit')}</Label>
+                <p>{selectedPremix?.unit}</p>
+              </div>
+              <div>
+                <Label className='mb-1'>{t('yield')}</Label>
+                <p>{selectedPremix?.yield}</p>
+              </div>
+            </div>
+            <div>
+              <Label className='mb-1'>{t('ingredients')}</Label>
+              <div className="border rounded-md p-2">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{t('name')}</TableHead>
+                      <TableHead>{t('quantity')}</TableHead>
+                      <TableHead>{t('unit')}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedPremix?.ingredients?.map((ingredient: any, index: number) => (
+                      <TableRow key={index}>
+                        <TableCell>{ingredient.inventoryItem?.name}</TableCell>
+                        <TableCell>{ingredient.quantity}</TableCell>
+                        <TableCell>{ingredient.inventoryItem?.unit}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -1,363 +1,910 @@
 export const warehouseTranslations = {
-  // Общие
-  loading: {
-    ru: 'Загрузка...',
-    en: 'Loading...'
+  title: {
+    ru: 'Управление складом',
+    ka: 'საწყობის მართვა'
   },
-  saveChanges: {
-    ru: 'Сохранить изменения',
-    en: 'Save changes'
-  },
-  apply: {
-    ru: 'Применить',
-    en: 'Apply'
-  },
-  cancel: {
-    ru: 'Отмена',
-    en: 'Cancel'
-  },
-  edit: {
-    ru: 'Редактировать',
-    en: 'Edit'
-  },
-  delete: {
-    ru: 'Удалить',
-    en: 'Delete'
-  },
-  actions: {
-    ru: 'Действия',
-    en: 'Actions'
-  },
-  search: {
-    ru: 'Поиск',
-    en: 'Search'
-  },
-  filter: {
-    ru: 'Фильтр',
-    en: 'Filter'
-  },
-  status: {
-    ru: 'Статус',
-    en: 'Status'
-  },
-  
-  // Ошибки
-  loadError: {
-    ru: 'Ошибка загрузки данных',
-    en: 'Error loading data'
-  },
-  addItemError: {
-    ru: 'Ошибка добавления товара',
-    en: 'Error adding item'
-  },
-  addLocationError: {
-    ru: 'Ошибка добавления места',
-    en: 'Error adding location'
-  },
-  addPremixError: {
-    ru: 'Ошибка добавления премикса',
-    en: 'Error adding premix'
-  },
-  updateItemError: {
-    ru: 'Ошибка обновления товара',
-    en: 'Error updating item'
-  },
-  updatePremixError: {
-    ru: 'Ошибка обновления премикса',
-    en: 'Error updating premix'
-  },
-  transactionError: {
-    ru: 'Ошибка проведения операции',
-    en: 'Transaction error'
-  },
-  preparePremixError: {
-    ru: 'Ошибка приготовления премикса',
-    en: 'Error preparing premix'
-  },
-  loadTransactionsError: {
-    ru: 'Ошибка загрузки транзакций',
-    en: 'Error loading transactions'
-  },
-  
-  // Валидация
-  nameRequired: {
-    ru: 'Название обязательно',
-    en: 'Name is required'
-  },
-  unitRequired: {
-    ru: 'Единица измерения обязательна',
-    en: 'Unit is required'
-  },
-  quantityPositive: {
-    ru: 'Количество должно быть положительным',
-    en: 'Quantity must be positive'
-  },
-  fillAllFields: {
-    ru: 'Заполните все поля',
-    en: 'Fill all fields'
-  },
-  invalidQuantity: {
-    ru: 'Неверное количество',
-    en: 'Invalid quantity'
-  },
-  
-  // Успешные операции
-  itemAdded: {
-    ru: 'Товар добавлен',
-    en: 'Item added'
-  },
-  locationAdded: {
-    ru: 'Место добавлено',
-    en: 'Location added'
-  },
-  premixAdded: {
-    ru: 'Премикс добавлен',
-    en: 'Premix added'
-  },
-  itemUpdated: {
-    ru: 'Товар обновлен',
-    en: 'Item updated'
-  },
-  premixUpdated: {
-    ru: 'Премикс обновлен',
-    en: 'Premix updated'
-  },
-  receiptSuccess: {
-    ru: 'Поступление проведено',
-    en: 'Receipt completed'
-  },
-  writeOffSuccess: {
-    ru: 'Списание проведено',
-    en: 'Write-off completed'
-  },
-  premixPrepared: {
-    ru: 'Премикс приготовлен',
-    en: 'Premix prepared'
-  },
-  itemAddedToWarehouse: {
-    ru: 'Товар добавлен на склад',
-    en: 'Item added to warehouse'
-  },
-  
-  // Названия разделов
   inventory: {
-    ru: 'Инвентарь',
-    en: 'Inventory'
+    ru: 'Склад',
+    ka: 'ინვენტარი'
   },
   locations: {
     ru: 'Места хранения',
-    en: 'Storage Locations'
+    ka: 'შენახვის ადგილები'
   },
-  premixes: {
-    ru: 'Премиксы',
-    en: 'Premixes'
+  apply: {
+    ru: 'Применить',
+    ka: 'გამოყენება'
   },
   transactions: {
     ru: 'Транзакции',
-    en: 'Transactions'
+    ka: 'ტრანზაქციები'
   },
-  
-  // Поля форм
-  name: {
-    ru: 'Название',
-    en: 'Name'
-  },
-  description: {
-    ru: 'Описание',
-    en: 'Description'
-  },
-  unit: {
-    ru: 'Единица измерения',
-    en: 'Unit'
-  },
-  cost: {
-    ru: 'Стоимость',
-    en: 'Cost'
-  },
-  code: {
-    ru: 'Код',
-    en: 'Code'
-  },
-  quantity: {
-    ru: 'Количество',
-    en: 'Quantity'
-  },
-  minQuantity: {
-    ru: 'Мин. количество',
-    en: 'Min. quantity'
-  },
-  reason: {
-    ru: 'Причина',
-    en: 'Reason'
-  },
-  yield: {
-    ru: 'Выход',
-    en: 'Yield'
-  },
-  ingredients: {
-    ru: 'Ингредиенты',
-    en: 'Ingredients'
-  },
-  
-  // Кнопки
   addItem: {
-    ru: 'Добавить товар',
-    en: 'Add Item'
+    ru: 'Добавить позицию',
+    ka: 'პოზიციის დამატება'
   },
   addLocation: {
     ru: 'Добавить место',
-    en: 'Add Location'
+    ka: 'ადგილის დამატება'
   },
-  addPremix: {
-    ru: 'Добавить премикс',
-    en: 'Add Premix'
-  },
-  addToWarehouse: {
-    ru: 'Добавить на склад',
-    en: 'Add to Warehouse'
-  },
-  prepare: {
-    ru: 'Приготовить',
-    en: 'Prepare'
-  },
-  remove: {
-    ru: 'Удалить',
-    en: 'Remove'
-  },
-  
-  // Сообщения
-  warehouseNotFound: {
-    ru: 'Склад не найден',
-    en: 'Warehouse not found'
-  },
-  noLocation: {
-    ru: 'Без места',
-    en: 'No location'
-  },
-  noItemsFound: {
-    ru: 'Товары не найдены',
-    en: 'No items found'
-  },
-  noLocationsFound: {
-    ru: 'Места не найдены',
-    en: 'No locations found'
-  },
-  noPremixesFound: {
-    ru: 'Премиксы не найдены',
-    en: 'No premixes found'
-  },
-  noIngredientsFound: {
-    ru: 'Ингредиенты не найдены',
-    en: 'No ingredients found'
-  },
-  available: {
-    ru: 'Доступно',
-    en: 'Available'
-  },
-  lowStock: {
-    ru: 'Мало',
-    en: 'Low stock'
-  },
-  insufficient: {
-    ru: 'Недостаточно',
-    en: 'Insufficient'
-  },
-  enough: {
-    ru: 'Достаточно',
-    en: 'Enough'
-  },
-  
-  // Фильтры
   filterByLocation: {
     ru: 'Фильтр по месту',
-    en: 'Filter by location'
+    ka: 'ფილტრი ადგილის მიხედვით'
   },
   allLocations: {
     ru: 'Все места',
-    en: 'All locations'
+    ka: 'ყველა ადგილი'
   },
-  selectDateRange: {
-    ru: 'Выберите период',
-    en: 'Select date range'
+  noLocation: {
+    ru: 'Без места',
+    ka: 'ადგილის გარეშე'
   },
-  searchItems: {
-    ru: 'Поиск товаров',
-    en: 'Search items'
+  code: {
+    ru: 'Код',
+    ka: 'კოდი'
   },
-  searchIngredient: {
-    ru: 'Поиск ингредиента',
-    en: 'Search ingredient'
+  name: {
+    ru: 'Название',
+    ka: 'სახელი'
   },
-  selectIngredient: {
-    ru: 'Выберите ингредиент',
-    en: 'Select ingredient'
+  quantity: {
+    ru: 'Количество',
+    ka: 'რაოდენობა'
   },
-  selectLocation: {
-    ru: 'Выберите место',
-    en: 'Select location'
+  unit: {
+    ru: 'Единица измерения',
+    ka: 'ზომის ერთეული'
   },
-  
-  // Транзакции
-  receipt: {
-    ru: 'Поступление',
-    en: 'Receipt'
+  location: {
+    ru: 'Место',
+    ka: 'ადგილი'
   },
-  writeOff: {
-    ru: 'Списание',
-    en: 'Write-off'
+  adjust: {
+    ru: 'Изменить',
+    ka: 'შეცვლა'
   },
   receiptTitle: {
-    ru: 'Поступление товара',
-    en: 'Item Receipt'
+    ru: 'Приход товара',
+    ka: 'პროდუქციის ჩამოსვლა'
   },
   writeOffTitle: {
     ru: 'Списание товара',
-    en: 'Item Write-off'
+    ka: 'პროდუქციის ჩამოწერა'
+  },
+  receipt: {
+    ru: 'Приход',
+    ka: 'ჩამოსვლა'
+  },
+  writeOff: {
+    ru: 'Списание',
+    ka: 'ჩამოწერა'
+  },
+  available: {
+    ru: 'Доступно',
+    ka: 'ხელმისაწვდომი'
+  },
+  reason: {
+    ru: 'Причина',
+    ka: 'მიზეზი'
+  },
+  reasonPlaceholder: {
+    ru: 'Укажите причину',
+    ka: 'მიუთითეთ მიზეზი'
   },
   confirmReceipt: {
-    ru: 'Подтвердить поступление',
-    en: 'Confirm Receipt'
+    ru: 'Подтвердить приход',
+    ka: 'ჩამოსვლის დადასტურება'
   },
   confirmWriteOff: {
     ru: 'Подтвердить списание',
-    en: 'Confirm Write-off'
+    ka: 'ჩამოწერის დადასტურება'
   },
-  reasonPlaceholder: {
-    ru: 'Укажите причину операции',
-    en: 'Enter reason for operation'
+  quantityMustBePositive: {
+    ru: 'Количество должно быть положительным',
+    ka: 'რაოდენობა დადებითი უნდა იყოს'
   },
-  
-  // Премиксы
+  notEnoughItems: {
+    ru: 'Недостаточно товара для списания',
+    ka: 'არ არის საკმარისი პროდუქტი ჩამოსაწერად'
+  },
+  edit: {
+    ru: 'Изменить',
+    ka: 'შეცვლა'
+  },
+  nameRequired: {
+    ru: 'Название обязательно',
+    ka: 'სახელი სავალდებულოა'
+  },
+  codeRequired: {
+    ru: 'Код обязателен',
+    ka: 'კოდი სავალდებულოა'
+  },
+  quantityPositive: {
+    ru: 'Количество должно быть положительным',
+    ka: 'რაოდენობა დადებითი უნდა იყოს'
+  },
+  loadError: {
+    ru: 'Ошибка загрузки данных склада',
+    ka: 'საწყობის მონაცემების ჩატვირთვის შეცდომა'
+  },
+  addItemError: {
+    ru: 'Ошибка добавления позиции',
+    ka: 'პოზიციის დამატების შეცდომა'
+  },
+  addLocationError: {
+    ru: 'Ошибка добавления локации',
+    ka: 'ადგილის დამატების შეცდომა'
+  },
+  itemAdded: {
+    ru: 'Позиция успешно добавлена',
+    ka: 'პოზიცია წარმატებით დაემატა'
+  },
+  locationAdded: {
+    ru: 'Локация успешно добавлена',
+    ka: 'ადგილი წარმატებით დაემატა'
+  },
+  receiptSuccess: {
+    ru: 'Приход успешно оформлен',
+    ka: 'ჩამოსვლა წარმატებით დასრულდა'
+  },
+  writeOffSuccess: {
+    ru: 'Списание успешно оформлено',
+    ka: 'ჩამოწერა წარმატებით დასრულდა'
+  },
+  insufficientQuantity: {
+    ru: 'Недостаточно товара для списания',
+    ka: 'არ არის საკმარისი რაოდენობა'
+  },
+  transactionError: {
+    ru: 'Ошибка выполнения операции',
+    ka: 'ოპერაცია ვერ მოხერხდა'
+  },
+  loadTransactionsError: {
+    ru: 'Ошибка загрузки транзакций',
+    ka: 'ტრანზაქციების ჩატვირთვა ვერ მოხერხდა'
+  },
+  loading: {
+    ru: 'Загрузка...',
+    ka: 'იტვირთება...'
+  },
+  warehouseNotFound: {
+    ru: 'Склад не найден',
+    ka: 'საწყობი ვერ მოიძებნა'
+  },
+  actions: {
+    ru: 'Действия',
+    ka: 'მოქმედებები'
+  },
+  itemCount: {
+    ru: 'Количество позиций',
+    ka: 'პოზიციების რაოდენობა'
+  },
+  editItem: {
+    ru: 'Редактировать позицию',
+    ka: 'პოზიციის რედაქტირება'
+  },
+  itemUpdated: {
+    ru: 'Позиция успешно обновлена',
+    ka: 'პოზიცია წარმატებით განახლდა'
+  },
+  updateItemError: {
+    ru: 'Ошибка обновления позиции',
+    ka: 'პოზიციის განახლების შეცდომა'
+  },
+  saveChanges: {
+    ru: 'Сохранить изменения',
+    ka: 'ცვლილებების შენახვა'
+  },
+  adjustQuantity: {
+    ru: 'Изменить количество',
+    ka: 'რაოდენობის შეცვლა'
+  },
+  selectDateRange: {
+    ru: 'Выберите период',
+    ka: 'აირჩიეთ პერიოდი'
+  },
+  premixes: {
+    ru: 'Заготовки',
+    ka: 'წინასწარი ნარევები'
+  },
+  addPremix: {
+    ru: 'Добавить заготовку',
+    ka: 'წინასწარი ნარევის დამატება'
+  },
+  premixAdded: {
+    ru: 'Заготовка успешно добавлена',
+    ka: 'წინასწარი ნარევი წარმატებით დაემატა'
+  },
+  addPremixError: {
+    ru: 'Ошибка добавления заготовки',
+    ka: 'წინასწარი ნარევის დამატების შეცდომა'
+  },
+  yield: {
+    ru: 'Выход',
+    ka: 'გამომავალი'
+  },
+  ingredients: {
+    ru: 'Ингредиенты',
+    ka: 'ინგრედიენტები'
+  },
+  selectIngredient: {
+    ru: 'Выберите ингредиент',
+    ka: 'აირჩიეთ ინგრედიენტი'
+  },
+  remove: {
+    ru: 'Удалить',
+    ka: 'წაშლა'
+  },
+  viewIngredients: {
+    ru: 'Состав',
+    ka: 'შემადგენლობა'
+  },
+  prepare: {
+    ru: 'Приготовить',
+    ka: 'მომზადება'
+  },
   preparePremix: {
-    ru: 'Приготовить премикс',
-    en: 'Prepare Premix'
+    ru: 'Приготовить заготовку',
+    ka: 'წინასწარი ნარევის მომზადება'
   },
   preparePremixDescription: {
-    ru: 'Приготовление премикса из ингредиентов',
-    en: 'Prepare premix from ingredients'
+    ru: 'Укажите количество для приготовления. Система проверит наличие ингредиентов.',
+    ka: 'მიუთითეთ მოსამზადებელი რაოდენობა. სისტემა შეამოწმებს ინგრედიენტების ხელმისაწვდომობას.'
   },
   requiredIngredients: {
     ru: 'Необходимые ингредиенты',
-    en: 'Required ingredients'
+    ka: 'საჭირო ინგრედიენტები'
   },
-  itemCount: {
-    ru: 'Кол-во товаров',
-    en: 'Item count'
+  required: {
+    ru: 'Требуется',
+    ka: 'საჭიროა'
   },
-  
-  // Статусы
-  created: {
-    ru: 'Создано',
-    en: 'Created'
+  insufficient: {
+    ru: 'Недостаточно',
+    ka: 'არ არის საკმარისი'
   },
+  noDescription: {
+    ru: 'Нет описания',
+    ka: 'აღწერა არ არის'
+  },
+  invalidQuantity: {
+    ru: 'Некорректное количество',
+    ka: 'არასწორი რაოდენობა'
+  },
+  premixPrepared: {
+    ru: 'Заготовка успешно приготовлена',
+    ka: 'წინასწარი ნარევი წარმატებით მოამზადა'
+  },
+  preparePremixError: {
+    ru: 'Ошибка приготовления заготовки',
+    ka: 'წინასწარი ნარევის მომზადების შეცდომა'
+  },
+  fillAllFields: {
+    ru: 'Заполните все поля',
+    ka: 'შეავსეთ ყველა ველი'
+  },
+  unitRequired: {
+    ru: 'Единица измерения обязательна',
+    ka: 'ზომის ერთეული სავალდებულოა'
+  },
+  description: {
+    ru: 'Описание',
+    ka: 'აღწერა'
+  },
+  editPremix: {
+    ru: 'Редактировать',
+    ka: 'რედაქტირება'
+  },
+  premixUpdated: {
+    ru: 'Заготовка успешно обновлена',
+    ka: 'წინასწარი ნარევი წარმატებით განახლდა'
+  },
+  updatePremixError: {
+    ru: 'Ошибка при обновлении заготовки',
+    ka: 'წინასწარი ნარევის განახლების შეცდომა'
+  },
+  searchIngredient: {
+    ru: "Поиск ингредиента...",
+    ka: "ინგრედიენტის ძებნა..."
+  },
+  noIngredientsFound: {
+    ru: "Ингредиенты не найдены",
+    ka: "ინგრედიენტები ვერ მოიძებნა"
+  },
+  reserved: {
+    ru: "Зарезервировано",
+    ka: "დაჯავშნილი"
+  },
+  active: {
+    ru: "Активен",
+    ka: "აქტიური"
+  },
+  inactive: {
+    ru: "Неактивен",
+    ka: "უმოქმედო"
+  },
+  status: {
+    ru: "Статус",
+    ka: "სტატუსი"
+  },
+  noItemsFound: {
+    ru: "Пусто",
+    ka: "არაფერი მოიძებნა"
+  },
+  allTypes: {
+    ru: 'Все типы',
+    en: 'All types',
+    ka: 'ყველა ტიპი'
+  },
+  filterByType: {
+    ru: 'Фильтр по типу',
+    en: 'Filter by type',
+    ka: 'ფილტრი ტიპის მიხედვით'
+  },
+  includeTransfers: {
+    ru: 'Включать трансферы',
+    en: 'Include transfers',
+    ka: 'გადატანების ჩათვლით'
+  },
+  applyFilters: {
+    ru: 'Применить фильтры',
+    en: 'Apply filters',
+    ka: 'ფილტრების გამოყენება'
+  },
+  noTransactions: {
+    ru: 'Транзакции не найдены',
+    en: 'No transactions found',
+    ka: 'ტრანზაქციები არ მოიძებნა'
+  },
+  unknownItem: {
+    ru: 'Неизвестный товар',
+    en: 'Unknown item',
+    ka: 'უცნობი ნივთი'
+  },
+  unknownWarehouse: {
+    ru: 'Неизвестный склад',
+    en: 'Unknown warehouse',
+    ka: 'უცნობი საწყობი'
+  },
+  noReason: {
+    ru: 'Без причины',
+    en: 'No reason',
+    ka: 'მიზეზის გარეშე'
+  },
+  // Добавляем переводы для новых функциональностей
+  transferFrom: {
+    ru: 'Перемещение из',
+    en: 'Transfer from',
+    ka: 'გადატანა საწყობიდან'
+  },
+  transferTo: {
+    ru: 'Перемещение в',
+    en: 'Transfer to',
+    ka: 'გადატანა საწყობში'
+  },
+  preparationOf: {
+    ru: 'Приготовление',
+    en: 'Preparation of',
+    ka: 'მომზადება'
+  },
+  usageOf: {
+    ru: 'Использование',
+    en: 'Usage of',
+    ka: 'გამოყენება'
+  },
+  document: {
+    ru: 'Документ',
+    en: 'Document',
+    ka: 'დოკუმენტი'
+  },
+  documentId: {
+    ru: 'ID документа',
+    en: 'Document ID',
+    ka: 'დოკუმენტის ID'
+  },
+  // Добавляем переводы для статусов
   completed: {
     ru: 'Завершено',
-    en: 'Completed'
+    en: 'Completed',
+    ka: 'დასრულებული'
+  },
+  pending: {
+    ru: 'В обработке',
+    en: 'Pending',
+    ka: 'მუშავდება'
   },
   cancelled: {
     ru: 'Отменено',
-    en: 'Cancelled'
+    en: 'Cancelled',
+    ka: 'გაუქმებული'
+  },
+  // Добавляем переводы для кнопок действий
+  viewDetails: {
+    ru: 'Подробнее',
+    en: 'View details',
+    ka: 'დეტალურად'
+  },
+  export: {
+    ru: 'Экспорт',
+    en: 'Export',
+    ka: 'ექსპორტი'
+  },
+  print: {
+    ru: 'Печать',
+    en: 'Print',
+    ka: 'ბეჭდვა'
+  },
+  // Добавляем переводы для фильтров
+  filter: {
+    ru: 'Фильтр',
+    en: 'Filter',
+    ka: 'ფილტრი'
+  },
+  clearFilters: {
+    ru: 'Очистить фильтры',
+    en: 'Clear filters',
+    ka: 'ფილტრების გასუფთავება'
+  },
+  search: {
+    ru: 'Поиск',
+    en: 'Search',
+    ka: 'ძებნა'
+  },
+  // Добавляем переводы для пагинации
+  itemsPerPage: {
+    ru: 'Элементов на странице',
+    en: 'Items per page',
+    ka: 'ელემენტები გვერდზე'
+  },
+  of: {
+    ru: 'из',
+    en: 'of',
+    ka: '–დან'
+  },
+  // Добавляем переводы для сортировки
+  sortBy: {
+    ru: 'Сортировать по',
+    en: 'Sort by',
+    ka: 'დალაგება'
+  },
+  ascending: {
+    ru: 'По возрастанию',
+    en: 'Ascending',
+    ka: 'ზრდადობით'
+  },
+  descending: {
+    ru: 'По убыванию',
+    en: 'Descending',
+    ka: 'კლებადობით'
+  },
+  // Добавляем переводы для уведомлений
+  success: {
+    ru: 'Успешно',
+    en: 'Success',
+    ka: 'წარმატებული'
+  },
+  error: {
+    ru: 'Ошибка',
+    en: 'Error',
+    ka: 'შეცდომა'
+  },
+  warning: {
+    ru: 'Предупреждение',
+    en: 'Warning',
+    ka: 'გაფრთხილება'
+  },
+  info: {
+    ru: 'Информация',
+    en: 'Information',
+    ka: 'ინფორმაცია'
+  },
+  
+  saving: {
+    ru: 'Сохранение...',
+    en: 'Saving...',
+    ka: 'ინახება...'
+  },
+  processing: {
+    ru: 'Обработка...',
+    en: 'Processing...',
+    ka: 'მუშავდება...'
+  },
+  // Добавляем переводы для модальных окон
+  confirm: {
+    ru: 'Подтвердить',
+    en: 'Confirm',
+    ka: 'დადასტურება'
+  },
+  cancel: {
+    ru: 'Отмена',
+    en: 'Cancel',
+    ka: 'გაუქმება'
+  },
+  delete: {
+    ru: 'Удалить',
+    en: 'Delete',
+    ka: 'წაშლა'
+  },
+  close: {
+    ru: 'Закрыть',
+    en: 'Close',
+    ka: 'დახურვა'
+  },
+  // Добавляем переводы для форм
+  requiredField: {
+    ru: 'Обязательное поле',
+    en: 'Required field',
+    ka: 'სავალდებულო ველი'
+  },
+  invalidFormat: {
+    ru: 'Неверный формат',
+    en: 'Invalid format',
+    ka: 'არასწორი ფორმატი'
+  },
+  // Добавляем переводы для отчетов
+  report: {
+    ru: 'Отчет',
+    en: 'Report',
+    ka: 'ანგარიში'
+  },
+  generateReport: {
+    ru: 'Сформировать отчет',
+    en: 'Generate report',
+    ka: 'ანგარიშის შექმნა'
+  },
+  period: {
+    ru: 'Период',
+    en: 'Period',
+    ka: 'პერიოდი'
+  },
+  // Добавляем переводы для статистики
+  statistics: {
+    ru: 'Статистика',
+    en: 'Statistics',
+    ka: 'სტატისტიკა'
+  },
+  total: {
+    ru: 'Всего',
+    en: 'Total',
+    ka: 'სულ'
+  },
+  average: {
+    ru: 'В среднем',
+    en: 'Average',
+    ka: 'საშუალოდ'
+  },
+  maximum: {
+    ru: 'Максимум',
+    en: 'Maximum',
+    ka: 'მაქსიმუმი'
+  },
+  minimum: {
+    ru: 'Минимум',
+    en: 'Minimum',
+    ka: 'მინიმუმი'
   }
-} as const;
+};
 
-export type TranslationKey = keyof typeof warehouseTranslations;
+export const transactionsTranslations = {
+  date: {
+    ru: 'Дата',
+    en: 'Date',
+    ka: 'თარიღი'
+  },
+  item: {
+    ru: 'Товар',
+    en: 'Item',
+    ka: 'ნივთი'
+  },
+  type: {
+    ru: 'Тип операции',
+    en: 'Operation Type',
+    ka: 'ოპერაციის ტიპი'
+  },
+  quantityChange: {
+    ru: 'Изменение количества',
+    en: 'Quantity Change',
+    ka: 'რაოდენობის ცვლილება'
+  },
+  previousQty: {
+    ru: 'Предыдущее количество',
+    en: 'Previous Quantity',
+    ka: 'წინა რაოდენობა'
+  },
+  newQty: {
+    ru: 'Новое количество',
+    en: 'New Quantity',
+    ka: 'ახალი რაოდენობა'
+  },
+  reason: {
+    ru: 'Причина операции',
+    en: 'Operation Reason',
+    ka: 'ოპერაციის მიზეზი'
+  },
+  warehouse: {
+    ru: 'Склад-источник',
+    en: 'Source Warehouse',
+    ka: 'წყაროს საწყობი'
+  },
+  targetWarehouse: {
+    ru: 'Склад-приемник',
+    en: 'Destination Warehouse',
+    ka: 'დანიშნულების საწყობი'
+  },
+  user: {
+    ru: 'Ответственный',
+    en: 'Responsible User',
+    ka: 'პასუხისმგებელი მომხმარებელი'
+  },
+  document: {
+    ru: 'Документ',
+    en: 'Document',
+    ka: 'დოკუმენტი'
+  },
+  noReason: {
+    ru: 'Причина не указана',
+    ka: 'მიზეზი არ არის მითითებული'
+  },
+  unknownWarehouse: {
+    ru: 'Неизвестный склад',
+    en: 'Unknown warehouse',
+    ka: 'უცნობი საწყობი'
+  },
+  unknownItem: {
+    ru: 'Неизвестный товар',
+    en: 'Unknown item',
+    ka: 'უცნობი ნივთი'
+  },
+  noTransactions: {
+    ru: 'Транзакции не найдены',
+    en: 'No transactions found',
+    ka: 'ტრანზაქციები არ მოიძებნა'
+  },
+  // Типы операций (добавлены недостающие ключи)
+  receipt: {
+    ru: 'Поступление',
+    ka: 'შემოსავალი'
+  },
+  writeOff: {
+    ru: 'Списание',
+    ka: 'დაწერა'
+  },
+  correction: {
+    ru: 'Коррекция',
+    ka: 'კორექტირება'
+  },
+  transfer: {
+    ru: 'Перемещение',
+    en: 'Transfer',
+    ka: 'გადატანა'
+  },
+  preparation: {
+    ru: 'Приготовление',
+    en: 'Preparation',
+    ka: 'მომზადება'
+  },
+  usage: {
+    ru: 'Использование',
+    ka: 'გამოყენება'
+  },
+
+  // Фильтры и действия
+  filter: {
+    ru: 'Фильтр',
+    ka: 'ფილტრი'
+  },
+  clearFilters: {
+    ru: 'Очистить фильтры',
+    ka: 'ფილტრების გასუფთავება'
+  },
+  search: {
+    ru: 'Поиск',
+    ka: 'ძებნა'
+  },
+  applyFilters: {
+    ru: 'Применить фильтры',
+    ka: 'ფილტრების გამოყენება'
+  },
+  allTypes: {
+    ru: 'Все типы операций',
+    ka: 'ყველა ოპერაციის ტიპი'
+  },
+  filterByType: {
+    ru: 'Фильтр по типу операции',
+    ka: 'ფილტრი ოპერაციის ტიპის მიხედვით'
+  },
+  selectDateRange: {
+    ru: 'Выберите период',
+    ka: 'აირჩიეთ თარიღების დიაპაზონი'
+  },
+
+  // Дополнительные статусы
+  completed: {
+    ru: 'Завершено',
+    ka: 'დასრულებული'
+  },
+  pending: {
+    ru: 'В обработке',
+    ka: 'მუშავდება'
+  },
+  cancelled: {
+    ru: 'Отменено',
+    ka: 'გაუქმებული'
+  },
+  inProgress: {
+    ru: 'В процессе',
+    ka: 'პროცესშია'
+  },
+
+  // Действия
+  viewDetails: {
+    ru: 'Просмотреть детали',
+    ka: 'დეტალების ნახვა'
+  },
+  export: {
+    ru: 'Экспорт',
+    ka: 'ექსპორტი'
+  },
+  print: {
+    ru: 'Печать',
+    ka: 'ბეჭდვა'
+  },
+  download: {
+    ru: 'Скачать',
+    ka: 'ჩამოტვირთვა'
+  },
+
+  itemsPerPage: {
+    ru: 'Записей на странице',
+    ka: 'ჩანაწერები გვერდზე'
+  },
+  of: {
+    ru: 'из',
+    ka: '–დან'
+  },
+  page: {
+    ru: 'Страница',
+    ka: 'გვერდი'
+  },
+  nextPage: {
+    ru: 'Следующая страница',
+    ka: 'შემდეგი გვერდი'
+  },
+  previousPage: {
+    ru: 'Предыдущая страница',
+    ka: 'წინა გვერდი'
+  },
+
+  // Статусы операций
+  success: {
+    ru: 'Успешно',
+    ka: 'წარმატებით'
+  },
+  error: {
+    ru: 'Ошибка',
+    ka: 'შეცდომა'
+  },
+  warning: {
+    ru: 'Предупреждение',
+    ka: 'გაფრთხილება'
+  },
+  info: {
+    ru: 'Информация',
+    ka: 'ინფორმაცია'
+  },
+
+  // Системные сообщения
+  loading: {
+    ru: 'Загрузка...',
+    ka: 'იტვირთება...'
+  },
+  saving: {
+    ru: 'Сохранение...',
+    ka: 'ინახება...'
+  },
+  processing: {
+    ru: 'Обработка...',
+    ka: 'მუშავდება...'
+  },
+  updating: {
+    ru: 'Обновление...',
+    ka: 'განახლება...'
+  },
+
+  // Модальные окна
+  confirm: {
+    ru: 'Подтвердить',
+    ka: 'დადასტურება'
+  },
+  cancel: {
+    ru: 'Отмена',
+    ka: 'გაუქმება'
+  },
+  delete: {
+    ru: 'Удалить',
+    ka: 'წაშლა'
+  },
+  close: {
+    ru: 'Закрыть',
+    ka: 'დახურვა'
+  },
+  save: {
+    ru: 'Сохранить',
+    ka: 'შენახვა'
+  },
+  edit: {
+    ru: 'Редактировать',
+    ka: 'რედაქტირება'
+  },
+
+  requiredField: {
+    ru: 'Обязательное поле',
+    ka: 'სავალდებულო ველი'
+  },
+  invalidFormat: {
+    ru: 'Неверный формат',
+    ka: 'არასწორი ფორმატი'
+  },
+  invalidQuantity: {
+    ru: 'Недопустимое количество',
+    ka: 'არასწორი რაოდენობა'
+  },
+  report: {
+    ru: 'Отчет',
+    ka: 'ანგარიში'
+  },
+  generateReport: {
+    ru: 'Сформировать отчет',
+    ka: 'ანგარიშის შექმნა'
+  },
+  period: {
+    ru: 'Период',
+    ka: 'პერიოდი'
+  },
+  daily: {
+    ru: 'Ежедневный',
+    ka: 'ყოველდღიური'
+  },
+  weekly: {
+    ru: 'Еженедельный',
+    ka: 'ყოველკვირეული'
+  },
+  monthly: {
+    ru: 'Ежемесячный',
+    ka: 'ყოველთვიური'
+  },
+  custom: {
+    ru: 'Произвольный',
+    ka: 'ინდივიდუალური'
+  },
+
+  // Статистика
+  statistics: {
+    ru: 'Статистика',
+    ka: 'სტატისტიკა'
+  },
+  total: {
+    ru: 'Всего',
+    ka: 'სულ'
+  },
+  average: {
+    ru: 'В среднем',
+    ka: 'საშუალოდ'
+  },
+  maximum: {
+    ru: 'Максимум',
+    ka: 'მაქსიმუმი'
+  },
+  minimum: {
+    ru: 'Минимум',
+    ka: 'მინიმუმი'
+  },
+  count: {
+    ru: 'Количество',
+    ka: 'რაოდენობა'
+  },
+  sum: {
+    ru: 'Сумма',
+    ka: 'ჯამი'
+  }
+};
