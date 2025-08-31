@@ -106,13 +106,13 @@ const ProductEditPage = () => {
   const loadInventoryItems = async () => {
     setIsInventoryLoading(true)
     try {
-      const items = await WarehouseService.getInventoryItems()
-      const formattedItems = items.map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        unit: item.unit,
-      }))
-      setInventoryItems(formattedItems)
+      //const items = await WarehouseService.getInventoryItems()
+      //const formattedItems = items.map((item: any) => ({
+      //  id: item.id,
+      //  name: item.name,
+      //  unit: item.unit,
+      //}))
+      //setInventoryItems(formattedItems)
     } catch (error) {
       console.error('Failed to load inventory items', error)
       toast.error(language === 'ru' 

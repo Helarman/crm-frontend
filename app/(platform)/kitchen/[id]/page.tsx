@@ -300,15 +300,7 @@ export default function KitchenOrderPage() {
 
     setIsWritingOff(true)
     try {
-      await Promise.all(
-        writeOffItems.map(item => 
-          WarehouseService.writeOffInventory(item.id, {
-            quantity: item.quantity,
-            reason: `Списание при приготовлении заказа #${order?.number}`
-          })
-        )
-      )
-
+     toast.error('Ошибка списания')
       await handleStatusChange(currentItemId, OrderItemStatus.IN_PROGRESS)
 
       toast.success(t.writeOffSuccess)

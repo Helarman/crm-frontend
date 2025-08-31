@@ -85,34 +85,7 @@ export default function RestaurantsPage() {
 
   const canCopyWarehouse = user?.role && ['SUPERVISOR', 'MANAGER'].includes(user.role);
 
-  const handleCopyWarehouse = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!sourceRestaurantId || !targetRestaurantId) {
-      toast.error(t.selectSource + ' & ' + t.selectTarget);
-      return;
-    }
 
-    try {
-      setIsCopying(true);
-      
-      await WarehouseService.copyWarehouse({
-        sourceRestaurantId,
-        targetRestaurantId,
-        userId: user?.id
-      });
-
-      toast.success(t.copySuccess);
-      setIsDialogOpen(false);
-      setSourceRestaurantId('');
-      setTargetRestaurantId('');
-    } catch (error) {
-      console.error('Copy warehouse error:', error);
-      toast.error(t.copyError);
-    } finally {
-      setIsCopying(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -134,11 +107,7 @@ export default function RestaurantsPage() {
     <div>
       <div className='mb-6 flex justify-between items-center'>
         <h1 className="text-2xl font-bold">{t.title}</h1>
-        {canCopyWarehouse && user?.restaurant?.length > 1 && (
-          <Button onClick={() => setIsDialogOpen(true)}>
-            {t.copyWarehouseButton}
-          </Button>
-        )}
+       
       </div>
 
       {user?.restaurant?.length ? (
@@ -162,87 +131,6 @@ export default function RestaurantsPage() {
         </div>
       )}
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t.copyDialogTitle}</DialogTitle>
-          </DialogHeader>
-          
-         <form onSubmit={handleCopyWarehouse}>
-          <div className="space-y-6">
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-4 sm:items-center">
-                <Label htmlFor="source" className="sm:text-right">
-                  {t.source}
-                </Label>
-                <div className="sm:col-span-3">
-                  <Select 
-                    value={sourceRestaurantId} 
-                    onValueChange={setSourceRestaurantId}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={t.selectSource} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {user?.restaurant?.map((restaurant: any) => (
-                        <SelectItem key={`source-${restaurant.id}`} value={restaurant.id}>
-                          {restaurant.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-4 sm:items-center">
-                <Label htmlFor="target" className="sm:text-right">
-                  {t.target}
-                </Label>
-                <div className="sm:col-span-3">
-                  <Select 
-                    value={targetRestaurantId} 
-                    onValueChange={setTargetRestaurantId}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={t.selectTarget} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {user?.restaurant?.map((restaurant: any) => (
-                        <SelectItem key={`target-${restaurant.id}`} value={restaurant.id}>
-                          {restaurant.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-
-            <DialogFooter className="gap-3">
-              <Button 
-                type="button" 
-                variant="outline"
-                className="w-full sm:w-auto"
-                onClick={() => {
-                  setIsDialogOpen(false);
-                  setSourceRestaurantId('');
-                  setTargetRestaurantId('');
-                }}
-              >
-                {t.cancel}
-              </Button>
-              <Button 
-                type="submit"
-                className="w-full sm:w-auto"
-                disabled={isCopying || !sourceRestaurantId || !targetRestaurantId}
-              >
-                {isCopying ? t.loading : t.confirmCopy}
-              </Button>
-            </DialogFooter>
-          </div>
-        </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

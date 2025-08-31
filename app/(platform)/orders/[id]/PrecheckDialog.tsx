@@ -39,7 +39,8 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
       orderTypes: {
         DINE_IN: "В заведении",
         TAKEAWAY: "На вынос",
-        DELIVERY: "Доставка"
+        DELIVERY: "Доставка",
+        BANQUET: "Банкет"
       },
       discount: "Скидка",
       bonusPoints: "Бонусные баллы",
@@ -63,7 +64,8 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
       orderTypes: {
         DINE_IN: "დაწესებულებაში",
         TAKEAWAY: "წინასწარ",
-        DELIVERY: "მიწოდება"
+        DELIVERY: "მიწოდება",
+        BANQUET: ""
       },
       discount: "ფასდაკლება",
       bonusPoints: "ბონუს ქულები",
