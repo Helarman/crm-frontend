@@ -106,7 +106,7 @@ export function AddProductModal({
   }, [allProducts, restaurantProducts, productSearch, selectedCategoryId]);
 
   const filteredCategories = useMemo(() => {
-    return categories.filter((category : Category) => 
+    return categories.filter((category : any) => 
       category.title.toLowerCase().includes(categorySearch.toLowerCase())
     );
   }, [categories, categorySearch]);
@@ -117,7 +117,7 @@ export function AddProductModal({
   );
 
   const selectedCategory = useMemo(
-    () => categories.find((c: Category) => c.id === selectedCategoryId),
+    () => categories.find((c: any) => c.id === selectedCategoryId),
     [categories, selectedCategoryId]
   );
 
@@ -200,7 +200,7 @@ export function AddProductModal({
                   <CommandList>
                     <CommandEmpty>{t.noCategories}</CommandEmpty>
                     <CommandGroup>
-                      {filteredCategories.map((category: Category) => (
+                      {filteredCategories.map((category: any) => (
                         <CommandItem
                           key={category.id}
                           value={category.title}

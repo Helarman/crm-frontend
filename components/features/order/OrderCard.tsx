@@ -495,30 +495,8 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
 
     setIsWritingOff(true)
     try {
-      await Promise.all(
-        writeOffItems.map(item => 
-          WarehouseService.writeOffInventory(item.id, {
-            quantity: item.quantity,
-            reason: `Списание при приготовлении заказа #${order?.number}`
-          })
-        )
-      )
-
-      const preparedItem = items.find(item => item.id === currentItemId);
-      
-      if (preparedItem && user) {
-        await createOrderLog(
-          language === 'ru' 
-            ? `Блюдо приготовлено: ${preparedItem.product.title} × ${preparedItem.quantity}` 
-            : `კერძი მზადაა: ${preparedItem.product.title} × ${preparedItem.quantity}`
-        );
-      }
-
-      const updatedOrder = await handleStatusChange(currentItemId, OrderItemStatus.COMPLETED)
-
-      toast.success(t.writeOffSuccess)
-      setWriteOffDialogOpen(false)
-      return updatedOrder
+      throw Error
+    
     } catch (error) {
       console.error('Error writing off inventory:', error)
       toast.error(t.writeOffError)

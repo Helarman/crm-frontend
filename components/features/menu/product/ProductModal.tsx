@@ -19,7 +19,6 @@ import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { WorkshopIn } from './ProductTable';
 import { ImageUploader } from './ImageUploader';
-import { WarehouseItem, WarehouseService } from '@/lib/api/warehouse.service';
 import SearchableSelect from './SearchableSelect';
 import IngredientSelect from './IngredientSelect';
 
@@ -117,7 +116,7 @@ export const ProductModal = ({
   setIsInventoryLoading(true);
   try {
     // Получаем список всех позиций склада
-    const items = await WarehouseService.getInventoryItems();
+    /*const items = await WarehouseService.getInventoryItems();
     
     // Преобразуем данные в нужный формат
     const formattedItems = items.map((item: WarehouseItem) => ({
@@ -138,7 +137,8 @@ export const ProductModal = ({
       })
     }));
 
-    setInventoryItems(formattedItems);
+    setInventoryItems(formattedItems);*/
+    throw Error()
   } catch (error) {
     console.error('Failed to load inventory items', error);
     toast.error(language === 'ru' 
@@ -229,7 +229,7 @@ export const ProductModal = ({
     setIsCategoriesLoading(true);
     try {
       const data = await CategoryService.getAll();
-      setCategories(data);
+      setCategories(data as any);
     } catch (error) {
       console.error('Failed to load categories', error);
     } finally {

@@ -135,13 +135,13 @@ export function RestaurantProducts({ restaurantId }: { restaurantId: string }) {
       <h2 className="text-2xl font-bold">{t.title}</h2>
       
       
-      <Accordion type="multiple" defaultValue={sortedCategories.map(c => c.id)} className="space-y-4">
+      <Accordion type="multiple" defaultValue={sortedCategories.map(c => c.id) as any} className="space-y-4">
         {sortedCategories.map((category) => {
-          const categoryProducts = productsByCategory?.[category.id] || [];
+          const categoryProducts = productsByCategory?.[category.id!] || [];
           if (categoryProducts.length === 0) return null;
           
           return (
-            <AccordionItem key={category.id} value={category.id} className="border rounded-lg">
+            <AccordionItem key={category.id} value={category.id!} className="border rounded-lg">
               <AccordionTrigger className="px-2 py-3 hover:no-underline">
                 <div className="flex items-center space-x-2">
                   {category.title}
