@@ -186,6 +186,20 @@ export const OrderInfoStep = ({
     return true
   }
 
+  const handleScheduledChange = (checked: boolean) => {
+      setOrder({
+        ...order,
+        isScheduled: checked,
+        scheduledAt: checked ? format(new Date(), "yyyy-MM-dd'T'HH:mm") : undefined
+      })
+    }
+  const handleScheduledTimeChange = (time: string) => {
+    setOrder({
+      ...order,
+      scheduledAt: time
+    })
+  }
+
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">{language === 'ka' ? 'ახალი შეკვეთა' : 'Новый заказ'}</h1>
@@ -249,7 +263,23 @@ export const OrderInfoStep = ({
           </Select>
         </div>
       )}
-
+      {order.type !== 'DINE_IN' &&
+      <div className="space-y-3">
+        <Label className="text-sm flex items-center gap-2">
+          <Phone className="h-4 w-4" />
+          {language === 'ka' ? 'ტელეფონის ნომერი' : 'Номер телефона'}
+        </Label>
+        <Input
+          type="tel"
+          placeholder={language === 'ka' ? '+995 555 123 456' : '+7 999 123-45-67'}
+          value={order.phone || ''}
+          onChange={(e) => setOrder({
+            ...order,
+            phone: e.target.value
+          })}
+        />
+      </div>
+      }
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-3">
           <Label className="text-sm flex items-center gap-2">
@@ -388,7 +418,7 @@ export const OrderInfoStep = ({
         </div>
       )}
 
-      {/* New Comment Field */}
+      {/* Comment Field */}
       <div className="space-y-1">
         <Label className="text-sm flex items-center gap-2">
           <MessageCircle className="h-4 w-4" />
@@ -404,43 +434,13 @@ export const OrderInfoStep = ({
         />
       </div>
 
-      {/*<div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-medium flex items-center gap-2">
-            <PlusCircle className="h-4 w-4" />
-            {language === 'ka' ? 'დამატებები' : 'Надбавки'}
-          </h3>
-        </div>
-        
-        {order.surcharges.length > 0 ? (
-          <ul className="space-y-2 border rounded-lg p-4">
-            {order.surcharges.map(surcharge => (
-              <li key={surcharge.id} className="flex justify-between">
-                <span>{surcharge.title}</span>
-                <span className="font-medium">
-                  {surcharge.type === 'FIXED' 
-                    ? `${surcharge.amount} ₽` 
-                    : `${surcharge.amount}%`}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            {language === 'ka' 
-              ? 'არ არის გამოყენებული დამატებები' 
-              : 'Нет примененных надбавок'}
-          </p>
-        )}
-      </div>*/}
-
       <div className="mb-6 p-4 rounded-lg">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Checkbox
               id="scheduled-order"
-              checked={isScheduled}
-              onCheckedChange={(checked) => setIsScheduled(!!checked)}
+              checked={order.isScheduled || false}
+              onCheckedChange={handleScheduledChange}
             />
             <Label htmlFor="scheduled-order" className="flex items-center gap-2">
               <Clock className="h-4 w-4" />
@@ -450,9 +450,9 @@ export const OrderInfoStep = ({
           <div className="w-64">
             <Input
               type="datetime-local"
-              disabled={!isScheduled}
-              value={scheduledTime}
-              onChange={(e) => setScheduledTime(e.target.value)}
+              disabled={!order.isScheduled}
+              value={order.scheduledAt || format(new Date(), "yyyy-MM-dd'T'HH:mm")}
+              onChange={(e) => handleScheduledTimeChange(e.target.value)}
               min={format(new Date(), "yyyy-MM-dd'T'HH:mm")}
             />
           </div>

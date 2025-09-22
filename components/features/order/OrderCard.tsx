@@ -754,14 +754,14 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
                 {(user?.role === 'SUPERVISOR' || user?.role === 'MANAGER') && order.customer && variant === 'default' && (
                   <OrderCustomerInfo customer={order.customer} compact />
                 )}
-                {order.scheduledAt &&
+               {order.scheduledAt &&
                   <Badge 
                     variant="outline"
                     className="flex items-center gap-1 px-2 py-1 rounded-md border text-sm font-medium"
                   >
                     {language === 'ru' ? 'Отложено до' : 'გადაიდო'}
                     <span className="text-sm">
-                      {format(new Date(order.scheduledAt), 'HH:mm')}
+                      {new Date(order.scheduledAt).toISOString().slice(11, 16)}
                     </span>
                   </Badge>
                 }

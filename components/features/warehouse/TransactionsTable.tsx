@@ -11,9 +11,13 @@ interface Transaction {
   quantity: number;
   previousQuantity: number;
   newQuantity: number;
+  cost?: number;
   createdAt: string;
   updatedAt: string;
+  totalValue?: number;
   reason?: string;
+  unitCost?: number; 
+  totalCost?: number;  
   documentId?: string;
   inventoryItem: {
     id: string;
@@ -98,6 +102,8 @@ export function TransactionsTable({ transactions, showWarehouseInfo = false }: T
             <TableHead className="w-64">Товар</TableHead>
             <TableHead>Тип</TableHead>
             <TableHead>Изменение</TableHead>
+            <TableHead>Стоимость</TableHead> 
+            <TableHead>Общая стоимость</TableHead>
             <TableHead>Было</TableHead>
             <TableHead>Стало</TableHead>
             <TableHead>Причина</TableHead>
@@ -145,7 +151,12 @@ export function TransactionsTable({ transactions, showWarehouseInfo = false }: T
               }>
                 {getQuantityChange(transaction)}
               </TableCell>
-              
+              <TableCell>
+                {transaction.unitCost ? `${transaction.unitCost.toFixed(2)}₽` : '-'}
+              </TableCell>
+              <TableCell>
+                {transaction.totalCost ? `${transaction.totalCost.toFixed(2)}₽` : '-'}
+              </TableCell>
               <TableCell>
                 {transaction.previousQuantity}
               </TableCell>

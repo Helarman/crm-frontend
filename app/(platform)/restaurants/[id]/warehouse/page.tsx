@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
-import { InventoryItemDto, InventoryTransactionType, WarehouseService } from '@/lib/api/warehouse.service';
+import { InventoryItemDto, InventoryTransactionType, WarehouseService, InventoryCategoryDto } from '@/lib/api/warehouse.service';
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { transactionsTranslations, warehouseTranslations } from './translations';
 import { Button } from '@/components/ui/button';
@@ -14,26 +14,30 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TransactionsTable } from '@/components/features/warehouse/TransactionsTable';
-import { Refrigerator, Package, ArrowLeftRight, CalendarDays, ChefHat, List, Plus, Edit } from 'lucide-react';
+import { Refrigerator, Package, ArrowLeftRight, CalendarDays, ChefHat, List, Plus, Edit, Folder, FolderOpen, Tag, ChevronDown, ChevronRight, Boxes, Warehouse, BarChart3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DateRange } from 'react-day-picker';
 import { format, subDays } from 'date-fns';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import SearchableSelect from '@/components/features/menu/product/SearchableSelect';
+import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import React from 'react';
+import { useDictionaries } from '@/lib/hooks/useDictionaries';
 
 export default function WarehousePage() {
   const params = useParams();
   const { language } = useLanguageStore();
- const t = (key: string) => {
-  // Проверяем оба объекта переводов
-  const transactionsTranslation = transactionsTranslations[key as keyof typeof transactionsTranslations];
-  const warehouseTranslation = warehouseTranslations[key as keyof typeof warehouseTranslations];
+  const t = (key: string) => {
+    const transactionsTranslation = transactionsTranslations[key as keyof typeof transactionsTranslations];
+    const warehouseTranslation = warehouseTranslations[key as keyof typeof warehouseTranslations];
+    
+    return transactionsTranslation?.[language] || 
+           warehouseTranslation?.[language] || 
+           key;
+  };
   
-  return transactionsTranslation?.[language] || 
-         warehouseTranslation?.[language] || 
-         key;
-};
   const restaurantId = params.id as string;
 
   const [warehouse, setWarehouse] = useState<any>(null);
@@ -42,23 +46,26 @@ export default function WarehousePage() {
   const [locations, setLocations] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [premixes, setPremixes] = useState<any[]>([]);
+  const [categories, setCategories] = useState<InventoryCategoryDto[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('items');
+  const [activeTab, setActiveTab] = useState('inventory');
   const [locationFilter, setLocationFilter] = useState('all');
-
-  // Для фильтрации транзакций по дате
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [allCategories, setAllCategories] = useState<InventoryCategoryDto[]>([]);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: subDays(new Date(), 30),
     to: new Date(),
   });
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
 
-  // Формы и ошибки
   const [newItem, setNewItem] = useState({
     name: '',
     unit: 'kg',
     quantity: 0,
     storageLocationId: 'none',
+    categoryId: 'none',
+    cost: 0,
   });
   const [itemErrors, setItemErrors] = useState({
     name: '',
@@ -74,32 +81,40 @@ export default function WarehousePage() {
     code: '',
   });
 
-  // Для диалога операций
+  const [newCategory, setNewCategory] = useState({
+    name: '',
+    description: '',
+    color: '#6b7280',
+    parentId: 'none',
+  });
+  const [categoryErrors, setCategoryErrors] = useState({
+    name: '',
+  });
+
   const [transactionDialogOpen, setTransactionDialogOpen] = useState(false);
   const [transactionType, setTransactionType] = useState<'receipt' | 'writeoff'>('receipt');
   const [currentItem, setCurrentItem] = useState<any>(null);
   const quantityRef = useRef<HTMLInputElement>(null);
   const reasonRef = useRef<HTMLInputElement>(null);
 
-  // Для диалога редактирования
   const [editItemDialogOpen, setEditItemDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [editItemData, setEditItemData] = useState({
     name: '',
     unit: 'kg',
     storageLocationId: 'none',
+    categoryId: 'none',
   });
   const [editItemErrors, setEditItemErrors] = useState({
     name: '',
   });
 
-  // Для работы с заготовками
   const [newPremix, setNewPremix] = useState({
     name: '',
     description: '',
     unit: 'kg',
     yield: 1,
-    warehouseId: warehouse?.id || '',
+    warehouseId: '',
   });
   const [premixErrors, setPremixErrors] = useState({
     name: '',
@@ -125,6 +140,90 @@ export default function WarehousePage() {
     name: '',
     unit: '',
   });
+  const [editCategoryDialogOpen, setEditCategoryDialogOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<any>(null);
+  const [editCategoryData, setEditCategoryData] = useState({
+    name: '',
+    description: '',
+    color: '#6b7280',
+    parentId: 'none',
+  });
+
+  const { writeOffReasons, receiptReasons, loading: dictionariesLoading, error: dictionariesError } = useDictionaries();
+  const [selectedReason, setSelectedReason] = useState('');
+
+  const [costDialogOpen, setCostDialogOpen] = useState(false);
+  const [editingCostItem, setEditingCostItem] = useState<any>(null);
+  const [newCost, setNewCost] = useState(0);
+  const [inventoryValue, setInventoryValue] = useState<{
+    totalValue: number;
+    itemsCount: number;
+    averageCost: number;
+  } | null>(null);
+
+  const loadInventoryValue = async () => {
+    if (!warehouse?.id) return;
+    try {
+      const value = await WarehouseService.getInventoryValue(warehouse.id);
+      setInventoryValue(value);
+    } catch (error) {
+      console.error('Failed to load inventory value:', error);
+    }
+  };
+
+  const handleUpdateCost = async () => {
+    if (!editingCostItem || newCost < 0) return;
+
+    try {
+      await WarehouseService.updateItemCost(
+        editingCostItem.id, 
+        newCost
+      );
+      await loadWarehouseData();
+      setCostDialogOpen(false);
+      toast.success(t('costUpdated'));
+    } catch (error: any) {
+      console.error('Failed to update cost:', error);
+      toast.error(error.response?.data?.message || t('updateCostError'));
+    }
+  };
+
+  const handleOpenCostDialog = (item: any) => {
+    setEditingCostItem(item);
+    setNewCost(item.cost || 0);
+    setCostDialogOpen(true);
+  };
+
+  const handleUpdateCategory = async () => {
+    if (!editingCategory) return;
+    
+    try {
+      await WarehouseService.updateInventoryCategory(editingCategory.id, {
+        name: editCategoryData.name,
+        description: editCategoryData.description,
+        color: editCategoryData.color,
+        parentId: editCategoryData.parentId === 'none' ? undefined : editCategoryData.parentId,
+      });
+      
+      await loadWarehouseData();
+      setEditCategoryDialogOpen(false);
+      toast.success(t('categoryUpdated'));
+    } catch (error: any) {
+      console.error('Failed to update category:', error);
+      toast.error(error.response?.data?.message || t('updateCategoryError'));
+    }
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    try {
+      await WarehouseService.deleteInventoryCategory(id);
+      await loadWarehouseData();
+      toast.success(t('categoryDeleted'));
+    } catch (error: any) {
+      console.error('Failed to delete category:', error);
+      toast.error(error.response?.data?.message || t('deleteCategoryError'));
+    }
+  };
 
   useEffect(() => {
     loadWarehouseData();
@@ -137,14 +236,8 @@ export default function WarehousePage() {
   }, [warehouse]);
 
   useEffect(() => {
-    if (locationFilter === 'all') {
-      setFilteredItems(items.filter(item => !item.premixId));
-    } else {
-      setFilteredItems(items.filter(item =>
-        item.storageLocationId === locationFilter && !item.premixId
-      ));
-    }
-  }, [items, locationFilter]);
+    filterItems();
+  }, [items, locationFilter, categoryFilter]);
 
   const loadWarehouseData = async () => {
     try {
@@ -152,12 +245,13 @@ export default function WarehousePage() {
       const warehouseData = await WarehouseService.getRestaurantWarehouse(restaurantId);
       const items = await WarehouseService.getWarehouseItems(warehouseData.id);
       const locations = await WarehouseService.listStorageLocations(warehouseData.id);
-      
+      const categoriesData = await WarehouseService.getCategoryTree();
+      const allCategoriesData = await WarehouseService.getAllInventoryCategories();
       setWarehouse(warehouseData);
       setItems(items || []);
       setLocations(locations || []);
-
-      // Загружаем заготовки
+      setCategories(categoriesData || []);
+      setAllCategories(allCategoriesData || []);
       const premixesData = await WarehouseService.listWarehousePremixes(warehouseData.id);
       setPremixes(premixesData);
     } catch (error) {
@@ -168,34 +262,93 @@ export default function WarehousePage() {
     }
   };
 
-  const loadPremixDetails = async (premixId: string) => {
-  try {
-    const details = await WarehouseService.getPremixWithWarehouseDetails(
-      premixId, 
-      warehouse.id
+  const filterItems = () => {
+    let filtered = items.filter(item => !item.premixId);
+
+    if (locationFilter !== 'all') {
+      filtered = filtered.filter(item => item.storageLocationId === locationFilter);
+    }
+
+    if (categoryFilter !== 'all') {
+      if (categoryFilter === 'uncategorized') {
+        filtered = filtered.filter(item => !item.inventoryItem?.categoryId);
+      } else {
+        filtered = filtered.filter(item => item.inventoryItem?.categoryId === categoryFilter);
+      }
+    }
+
+    setFilteredItems(filtered);
+  };
+
+  const toggleCategory = (categoryId: string) => {
+    const newExpanded = new Set(expandedCategories);
+    if (newExpanded.has(categoryId)) {
+      newExpanded.delete(categoryId);
+    } else {
+      newExpanded.add(categoryId);
+    }
+    setExpandedCategories(newExpanded);
+  };
+
+  const calculatePremixCost = (premix: any): number => {
+  if (!premix?.ingredients || !items.length) return 0;
+  
+  let totalCost = 0;
+  
+  premix.ingredients.forEach((ingredient: any) => {
+    const inventoryItem = items.find(item => 
+      item.inventoryItem?.id === ingredient.inventoryItemId || 
+      item.id === ingredient.inventoryItemId
     );
-    setSelectedPremix(details);
-    setPremixIngredients(details.ingredients || []);
-  } catch (error) {
-    console.error('Failed to load premix details:', error);
-    toast.error(t('loadError'));
-  }
+    
+    if (inventoryItem?.cost && ingredient.quantity) {
+      totalCost += inventoryItem.cost * ingredient.quantity;
+    }
+  });
+  
+  return totalCost;
 };
 
-const loadPremixTransactions = async (premixId: string) => {
-  try {
-    const data = await WarehouseService.getPremixTransactions(
-      premixId, 
-      warehouse.id
-    );
-    setTransactions(data);
-    setActiveTab('transactions');
-  } catch (error) {
-    console.error('Failed to load premix transactions:', error);
-    toast.error(t('loadTransactionsError'));
-  }
+const calculatePremixCostPerUnit = (premix: any): number => {
+  const totalCost = calculatePremixCost(premix);
+  return premix?.yield ? totalCost / premix.yield : 0;
 };
+const getCategoryItems = (categoryId: string | null) => {
+  return filteredItems.filter(item => {
+    if (categoryId === null) {
+      return !item.inventoryItem?.categoryId;
+    }
+    return item.inventoryItem?.categoryId === categoryId;
+  });
+};
+  const renderCategoryOptions = (categories: InventoryCategoryDto[], level = 0) => {
+    return categories.map(category => (
+      <React.Fragment key={category.id}>
+        <SelectItem value={category.id}>
+          {'\u00A0'.repeat(level * 4)}{category.name}
+        </SelectItem>
+        {category.children && renderCategoryOptions(category.children, level + 1)}
+      </React.Fragment>
+    ));
+  };
 
+  const getCategoryName = (categoryId: string | null) => {
+    if (categoryId === null) return t('uncategorized');
+    const category = categories.find(c => c.id === categoryId);
+    return category?.name || t('unknownCategory');
+  };
+
+  const getCategoryColor = (categoryId: string | null) => {
+    if (categoryId === null) return '#6b7280';
+    const category = categories.find(c => c.id === categoryId);
+    return category?.color || '#6b7280';
+  };
+  
+  const getParentCategoryName = (categoryId: string | null) => {
+    if (!categoryId) return null;
+    const category = allCategories.find(c => c.id === categoryId);
+    return category?.parentId ? allCategories.find(c => c.id === category.parentId)?.name : null;
+  };
   const validateItem = () => {
     let isValid = true;
     const newErrors = { name: '', quantity: '' };
@@ -232,34 +385,16 @@ const loadPremixTransactions = async (premixId: string) => {
     return isValid;
   };
 
-  const validatePremix = () => {
-    let isValid = true;
-    const newErrors = { name: '', unit: '' };
-
-    if (!newPremix.name.trim()) {
-      newErrors.name = t('nameRequired');
-      isValid = false;
-    }
-
-    if (!newPremix.unit) {
-      newErrors.unit = t('unitRequired');
-      isValid = false;
-    }
-
-    setPremixErrors(newErrors);
-    return isValid;
-  };
-
-  const validateEditItem = () => {
+  const validateCategory = () => {
     let isValid = true;
     const newErrors = { name: '' };
 
-    if (!editItemData.name.trim()) {
+    if (!newCategory.name.trim()) {
       newErrors.name = t('nameRequired');
       isValid = false;
     }
 
-    setEditItemErrors(newErrors);
+    setCategoryErrors(newErrors);
     return isValid;
   };
 
@@ -267,14 +402,13 @@ const loadPremixTransactions = async (premixId: string) => {
     if (!validateItem()) return;
 
     try {
-      // Сначала создаем инвентарный элемент
       const inventoryItem = await WarehouseService.createInventoryItem({
         name: newItem.name,
         unit: newItem.unit,
         description: '',
+        categoryId: newItem.categoryId === 'none' ? undefined : newItem.categoryId,
       });
 
-      // Затем создаем запись на складе
       await WarehouseService.createWarehouseItem({
         warehouseId: warehouse.id,
         inventoryItemId: inventoryItem.id,
@@ -290,17 +424,17 @@ const loadPremixTransactions = async (premixId: string) => {
         unit: 'kg',
         quantity: 0,
         storageLocationId: 'none',
+        categoryId: 'none',
+        cost: 0,
       });
 
       toast.success(t('itemAdded'));
     } catch (error: any) {
       console.error('Failed to add item:', error);
-
       let errorMessage = t('addItemError');
       if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
       }
-
       toast.error(errorMessage);
     }
   };
@@ -320,14 +454,216 @@ const loadPremixTransactions = async (premixId: string) => {
       toast.success(t('locationAdded'));
     } catch (error: any) {
       console.error('Failed to add location:', error);
-
       let errorMessage = t('addLocationError');
       if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
       }
-
       toast.error(errorMessage);
     }
+  };
+
+  const handleAddCategory = async () => {
+    if (!validateCategory()) return;
+
+    try {
+      await WarehouseService.createInventoryCategory({
+        name: newCategory.name,
+        description: newCategory.description,
+        color: newCategory.color,
+        parentId: newCategory.parentId === 'none' ? undefined : newCategory.parentId,
+      });
+
+      await loadWarehouseData();
+
+      setNewCategory({
+        name: '',
+        description: '',
+        color: '#6b7280',
+        parentId: 'none',
+      });
+
+      toast.success(t('categoryAdded'));
+    } catch (error: any) {
+      console.error('Failed to add category:', error);
+      let errorMessage = t('addCategoryError');
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleBulkUpdateCategory = async (itemIds: string[], categoryId: string | null) => {
+    try {
+      await WarehouseService.bulkUpdateItemsCategory(itemIds, categoryId);
+      await loadWarehouseData();
+      toast.success(t('bulkUpdateSuccess'));
+    } catch (error: any) {
+      console.error('Failed to bulk update category:', error);
+      toast.error(t('bulkUpdateError'));
+    }
+  };
+
+  const handleOpenTransactionDialog = (item: any) => {
+    setCurrentItem(item);
+    setTransactionDialogOpen(true);
+    setTransactionType('receipt');
+  };
+
+  const handleOpenEditDialog = (item: any) => {
+    setEditingItem(item);
+    setEditItemData({
+      name: item.inventoryItem?.name || item.name,
+      unit: item.inventoryItem?.unit || item.unit,
+      storageLocationId: item.storageLocationId || 'none',
+      categoryId: item.inventoryItem?.categoryId || 'none',
+    });
+    setEditItemDialogOpen(true);
+  };
+
+  const handleSaveItemChanges = async () => {
+    if (!validateEditItem() || !editingItem) return;
+
+    try {
+      await WarehouseService.updateInventoryItem(
+        editingItem.inventoryItem?.id || editingItem.id, 
+        {
+          name: editItemData.name,
+          unit: editItemData.unit,
+          categoryId: editItemData.categoryId === 'none' ? undefined : editItemData.categoryId,
+        }
+      );
+
+      await WarehouseService.updateWarehouseItem(editingItem.id, {
+        storageLocationId: editItemData.storageLocationId === 'none' ? undefined : editItemData.storageLocationId
+      });
+
+      await loadWarehouseData();
+
+      setEditItemDialogOpen(false);
+      toast.success(t('itemUpdated'));
+    } catch (error: any) {
+      console.error('Failed to update item:', error);
+      let errorMessage = t('updateItemError');
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      toast.error(errorMessage);
+    }
+  };
+
+  const validateEditItem = () => {
+    let isValid = true;
+    const newErrors = { name: '' };
+
+    if (!editItemData.name.trim()) {
+      newErrors.name = t('nameRequired');
+      isValid = false;
+    }
+
+    setEditItemErrors(newErrors);
+    return isValid;
+  };
+
+  const handleSubmitTransaction = async () => {
+  if (!currentItem || !quantityRef.current || !warehouse?.id) return;
+
+  const quantity = Number(quantityRef.current.value);
+  const unitCost = unitCostRef.current ? Number(unitCostRef.current.value) : undefined;
+  const reason = reasonRef.current?.value || '';
+
+  if (quantity <= 0) {
+    toast.error(t('quantityPositive'));
+    return;
+  }
+  
+  if (transactionType === 'receipt' && unitCost === undefined) {
+    toast.error(t('unitCostRequired'));
+    return;
+  }
+
+  if (transactionType === 'writeoff' && !selectedReason) {
+    toast.error(t('reasonRequired'));
+    return;
+  }
+
+  try {
+    const transactionTypeEnum = transactionType === 'receipt' ? 'RECEIPT' : 'WRITE_OFF';
+    
+    await WarehouseService.createTransaction({
+      inventoryItemId: currentItem.inventoryItem?.id || currentItem.id,
+      type: transactionTypeEnum as InventoryTransactionType,
+      warehouseId: warehouse.id,
+      quantity: quantity,
+      unitCost: unitCost, 
+      reason: selectedReason,
+    });
+
+    if (transactionType === 'receipt') {
+      toast.success(t('receiptSuccess'));
+    } else {
+      toast.success(t('writeOffSuccess'));
+    }
+    
+    await loadWarehouseData();
+    setTransactionDialogOpen(false);
+  } catch (error: any) {
+    console.error('Transaction error:', error);
+    toast.error(error.response?.data?.message || t('transactionError'));
+  }
+};
+
+  const loadPremixDetails = async (premixId: string) => {
+    try {
+      const details = await WarehouseService.getPremixWithWarehouseDetails(
+        premixId, 
+        warehouse.id
+      );
+      setSelectedPremix(details);
+      setPremixIngredients(details.ingredients || []);
+    } catch (error) {
+      console.error('Failed to load premix details:', error);
+      toast.error(t('loadError'));
+    }
+  };
+
+  const loadPremixTransactions = async (premixId: string) => {
+    try {
+      const data = await WarehouseService.getPremixTransactions(
+        premixId, 
+        warehouse.id
+      );
+      setTransactions(data);
+      setActiveTab('transactions');
+    } catch (error) {
+      console.error('Failed to load premix transactions:', error);
+      toast.error(t('loadTransactionsError'));
+    }
+  };
+  const unitCostRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (warehouse?.id) {
+      loadInventoryValue();
+    }
+  }, [warehouse]);
+
+  const validatePremix = () => {
+    let isValid = true;
+    const newErrors = { name: '', unit: '' };
+
+    if (!newPremix.name.trim()) {
+      newErrors.name = t('nameRequired');
+      isValid = false;
+    }
+
+    if (!newPremix.unit) {
+      newErrors.unit = t('unitRequired');
+      isValid = false;
+    }
+
+    setPremixErrors(newErrors);
+    return isValid;
   };
 
   const handleAddPremix = async () => {
@@ -396,92 +732,6 @@ const loadPremixTransactions = async (premixId: string) => {
     setPremixIngredients(newIngredients);
   };
 
-  const handleOpenTransactionDialog = (item: any) => {
-    setCurrentItem(item);
-    setTransactionDialogOpen(true);
-    setTransactionType('receipt');
-  };
-
-  const handleOpenEditDialog = (item: any) => {
-    setEditingItem(item);
-    setEditItemData({
-      name: item.inventoryItem?.name || item.name,
-      unit: item.inventoryItem?.unit || item.unit,
-      storageLocationId: item.storageLocationId || 'none',
-    });
-    setEditItemDialogOpen(true);
-  };
-
-  const handleSaveItemChanges = async () => {
-    if (!validateEditItem() || !editingItem) return;
-
-    try {
-      // Обновляем инвентарный элемент
-      await WarehouseService.updateInventoryItem(
-        editingItem.inventoryItem?.id || editingItem.id, 
-        {
-          name: editItemData.name,
-          unit: editItemData.unit,
-        }
-      );
-
-      // Обновляем запись на складе
-      await WarehouseService.updateWarehouseItem(editingItem.id, {
-        storageLocationId: editItemData.storageLocationId === 'none' ? undefined : editItemData.storageLocationId
-      });
-
-      await loadWarehouseData();
-
-      setEditItemDialogOpen(false);
-      toast.success(t('itemUpdated'));
-    } catch (error: any) {
-      console.error('Failed to update item:', error);
-
-      let errorMessage = t('updateItemError');
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      }
-
-      toast.error(errorMessage);
-    }
-  };
-
-  const handleSubmitTransaction = async () => {
-  if (!currentItem || !quantityRef.current || !warehouse?.id) return;
-
-  const quantity = Number(quantityRef.current.value);
-  const reason = reasonRef.current?.value || '';
-
-  if (quantity <= 0) {
-    toast.error(t('quantityPositive'));
-    return;
-  }
-
-  try {
-    const transactionTypeEnum = transactionType === 'receipt' ? 'RECEIPT' : 'WRITE_OFF';
-    
-    await WarehouseService.createTransaction({
-      inventoryItemId: currentItem.inventoryItem?.id || currentItem.id,
-      type: transactionTypeEnum as InventoryTransactionType,
-      warehouseId: warehouse.id, // Убедимся, что передается
-      quantity: quantity,
-      reason: reason,
-    });
-
-    if (transactionType === 'receipt') {
-      toast.success(t('receiptSuccess'));
-    } else {
-      toast.success(t('writeOffSuccess'));
-    }
-    
-    await loadWarehouseData();
-    setTransactionDialogOpen(false);
-  } catch (error: any) {
-    console.error('Transaction error:', error);
-    toast.error(error.response?.data?.message || t('transactionError'));
-  }
-};
-
   const handlePreparePremix = async () => {
     if (!selectedPremix || prepareQuantity <= 0) {
       toast.error(t('invalidQuantity'));
@@ -495,80 +745,67 @@ const loadPremixTransactions = async (premixId: string) => {
       setPrepareDialogOpen(false);
     } catch (error: any) {
       console.error('Failed to prepare premix:', error);
-
       let errorMessage = t('preparePremixError');
       if (error.response?.data?.message) {
         errorMessage = error.response.data.message;
       }
-
       toast.error(errorMessage);
     }
   };
 
-const [transactionFilters, setTransactionFilters] = useState({
-  type: undefined as InventoryTransactionType | undefined,
-  includeTransfers: true,
-});
+  const loadWarehouseTransactions = async () => {
+    if (!warehouse?.id) return;
 
-// Обновим функцию загрузки транзакций склада
-const loadWarehouseTransactions = async () => {
-  if (!warehouse?.id) return;
+    try {
+      const data = await WarehouseService.getWarehouseTransactions(
+        warehouse.id,
+        {
+          startDate: dateRange?.from,
+          endDate: dateRange?.to,
+          type: undefined,
+        }
+      );
+      setTransactions(data);
+    } catch (error) {
+      console.error('Failed to load warehouse transactions:', error);
+      toast.error(t('loadTransactionsError'));
+    }
+  };
 
-  try {
-    const data = await WarehouseService.getWarehouseTransactions(
-      warehouse.id,
-      {
-        startDate: dateRange?.from,
-        endDate: dateRange?.to,
-        type: transactionFilters.type,
-      }
-    );
-    console.log(data)
-    setTransactions(data);
-  } catch (error) {
-    console.error('Failed to load warehouse transactions:', error);
-    toast.error(t('loadTransactionsError'));
-  }
-};
+  const loadWarehouseTransactionsByDate = async () => {
+    if (!dateRange?.from || !dateRange?.to || !warehouse?.id) return;
 
-// Обновим функцию загрузки по дате
-const loadWarehouseTransactionsByDate = async () => {
-  if (!dateRange?.from || !dateRange?.to || !warehouse?.id) return;
+    try {
+      const data = await WarehouseService.getWarehouseTransactions(
+        warehouse.id,
+        {
+          startDate: dateRange.from,
+          endDate: dateRange.to,
+          type: undefined,
+        }
+      );
 
-  try {
-    const data = await WarehouseService.getWarehouseTransactions(
-      warehouse.id,
-      {
-        startDate: dateRange.from,
-        endDate: dateRange.to,
-        type: transactionFilters.type,
-      }
-    );
+      setTransactions(data);
+      setActiveTab('transactions');
+    } catch (error) {
+      console.error('Failed to load transactions by date:', error);
+      toast.error(t('loadTransactionsError'));
+    }
+  };
 
-    setTransactions(data);
-    setActiveTab('transactions');
-  } catch (error) {
-    console.error('Failed to load transactions by date:', error);
-    toast.error(t('loadTransactionsError'));
-  }
-};
-
-// Обновим функцию загрузки транзакций элемента
-const loadItemTransactions = async (itemId: string) => {
-  try {
-    const data = await WarehouseService.getItemTransactions(itemId);
-    // Фильтруем только транзакции текущего склада
-    const filteredTransactions = data.filter(
-      transaction => transaction.warehouseItem?.warehouseId === warehouse?.id
-    );
-    console.log(filteredTransactions)
-    setTransactions(filteredTransactions);
-    setActiveTab('transactions');
-  } catch (error) {
-    console.error('Failed to load transactions:', error);
-    toast.error(t('loadTransactionsError'));
-  }
-};
+  const loadItemTransactions = async (itemId: string) => {
+    try {
+      const data = await WarehouseService.getItemTransactions(itemId);
+      const filteredTransactions = data.filter(
+        transaction => transaction.warehouseItem?.warehouseId === warehouse?.id
+      );
+      setTransactions(filteredTransactions);
+      setActiveTab('transactions');
+    } catch (error) {
+      console.error('Failed to load transactions:', error);
+      toast.error(t('loadTransactionsError'));
+    }
+  };
 
   const handleOpenEditPremixDialog = (premix: any) => {
     setEditingPremix(premix);
@@ -600,11 +837,11 @@ const loadItemTransactions = async (itemId: string) => {
     return isValid;
   };
 
+  
   const handleSavePremixChanges = async () => {
     if (!validateEditPremix() || !editingPremix) return;
 
     try {
-      // Обновляем основную информацию о премиксе
       await WarehouseService.updatePremix(editingPremix.id, {
         name: editPremixData.name,
         description: editPremixData.description,
@@ -612,11 +849,9 @@ const loadItemTransactions = async (itemId: string) => {
         yield: editPremixData.yield,
       });
 
-      // Обновляем ингредиенты
       const currentDetails = await WarehouseService.getPremixDetails(editingPremix.id);
       const currentIngredients = currentDetails.ingredients || [];
 
-      // Удаляем удаленные ингредиенты
       for (const currentIng of currentIngredients) {
         if (!premixIngredients.some(ing =>
           (ing.inventoryItem?.id || ing.inventoryItemId) === currentIng.inventoryItemId
@@ -625,10 +860,9 @@ const loadItemTransactions = async (itemId: string) => {
         }
       }
 
-      // Добавляем или обновляем ингредиенты
       for (const ing of premixIngredients) {
         const ingredientId = ing.inventoryItem?.id || ing.inventoryItemId;
-        const existingIng = currentIngredients.find(( i: InventoryItemDto) => i.inventoryItemId === ingredientId);
+        const existingIng = currentIngredients.find((i: any) => i.inventoryItemId === ingredientId);
 
         if (existingIng) {
           await WarehouseService.updatePremixIngredient(
@@ -668,6 +902,137 @@ const loadItemTransactions = async (itemId: string) => {
   if (!warehouse) {
     return <div className="p-4">{t('warehouseNotFound')}</div>;
   }
+
+  const parentCategories = categories.filter(cat => !cat.parentId);
+  const childCategories = categories.filter(cat => cat.parentId);
+
+  const renderCategoryTree = (categories: InventoryCategoryDto[], level: number = 0) => {
+  return categories.map(category => {
+    const categoryItems = getCategoryItems(category.id);
+    const hasItems = categoryItems.length > 0;
+    const hasChildren = category.children && category.children.length > 0;
+    const isExpanded = expandedCategories.has(category.id);
+    
+    // Пропускаем категории, которые не соответствуют фильтру
+    if (categoryFilter !== 'all' && categoryFilter !== category.id && 
+        !(hasChildren && category.children?.some(child => categoryFilter === child.id))) {
+      return null;
+    }
+
+    return (
+      <Collapsible key={category.id}>
+        <CollapsibleTrigger 
+          className="flex items-center gap-2 p-2 bg-muted rounded-md w-full text-left"
+          style={{ marginLeft: `${level * 16}px` }}
+          onClick={() => toggleCategory(category.id)}
+        >
+          {hasChildren || hasItems ? (
+            isExpanded ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronRight className="h-4 w-4" />
+            )
+          ) : (
+            <div className="w-4" /> // Placeholder for alignment
+          )}
+          <span className="font-medium">{category.name}</span>
+          <Badge variant="secondary" className="ml-auto">
+            {categoryItems.length}
+          </Badge>
+        </CollapsibleTrigger>
+        
+        <CollapsibleContent>
+          {/* Items in this category */}
+          {hasItems && (
+            <div style={{ marginLeft: `${(level + 1) * 16}px` }}>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('name')}</TableHead>
+                    <TableHead>{t('quantity')}</TableHead>
+                    <TableHead>{t('unit')}</TableHead>
+                    <TableHead>{t('cost')}</TableHead>
+                    <TableHead>{t('totalValue')}</TableHead> 
+                    <TableHead>{t('location')}</TableHead>
+                    <TableHead>{t('status')}</TableHead>
+                    <TableHead className="text-right">{t('actions')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {categoryItems.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-medium">{item.inventoryItem?.name || item.name}</TableCell>
+                      <TableCell>{item.quantity}</TableCell>
+                      <TableCell>{item.inventoryItem?.unit || item.unit}</TableCell>
+                      <TableCell>
+                        {item.cost ? `${item.cost.toFixed(2)}₽` : t('notSet')}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenCostDialog(item)}
+                          className="ml-2"
+                        >
+                          <Edit className="h-3 w-3" />
+                        </Button>
+                      </TableCell>
+                      <TableCell>
+                        {item.cost && item.quantity ? `${(item.cost * item.quantity).toFixed(2)}₽` : t('notSet')}
+                      </TableCell>
+                      <TableCell>
+                        {item.storageLocationId
+                          ? locations.find(l => l.id === item.storageLocationId)?.name
+                          : t('noLocation')}
+                      </TableCell>
+                      <TableCell>
+                        {item.inventoryItem?.isActive !== false ? (
+                          <span className="text-green-600">{t('active')}</span>
+                        ) : (
+                          <span className="text-red-600">{t('inactive')}</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenEditDialog(item)}
+                          >
+                            {t('edit')}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenTransactionDialog(item)}
+                          >
+                            {t('adjustQuantity')}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => loadItemTransactions(item.inventoryItem?.id || item.id)}
+                          >
+                            {t('transactions')}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          
+          {/* Child categories */}
+          {hasChildren && category.children && (
+            <div style={{ marginLeft: `${(level + 1) * 16}px` }}>
+              {renderCategoryTree(category.children, level + 1)}
+            </div>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
+    );
+  });
+};
 
   return (
     <div className="p-4 space-y-6">
@@ -710,9 +1075,71 @@ const loadItemTransactions = async (itemId: string) => {
 
           <Dialog>
             <DialogTrigger asChild>
-              <Button>{t('addItem')}</Button>
+              <Button variant="outline">{t('addCategory')}</Button>
             </DialogTrigger>
             <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{t('addCategory')}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label className='mb-1'>{t('name')}</Label>
+                  <Input
+                    value={newCategory.name}
+                    onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })}
+                  />
+                  {categoryErrors.name && (
+                    <p className="text-sm text-red-500 mt-1">{categoryErrors.name}</p>
+                  )}
+                </div>
+                <div>
+                  <Label className='mb-1'>{t('description')}</Label>
+                  <Input
+                    value={newCategory.description}
+                    onChange={(e) => setNewCategory({ ...newCategory, description: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className='mb-1'>{t('color')}</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="color"
+                      value={newCategory.color}
+                      onChange={(e) => setNewCategory({ ...newCategory, color: e.target.value })}
+                      className="w-12 h-12 p-1"
+                    />
+                    <Input
+                      value={newCategory.color}
+                      onChange={(e) => setNewCategory({ ...newCategory, color: e.target.value })}
+                      className="flex-1"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className='mb-1'>{t('parentCategory')}</Label>
+                  <Select
+                    value={newCategory.parentId}
+                    onValueChange={(value) => setNewCategory({ ...newCategory, parentId: value })}
+                  >
+                    <SelectTrigger className='w-full'>
+                      <SelectValue placeholder={t('parentCategory')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">{t('noParent')}</SelectItem>
+                      {renderCategoryOptions(categories.filter(cat => !cat.parentId))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button onClick={handleAddCategory}>{t('addCategory')}</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button>{t('addItem')}</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle>{t('addItem')}</DialogTitle>
               </DialogHeader>
@@ -727,54 +1154,84 @@ const loadItemTransactions = async (itemId: string) => {
                     <p className="text-sm text-red-500 mt-1">{itemErrors.name}</p>
                   )}
                 </div>
-                <div>
-                  <Label className='mb-1'>{t('unit')}</Label>
-                  <Select
-                    value={newItem.unit}
-                    onValueChange={(value) => setNewItem({ ...newItem, unit: value })}
-                  >
-                    <SelectTrigger className='w-full'>
-                      <SelectValue placeholder={t('unit')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="kg">kg</SelectItem>
-                      <SelectItem value="g">g</SelectItem>
-                      <SelectItem value="l">l</SelectItem>
-                      <SelectItem value="ml">ml</SelectItem>
-                      <SelectItem value="pcs">pcs</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className='mb-1'>{t('unit')}</Label>
+                    <Select
+                      value={newItem.unit}
+                      onValueChange={(value) => setNewItem({ ...newItem, unit: value })}
+                    >
+                      <SelectTrigger className='w-full'>
+                        <SelectValue placeholder={t('unit')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="kg">kg</SelectItem>
+                        <SelectItem value="g">g</SelectItem>
+                        <SelectItem value="l">l</SelectItem>
+                        <SelectItem value="ml">ml</SelectItem>
+                        <SelectItem value="pcs">pcs</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className='mb-1'>{t('quantity')}</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={newItem.quantity}
+                      onChange={(e) => setNewItem({ ...newItem, quantity: Number(e.target.value) })}
+                    />
+                    {itemErrors.quantity && (
+                      <p className="text-sm text-red-500 mt-1">{itemErrors.quantity}</p>
+                    )}
+                  </div>
                 </div>
                 <div>
-                  <Label className='mb-1'>{t('quantity')}</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={newItem.quantity}
-                    onChange={(e) => setNewItem({ ...newItem, quantity: Number(e.target.value) })}
-                  />
-                  {itemErrors.quantity && (
-                    <p className="text-sm text-red-500 mt-1">{itemErrors.quantity}</p>
-                  )}
-                </div>
-                <div>
-                  <Label className='mb-1'>{t('location')}</Label>
-                  <Select
-                    value={newItem.storageLocationId}
-                    onValueChange={(value) => setNewItem({ ...newItem, storageLocationId: value })}
-                  >
-                    <SelectTrigger className='w-full' >
-                      <SelectValue placeholder={t('filterByLocation')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">{t('noLocation')}</SelectItem>
-                      {locations.map((location) => (
-                        <SelectItem key={location.id} value={location.id}>
-                          {location.name} ({location.code})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <Label className='mb-1'>{t('cost')}</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={newItem.cost || ''}
+                  onChange={(e) => setNewItem({ ...newItem, cost: Number(e.target.value) })}
+                  placeholder="0.00"
+                />
+              </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className='mb-1'>{t('location')}</Label>
+                    <Select
+                      value={newItem.storageLocationId}
+                      onValueChange={(value) => setNewItem({ ...newItem, storageLocationId: value })}
+                    >
+                      <SelectTrigger className='w-full'>
+                        <SelectValue placeholder={t('filterByLocation')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">{t('noLocation')}</SelectItem>
+                        {locations.map((location) => (
+                          <SelectItem key={location.id} value={location.id}>
+                            {location.name} ({location.code})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className='mb-1'>{t('filterByCategory')}</Label>
+                    <Select
+                      value={newItem.categoryId}
+                      onValueChange={(value) => setNewItem({ ...newItem, categoryId: value })}
+                    >
+                      <SelectTrigger className='w-full'>
+                        <SelectValue placeholder={t('filterByCategory')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">{t('uncategorized')}</SelectItem>
+                        {renderCategoryOptions(categories)}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <Button onClick={handleAddItem}>{t('addItem')}</Button>
               </div>
@@ -784,11 +1241,17 @@ const loadItemTransactions = async (itemId: string) => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="items">
+        <TabsList className="grid grid-cols-5">
+          <TabsTrigger value="inventory">
             <div className="flex items-center gap-2">
               <Package className="h-4 w-4" />
               {t('inventory')}
+            </div>
+          </TabsTrigger>
+          <TabsTrigger value="categories">
+            <div className="flex items-center gap-2">
+              <Folder className="h-4 w-4" />
+              {t('categories')}
             </div>
           </TabsTrigger>
           <TabsTrigger value="locations">
@@ -811,111 +1274,339 @@ const loadItemTransactions = async (itemId: string) => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="items">
+        <TabsContent value="inventory">
           <Card>
             <CardHeader>
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col gap-4">
                 <CardTitle>{t('inventory')}</CardTitle>
-                <div className="w-48">
-                  <Select
-                    value={locationFilter}
-                    onValueChange={setLocationFilter}
-                  >
-                    <SelectTrigger className='w-full'>
-                      <SelectValue placeholder={t('filterByLocation')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{t('allLocations')}</SelectItem>
-                      {locations.map(location => (
-                        <SelectItem key={location.id} value={location.id}>
-                          {location.name} ({location.code})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="flex gap-4 flex-wrap">
+                  <div className="w-48">
+                    <Select
+                      value={locationFilter}
+                      onValueChange={setLocationFilter}
+                    >
+                      <SelectTrigger className='w-full'>
+                        <SelectValue placeholder={t('filterByLocation')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t('allLocations')}</SelectItem>
+                        {locations.map(location => (
+                          <SelectItem key={location.id} value={location.id}>
+                            {location.name} ({location.code})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="w-48">
+                    <Select
+                      value={categoryFilter}
+                      onValueChange={setCategoryFilter}
+                    >
+                      <SelectTrigger className='w-full'>
+                        <SelectValue placeholder={t('filterByCategory')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t('allCategories')}</SelectItem>
+                        <SelectItem value="uncategorized">{t('uncategorized')}</SelectItem>
+                        {categories.map(category => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('name')}</TableHead>
-                    <TableHead>{t('quantity')}</TableHead>
-                    <TableHead>{t('unit')}</TableHead>
-                    <TableHead>{t('location')}</TableHead>
-                    <TableHead>{t('status')}</TableHead>
-                    <TableHead className="text-right">{t('actions')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredItems.length > 0 ? (
-                    filteredItems.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-medium">{item.inventoryItem?.name || item.name}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            {item.quantity}
-                            {item.minQuantity !== null && item.minQuantity !== undefined && (
-                              <span className="text-xs text-muted-foreground">
-                                (min: {item.minQuantity})
-                              </span>
-                            )}
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell>{item.inventoryItem?.unit || item.unit}</TableCell>
-                        <TableCell>
-                          {item.storageLocationId
-                            ? locations.find(l => l.id === item.storageLocationId)?.name
-                            : t('noLocation')}
-                        </TableCell>
-                        <TableCell>
-                          {item.inventoryItem?.isActive !== false ? (
-                            <span className="text-green-600">{t('active')}</span>
-                          ) : (
-                            <span className="text-red-600">{t('inactive')}</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleOpenEditDialog(item)}
-                            >
-                              {t('edit')}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleOpenTransactionDialog(item)}
-                            >
-                              {t('adjustQuantity')}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => loadItemTransactions(item.inventoryItem?.id || item.id)}
-                            >
-                              {t('transactions')}
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-4">
-                        {t('noItemsFound')}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+              <div className="space-y-4">
+                {/* Uncategorized items */}
+                {(categoryFilter === 'all' || categoryFilter === 'uncategorized') && (
+                  <Collapsible>
+                    <CollapsibleTrigger 
+                      className="flex items-center gap-2 p-2 bg-muted rounded-md w-full text-left"
+                      onClick={() => toggleCategory('uncategorized')}
+                    >
+                      {expandedCategories.has('uncategorized') ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4" />
+                      )}
+                      <span className="font-medium">{t('uncategorized')}</span>
+                      <Badge variant="secondary" className="ml-auto">
+                        {getCategoryItems(null).length}
+                      </Badge>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      {getCategoryItems(null).length > 0 ? (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>{t('name')}</TableHead>
+                              <TableHead>{t('quantity')}</TableHead>
+                              <TableHead>{t('unit')}</TableHead>
+                              <TableHead>{t('location')}</TableHead>
+                              <TableHead>{t('status')}</TableHead>
+                              <TableHead className="text-right">{t('actions')}</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {getCategoryItems(null).map((item) => (
+                              <TableRow key={item.id}>
+                                <TableCell className="font-medium">{item.inventoryItem?.name || item.name}</TableCell>
+                                <TableCell>{item.quantity}</TableCell>
+                                <TableCell>{item.inventoryItem?.unit || item.unit}</TableCell>
+                                <TableCell>
+                                  {item.storageLocationId
+                                    ? locations.find(l => l.id === item.storageLocationId)?.name
+                                    : t('noLocation')}
+                                </TableCell>
+                                <TableCell>
+                                  {item.inventoryItem?.isActive !== false ? (
+                                    <span className="text-green-600">{t('active')}</span>
+                                  ) : (
+                                    <span className="text-red-600">{t('inactive')}</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex justify-end gap-2">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleOpenEditDialog(item)}
+                                    >
+                                      {t('edit')}
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleOpenTransactionDialog(item)}
+                                    >
+                                      {t('adjustQuantity')}
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => loadItemTransactions(item.inventoryItem?.id || item.id)}
+                                    >
+                                      {t('transactions')}
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      ) : (
+                        <div className="p-4 text-center text-muted-foreground">
+                          {t('noItemsInCategory')}
+                        </div>
+                      )}
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+
+                {/* Recursive category rendering */}
+                {renderCategoryTree(categories, 0)}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
+        <TabsContent value="categories">
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <CardTitle>{t('categories')}</CardTitle>
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button>{t('addCategory')}</Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    {/* Диалог добавления категории */}
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-full">{t('name')}</TableHead>
+                      <TableHead className="w-[150px] text-right">{t('actions')}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {categories.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={2} className="h-24 text-center">
+                          {t('noCategories')}
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      categories
+                        .filter(category => !category.parentId)
+                        .map(category => (
+                          <React.Fragment key={category.id}>
+                            {/* Родительская категория */}
+                            <TableRow>
+                              <TableCell className="font-medium">
+                                <div className="flex items-center gap-2">
+                                  {category.name}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      setEditingCategory(category);
+                                      setEditCategoryData({
+                                        name: category.name,
+                                        description: category.description || '',
+                                        color: category.color || '#ffffff',
+                                        parentId: category.parentId || 'none'
+                                      });
+                                      setEditCategoryDialogOpen(true);
+                                    }}
+                                  >
+                                    {t('edit')}
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteCategory(category.id)}
+                                  >
+                                    {t('delete')}
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                            
+                            {category.children && category.children.map(childCategory => (
+                              <TableRow key={childCategory.id}>
+                                <TableCell className="pl-8">
+                                  <div className="flex items-center gap-2">
+                                    {childCategory.name}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-2">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => {
+                                        setEditingCategory(childCategory);
+                                        setEditCategoryData({
+                                          name: childCategory.name,
+                                          description: childCategory.description || '',
+                                          color: childCategory.color || '#ffffff',
+                                          parentId: childCategory.parentId || 'none'
+                                        });
+                                        setEditCategoryDialogOpen(true);
+                                      }}
+                                    >
+                                      {t('edit')}
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleDeleteCategory(childCategory.id)}
+                                    >
+                                      {t('delete')}
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </React.Fragment>
+                        ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+            {/* Edit Category Dialog */}
+            <Dialog open={editCategoryDialogOpen} onOpenChange={setEditCategoryDialogOpen}>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>{t('editCategory')}</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div>
+                          <Label className='mb-1'>{t('name')}</Label>
+                          <Input
+                            value={editCategoryData.name}
+                            onChange={(e) => setEditCategoryData({ ...editCategoryData, name: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <Label className='mb-1'>{t('description')}</Label>
+                          <Input
+                            value={editCategoryData.description}
+                            onChange={(e) => setEditCategoryData({ ...editCategoryData, description: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <Label className='mb-1'>{t('color')}</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              type="color"
+                              value={editCategoryData.color}
+                              onChange={(e) => setEditCategoryData({ ...editCategoryData, color: e.target.value })}
+                              className="w-12 h-12 p-1"
+                            />
+                            <Input
+                              value={editCategoryData.color}
+                              onChange={(e) => setEditCategoryData({ ...editCategoryData, color: e.target.value })}
+                              className="flex-1"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <Label className='mb-1'>{t('parentCategory')}</Label>
+                          <Select
+                            value={editCategoryData.parentId}
+                            onValueChange={(value) => setEditCategoryData({ ...editCategoryData, parentId: value })}
+                          >
+                            <SelectTrigger className='w-full'>
+                              <SelectValue placeholder={t('parentCategory')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">{t('noParent')}</SelectItem>
+                              {categories
+                                .filter(cat => !cat.parentId && cat.id !== editingCategory?.id)
+                                .map(category => (
+                                  <React.Fragment key={category.id}>
+                                    <SelectItem value={category.id}>
+                                      {category.name}
+                                    </SelectItem>
+                                    {category.children && category.children
+                                      .filter(child => child.id !== editingCategory?.id)
+                                      .map(child => (
+                                        <SelectItem key={child.id} value={child.id}>
+                                          {'\u00A0'.repeat(4)}{child.name}
+                                        </SelectItem>
+                                      ))
+                                    }
+                                  </React.Fragment>
+                                ))
+                              }
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button onClick={handleUpdateCategory}>{t('saveChanges')}</Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+          </TabsContent>
+
+
 
         <TabsContent value="locations">
           <Card>
@@ -1005,7 +1696,6 @@ const loadItemTransactions = async (itemId: string) => {
                           <Input
                             type="number"
                             min="0.1"
-                            defaultValue={0}
                             step="0.1"
                             value={newPremix.yield}
                             onChange={(e) => setNewPremix({ ...newPremix, yield: Number(e.target.value) })}
@@ -1095,6 +1785,7 @@ const loadItemTransactions = async (itemId: string) => {
                     <TableHead>{t('quantity')}</TableHead>
                     <TableHead>{t('unit')}</TableHead>
                     <TableHead>{t('yield')}</TableHead>
+                    <TableHead>{t('cost')}</TableHead>
                     <TableHead>{t('ingredients')}</TableHead>
                     <TableHead className="text-right">{t('actions')}</TableHead>
                   </TableRow>
@@ -1102,10 +1793,9 @@ const loadItemTransactions = async (itemId: string) => {
                 <TableBody>
                   {premixes.map((premix) => {
                       const premixItem = items.find(item => item.premixId === premix.id);
-                      
-                      // Подсчет количества ингредиентов
                       const ingredientsCount = premix.ingredients?.length || 0;
-                      
+                      const totalCost = calculatePremixCost(premix);
+                      const costPerUnit = calculatePremixCostPerUnit(premix);
                       return (
                         <TableRow key={premix.id}>
                           <TableCell className="font-medium">{premix.name}</TableCell>
@@ -1114,6 +1804,11 @@ const loadItemTransactions = async (itemId: string) => {
                           </TableCell>
                           <TableCell>{premix.unit}</TableCell>
                           <TableCell>{premix.yield}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{costPerUnit.toFixed(2)}₽/{premix.unit}</span>
+                            </div>
+                          </TableCell>
                           <TableCell>{ingredientsCount}</TableCell>
                           <TableCell>
                             <div className="flex justify-end gap-2">
@@ -1137,7 +1832,6 @@ const loadItemTransactions = async (itemId: string) => {
                               >
                                 {t('edit')}
                               </Button>
-
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -1160,149 +1854,188 @@ const loadItemTransactions = async (itemId: string) => {
         </TabsContent>
 
         <TabsContent value="transactions">
-  <Card>
-    <CardHeader>
-      <div className="flex flex-col gap-4">
-        <CardTitle>{t('transactions')}</CardTitle>
-        
-        <div className="flex flex-wrap gap-4 items-center">
-          <Popover open={dateFilterOpen} onOpenChange={setDateFilterOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="flex gap-2">
-                <CalendarDays className="h-4 w-4" />
-                {dateRange?.from ? (
-                  dateRange.to ? (
-                    <>
-                      {format(dateRange.from, 'LLL dd, y')} -{' '}
-                      {format(dateRange.to, 'LLL dd, y')}
-                    </>
-                  ) : (
-                    format(dateRange.from, 'LLL dd, y')
-                  )
-                ) : (
-                  <span>{t('selectDateRange')}</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                initialFocus
-                mode="range"
-                defaultMonth={dateRange?.from}
-                selected={dateRange}
-                onSelect={handleDateRangeChange}
-                numberOfMonths={2}
-              />
-              <div className="p-2 border-t flex justify-end">
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    if (dateRange?.from && dateRange?.to) {
-                      loadWarehouseTransactionsByDate();
-                      setDateFilterOpen(false);
-                    }
-                  }}
-                  disabled={!dateRange?.from || !dateRange?.to}
-                >
-                  {t('apply')}
-                </Button>
-              </div>
-            </PopoverContent>
-          </Popover>
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-4">
+                <CardTitle>{t('transactions')}</CardTitle>
+                <div className="flex flex-wrap gap-4 items-center">
+                  <Popover open={dateFilterOpen} onOpenChange={setDateFilterOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="flex gap-2">
+                        <CalendarDays className="h-4 w-4" />
+                        {dateRange?.from ? (
+                          dateRange.to ? (
+                            <>
+                              {format(dateRange.from, 'LLL dd, y')} -{' '}
+                              {format(dateRange.to, 'LLL dd, y')}
+                            </>
+                          ) : (
+                            format(dateRange.from, 'LLL dd, y')
+                          )
+                        ) : (
+                          <span>{t('selectDateRange')}</span>
+                        )}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        initialFocus
+                        mode="range"
+                        defaultMonth={dateRange?.from}
+                        selected={dateRange}
+                        onSelect={handleDateRangeChange}
+                        numberOfMonths={2}
+                      />
+                      <div className="p-2 border-t flex justify-end">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            if (dateRange?.from && dateRange?.to) {
+                              loadWarehouseTransactionsByDate();
+                              setDateFilterOpen(false);
+                            }
+                          }}
+                          disabled={!dateRange?.from || !dateRange?.to}
+                        >
+                          {t('apply')}
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
 
-          <Select
-            value={transactionFilters.type || 'all'}
-            onValueChange={(value) => {
-              setTransactionFilters(prev => ({
-                ...prev,
-                type: value === 'all' ? undefined : value as InventoryTransactionType
-              }));
-            }}
-          >
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder={t('filterByType')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('allTypes')}</SelectItem>
-              <SelectItem value="RECEIPT">{t('receipt')}</SelectItem>
-              <SelectItem value="WRITE_OFF">{t('writeOff')}</SelectItem>
-              <SelectItem value="CORRECTION">{t('correction')}</SelectItem>
-              <SelectItem value="TRANSFER">{t('transfer')}</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button
-            onClick={loadWarehouseTransactions}
-            variant="outline"
-            size="sm"
-          >
-            {t('applyFilters')}
-          </Button>
-        </div>
-      </div>
-    </CardHeader>
-    <CardContent>
-      <TransactionsTable 
-        transactions={transactions} 
-      />
-    </CardContent>
-  </Card>
-</TabsContent>
+                  <Select
+                    value={'all'}
+                    onValueChange={(value) => {
+                      // Фильтрация по типу
+                    }}
+                  >
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder={t('filterByType')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{t('allTypes')}</SelectItem>
+                      <SelectItem value="RECEIPT">{t('receipt')}</SelectItem>
+                      <SelectItem value="WRITE_OFF">{t('writeOff')}</SelectItem>
+                      <SelectItem value="CORRECTION">{t('correction')}</SelectItem>
+                      <SelectItem value="TRANSFER">{t('transfer')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    onClick={loadWarehouseTransactions}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {t('applyFilters')}
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <TransactionsTable 
+                transactions={transactions} 
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
-      <Dialog open={transactionDialogOpen} onOpenChange={setTransactionDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {transactionType === 'receipt' ? t('receiptTitle') : t('writeOffTitle')}
-            </DialogTitle>
-          </DialogHeader>
+    <Dialog open={transactionDialogOpen} onOpenChange={(open) => {
+      setTransactionDialogOpen(open);
+      if (!open) {
+        setSelectedReason(''); // Сбрасываем при закрытии
+      }
+    }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {transactionType === 'receipt' ? t('receiptTitle') : t('writeOffTitle')}
+          </DialogTitle>
+        </DialogHeader>
 
-          <div className="space-y-4">
-            <div className="flex gap-2">
-              <Button
-                variant={transactionType === 'receipt' ? 'default' : 'outline'}
-                onClick={() => setTransactionType('receipt')}
-              >
-                {t('receipt')}
-              </Button>
-              <Button
-                variant={transactionType === 'writeoff' ? 'default' : 'outline'}
-                onClick={() => setTransactionType('writeoff')}
-              >
-                {t('writeOff')}
-              </Button>
-            </div>
+        <div className="space-y-4">
+          <div className="flex gap-2">
+            <Button
+              variant={transactionType === 'receipt' ? 'default' : 'outline'}
+              onClick={() => {
+                setTransactionType('receipt');
+                setSelectedReason(''); 
+              }}
+            >
+              {t('receipt')}
+            </Button>
+            <Button
+              variant={transactionType === 'writeoff' ? 'default' : 'outline'}
+              onClick={() => {
+                setTransactionType('writeoff');
+                setSelectedReason(''); 
+              }}
+            >
+              {t('writeOff')}
+            </Button>
+          </div>
 
+          <div>
+            <Label className='mb-1'>{t('quantity')} ({currentItem?.inventoryItem?.unit || currentItem?.unit})</Label>
+            <Input
+              type="number"
+              min="0"
+              step="0.01"
+              defaultValue="0"
+              ref={quantityRef}
+            />
+            {transactionType === 'writeoff' && currentItem && (
+              <p className="text-sm text-muted-foreground">
+                {t('available')}: {currentItem.quantity} {currentItem.inventoryItem?.unit || currentItem.unit}
+              </p>
+            )}
+          </div>
+          {transactionType === 'receipt' && (
             <div>
-              <Label className='mb-1'>{t('quantity')} ({currentItem?.inventoryItem?.unit || currentItem?.unit})</Label>
+              <Label className='mb-1'>{t('unitCost')} (₽)</Label>
               <Input
                 type="number"
                 min="0"
                 step="0.01"
                 defaultValue="0"
-                ref={quantityRef}
-              />
-              {transactionType === 'writeoff' && currentItem && (
-                <p className="text-sm text-muted-foreground">
-                  {t('available')}: {currentItem.quantity} {currentItem.inventoryItem?.unit || currentItem.unit}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <Label className='mb-1'>{t('reason')}</Label>
-              <Input
-                placeholder={t('reasonPlaceholder')}
-                ref={reasonRef}
+                ref={unitCostRef}
               />
             </div>
-
-            <Button onClick={handleSubmitTransaction}>
-              {transactionType === 'receipt' ? t('confirmReceipt') : t('confirmWriteOff')}
-            </Button>
+          )}
+          <div>
+            <Label className='mb-1'>{t('reason')}</Label>
+            {dictionariesLoading ? (
+              <div className="text-sm text-muted-foreground">{t('loadingReasons')}</div>
+            ) : dictionariesError ? (
+              <div className="text-sm text-red-500">{t('loadReasonsError')}</div>
+            ) : (
+              <SearchableSelect
+                options={(transactionType === 'receipt' ? receiptReasons : writeOffReasons)
+                  .map(reason => ({ id: reason, label: reason }))
+                }
+                value={selectedReason ? [selectedReason] : []}
+                onChange={(ids) => setSelectedReason(ids[0] || '')}
+                placeholder={
+                  transactionType === 'receipt' 
+                    ? t('selectReceiptReason') 
+                    : t('selectWriteOffReason')
+                }
+                searchPlaceholder={t('searchReason')}
+                emptyText={t('noReasonsFound')}
+                multiple={false}
+                className="w-full"
+              />
+            )}
           </div>
-        </DialogContent>
-      </Dialog>
+
+          <Button 
+            onClick={handleSubmitTransaction}
+            disabled={transactionType === 'writeoff' && !selectedReason}
+          >
+            {transactionType === 'receipt' ? t('confirmReceipt') : t('confirmWriteOff')}
+          </Button>
+        </div>
+      </DialogContent>
+     </Dialog>
 
       <Dialog open={editItemDialogOpen} onOpenChange={setEditItemDialogOpen}>
         <DialogContent>
@@ -1354,6 +2087,21 @@ const loadItemTransactions = async (itemId: string) => {
                       {location.name} ({location.code})
                     </SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className='mb-1'>{t('filterByCategory')}</Label>
+              <Select
+                value={editItemData.categoryId}
+                onValueChange={(value) => setEditItemData({ ...editItemData, categoryId: value })}
+              >
+                <SelectTrigger className='w-full'>
+                  <SelectValue placeholder={t('filterByCategory')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t('uncategorized')}</SelectItem>
+                  {renderCategoryOptions(categories)}
                 </SelectContent>
               </Select>
             </div>
@@ -1463,9 +2211,9 @@ const loadItemTransactions = async (itemId: string) => {
                         ...newIngredient,
                         inventoryItemId: ids[0] || ''
                       })}
-                      placeholder={t('selectIngredient') as string}
-                      searchPlaceholder={t('searchIngredient') as string}
-                      emptyText={t('noIngredientsFound') as string}
+                      placeholder={t('selectIngredient')}
+                      searchPlaceholder={t('searchIngredient')}
+                      emptyText={t('noIngredientsFound')}
                       multiple={false}
                     />
                   </div>
@@ -1473,7 +2221,7 @@ const loadItemTransactions = async (itemId: string) => {
                     type="number"
                     min="0.01"
                     step="0.01"
-                    placeholder={t('quantity') as string}
+                    placeholder={t('quantity')}
                     value={newIngredient.quantity}
                     onChange={(e) => setNewIngredient({
                       ...newIngredient,
@@ -1493,7 +2241,7 @@ const loadItemTransactions = async (itemId: string) => {
       </Dialog>
 
       <Dialog open={prepareDialogOpen} onOpenChange={setPrepareDialogOpen}>
-        <DialogContent>
+        <DialogContent className='w-full p-2'>
           <DialogHeader>
             <DialogTitle>{t('preparePremix')}: {selectedPremix?.name}</DialogTitle>
             <DialogDescription>
@@ -1511,6 +2259,21 @@ const loadItemTransactions = async (itemId: string) => {
                 onChange={(e) => setPrepareQuantity(Number(e.target.value))}
               />
             </div>
+            
+            {/* Блок с расчетом стоимости */}
+            {selectedPremix && (
+              <div className="p-3 bg-muted rounded-md">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium">{t('cost')}:</span>
+                  <span className="font-bold text-lg">
+                    {(calculatePremixCostPerUnit(selectedPremix) * prepareQuantity).toFixed(2)}₽
+                  </span>
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {calculatePremixCostPerUnit(selectedPremix).toFixed(2)}₽/{selectedPremix.unit} × {prepareQuantity}
+                </div>
+              </div>
+            )}
             {selectedPremix?.ingredients && (
               <div>
                 <Label className='mb-1'>{t('requiredIngredients')}</Label>
@@ -1603,9 +2366,48 @@ const loadItemTransactions = async (itemId: string) => {
                 </Table>
               </div>
             </div>
+            <div className="flex justify-end">
+              <Button onClick={() => setPrepareDialogOpen(true)}>
+                {t('prepare')}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={costDialogOpen} onOpenChange={setCostDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('updateCost')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className='mb-1'>{t('item')}</Label>
+              <p className="font-medium">{editingCostItem?.inventoryItem?.name || editingCostItem?.name}</p>
+            </div>
+            <div>
+              <Label className='mb-1'>{t('unitCost')} (₽)</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={newCost}
+                onChange={(e) => setNewCost(Number(e.target.value))}
+              />
+            </div>
+            <div>
+              <Label className='mb-1'>{t('currentQuantity')}</Label>
+              <p>{editingCostItem?.quantity} {editingCostItem?.inventoryItem?.unit || editingCostItem?.unit}</p>
+            </div>
+            <div>
+              <Label className='mb-1'>{t('totalValue')}</Label>
+              <p>{(newCost * (editingCostItem?.quantity || 0)).toFixed(2)}₽</p>
+            </div>
+            <Button onClick={handleUpdateCost}>{t('updateCost')}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 }

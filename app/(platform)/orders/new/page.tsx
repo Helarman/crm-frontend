@@ -10,7 +10,7 @@ import { useAuth } from "@/lib/hooks/useAuth"
 import { Language, useLanguageStore } from '@/lib/stores/language-store'
 import { AccessCheck } from '@/components/AccessCheck'
 import { toast } from 'sonner'
-import { format } from 'date-fns'
+import { format, isValid, parseISO } from 'date-fns'
 import { OrderInfoStep } from '@/components/features/order/OrderInfoStep'
 import { OrderState } from '@/lib/types/order'
 import { Restaurant } from '@/lib/types/restaurant'
@@ -27,6 +27,7 @@ export default function NewOrderPage() {
     type: 'DINE_IN',
     source: 'PANEL',
     comment: '',
+    phone: '',
     numberOfPeople: 1,
     tableNumber: 0,
     deliveryAddress: '',
@@ -36,7 +37,9 @@ export default function NewOrderPage() {
     customerPhone: '',
     deliveryZone: null,
     surcharges: [],
-    discounts: []
+    discounts: [],
+    isScheduled: false, 
+    scheduledAt: undefined
   })
   const [loading, setLoading] = useState(false)
   const [activeShiftId, setActiveShiftId] = useState('')
@@ -96,6 +99,7 @@ export default function NewOrderPage() {
         customerId,
         shiftId: activeShiftId,
         items: [],
+        scheduledAt: order.scheduledAt,
         deliveryNotes: order.type === 'DELIVERY' 
           ? `${order.comment || ''}\n${order.deliveryNotes || ''}`.trim()
           : undefined,
@@ -110,7 +114,7 @@ export default function NewOrderPage() {
           description: d.title
         })) || []
       }
-      
+      console.log('Sending order data:', orderData)
       const createdOrder = await OrderService.create(orderData)
       await OrderService.createLog({
         orderId: createdOrder.id as string, 

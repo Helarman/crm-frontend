@@ -35,7 +35,8 @@ import {
   Package,
   PersonStanding,
   Hexagon,
-  Network
+  Network,
+  BookText
 } from 'lucide-react'
 
 const ROLE_COLORS = {
@@ -206,6 +207,12 @@ export default function Side() {
         href: "/customers", 
         icon: <PersonStanding className="w-7 h-7" />,
         roles: ['SUPERVISOR']
+      },
+      { 
+        name: t.dictionaries, 
+        href: "/dictionaries", 
+        icon: <BookText className="w-7 h-7" />,
+        roles: ['MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.analytics, 

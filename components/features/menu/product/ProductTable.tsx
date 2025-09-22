@@ -1,6 +1,6 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Pencil, Trash2, Plus, ChevronUp } from 'lucide-react';
+import { Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown, MoveUp, MoveDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Language } from '@/lib/stores/language-store';
 import {
@@ -15,7 +15,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useState } from 'react';
 import { Switch } from '@/components/ui/switch';
-import { ChevronDown, ChevronRight, ChevronsUpDown } from 'lucide-react';
 import { ProductService } from '@/lib/api/product.service';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
@@ -70,6 +69,18 @@ const translations = {
     ru: 'Действия',
     ka: 'მოქმედებები',
   },
+  order: {
+    ru: 'Порядок',
+    ka: 'რიგი',
+  },
+  moveUp: {
+    ru: 'Поднять',
+    ka: 'აწევა',
+  },
+  moveDown: {
+    ru: 'Опустить',
+    ka: 'ჩამოწევა',
+  },
   noProducts: {
     ru: 'Продукты не найдены',
     ka: 'პროდუქტები ვერ მოიძებნა',
@@ -118,6 +129,14 @@ const translations = {
     ru: 'Настройки обновлены',
     ka: 'პარამეტრები განახლდა'
   },
+  orderUpdateSuccess: {
+    ru: 'Порядок обновлен',
+    ka: 'რიგი განახლდა'
+  },
+  orderUpdateError: {
+    ru: 'Ошибка изменения порядка',
+    ka: 'რიგის შეცვლის შეცდომა'
+  },
   loading: {
     ru: 'Загрузка...',
     ka: 'იტვირთება...'
@@ -129,7 +148,7 @@ const translations = {
 };
 
 type SortDirection = 'asc' | 'desc' | null;
-type SortField = 'title' | 'price' | 'category' | null;
+type SortField = 'title' | 'price' | 'category' | 'order' | null;
 type ToggleMethods = 
   | "togglePrintLabels" 
   | "togglePublishedOnWebsite" 
@@ -147,7 +166,6 @@ interface CategoryNode {
 const buildCategoryTree = (categories: Category[], products: Product[], language: Language): CategoryNode[] => {
   const categoryMap = new Map<string, CategoryNode>();
   
-  // Создаем узел для продуктов без категории
   const uncategorizedNode: CategoryNode = {
     id: 'uncategorized',
     title: translations.uncategorized[language],
@@ -157,7 +175,6 @@ const buildCategoryTree = (categories: Category[], products: Product[], language
   };
   categoryMap.set('uncategorized', uncategorizedNode);
 
-  // Создаем узлы для всех категорий
   categories.forEach(category => {
     if (!categoryMap.has(category.id)) {
       categoryMap.set(category.id, {
@@ -170,7 +187,6 @@ const buildCategoryTree = (categories: Category[], products: Product[], language
     }
   });
 
-  // Строим иерархию категорий
   const rootNodes: CategoryNode[] = [];
   categoryMap.forEach(category => {
     if (category.parentId) {
@@ -183,7 +199,6 @@ const buildCategoryTree = (categories: Category[], products: Product[], language
     }
   });
 
-  // Распределяем продукты по категориям
   products.forEach(product => {
     const categoryId = product.category?.id || 'uncategorized';
     const category = categoryMap.get(categoryId);
@@ -194,10 +209,14 @@ const buildCategoryTree = (categories: Category[], products: Product[], language
     }
   });
 
-  // Добавляем uncategorized в корень только если там есть продукты
   if (uncategorizedNode.products.length > 0) {
     rootNodes.push(uncategorizedNode);
   }
+
+  // Сортируем продукты по порядку внутри каждой категории
+  categoryMap.forEach(category => {
+    category.products.sort((a, b) => (b.sortOrder || 0) - (a.sortOrder || 0));
+  });
 
   return rootNodes;
 };
@@ -208,7 +227,12 @@ const ProductRow = ({
   language, 
   onDelete, 
   fetchData,
-  router
+  router,
+  categoryId,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast
 }: {
   product: Product;
   depth?: number;
@@ -216,9 +240,15 @@ const ProductRow = ({
   onDelete: (id: string) => void;
   fetchData: () => void;
   router: any;
+  categoryId: string;
+  onMoveUp: (productId: string) => void;
+  onMoveDown: (productId: string) => void;
+  isFirst: boolean;
+  isLast: boolean;
 }) => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [loadingToggles, setLoadingToggles] = useState<Record<string, boolean>>({});
+  const [loadingOrder, setLoadingOrder] = useState(false);
 
   const handleToggle = async (productId: string, serviceMethod: ToggleMethods) => {
     const toggleKey = `${productId}-${serviceMethod}`;
@@ -236,6 +266,36 @@ const ProductRow = ({
     }
   };
 
+  const handleMoveUp = async () => {
+    if (isFirst) return;
+    setLoadingOrder(true);
+    try {
+      await onMoveUp(product.id);
+      toast.success(translations.orderUpdateSuccess[language]);
+      fetchData();
+    } catch (error) {
+      console.error('Error moving product up:', error);
+      toast.error(translations.orderUpdateError[language]);
+    } finally {
+      setLoadingOrder(false);
+    }
+  };
+
+  const handleMoveDown = async () => {
+    if (isLast) return;
+    setLoadingOrder(true);
+    try {
+      await onMoveDown(product.id);
+      toast.success(translations.orderUpdateSuccess[language]);
+      fetchData();
+    } catch (error) {
+      console.error('Error moving product down:', error);
+      toast.error(translations.orderUpdateError[language]);
+    } finally {
+      setLoadingOrder(false);
+    }
+  };
+
   const printLabelsKey = `${product.id}-togglePrintLabels`;
   const websiteKey = `${product.id}-togglePublishedOnWebsite`;
   const appKey = `${product.id}-togglePublishedInApp`;
@@ -245,7 +305,12 @@ const ProductRow = ({
     <>
       <TableRow>
         <TableCell className="font-medium" style={{ paddingLeft: `${depth * 20 + 12}px` }}>
-          {product.title}
+          <div className="flex items-center gap-2">
+            {product.title}
+            <Badge variant="outline" className="ml-2">
+              {product.sortOrder || 0}
+            </Badge>
+          </div>
         </TableCell>
         <TableCell>
           <div className="flex flex-wrap gap-1">
@@ -300,21 +365,44 @@ const ProductRow = ({
           />
         </TableCell>
         <TableCell className="text-right">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push(`/products/${product.id}`)}
-            className="mr-2"
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsDeleteDialogOpen(true)}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            {/* Кнопки управления порядком */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleMoveUp}
+              disabled={isFirst || loadingOrder}
+              title={translations.moveUp[language]}
+            >
+              <ArrowUp className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleMoveDown}
+              disabled={isLast || loadingOrder}
+              title={translations.moveDown[language]}
+            >
+              <ArrowDown className="h-4 w-4" />
+            </Button>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push(`/products/${product.id}`)}
+              title={language === 'ru' ? 'Редактировать' : 'რედაქტირება'}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsDeleteDialogOpen(true)}
+              title={language === 'ru' ? 'Удалить' : 'წაშლა'}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         </TableCell>
       </TableRow>
 
@@ -349,7 +437,9 @@ const CategoryRow = ({
   fetchData,
   router,
   expandedCategories,
-  toggleCategory
+  toggleCategory,
+  onMoveUp,
+  onMoveDown
 }: {
   category: CategoryNode;
   depth?: number;
@@ -359,6 +449,8 @@ const CategoryRow = ({
   router: any;
   expandedCategories: Set<string>;
   toggleCategory: (id: string) => void;
+  onMoveUp: (productId: string, categoryId: string) => void;
+  onMoveDown: (productId: string, categoryId: string) => void;
 }) => {
   const isExpanded = expandedCategories.has(category.id);
   const hasChildren = category.children.length > 0 || category.products.length > 0;
@@ -417,9 +509,11 @@ const CategoryRow = ({
               router={router}
               expandedCategories={expandedCategories}
               toggleCategory={toggleCategory}
+              onMoveUp={onMoveUp}
+              onMoveDown={onMoveDown}
             />
           ))}
-          {category.products.map(product => (
+          {category.products.map((product, index) => (
             <ProductRow
               key={product.id}
               product={product}
@@ -428,13 +522,17 @@ const CategoryRow = ({
               onDelete={onDelete}
               fetchData={fetchData}
               router={router}
+              categoryId={category.id}
+              onMoveUp={() => onMoveUp(product.id, category.id)}
+              onMoveDown={() => onMoveDown(product.id, category.id)}
+              isFirst={index === 0}
+              isLast={index === category.products.length - 1}
             />
           ))}
         </>
       )}
 
-      {/* Для uncategorized всегда показываем продукты */}
-      {isUncategorized && category.products.map(product => (
+      {isUncategorized && category.products.map((product, index) => (
         <ProductRow
           key={product.id}
           product={product}
@@ -443,6 +541,11 @@ const CategoryRow = ({
           onDelete={onDelete}
           fetchData={fetchData}
           router={router}
+          categoryId={category.id}
+          onMoveUp={() => onMoveUp(product.id, category.id)}
+          onMoveDown={() => onMoveDown(product.id, category.id)}
+          isFirst={index === 0}
+          isLast={index === category.products.length - 1}
         />
       ))}
     </>
@@ -461,7 +564,6 @@ export const ProductTable = ({
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
-  // Извлекаем все уникальные категории из продуктов
   const allCategories: Category[] = [];
   const categoryMap = new Map<string, Category>();
   
@@ -472,10 +574,26 @@ export const ProductTable = ({
     }
   });
 
-  // Строим дерево категорий
   const categoryTree = buildCategoryTree(allCategories, products, language);
 
-  // Сортируем категории и продукты
+  const handleMoveUp = async (productId: string, categoryId: string) => {
+    try {
+      await ProductService.moveProductUp(productId, categoryId);
+    } catch (error) {
+      console.error('Error moving product up:', error);
+      throw error;
+    }
+  };
+
+  const handleMoveDown = async (productId: string, categoryId: string) => {
+    try {
+      await ProductService.moveProductDown(productId, categoryId);
+    } catch (error) {
+      console.error('Error moving product down:', error);
+      throw error;
+    }
+  };
+
   const sortedCategoryTree = [...categoryTree].sort((a, b) => {
     if (!sortField) return 0;
     
@@ -491,7 +609,6 @@ export const ProductTable = ({
     return sortDirection === 'asc' ? comparison : -comparison;
   });
 
-  // Сортируем продукты внутри категорий
   sortedCategoryTree.forEach(category => {
     category.products.sort((a, b) => {
       if (!sortField) return 0;
@@ -504,11 +621,13 @@ export const ProductTable = ({
         case 'price':
           comparison = a.price - b.price;
           break;
+        case 'order':
+          comparison = (a.sortOrder || 0) - (b.sortOrder || 0);
+          break;
       }
       return sortDirection === 'asc' ? comparison : -comparison;
     });
 
-    // Сортируем дочерние категории
     category.children.sort((a, b) => a.title.localeCompare(b.title));
   });
 
@@ -591,6 +710,8 @@ export const ProductTable = ({
                 router={router}
                 expandedCategories={expandedCategories}
                 toggleCategory={toggleCategory}
+                onMoveUp={handleMoveUp}
+                onMoveDown={handleMoveDown}
               />
             ))
           ) : (

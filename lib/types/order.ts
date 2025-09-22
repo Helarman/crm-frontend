@@ -16,6 +16,7 @@ export interface Surcharge {
 export interface OrderState {
   restaurantId: string
   items: OrderItem[]
+  phone: string
   payment: { 
     method: 'CASH' | 'CARD' | 'CASH_TO_COURIER' | 'CARD_TO_COURIER'
     status: 'PAID' | 'PENDING'
@@ -28,6 +29,8 @@ export interface OrderState {
   deliveryAddress: string
   deliveryTime: string
   deliveryNotes: string
+  scheduledAt?: string;
+  isScheduled?: boolean;
   customerId: string | null
   customerPhone: string
   deliveryZone?: {
@@ -70,6 +73,11 @@ export interface OrderItem {
     pausedAt: Date;
     refundedAt: Date;
   }
+  startedBy?: { id: string; name: string };
+  completedBy?: { id: string; name: string };
+  pausedBy?: { id: string; name: string };
+  refundedBy?: { id: string; name: string };
+  assignedTo?: { id: string; name: string };
 }
 
 export interface Additive {

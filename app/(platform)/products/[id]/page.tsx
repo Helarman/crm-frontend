@@ -103,25 +103,30 @@ const ProductEditPage = () => {
     }
   }
 
-  const loadInventoryItems = async () => {
-    setIsInventoryLoading(true)
-    try {
-      //const items = await WarehouseService.getInventoryItems()
-      //const formattedItems = items.map((item: any) => ({
-      //  id: item.id,
-      //  name: item.name,
-      //  unit: item.unit,
-      //}))
-      //setInventoryItems(formattedItems)
-    } catch (error) {
-      console.error('Failed to load inventory items', error)
-      toast.error(language === 'ru' 
-        ? 'Ошибка загрузки ингредиентов' 
-        : 'ინგრედიენტების ჩატვირთვის შეცდომა')
-    } finally {
-      setIsInventoryLoading(false)
-    }
+const loadInventoryItems = async () => {
+  setIsInventoryLoading(true);
+  try {
+    // Используем тот же подход, что и в компоненте склада
+    const items = await WarehouseService.getAllInventoryItems();
+    
+    const formattedItems = items.map((item: any) => ({
+      id: item.id,
+      name: item.name,
+      unit: item.unit,
+      categoryId: item.categoryId,
+    }));
+    
+    setInventoryItems(formattedItems);
+  } catch (error) {
+    console.error('Failed to load inventory items', error);
+    toast.error(language === 'ru' 
+      ? 'Ошибка загрузки ингредиентов' 
+      : 'ინგრედიენტების ჩატვირთვის შეცდომა');
+    setInventoryItems([]);
+  } finally {
+    setIsInventoryLoading(false);
   }
+}
 
   const loadData = async () => {
     if (!productId) {
@@ -131,13 +136,12 @@ const ProductEditPage = () => {
     
     setIsLoading(true)
     try {
-      const [product, productAdditives, prices, productIngredients] = await Promise.all([
+     const [product, productAdditives, prices, productIngredients] = await Promise.all([
         ProductService.getById(productId as string),
         AdditiveService.getByProduct(productId as string),
         ProductService.getRestaurantPrices(productId as string),
         ProductService.getIngredients(productId as string),
       ])
-
       setFormData({
         title: product.title,
         description: product.description,
@@ -784,7 +788,6 @@ const ProductEditPage = () => {
               <Label className="text-sm">
                 {language === 'ru' ? 'Ингредиенты продукта' : 'პროდუქტის ინგრედიენტები'}
               </Label>
-              
               <div className="space-y-3">
                 {ingredients.map((ingredient, index) => (
                   <IngredientSelect

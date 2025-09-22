@@ -50,9 +50,11 @@ export const navTranslations = {
       version: "Версия",
       warehouse: "Склад",
       customers: "Клиенты",
-      networks: "Сети"
+      networks: "Сети",
+      dictionaries: "Справочники"
     },
     ka: {
+      dictionaries: 'საცნობაროები',
       home: "მთავარი",
       orders: "შეკვეთები",
       dliveryZone: "მიწოდების ზონები",

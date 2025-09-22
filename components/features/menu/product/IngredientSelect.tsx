@@ -114,6 +114,7 @@ const IngredientSelect = ({
             quantity: parseFloat(e.target.value) || 0
           })}
           className="text-sm"
+          placeholder={language === 'ru' ? 'Количество' : 'რაოდენობა'}
         />
       </div>
       

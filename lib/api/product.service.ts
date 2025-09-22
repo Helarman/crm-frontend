@@ -105,6 +105,27 @@ export interface ProductDto {
   categoryId?: string;
   restaurantId?: string;
   image?: string;
+  sortOrder?: number;
+}
+
+export interface SortOrderRequest {
+  sortOrder: number;
+}
+
+export interface MoveToCategoryRequest {
+  categoryId: string;
+  sortOrder?: number;
+}
+
+export interface CategoryOrderStats {
+  count: number;
+  minOrder: number;
+  maxOrder: number;
+  products: Array<{
+    id: string;
+    title: string;
+    sortOrder: number;
+  }>;
 }
 
   export const ProductService = {
@@ -195,5 +216,52 @@ export interface ProductDto {
     const { data } = await api.put(`/products/${id}/toggle-stop-list`);
     return data;
   },
+updateSortOrder: async (id: string, sortOrder: number) => {
+    const { data } = await api.post(`/products/${id}/sort-order`, { sortOrder });
+    return data;
+  },
 
+  moveToCategory: async (id: string, categoryId: string, sortOrder?: number) => {
+    const { data } = await api.put(`/products/${id}/category`, { 
+      categoryId, 
+      sortOrder 
+    });
+    return data;
+  },
+
+  getCategoryOrderStats: async (categoryId: string): Promise<CategoryOrderStats> => {
+    const { data } = await api.get(`/products/category/${categoryId}/order-stats`);
+    return data;
+  },
+
+  // Вспомогательные методы для работы с порядком
+  moveProductUp: async (productId: string, currentCategoryId: string) => {
+    const stats = await ProductService.getCategoryOrderStats(currentCategoryId);
+    const product = await ProductService.getById(productId);
+    
+    if (product.sortOrder < stats.maxOrder) {
+      return ProductService.updateSortOrder(productId, product.sortOrder + 1);
+    }
+    return product;
+  },
+
+  moveProductDown: async (productId: string, currentCategoryId: string) => {
+    const stats = await ProductService.getCategoryOrderStats(currentCategoryId);
+    const product = await ProductService.getById(productId);
+    
+    if (product.sortOrder > stats.minOrder) {
+      return ProductService.updateSortOrder(productId, product.sortOrder - 1);
+    }
+    return product;
+  },
+
+  moveProductToTop: async (productId: string, currentCategoryId: string) => {
+    const stats = await ProductService.getCategoryOrderStats(currentCategoryId);
+    return ProductService.updateSortOrder(productId, stats.maxOrder + 1);
+  },
+
+  moveProductToBottom: async (productId: string, currentCategoryId: string) => {
+    const stats = await ProductService.getCategoryOrderStats(currentCategoryId);
+    return ProductService.updateSortOrder(productId, stats.minOrder - 1);
+  }
 };

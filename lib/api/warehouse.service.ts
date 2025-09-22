@@ -160,11 +160,14 @@ interface UpdateInventoryItemDto {
   cost?: number;
   productId?: string;
   isActive?: boolean;
+  categoryId?: string;
 }
 
 interface WarehouseItemDto {
   id: string;
   warehouseId: string;
+  cost?: number;
+  totalValue?: number;
   inventoryItemId: string;
   storageLocationId?: string;
   quantity: number;
@@ -198,6 +201,10 @@ interface InventoryTransactionDto {
   previousQuantity: number;
   newQuantity: number;
   reason?: string;
+   cost?: number; 
+  totalValue?: number
+  unitCost?: number;
+  totalCost?: number;
   documentId?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -211,6 +218,8 @@ interface CreateInventoryTransactionDto {
   userId?: string;
   type: InventoryTransactionType;
   warehouseId: string;
+  cost?: number; 
+  unitCost?: number; 
   quantity: number;
   reason?: string;
   documentId?: string;
@@ -286,6 +295,72 @@ export enum InventoryTransactionType {
   PREPARATION = 'PREPARATION',
   USAGE = 'USAGE'
 }
+
+export interface InventoryCategoryDto {
+  id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  isActive: boolean;
+  parentId?: string;
+  children?: InventoryCategoryDto[];
+  inventoryItems?: InventoryItemDto[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateInventoryCategoryDto {
+  name: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  parentId?: string;
+  isActive?: boolean;
+}
+
+export interface UpdateInventoryCategoryDto {
+  name?: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  parentId?: string;
+  isActive?: boolean;
+}
+
+export interface BulkUpdateCategoryDto {
+  itemIds: string[];
+  categoryId?: string | null;
+}
+
+// Обновляем интерфейс InventoryItemDto для поддержки категорий
+export interface InventoryItemDto {
+  id: string;
+  name: string;
+  description?: string;
+  unit: string;
+  cost?: number;
+  productId?: string;
+  premixId?: string;
+  categoryId?: string;
+  category?: InventoryCategoryDto;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  inventoryItemId?: string;
+}
+
+// Обновляем CreateInventoryItemDto для поддержки категорий
+interface CreateInventoryItemDto {
+  name: string;
+  description?: string;
+  unit: string;
+  cost?: number;
+  productId?: string;
+  categoryId?: string; // Добавляем поле категории
+}
+
+
 
 // Обновленный сервис с правильными типами
 export const WarehouseService = {
@@ -440,6 +515,11 @@ export const WarehouseService = {
 
   deletePremix: async (id: string): Promise<void> => {
     await api.delete(`/warehouses/premixes/${id}`);
+  },
+
+ getAllInventoryItems: async (): Promise<any> => {
+    const response = await api.get('/warehouses/items/all');
+    return response.data;
   },
 
   preparePremix: async (
@@ -613,6 +693,185 @@ getWarehouseTransactionsByPeriod: async (
   });
   return data;
 },
+// ==================== Inventory Category Methods ====================
+  createInventoryCategory: async (dto: CreateInventoryCategoryDto): Promise<InventoryCategoryDto> => {
+    const { data } = await api.post('/warehouses/categories', dto);
+    return data;
+  },
 
+  getInventoryCategory: async (id: string): Promise<InventoryCategoryDto> => {
+    const { data } = await api.get(`/warehouses/categories/${id}`);
+    return data;
+  },
 
+  getAllInventoryCategories: async (filters?: {
+    search?: string;
+    includeInactive?: boolean;
+    parentId?: string | null;
+  }): Promise<InventoryCategoryDto[]> => {
+    const { data } = await api.get('/warehouses/categories', {
+      params: {
+        search: filters?.search,
+        includeInactive: filters?.includeInactive,
+        parentId: filters?.parentId,
+      },
+    });
+    return data;
+  },
+
+  getCategoryTree: async (): Promise<InventoryCategoryDto[]> => {
+    const { data } = await api.get('/warehouses/categories/tree');
+    return data;
+  },
+
+  updateInventoryCategory: async (
+    id: string,
+    dto: UpdateInventoryCategoryDto
+  ): Promise<InventoryCategoryDto> => {
+    const { data } = await api.put(`/warehouses/categories/${id}`, dto);
+    return data;
+  },
+
+  deleteInventoryCategory: async (id: string): Promise<void> => {
+    await api.delete(`/warehouses/categories/${id}`);
+  },
+
+  getItemsByCategory: async (
+    categoryId: string,
+    filters?: {
+      includeInactive?: boolean;
+      warehouseId?: string;
+    }
+  ): Promise<InventoryItemDto[]> => {
+    const { data } = await api.get(`/warehouses/categories/${categoryId}/items`, {
+      params: {
+        includeInactive: filters?.includeInactive,
+        warehouseId: filters?.warehouseId,
+      },
+    });
+    return data;
+  },
+
+  bulkUpdateItemsCategory: async (
+    itemIds: string[],
+    categoryId: string | null
+  ): Promise<Array<{ itemId: string; status: string; data?: any; error?: string }>> => {
+    const { data } = await api.post('/warehouses/items/bulk-update-category', {
+      itemIds,
+      categoryId,
+    });
+    return data;
+  },
+
+  getWarehouseCoverage: async (warehouseId: string): Promise<{
+    totalActiveItems: number;
+    itemsInWarehouse: number;
+    coveragePercentage: number;
+    missingCount: number;
+    missingItems: Array<{ id: string; name: string; unit: string }>;
+  }> => {
+    const { data } = await api.get(`/warehouses/${warehouseId}/coverage`);
+    return data;
+  },
+
+  addMissingItemsToWarehouse: async (
+    warehouseId: string,
+    dto: {
+      defaultQuantity?: number;
+      defaultMinQuantity?: number;
+      defaultStorageLocationId?: string;
+      ignoreErrors?: boolean;
+    }
+  ): Promise<{
+    status: string;
+    message: string;
+    totalMissing: number;
+    added: number;
+    errors: number;
+    details: Array<{
+      inventoryItemId: string;
+      inventoryItemName: string;
+      status: 'added' | 'error';
+      error?: string;
+    }>;
+  }> => {
+    const { data } = await api.post(`/warehouses/${warehouseId}/add-missing-items`, dto);
+    return data;
+  },
+
+  bulkCreateWarehouseItems: async (
+    dto: {
+      restaurantId: string;
+      warehouseId?: string;
+      defaultQuantity?: number;
+      defaultMinQuantity?: number;
+      defaultStorageLocationId?: string;
+      specificItemIds?: string[];
+      skipExisting?: boolean;
+    }
+  ): Promise<{
+    totalItems: number;
+    created: number;
+    skipped: number;
+    errors: number;
+    details: Array<{
+      inventoryItemId: string;
+      inventoryItemName: string;
+      status: 'created' | 'skipped' | 'error';
+      error?: string;
+    }>;
+  }> => {
+    const { data } = await api.post('/warehouses/bulk-create-items', dto);
+    return data;
+  },
+
+  getTransferTransactions: async (
+    warehouseId: string,
+    filters?: {
+      startDate?: string;
+      endDate?: string;
+      direction?: 'incoming' | 'outgoing' | 'both';
+    }
+  ): Promise<InventoryTransactionDto[]> => {
+    const { data } = await api.get(`/warehouses/${warehouseId}/transfers`, {
+      params: {
+        startDate: filters?.startDate,
+        endDate: filters?.endDate,
+        direction: filters?.direction,
+      },
+    });
+    return data;
+  },
+
+  getAllTransfers: async (
+    filters?: {
+      startDate?: string;
+      endDate?: string;
+    }
+  ): Promise<InventoryTransactionDto[]> => {
+    const { data } = await api.get('/warehouses/transfers', {
+      params: {
+        startDate: filters?.startDate,
+        endDate: filters?.endDate,
+      },
+    });
+    return data;
+  },
+  updateItemCost: async (
+    itemId: string,
+    cost: number
+  ): Promise<WarehouseItemDto> => {
+    const { data } = await api.put(`/warehouses/items/${itemId}/cost`, { cost });
+    return data;
+  },
+   getInventoryValue: async (
+    warehouseId: string
+  ): Promise<{
+    totalValue: number;
+    itemsCount: number;
+    averageCost: number;
+  }> => {
+    const { data } = await api.get(`/warehouses/${warehouseId}/inventory-value`);
+    return data;
+  },
 };

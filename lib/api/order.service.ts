@@ -104,6 +104,11 @@ export interface UpdateOrderItemDto {
   additiveIds?: string[];
 }
 
+export interface RefundItemDto {
+  reason: string;
+  userId?: string;
+}
+
 export enum EnumOrderType {
   DINE_IN = 'DINE_IN',
   TAKEAWAY = 'TAKEAWAY',
@@ -256,6 +261,7 @@ export interface CreateOrderDto {
   items: CreateOrderItemDto[];
   scheduledAt?: Date;
   comment?: string;
+  phone?: string;
   payment?: CreatePaymentDto;
   deliveryAddress?: string;
   deliveryTime?: Date;
@@ -639,12 +645,12 @@ export const OrderService = {
   refundItem: async (
     orderId: string,
     itemId: string,
-    reason: string
+    dto: RefundItemDto
   ): Promise<OrderResponse> => {
     try {
       const { data } = await api.post<OrderResponse>(
         `/orders/${orderId}/items/${itemId}/refund`,
-        { reason }
+        dto
       );
       return data;
     } catch (error) {
@@ -884,6 +890,95 @@ export const OrderService = {
       throw error;
     }
   },
+   updateOrderItemQuantity: async (
+    orderId: string,
+    itemId: string,
+    quantity: number,
+    userId?: string
+  ): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.patch<OrderResponse>(
+        `/orders/${orderId}/items/${itemId}/quantity`,
+        { quantity, userId }
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to update item quantity:', error);
+      throw error;
+    }
+  },
 
+  /**
+   * Частичный возврат позиции заказа
+   */
+  partialRefundOrderItem: async (
+    orderId: string,
+    itemId: string,
+    quantity: number,
+    reason: string,
+    userId?: string
+  ): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.post<OrderResponse>(
+        `/orders/${orderId}/items/${itemId}/partial-refund`,
+        { quantity, reason, userId }
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to process partial refund:', error);
+      throw error;
+    }
+  },
+  /**
+   * Увеличить количество позиции на указанное значение
+   */
+  increaseItemQuantity: async (
+    orderId: string,
+    itemId: string,
+    increment: number = 1,
+    userId?: string
+  ): Promise<OrderResponse> => {
+    // Сначала получаем текущее состояние заказа
+    const order = await OrderService.getById(orderId);
+    const item = order.items.find(i => i.id === itemId);
+    
+    if (!item) {
+      throw new Error('Item not found');
+    }
+
+    const newQuantity = item.quantity + increment;
+    return OrderService.updateOrderItemQuantity(
+      orderId,
+      itemId,
+      newQuantity,
+      userId
+    );
+  },
+
+  /**
+   * Уменьшить количество позиции на указанное значение
+   */
+  decreaseItemQuantity: async (
+    orderId: string,
+    itemId: string,
+    decrement: number = 1,
+    userId?: string
+  ): Promise<OrderResponse> => {
+    const order = await OrderService.getById(orderId);
+    const item = order.items.find(i => i.id === itemId);
+    
+    if (!item) {
+      throw new Error('Item not found');
+    }
+
+    const newQuantity = Math.max(1, item.quantity - decrement);
+    return OrderService.updateOrderItemQuantity(
+      orderId,
+      itemId,
+      newQuantity,
+      userId
+    );
+  },
+  
 };
 

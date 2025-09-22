@@ -10,6 +10,7 @@ export interface Additive {
 export interface Product {
   id: string
   category: Category
+  sortOrder: number
   publishedOnWebsite: boolean
   printLabels: boolean
   publishedInApp: boolean

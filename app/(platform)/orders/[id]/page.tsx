@@ -92,7 +92,7 @@ const translations = {
   ru: {
     back: "Назад к списку заказов",
     menu: "Меню",
-    additives: "Добавки",
+    additives: "Модификаторы",
     comment: "Комментарий",
     total: "Итого",
     paymentStatus: "Статус оплаты",
@@ -112,9 +112,9 @@ const translations = {
     orderNotFound: "Заказ не найден",
     loadingError: "Не удалось загрузить заказ",
     emptyOrder: "Заказ пуст",
-    selectAdditives: "Выберите добавки...",
+    selectAdditives: "Выберите модификаторы...",
     searchAdditives: "Поиск добавок...",
-    noAdditivesFound: "Добавки не найдены",
+    noAdditivesFound: "Модификаторы не найдены",
     noProductsFound: "Продукты не найдены",
     saveChanges: "Сохранить изменения",
     saving: "Сохранение...",
@@ -489,7 +489,9 @@ const translations = {
   const [promoCodeLoading, setPromoCodeLoading] = useState(false);
   const [promoCodeError, setPromoCodeError] = useState('');
   const [showDiscountOptions, setShowDiscountOptions] = useState(false);
-
+  const [showPartialRefundDialog, setShowPartialRefundDialog] = useState(false);
+  const [refundQuantity, setRefundQuantity] = useState(1);
+  const [maxRefundQuantity, setMaxRefundQuantity] = useState(0);
   const isOrderEditable = order && !['DELIVERING', 'COMPLETED', 'CANCELLED'].includes(order.status);
 
   const fetchDiscounts = async () => {
@@ -576,6 +578,109 @@ const translations = {
       })
     };
   }, [order?.status, t.exitConfirmMessage, pendingAdditions]);
+
+  const handleUpdateQuantity = async (item: OrderItem, newQuantity: number) => {
+    if (!order || !isOrderEditable) return;
+    
+    try {
+      setIsUpdating(true);
+      const updatedOrder = await OrderService.updateOrderItemQuantity(
+        order.id,
+        item.id,
+        newQuantity
+      );
+      setOrder(updatedOrder);
+      
+      await createOrderLog(
+        `${language === 'ru' ? 'Изменено количество' : 'რაოდენობა შეიცვალა'}: ${item.product.title} → ${newQuantity}`
+      );
+      
+      toast.success(language === 'ru' ? 'Количество обновлено' : 'რაოდენობა განახლდა');
+    } catch (error) {
+      toast.error(language === 'ru' ? 'Ошибка обновления' : 'განახლების შეცდომა');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  
+  const handlePartialRefund = async () => {
+    if (!order || !selectedItemForRefund || !refundReason.trim() || refundQuantity <= 0) return;
+    
+    try {
+      setIsUpdating(true);
+      const updatedOrder = await OrderService.partialRefundOrderItem(
+        order.id,
+        selectedItemForRefund.id,
+        refundQuantity,
+        refundReason,
+        user?.id
+      );
+      setOrder(updatedOrder);
+      
+      await recalculateDiscount();
+      await createOrderLog(
+        `${t.logs.itemRefunded}: ${selectedItemForRefund.product.title} x ${refundQuantity}`
+      );
+      
+      toast.success(
+        language === 'ru' 
+          ? `Возвращено ${refundQuantity} шт.` 
+          : `დაბრუნებულია ${refundQuantity} ცალი`
+      );
+      
+      setShowPartialRefundDialog(false);
+      setRefundReason('');
+      setRefundQuantity(1);
+    } catch (error) {
+      toast.error(
+        language === 'ru' 
+          ? 'Ошибка при возврате' 
+          : 'დაბრუნების შეცდომა'
+      );
+    } finally {
+      setIsUpdating(false);
+    }
+};
+
+const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => {
+  if (!order || newQuantity < 0) return;
+  
+  try {
+    setIsUpdating(true);
+    
+    if (newQuantity === 0) {
+      // Удаляем позицию если количество 0
+      await OrderService.removeItemFromOrder(order.id, item.id);
+    } else {
+      // Обновляем количество
+      await OrderService.updateOrderItemQuantity(
+        order.id,
+        item.id,
+        newQuantity,
+        user?.id
+      );
+    }
+    
+    const updatedOrder = await OrderService.getById(order.id);
+    setOrder(updatedOrder);
+    
+    await createOrderLog(
+      newQuantity === 0 
+        ? `${t.logs.itemRemoved}: ${item.product.title}`
+        : `${t.logs.itemAdded}: ${item.product.title} x ${newQuantity}`
+    );
+    
+  } catch (error) {
+    toast.error(
+      language === 'ru' 
+        ? 'Ошибка изменения количества' 
+        : 'რაოდენობის შეცვლის შეცდომა'
+    );
+  } finally {
+    setIsUpdating(false);
+  }
+};
 
   const handleRouteChange = (path: string) => {
     if (order?.status === 'CREATED') {
@@ -706,35 +811,38 @@ const translations = {
     }
   };
 
-  const handleRefundItem = async () => {
-    if (!order) return;
-    if (!selectedItemForRefund || !refundReason.trim()) return;
+ const handleRefundItem = async () => {
+  if (!order) return;
+  if (!selectedItemForRefund || !refundReason.trim()) return;
+  
+  try {
+    setIsUpdating(true);
+    const updatedOrder = await OrderService.refundItem(
+      order.id,
+      selectedItemForRefund.id,
+      {
+        reason: refundReason,
+        userId: user?.id // Передаем ID текущего пользователя
+      }
+    );
+    setOrder(updatedOrder);
     
-    try {
-      setIsUpdating(true);
-      const updatedOrder = await OrderService.refundItem(
-        order.id,
-        selectedItemForRefund.id,
-        refundReason
-      );
-      setOrder(updatedOrder);
-      
-      // Пересчитываем скидку после возврата
-      await recalculateDiscount();
-      
-      await createOrderLog(`${t.logs.itemRefunded} : ${selectedItemForRefund.product.title} x ${selectedItemForRefund.quantity}`);
-      
-      toast.success(language === 'ru' ? 'Блюдо возвращено' : 'კერძი დაბრუნებულია');
-      setShowRefundDialog(false);
-      setRefundReason('');
-    } catch (error) {
-      toast.error(language === 'ru' 
-        ? 'Ошибка при возврате блюда' 
-        : 'კერძის დაბრუნების შეცდომა');
-    } finally {
-      setIsUpdating(false);
-    }
-  };
+    // Пересчитываем скидку после возврата
+    await recalculateDiscount();
+    
+    await createOrderLog(`${t.logs.itemRefunded} : ${selectedItemForRefund.product.title} x ${selectedItemForRefund.quantity}`);
+    
+    toast.success(language === 'ru' ? 'Блюдо возвращено' : 'კერძი დაბრუნებულია');
+    setShowRefundDialog(false);
+    setRefundReason('');
+  } catch (error) {
+    toast.error(language === 'ru' 
+      ? 'Ошибка при возврате блюда' 
+      : 'კერძის დაბრუნების შეცდომა');
+  } finally {
+    setIsUpdating(false);
+  }
+};
 
   const handleEditOrderSubmit = async () => {
     if (!orderId || !isOrderEditable) return;
@@ -886,6 +994,46 @@ const translations = {
     return total;
   };
   
+  
+  const handleReorderItem = async (item: OrderItem) => {
+  if (!order) return;
+  
+  try {
+    setIsUpdating(true);
+    
+    // Создаем новую позицию на основе существующей
+    const updatedOrder = await OrderService.addItemToOrder(
+      order.id,
+      {
+        productId: item.product.id,
+        quantity: item.quantity,
+        additiveIds: item.additives.map(a => a.id),
+        comment: item.comment
+      }
+    );
+    
+    setOrder(updatedOrder);
+    
+    // Устанавливаем флаг дозаказа для новой позиции
+    await OrderService.setReorderedFlag(order.id, true);
+    
+    await createOrderLog(`${t.logs.itemAdded}: ${item.product.title} x ${item.quantity} (${t.reorder})`);
+    
+    toast.success(
+      language === 'ru' 
+        ? 'Дозаказ добавлен' 
+        : 'დამატებითი შეკვეთა დაემატა'
+    );
+  } catch (error) {
+    toast.error(
+      language === 'ru' 
+        ? 'Ошибка при дозаказе' 
+        : 'დამატებითი შეკვეთის შეცდომა'
+    );
+  } finally {
+    setIsUpdating(false);
+  }
+};
 
   const handleQuantityChange = useCallback(async (product: Product, newQuantity: number, additives: string[], comment: string) => {
     if (!orderId || !isOrderEditable) return;
@@ -939,7 +1087,7 @@ const translations = {
       } finally {
         setIsUpdating(false);
       }
-    }, 3000);
+    }, 1000);
 
     setPendingAdditions(prev => ({
       ...prev,
@@ -976,7 +1124,6 @@ const translations = {
     }))
   }
 
-  console.log(categories)
 
   const fetchOrder = async () => {
     try {
@@ -1231,32 +1378,86 @@ const handleApplyCustomer = async () => {
   };
 
   const renderItemActions = (item: OrderItem) => {
-    if (!order) return;
+  if (!order) return null;
 
-    const canRefund = [ 'READY', 'DELIVERING'].includes(order.status) && !item.isRefund
-    
-    return (
-      <div className="mt-3 flex items-center justify-between border-t pt-3">
-        <div className="text-sm">
-          {getStatusBadge(item.status)}
-        </div>
-        {canRefund && (
+  const canEditQuantity = item.status === OrderItemStatus.CREATED && isOrderEditable;
+  const canReorder = [
+    OrderItemStatus.COMPLETED, 
+    OrderItemStatus.IN_PROGRESS,
+    OrderItemStatus.CREATED, 
+  ].includes(item.status) && isOrderEditable && !item.isRefund;
+  
+  const canRefund = ['COMPLETED', 'DELIVERING', 'PREPARING'].includes(order.status) && !item.isRefund;
+
+    const canRefundItem = [
+    OrderItemStatus.COMPLETED, 
+    OrderItemStatus.IN_PROGRESS
+  ].includes(item.status) && isOrderEditable && !item.isRefund;
+  
+  return (
+    <div className="mt-3 flex items-center justify-between border-t pt-3">
+      <div className="text-sm">
+        {getStatusBadge(item.status)}
+      </div>
+      <div className="flex items-center flex-col gap-2">
+        {canEditQuantity && (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 w-6 p-0"
+              onClick={() => handleQuantitItemChange(item, item.quantity - 1)}
+              disabled={item.quantity <= 1}
+            >
+              <Minus className="h-3 w-3" />
+            </Button>
+            <span className="text-sm font-medium w-6 text-center">
+              {item.quantity}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 w-6 p-0"
+              onClick={() => handleQuantitItemChange(item, item.quantity + 1)}
+            >
+              <Plus className="h-3 w-3" />
+            </Button>
+          </div>
+        )}
+        {canReorder && (
           <Button
             variant="ghost"
             size="sm"
-            className="text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+            className="text-blue-500 hover:text-blue-600"
+            onClick={() => handleReorderItem(item)}
+            disabled={isUpdating}
+          >
+            <RefreshCw className="h-4 w-4 mr-1" />
+            {language === 'ru' ? 'Дозаказ' : 'დამატებითი შეკვეთა'}
+          </Button>
+        )}
+
+        {canRefund && canRefundItem && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-red-500 hover:text-red-600"
             onClick={() => {
               setSelectedItemForRefund(item);
+              setMaxRefundQuantity(item.quantity);
+              setRefundQuantity(1);
               setShowRefundDialog(true);
             }}
+            disabled={isUpdating}
           >
             <RefreshCw className="h-4 w-4 mr-1" />
             {language === 'ru' ? 'Вернуть' : 'დაბრუნება'}
           </Button>
         )}
-      </div>
-    );
-  };
+        </div>
+    </div>
+  );
+};
 
  const renderItemCard = (item: OrderItem) => {
   const getCookingTime = () => {
@@ -1267,14 +1468,13 @@ const handleApplyCustomer = async () => {
       ? new Date(item.timestamps.completedAt).getTime() 
       : Date.now();
     
-    
     const cookingTimeMinutes = Math.round((endTime - startTime) / (1000 * 60));
     
     return cookingTimeMinutes;
   };
 
   const cookingTime = getCookingTime();
-
+  
   return (
     <Card 
       key={item.id} 
@@ -1301,10 +1501,10 @@ const handleApplyCustomer = async () => {
 
           {item.timestamps.startedAt && cookingTime !== null && (
             <p className="text-sm text-muted-foreground mt-1">
-            {item.timestamps.completedAt 
-              ? `${t.cookedIn} ${getCookingTimeText(cookingTime, language)}`
-              : `${t.cookingFor} ${getCookingTimeText(cookingTime, language)}`}
-          </p>
+              {item.timestamps.completedAt 
+                ? `${t.cookedIn} ${getCookingTimeText(cookingTime, language)}`
+                : `${t.cookingFor} ${getCookingTimeText(cookingTime, language)}`}
+            </p>
           )}
 
           <div className="mt-2 pl-4 border-l-2 border-muted">
@@ -1337,28 +1537,53 @@ const handleApplyCustomer = async () => {
             <Clock className="h-3 w-3 mr-2" />
             {t.createdAt}: {new Date(item.timestamps.createdAt).toLocaleString()}
           </div>
+          
           {item.timestamps.startedAt && (
-            <div className="flex items-center">
-              <Play className="h-3 w-3 mr-2" />
-              {t.startedAt}: {new Date(item.timestamps.startedAt).toLocaleString()}
+            <div className="flex  flex-col">
+              <span className='flex items-center'>
+                <Play className="h-3 w-3 mr-2" />
+                {t.startedAt}: {new Date(item.timestamps.startedAt).toLocaleString()}   
+              </span>
+              
+              <span className='text-xs ml-5'>
+                ({item.startedBy && item.startedBy.name})
+              </span>
             </div>
           )}
+          
           {item.timestamps.completedAt && (
             <div className="flex items-center">
               <Check className="h-3 w-3 mr-2" />
               {t.completedAt}: {new Date(item.timestamps.completedAt).toLocaleString()}
+              {item.completedBy && (
+                <span className="ml-2 text-xs text-muted-foreground">
+                  ({language === 'ru' ? 'завершил' : 'დაასრულა'}: {item.completedBy.name})
+                </span>
+              )}
             </div>
           )}
+          
           {item.timestamps.pausedAt && (
             <div className="flex items-center">
               <Pause className="h-3 w-3 mr-2" />
               {t.pausedAt}: {new Date(item.timestamps.pausedAt).toLocaleString()}
+              {item.pausedBy && (
+                <span className="ml-2 text-xs text-muted-foreground">
+                  ({language === 'ru' ? 'приостановил' : 'შეაჩერა'}: {item.pausedBy.name})
+                </span>
+              )}
             </div>
           )}
+          
           {item.timestamps.refundedAt && (
             <div className="flex items-center text-red-500 dark:text-red-400">
               <Undo className="h-3 w-3 mr-2" />
               {t.refundedAt}: {new Date(item.timestamps.refundedAt).toLocaleString()}
+              {item.refundedBy && (
+                <span className="ml-2 text-xs text-red-400">
+                  ({language === 'ru' ? 'вернул' : 'დაბრუნება'}: {item.refundedBy.name})
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -2258,46 +2483,96 @@ const renderDiscountsBlock = () => {
           />
         )}
 
-        <AlertDialog open={showRefundDialog} onOpenChange={setShowRefundDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {t.refundItem}
-              </AlertDialogTitle>
-            
-            </AlertDialogHeader>
-            
-            <div className="space-y-4">
-                <Label className="text-sm">
-                  {language === 'ru' ? 'Блюдо:' : 'კერძი:'} {selectedItemForRefund?.product.title} 
-                </Label>
-              
-              <div className="space-y-2">
-                <Label className="text-sm">
-                  {t.refundReason}
-                </Label>
-                <Textarea
-                  value={refundReason}
-                  onChange={(e) => setRefundReason(e.target.value)}
-                  placeholder={t.cookingError}
-                />
-              </div>
-            </div>
-            
-            <AlertDialogFooter>
-              <AlertDialogCancel>
-                {t.cancel}
-              </AlertDialogCancel>
-              <AlertDialogAction 
-                onClick={handleRefundItem}
-                disabled={!refundReason.trim() || isUpdating}
-              >
-                {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {t.confirmRefund}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+       <AlertDialog open={showRefundDialog} onOpenChange={setShowRefundDialog}>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>
+        {t.refundItem}
+      </AlertDialogTitle>
+      <AlertDialogDescription>
+        {selectedItemForRefund?.product.title} ({selectedItemForRefund?.quantity} шт.)
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label className="text-sm">
+          {language === 'ru' ? 'Количество для возврата:' : 'დასაბრუნებელი რაოდენობა:'}
+        </Label>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRefundQuantity(prev => Math.max(1, prev - 1))}
+            disabled={refundQuantity <= 1}
+          >
+            <Minus className="h-3 w-3" />
+          </Button>
+          <Input
+            type="number"
+            min="1"
+            max={maxRefundQuantity}
+            value={refundQuantity}
+            onChange={(e) => {
+              const value = parseInt(e.target.value) || 1;
+              setRefundQuantity(Math.max(1, Math.min(maxRefundQuantity, value)));
+            }}
+            className="w-20 text-center"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRefundQuantity(prev => Math.min(maxRefundQuantity, prev + 1))}
+            disabled={refundQuantity >= maxRefundQuantity}
+          >
+            <Plus className="h-3 w-3" />
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            / {maxRefundQuantity} шт.
+          </span>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-sm">
+          {t.refundReason}
+        </Label>
+        <Textarea
+          value={refundReason}
+          onChange={(e) => setRefundReason(e.target.value)}
+          placeholder={t.cookingError}
+        />
+      </div>
+    </div>
+    
+    <AlertDialogFooter className="gap-2 sm:gap-0">
+      {refundQuantity < maxRefundQuantity && (
+        <Button
+          variant="outline"
+          onClick={() => {
+            setRefundQuantity(maxRefundQuantity);
+          }}
+        >
+          {language === 'ru' ? 'Вернуть все' : 'ყველას დაბრუნება'}
+        </Button>
+      )}
+      <AlertDialogCancel>
+        {t.cancel}
+      </AlertDialogCancel>
+      <AlertDialogAction 
+        onClick={refundQuantity === maxRefundQuantity ? handleRefundItem : handlePartialRefund}
+        disabled={!refundReason.trim() || isUpdating}
+      >
+        {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        {refundQuantity === maxRefundQuantity 
+          ? t.confirmRefund 
+          : language === 'ru' 
+            ? `Вернуть ${refundQuantity} шт.`
+            : `დაბრუნება ${refundQuantity} ცალი`}
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
 
         <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
           <AlertDialogContent>
