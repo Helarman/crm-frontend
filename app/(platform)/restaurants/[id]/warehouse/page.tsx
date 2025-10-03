@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TransactionsTable } from '@/components/features/warehouse/TransactionsTable';
-import { Refrigerator, Package, ArrowLeftRight, CalendarDays, ChefHat, List, Plus, Edit, Folder, FolderOpen, Tag, ChevronDown, ChevronRight, Boxes, Warehouse, BarChart3 } from 'lucide-react';
+import { Refrigerator, Package, ArrowLeftRight, CalendarDays, ChefHat, List, Plus, Edit, Folder, FolderOpen, Tag, ChevronDown, ChevronRight, Boxes, Warehouse, BarChart3, AlertTriangle, Info, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DateRange } from 'react-day-picker';
 import { format, subDays } from 'date-fns';
@@ -161,15 +161,10 @@ export default function WarehousePage() {
     averageCost: number;
   } | null>(null);
 
-  const loadInventoryValue = async () => {
-    if (!warehouse?.id) return;
-    try {
-      const value = await WarehouseService.getInventoryValue(warehouse.id);
-      setInventoryValue(value);
-    } catch (error) {
-      console.error('Failed to load inventory value:', error);
-    }
-  };
+  const [deleteItemDialogOpen, setDeleteItemDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<any>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const handleUpdateCost = async () => {
     if (!editingCostItem || newCost < 0) return;
@@ -263,7 +258,7 @@ export default function WarehousePage() {
   };
 
   const filterItems = () => {
-    let filtered = items.filter(item => !item.premixId);
+     let filtered = items.filter(item => !item.premixId && item.inventoryItem?.isActive !== false);
 
     if (locationFilter !== 'all') {
       filtered = filtered.filter(item => item.storageLocationId === locationFilter);
@@ -642,11 +637,6 @@ const getCategoryItems = (categoryId: string | null) => {
   };
   const unitCostRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (warehouse?.id) {
-      loadInventoryValue();
-    }
-  }, [warehouse]);
 
   const validatePremix = () => {
     let isValid = true;
@@ -731,6 +721,35 @@ const getCategoryItems = (categoryId: string | null) => {
     newIngredients.splice(index, 1);
     setPremixIngredients(newIngredients);
   };
+
+  const handleOpenDeleteDialog = (item: any) => {
+  setItemToDelete(item);
+  setDeleteDialogOpen(true);
+};
+
+const handleDeleteItem = async () => {
+  if (!itemToDelete) return;
+
+  setDeleting(true);
+  try {
+    await WarehouseService.deleteInventoryItem(
+      itemToDelete.inventoryItem?.id || itemToDelete.id
+    );
+    
+    await loadWarehouseData();
+    setDeleteDialogOpen(false);
+    toast.success(t('itemDeleted'));
+  } catch (error: any) {
+    console.error('Failed to delete item:', error);
+    let errorMessage = t('deleteItemError');
+    if (error.response?.data?.message) {
+      errorMessage = error.response.data.message;
+    }
+    toast.error(errorMessage);
+  } finally {
+    setDeleting(false);
+  }
+};
 
   const handlePreparePremix = async () => {
     if (!selectedPremix || prepareQuantity <= 0) {
@@ -1013,6 +1032,14 @@ const getCategoryItems = (categoryId: string | null) => {
                           >
                             {t('transactions')}
                           </Button>
+                           <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenDeleteDialog(item)}
+                              className="text-red-600 hover:text-red-800 hover:bg-red-50"
+                            >
+                              {t('delete')}
+                              </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1393,6 +1420,14 @@ const getCategoryItems = (categoryId: string | null) => {
                                     >
                                       {t('transactions')}
                                     </Button>
+                                      <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenDeleteDialog(item)}
+                              className="text-red-600 hover:text-red-800 hover:bg-red-50"
+                            >
+                              {t('delete')}
+                              </Button>
                                   </div>
                                 </TableCell>
                               </TableRow>
@@ -2405,6 +2440,123 @@ const getCategoryItems = (categoryId: string | null) => {
             </div>
             <Button onClick={handleUpdateCost}>{t('updateCost')}</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              {t('deleteItem')}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Информация об удаляемом элементе */}
+            <div className="p-3 bg-gray-50 rounded-md">
+              <div className="flex items-center gap-3">
+                <div 
+                  className="w-3 h-3 rounded-full"
+                  style={{ 
+                    backgroundColor: itemToDelete?.inventoryItem?.categoryId 
+                      ? getCategoryColor(itemToDelete.inventoryItem.categoryId)
+                      : '#6b7280'
+                  }}
+                />
+                <div>
+                  <h4 className="font-semibold">
+                    {itemToDelete?.inventoryItem?.name || itemToDelete?.name}
+                  </h4>
+                  <p className="text-sm text-gray-600">
+                    {t('quantity')}: {itemToDelete?.quantity} {itemToDelete?.inventoryItem?.unit || itemToDelete?.unit}
+                    {itemToDelete?.cost && ` • ${t('cost')}: ${itemToDelete.cost}₽`}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Предупреждение об использовании в блюдах */}
+            {itemToDelete?.inventoryItem?.ingredients && itemToDelete.inventoryItem.ingredients.length > 0 && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-md">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  <h4 className="font-medium text-amber-800">
+                    {t('itemUsedInProducts')}
+                  </h4>
+                </div>
+                
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {itemToDelete.inventoryItem.ingredients.map((ingredient: any, index: number) => (
+                    <div key={index} className="flex items-center justify-between p-2 bg-white rounded border">
+                      <div className="flex items-center gap-2">
+                        {ingredient.product?.images?.[0] && (
+                          <img 
+                            src={ingredient.product.images[0]} 
+                            alt={ingredient.product.title}
+                            className="w-6 h-6 object-cover rounded"
+                          />
+                        )}
+                        <span className="text-sm font-medium">{ingredient.product?.title}</span>
+                      </div>
+                      <Badge variant="outline" className="text-xs">
+                        {ingredient.quantity} {itemToDelete?.inventoryItem?.unit}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+                
+                <p className="text-xs text-amber-700 mt-2">
+                  {t('deleteWarningUsedItem')}
+                </p>
+              </div>
+            )}
+
+            {/* Предупреждение если есть остатки на складе */}
+            {itemToDelete?.quantity > 0 && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                <div className="flex items-center gap-2">
+                  <Info className="h-4 w-4 text-blue-600" />
+                  <p className="text-sm text-blue-700">
+                    {t('deleteWarningWithStock')}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Финальное подтверждение */}
+            <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+              <p className="text-sm text-red-700 font-medium">
+                {t('deleteFinalConfirmation')}
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleting}
+            >
+              {t('cancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteItem}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  {t('deleting')}
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  {t('confirmDelete')}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

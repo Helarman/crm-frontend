@@ -24,6 +24,7 @@ export interface Product {
   descriptionGe?: string
   ingredients: any
   images?: string[]
+  image?: string
   restaurantPrices: {
     restaurantId: string
     price: number
