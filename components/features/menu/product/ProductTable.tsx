@@ -166,6 +166,7 @@ interface CategoryNode {
 const buildCategoryTree = (categories: Category[], products: Product[], language: Language): CategoryNode[] => {
   const categoryMap = new Map<string, CategoryNode>();
   
+  // Создаем узел для продуктов без категории
   const uncategorizedNode: CategoryNode = {
     id: 'uncategorized',
     title: translations.uncategorized[language],
@@ -175,51 +176,62 @@ const buildCategoryTree = (categories: Category[], products: Product[], language
   };
   categoryMap.set('uncategorized', uncategorizedNode);
 
+  // Сначала создаем все узлы категорий
   categories.forEach(category => {
-    if (!categoryMap.has(category.id)) {
-      categoryMap.set(category.id, {
-        id: category.id,
-        title: category.title,
-        children: [],
-        products: [],
-        parentId: category.parentId || null
-      });
-    }
+    categoryMap.set(category.id, {
+      id: category.id,
+      title: category.title,
+      children: [],
+      products: [],
+      parentId: category.parentId || null
+    });
   });
 
+  // Затем строим иерархию
   const rootNodes: CategoryNode[] = [];
   categoryMap.forEach(category => {
-    if (category.parentId) {
+    if (category.parentId && category.id !== 'uncategorized') {
       const parent = categoryMap.get(category.parentId);
       if (parent) {
         parent.children.push(category);
+      } else {
+        // Если родитель не найден, добавляем в корень
+        rootNodes.push(category);
       }
     } else if (category.id !== 'uncategorized') {
       rootNodes.push(category);
     }
   });
 
+  // Распределяем продукты по категориям
   products.forEach(product => {
-    const categoryId = product.category?.id || 'uncategorized';
-    const category = categoryMap.get(categoryId);
-    if (category) {
-      category.products.push(product);
+    if (product.category?.id) {
+      const category = categoryMap.get(product.category.id);
+      if (category) {
+        category.products.push(product);
+      } else {
+        // Если категория продукта не найдена в списке категорий, добавляем в безкатегорийные
+        uncategorizedNode.products.push(product);
+      }
     } else {
       uncategorizedNode.products.push(product);
     }
   });
 
+  // Сортируем продукты по порядку внутри каждой категории
+  categoryMap.forEach(category => {
+    category.products.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+  });
+
+  // Добавляем узел без категорий только если там есть продукты
   if (uncategorizedNode.products.length > 0) {
     rootNodes.push(uncategorizedNode);
   }
 
-  // Сортируем продукты по порядку внутри каждой категории
-  categoryMap.forEach(category => {
-    category.products.sort((a, b) => (b.sortOrder || 0) - (a.sortOrder || 0));
-  });
-
-  return rootNodes;
+  // Сортируем корневые узлы
+  return rootNodes.sort((a, b) => a.title.localeCompare(b.title));
 };
+
 
 const ProductRow = ({ 
   product, 
@@ -563,14 +575,27 @@ export const ProductTable = ({
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-
+  console.log(products)
   const allCategories: Category[] = [];
   const categoryMap = new Map<string, Category>();
   
+ const collectAllCategories = (category: Category | null) => {
+    if (!category) return;
+    
+    if (!categoryMap.has(category.id)) {
+      categoryMap.set(category.id, category);
+      allCategories.push(category);
+      
+      // Рекурсивно добавляем родительские категории, если они есть
+      if (category.parent) {
+        collectAllCategories(category.parent);
+      }
+    }
+  };
+
   products.forEach(product => {
-    if (product.category && !categoryMap.has(product.category.id)) {
-      categoryMap.set(product.category.id, product.category);
-      allCategories.push(product.category);
+    if (product.category) {
+      collectAllCategories(product.category);
     }
   });
 

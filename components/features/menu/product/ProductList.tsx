@@ -133,7 +133,6 @@ export const ProductList = () => {
           {language === 'ru' ? 'Добавить продукт' : 'პროდუქტის დამატება'}
         </Button>
       </div>
-
       <ProductFilters
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
