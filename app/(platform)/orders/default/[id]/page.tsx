@@ -2306,7 +2306,7 @@ const renderCategoryCards = () => {
                  <ArrowLeft className="h-4 w-4" />
                  {t.back}
                </Button>
-               <Button onClick={() => router.push(`/orders/default/${order.id}`)}>
+               <Button onClick={() => router.push(`/orders/${order.id}`)}>
                  <Mic className="h-4 w-4 mr-2" />
                   Голосовой ассистент
                </Button>
