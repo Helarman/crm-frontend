@@ -57,11 +57,7 @@ import {
   Gift,
   Sparkles,
   LayoutGrid,
-  LayoutTemplate,
-  Mic,
-  MicOff,
-  Volume2,
-  Bot
+  LayoutTemplate
 } from 'lucide-react'
 import { Category, OrderItem, OrderState } from '@/lib/types/order'
 import { Product } from '@/lib/types/product'
@@ -93,14 +89,6 @@ interface CategoryNavigation {
   currentCategory: Category | null
   parentCategory: Category | null
   breadcrumbs: Category[]
-}
-
-// Типы для голосового ассистента
-interface VoiceMessage {
-  id: string;
-  text: string;
-  isUser: boolean;
-  timestamp: Date;
 }
 
 export default function WaiterOrderPage() {
@@ -288,19 +276,6 @@ export default function WaiterOrderPage() {
         ACTIVE: "Активна",
         INACTIVE: "Неактивна",
         EXPIRED: "Истекла"
-      },
-      voiceAssistant: {
-        title: "Голосовой ассистент",
-        listening: "Слушаю...",
-        ready: "Нажмите для активации",
-        activated: "Голосовой ассистент активирован. Скажите название категории или продукта.",
-        categoryOpened: "Открываю категорию \"{category}\"",
-        productAdded: "Добавлен продукт \"{product}\"",
-        notFound: "Не удалось найти категорию или продукт. Попробуйте еще раз.",
-        recognitionError: "Ошибка распознавания. Попробуйте еще раз.",
-        trySay: "Попробуйте сказать:",
-        start: "Старт",
-        stop: "Стоп"
       }
     },
     ka: {
@@ -481,19 +456,6 @@ export default function WaiterOrderPage() {
         ACTIVE: "აქტიური",
         INACTIVE: "არააქტიური",
         EXPIRED: "ვადაგასული"
-      },
-      voiceAssistant: {
-        title: "ხმოვანი ასისტენტი",
-        listening: "მოვუსმინოთ...",
-        ready: "დააჭირეთ აქტივაციისთვის",
-        activated: "ხმოვანი ასისტენტი გააქტიურდა. თქვით კატეგორიის ან პროდუქტის სახელი.",
-        categoryOpened: "გავხსნი კატეგორია \"{category}\"",
-        productAdded: "დაემატა პროდუქტი \"{product}\"",
-        notFound: "ვერ მოიძებნა კატეგორია ან პროდუქტი. სცადეთ თავიდან.",
-        recognitionError: "ამოცნობის შეცდომა. სცადეთ თავიდან.",
-        trySay: "სცადეთ თქვათ:",
-        start: "დაწყება",
-        stop: "გაჩერება"
       }
     }
   } as const;
@@ -550,11 +512,6 @@ export default function WaiterOrderPage() {
   const [maxRefundQuantity, setMaxRefundQuantity] = useState(0);
   const [viewMode, setViewMode] = useState<'standard' | 'compact'>('standard');
 
-  // Состояние для голосового ассистента
-  const [isListening, setIsListening] = useState(false);
-  const [voiceMessages, setVoiceMessages] = useState<VoiceMessage[]>([]);
-  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
-
   // Состояние для навигации по категориям
   const [categoryNavigation, setCategoryNavigation] = useState<CategoryNavigation>({
     currentCategory: null,
@@ -563,260 +520,6 @@ export default function WaiterOrderPage() {
   });
 
   const isOrderEditable = order && !['DELIVERING', 'COMPLETED', 'CANCELLED'].includes(order.status);
-
-  // Функции для работы с голосовым ассистентом
-  const startListening = () => {
-    setIsListening(true);
-    addVoiceMessage(t.voiceAssistant.activated, false);
-  };
-
-  const stopListening = () => {
-    setIsListening(false);
-  };
-
-  const addVoiceMessage = (text: string, isUser: boolean = false) => {
-    const newMessage: VoiceMessage = {
-      id: Date.now().toString(),
-      text,
-      isUser,
-      timestamp: new Date()
-    };
-    
-    setVoiceMessages(prev => [...prev, newMessage]);
-  };
-
-  // Функция обработки голосовых команд
-  const processVoiceCommand = (command: string) => {
-    const lowerCommand = command.toLowerCase().trim();
-    addVoiceMessage(command, true);
-    setIsProcessingVoice(true);
-
-    // Поиск категории
-    const foundCategory = categories.find(cat => 
-      cat.title.toLowerCase().includes(lowerCommand)
-    );
-
-    if (foundCategory) {
-      setTimeout(() => {
-        handleCategoryClick(foundCategory);
-        addVoiceMessage(
-          t.voiceAssistant.categoryOpened.replace('{category}', foundCategory.title), 
-          false
-        );
-        setIsProcessingVoice(false);
-      }, 1000);
-      return;
-    }
-
-    // Поиск продукта
-    const foundProduct = products.find(product => 
-      product.title.toLowerCase().includes(lowerCommand)
-    );
-
-    if (foundProduct) {
-      setTimeout(() => {
-        const additives = productAdditives[foundProduct.id] || [];
-        const comment = productComments[foundProduct.id] || '';
-        const currentQuantity = getDisplayQuantity(foundProduct, additives, comment);
-        
-        handleQuantityChange(foundProduct, currentQuantity + 1, additives, comment);
-        addVoiceMessage(
-          t.voiceAssistant.productAdded.replace('{product}', foundProduct.title), 
-          false
-        );
-        setIsProcessingVoice(false);
-      }, 1000);
-      return;
-    }
-
-    // Если ничего не найдено
-    setTimeout(() => {
-      addVoiceMessage(t.voiceAssistant.notFound, false);
-      setIsProcessingVoice(false);
-    }, 1000);
-  };
-
-  // Имитация голосового ввода (для демонстрации)
-  const simulateVoiceInput = (command: string) => {
-    if (!isListening) return;
-    processVoiceCommand(command);
-  };
-
-  // Компонент голосового ассистента
-  const VoiceAssistant = () => {
-    return (
-      <Card className="p-0 mb-6">
-        <div className="p-4 border-b">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-full ${isListening ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}>
-                <Volume2 className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="font-semibold">{t.voiceAssistant.title}</h3>
-                <p className="text-sm text-muted-foreground">
-                  {isListening ? t.voiceAssistant.listening : t.voiceAssistant.ready}
-                </p>
-              </div>
-            </div>
-            
-            <Button
-              variant={isListening ? "destructive" : "default"}
-              onClick={isListening ? stopListening : startListening}
-              disabled={isProcessingVoice}
-              className="gap-2"
-            >
-              {isListening ? (
-                <>
-                  <MicOff className="h-4 w-4" />
-                  {t.voiceAssistant.stop}
-                </>
-              ) : (
-                <>
-                  <Mic className="h-4 w-4" />
-                  {t.voiceAssistant.start}
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-
-        {/* История сообщений */}
-        <div className="max-h-64 overflow-y-auto p-4 space-y-4">
-          {voiceMessages.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Bot className="h-12 w-12 mx-auto mb-2 opacity-50" />
-              <p>{language === 'ru' ? 'Начните разговор с ассистентом' : 'დაიწყეთ საუბარი ასისტენტთან'}</p>
-            </div>
-          ) : (
-            voiceMessages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex gap-3 ${message.isUser ? 'flex-row-reverse' : 'flex-row'}`}
-              >
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    message.isUser
-                      ? 'bg-blue-100 text-blue-600'
-                      : 'bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {message.isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-                </div>
-                
-                <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2 ${
-                    message.isUser
-                      ? 'bg-blue-500 text-white rounded-br-none'
-                      : 'bg-gray-100 text-gray-900 rounded-bl-none'
-                  }`}
-                >
-                  <p className="text-sm">{message.text}</p>
-                  <p className={`text-xs mt-1 ${
-                    message.isUser ? 'text-blue-100' : 'text-gray-500'
-                  }`}>
-                    {message.timestamp.toLocaleTimeString([], { 
-                      hour: '2-digit', 
-                      minute: '2-digit' 
-                    })}
-                  </p>
-                </div>
-              </div>
-            ))
-          )}
-          
-          {isProcessingVoice && (
-            <div className="flex gap-3">
-              <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center">
-                <Bot className="h-4 w-4" />
-              </div>
-              <div className="bg-gray-100 text-gray-900 rounded-2xl rounded-bl-none px-4 py-2">
-                <div className="flex gap-1">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Быстрые команды для демонстрации */}
-        {!isListening && voiceMessages.length === 0 && (
-          <div className="p-4 border-t">
-            <p className="text-sm text-muted-foreground mb-3">{t.voiceAssistant.trySay}</p>
-            <div className="flex flex-wrap gap-2">
-              {categories.slice(0, 3).map(category => (
-                <Button
-                  key={category.id}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => simulateVoiceInput(category.title)}
-                  className="text-xs"
-                >
-                  {category.title}
-                </Button>
-              ))}
-              {products.slice(0, 2).map(product => (
-                <Button
-                  key={product.id}
-                  variant="outline"
-                  size="sm"
-                  onClick={() => simulateVoiceInput(product.title)}
-                  className="text-xs"
-                >
-                  {product.title}
-                </Button>
-              ))}
-            </div>
-          </div>
-        )}
-      </Card>
-    );
-  };
-
-  // Интеграция с Web Speech API
-  useEffect(() => {
-    if (!isListening) return;
-
-    // Проверяем поддержку браузера
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      addVoiceMessage(t.voiceAssistant.recognitionError, false);
-      return;
-    }
-
-    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
-    const recognition = new SpeechRecognition();
-    
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = language === 'ru' ? 'ru-RU' : 'ka-GE';
-
-    recognition.onstart = () => {
-      addVoiceMessage(t.voiceAssistant.listening, false);
-    };
-
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      processVoiceCommand(transcript);
-    };
-
-    recognition.onerror = (event: any) => {
-      console.error('Speech recognition error', event.error);
-      addVoiceMessage(t.voiceAssistant.recognitionError, false);
-      setIsListening(false);
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
-    recognition.start();
-
-    return () => {
-      recognition.stop();
-    };
-  }, [isListening, language]);
 
   // Функции для работы с категориями
   const handleCategoryClick = (category: Category) => {
@@ -2572,7 +2275,6 @@ const renderCategoryCards = () => {
           <ArrowLeft className="h-4 w-4 mr-2" />
           {t.back}
         </Button>
-        
       </div>
     );
   }
@@ -2593,66 +2295,56 @@ const renderCategoryCards = () => {
   return (
     <AccessCheck allowedRoles={['WAITER', 'MANAGER', 'SUPERVISOR']}>
       <div className="space-y-6">
-        <div className="flex items-center justify-between mb-6">
-          <div className='flex space-x-2'>
-          <Button 
-            variant="outline" 
-            onClick={() => handleRouteChange('/orders')}
-            className="flex items-center gap-2"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            {t.back}
-          </Button>
-          <Button onClick={() => router.push(`/orders/default/${order.id}`)}>
-            <MicOff className="h-4 w-4 mr-2" />
-            Стандартный режим
-          </Button>
-        </div>
-          
-          <div className="flex items-center gap-3">
-            
-            <div className="relative flex bg-muted/50 rounded-xl p-1 border">
-              <div
-                className={`absolute top-1 bottom-1 w-1/2 bg-background rounded-lg shadow-sm transition-transform duration-200 ${
-                  viewMode === 'standard' ? 'translate-x-0' : 'translate-x-full'
-                }`}
-              />
-              
-              <button
-                onClick={() => setViewMode('standard')}
-                className={`relative z-10 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  viewMode === 'standard'
-                    ? 'text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <LayoutTemplate className="h-4 w-4" />
-                <span className="hidden sm:inline">
-                  {language === 'ru' ? 'Стандарт' : 'სტანდარტი'}
-                </span>
-              </button>
-              
-              <button
-                onClick={() => setViewMode('compact')}
-                className={`relative z-10 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  viewMode === 'compact'
-                    ? 'text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <LayoutGrid className="h-4 w-4" />
-                <span className="hidden sm:inline">
-                  {language === 'ru' ? 'Компакт' : 'კომპაქტური'}
-                </span>
-              </button>
-            </div>
-          </div>
-        </div>
-        
+     <div className="flex items-center justify-between mb-6">
+  <Button 
+    variant="outline" 
+    onClick={() => handleRouteChange('/orders')}
+    className="flex items-center gap-2"
+  >
+    <ArrowLeft className="h-4 w-4" />
+    {t.back}
+  </Button>
+  
+  <div className="flex items-center gap-3">
+    
+    <div className="relative flex bg-muted/50 rounded-xl p-1 border">
+      <div
+        className={`absolute top-1 bottom-1 w-1/2 bg-background rounded-lg shadow-sm transition-transform duration-200 ${
+          viewMode === 'standard' ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      />
+      
+      <button
+        onClick={() => setViewMode('standard')}
+        className={`relative z-10 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+          viewMode === 'standard'
+            ? 'text-foreground'
+            : 'text-muted-foreground hover:text-foreground'
+        }`}
+      >
+        <LayoutTemplate className="h-4 w-4" />
+        <span className="hidden sm:inline">
+          {language === 'ru' ? 'Стандарт' : 'სტანდარტი'}
+        </span>
+      </button>
+      
+      <button
+        onClick={() => setViewMode('compact')}
+        className={`relative z-10 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+          viewMode === 'compact'
+            ? 'text-foreground'
+            : 'text-muted-foreground hover:text-foreground'
+        }`}
+      >
+        <LayoutGrid className="h-4 w-4" />
+        <span className="hidden sm:inline">
+          {language === 'ru' ? 'Компакт' : 'კომპაქტური'}
+        </span>
+      </button>
+    </div>
+  </div>
+</div>
         <OrderHeader order={order} />
-        
-        {/* Голосовой ассистент */}
-        <VoiceAssistant />
         
         <Card className="p-0">
           <Collapsible open={showMenu} onOpenChange={setShowMenu}>
@@ -2685,6 +2377,7 @@ const renderCategoryCards = () => {
           </Collapsible>
         </Card>
 
+        {/* Остальная часть компонента остается без изменений */}
         <Card className="p-0">
           <Collapsible defaultOpen>
             <CollapsibleTrigger asChild>
