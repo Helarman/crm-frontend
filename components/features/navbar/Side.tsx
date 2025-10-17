@@ -61,7 +61,7 @@ function Logo({ collapsed, toggleCollapse }: { collapsed: boolean, toggleCollaps
   const roleColor = ROLE_COLORS[user?.role as keyof typeof ROLE_COLORS] || 'text-gray-500 dark:text-gray-400'
 
   return (
-    <div className="h-16 border-b flex items-center justify-center  bg-white dark:bg-gray-900 relative">  
+    <div className="h-16 border-b flex items-center justify-center bg-white dark:bg-gray-900 relative">  
       <button 
         onClick={toggleCollapse}
         className={`absolute right-4 w-7 h-7 flex items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${
@@ -83,6 +83,140 @@ function Logo({ collapsed, toggleCollapse }: { collapsed: boolean, toggleCollaps
           </h1>
         ) : null }
       </div>
+    </div>
+  )
+}
+
+function DesktopSidebar({ 
+  collapsed, 
+  toggleCollapse, 
+  activeItems, 
+  pathname 
+}: { 
+  collapsed: boolean
+  toggleCollapse: () => void
+  activeItems: any[]
+  pathname: string
+}) {
+  const { theme, setTheme } = useTheme();
+  const { language, setLanguage } = useLanguageStore();
+  const t = sideTranslations[language];
+  const router = useRouter();
+  const { setUser, user, mutate } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+      Cookies.remove('accessToken');
+      setUser(null);
+      mutate(null);
+      router.push('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      router.push('/login');
+    }
+  };
+
+  return (
+    <div className={`bg-white dark:bg-gray-900 border-r flex flex-col h-screen sticky top-0 transition-all duration-300 ${collapsed ? 'w-24' : 'w-80'}`}>
+      <Logo collapsed={collapsed} toggleCollapse={toggleCollapse} />
+    
+      <nav className="flex-1 px-2 py-6 overflow-y-auto text-xl">
+        <ul className="space-y-1">
+          {activeItems.map((item) => {
+            const isActive = pathname === item.href
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg transition-colors mx-1  ${
+                    isActive
+                      ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-primary-foreground font-medium'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
+                  }`}
+                  title={collapsed ? item.name : undefined}
+                >
+                  <span className={isActive ? 'text-primary dark:text-primary-foreground' : 'text-gray-500 dark:text-gray-400'}>
+                    {item.icon}
+                  </span>
+                  {!collapsed && (
+                    <span className="whitespace-nowrap">
+                      {item.name}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      </nav>
+    
+      {/*<div className="p-2 border-t dark:border-gray-700 space-y-2">
+        <button
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg transition-colors mx-1 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300`}
+          title={collapsed ? t.theme : undefined}
+        >
+          {theme === 'dark' ? <Sun className="w-7 h-7" /> : <Moon className="w-7 h-7" />}
+          {!collapsed && <span>{t.theme}</span>}
+        </button>
+
+        <button
+          onClick={() => setLanguage(language === 'ru' ? 'ka' : 'ru')}
+          className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg transition-colors mx-1 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300`}
+          title={collapsed ? t.language : undefined}
+        >
+          <Languages className="w-7 h-7" />
+          {!collapsed && <span>{t.language}: {language === 'ru' ? 'Рус' : 'ქარ'}</span>}
+        </button>
+        
+        <button 
+            onClick={handleLogout}
+            className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 w-full px-3 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-red-500 dark:hover:text-red-400 transition-colors mx-1`}
+            title={collapsed ? t.logout : undefined}
+        >
+          <LogOut className="w-7 h-7" />
+          {!collapsed && (
+            <span className="whitespace-nowrap">
+              {t.logout}
+            </span>
+          )}
+        </button>
+          
+        {!collapsed && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-4 px-3">{t.version} 0.1.0</p>
+        )}
+      </div>*/}
+    </div>
+  )
+}
+
+function MobileBottomBar({ activeItems, pathname }: { activeItems: any[], pathname: string }) {
+  return (
+    <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 z-50 md:hidden">
+      <nav className="px-2 py-2">
+        <div className="flex space-x-1 overflow-x-auto scrollbar-hide">
+          {activeItems.map((item) => {
+            const isActive = pathname === item.href
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex flex-col items-center justify-center min-w-16 px-3 py-2 rounded-lg transition-colors flex-shrink-0 ${
+                  isActive
+                    ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-primary-foreground'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                }`}
+              >
+                <span className={`${isActive ? 'text-primary dark:text-primary-foreground' : 'text-gray-500 dark:text-gray-400'}`}>
+                  {item.icon}
+                </span>
+                <span className="text-xs mt-1 whitespace-nowrap">{item.name}</span>
+              </Link>
+            )
+          })}
+        </div>
+      </nav>
     </div>
   )
 }
@@ -112,8 +246,9 @@ export default function Side() {
 
     useEffect(() => {
       const handleResize = () => {
-        setIsMobile(window.innerWidth < 768)
-        if (window.innerWidth < 768) {
+        const mobile = window.innerWidth < 1200
+        setIsMobile(mobile)
+        if (mobile) {
           setCollapsed(true)
         }
       }
@@ -127,97 +262,97 @@ export default function Side() {
       { 
         name: t.home, 
         href: "/", 
-        icon: <LayoutDashboard className="w-7 h-7" />,
+        icon: <LayoutDashboard className="w-5 h-5" />,
         roles: ['NONE', 'STOREMAN', 'COURIER', 'COOK', 'CHEF', 'WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.orders, 
         href: "/orders", 
-        icon: <ClipboardList className="w-7 h-7" />,
+        icon: <ClipboardList className="w-5 h-5" />,
         roles: ['WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.kitchen, 
         href: "/kitchen", 
-        icon: <Utensils className="w-7 h-7" />,
+        icon: <Utensils className="w-5 h-5" />,
         roles: ['COOK', 'CHEF', 'MANAGER', 'SUPERVISOR']
       },
        { 
         name: t.delivery, 
         href: "/delivery", 
-        icon: <Truck className="w-7 h-7" />,
+        icon: <Truck className="w-5 h-5" />,
         roles: ['COURIER', 'MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.restaurants, 
         href: "/restaurants", 
-        icon: <Store className="w-7 h-7" />,
+        icon: <Store className="w-5 h-5" />,
         roles: ['MANAGER', 'SUPERVISOR']
       },
          { 
         name: t.networks, 
         href: "/networks", 
-        icon: <Network className="w-7 h-7" />,
+        icon: <Network className="w-5 h-5" />,
         roles: ['MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.menu, 
         href: "/products", 
-        icon: <BookOpen className="w-7 h-7" />,
+        icon: <BookOpen className="w-5 h-5" />,
         roles: ['MANAGER', 'SUPERVISOR']
       },
        { 
         name: t.warehouse, 
         href: "/warehouse", 
-        icon: <Package className="w-7 h-7" />,
+        icon: <Package className="w-5 h-5" />,
         roles: ['MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.dliveryZone, 
         href: "/delivery-zones", 
-        icon: <Hexagon className="w-7 h-7" />,
+        icon: <Hexagon className="w-5 h-5" />,
         roles: ['MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.staff, 
         href: "/staff", 
-        icon: <Users className="w-7 h-7" />,
+        icon: <Users className="w-5 h-5" />,
         roles: ['MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.shifts, 
         href: "/shifts", 
-        icon: <CalendarClock className="w-7 h-7" />,
+        icon: <CalendarClock className="w-5 h-5" />,
         roles: [/*'STOREMAN', 'COURIER', 'COOK', 'CHEF', 'WAITER', 'CASHIER', */'MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.discounts, 
         href: "/discounts", 
-        icon: <Tag className="w-7 h-7" />,
+        icon: <Tag className="w-5 h-5" />,
         roles: ['MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.bonuses, 
         href: "/surcharge", 
-        icon: <TrendingUp className="w-7 h-7" />,
+        icon: <TrendingUp className="w-5 h-5" />,
         roles: ['MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.customers, 
         href: "/customers", 
-        icon: <PersonStanding className="w-7 h-7" />,
+        icon: <PersonStanding className="w-5 h-5" />,
         roles: ['SUPERVISOR']
       },
       { 
         name: t.dictionaries, 
         href: "/dictionaries", 
-        icon: <BookText className="w-7 h-7" />,
+        icon: <BookText className="w-5 h-5" />,
         roles: ['MANAGER', 'SUPERVISOR']
       },
       { 
         name: t.analytics, 
         href: "/analytics", 
-        icon: <LineChart className="w-7 h-7" />,
+        icon: <LineChart className="w-5 h-5" />,
         roles: []
       },
     ]
@@ -238,98 +373,16 @@ export default function Side() {
       setCollapsed(!collapsed)
     }
 
+    if (isMobile) {
+      return <MobileBottomBar activeItems={activeItems} pathname={pathname} />
+    }
+
     return (
-      <div className={`bg-white dark:bg-gray-900 border-r flex flex-col h-screen sticky top-0 transition-all duration-300 ${collapsed ? 'w-24' : 'w-80'}`}>
-        <Logo collapsed={collapsed} toggleCollapse={toggleCollapse} />
-      
-        <nav className="flex-1 px-2 py-6 overflow-y-auto text-xl">
-          <ul className="space-y-1">
-          {activeItems.map((item) => {
-              const isActive = pathname === item.href
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg transition-colors mx-1  ${
-                      isActive
-                        ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-primary-foreground font-medium'
-                        : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
-                    }`}
-                    title={collapsed ? item.name : undefined}
-                  >
-                    <span className={isActive ? 'text-primary dark:text-primary-foreground' : 'text-gray-500 dark:text-gray-400'}>
-                      {item.icon}
-                    </span>
-                    {!collapsed && (
-                      <span className="whitespace-nowrap">
-                        {item.name}
-                      </span>
-                    )}
-                  </Link>
-                </li>
-              )
-            })}
-
-            {/*inactiveItems.length > 0 && (
-              <li className="border-t border-gray-200 dark:border-gray-700 my-2"></li>
-            )}
-
-            {inactiveItems.map((item) => (
-              <li key={item.href}>
-                <div 
-                  className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg mx-1 opacity-50 cursor-not-allowed`}
-                  title={collapsed ? item.name : `${item.name} (${t.notAvailable})`}
-                >
-                  <span className="text-gray-400 dark:text-gray-500">
-                    {item.icon}
-                  </span>
-                  {!collapsed && (
-                    <span className="whitespace-nowrap">
-                      {item.name}
-                    </span>
-                  )}
-                </div>
-              </li>
-            ))*/}
-          </ul>
-        </nav>
-      
-        {/*<div className="p-2 border-t dark:border-gray-700 space-y-2">
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg transition-colors mx-1 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300`}
-            title={collapsed ? t.theme : undefined}
-          >
-            {theme === 'dark' ? <Sun className="w-7 h-7" /> : <Moon className="w-7 h-7" />}
-            {!collapsed && <span>{t.theme}</span>}
-          </button>
-
-          <button
-            onClick={() => setLanguage(language === 'ru' ? 'ka' : 'ru')}
-            className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg transition-colors mx-1 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300`}
-            title={collapsed ? t.language : undefined}
-          >
-            <Languages className="w-7 h-7" />
-            {!collapsed && <span>{t.language}: {language === 'ru' ? 'Рус' : 'ქარ'}</span>}
-          </button>
-          
-          <button 
-              onClick={handleLogout}
-              className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 w-full px-3 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-red-500 dark:hover:text-red-400 transition-colors mx-1`}
-              title={collapsed ? t.logout : undefined}
-          >
-            <LogOut className="w-7 h-7" />
-            {!collapsed && (
-              <span className="whitespace-nowrap">
-                {t.logout}
-              </span>
-            )}
-          </button>
-            
-          {!collapsed && (
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-4 px-3">{t.version} 0.1.0</p>
-          )}
-        </div>*/}
-      </div>
+      <DesktopSidebar 
+        collapsed={collapsed}
+        toggleCollapse={toggleCollapse}
+        activeItems={activeItems}
+        pathname={pathname}
+      />
     )
 }

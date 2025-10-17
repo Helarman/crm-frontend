@@ -27,7 +27,7 @@ export default function RootLayout({
               <div className="w-full bg-white dark:bg-gray-900">
                 {children}
               </div>
-              <VirtualKeyboard />
+              {/*<VirtualKeyboard />*/}
             </AuthInitializer>
 
           </ThemeProvider>
