@@ -1635,7 +1635,7 @@ export function VoiceAssistantSheet({
                         )}
                         <div className="flex items-center gap-4 mt-2">
                           <span className="font-bold text-green-600">
-                            {getProductPrice(product)} ₾
+                            {getProductPrice(product)} ₽
                           </span>
                           {product.tags && product.tags.map(tag => (
                             <Badge key={tag} variant="secondary" className="text-xs">
@@ -1720,7 +1720,7 @@ export function VoiceAssistantSheet({
                                 </Button>
                               </div>
                               <span className="font-bold text-green-600">
-                                {item.totalPrice} ₾
+                                {item.totalPrice}₽
                               </span>
                             </div>
                           </div>
@@ -1742,7 +1742,7 @@ export function VoiceAssistantSheet({
                     <div className="flex justify-between items-center">
                       <span className="font-semibold text-lg">{t.total}:</span>
                       <span className="font-bold text-2xl text-green-600">
-                        {order.totalAmount} ₾
+                        {order.totalAmount}₽
                       </span>
                     </div>
                   </Card>
