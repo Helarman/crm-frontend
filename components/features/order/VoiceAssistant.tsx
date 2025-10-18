@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
 import { 
   Mic, 
@@ -37,7 +38,12 @@ import {
   Minus,
   Clock,
   Star,
-  X
+  X,
+  ChefHat,
+  Wine,
+  Coffee,
+  Dessert,
+  Pizza
 } from 'lucide-react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { OrderService } from '@/lib/api/order.service'
@@ -80,6 +86,16 @@ interface Product {
     restaurantId: string
     price: number
   }>
+  tags?: string[]
+  isAvailable?: boolean
+}
+
+interface Category {
+  id: string
+  title: string
+  description?: string
+  icon?: string
+  order: number
 }
 
 interface ParsedOrderItem {
@@ -88,6 +104,7 @@ interface ParsedOrderItem {
   comment?: string
   additives?: string[]
   modifiers?: string[]
+  totalPrice: number
 }
 
 interface ParsedOrder {
@@ -97,6 +114,7 @@ interface ParsedOrder {
   tableNumber?: string
   confidence: number
   rawResponse?: any
+  totalAmount: number
 }
 
 interface AIConfig {
@@ -110,17 +128,23 @@ interface ConversationMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
   timestamp: Date
+  type?: 'order_update' | 'info' | 'error' | 'suggestion'
 }
 
 interface AIActionResponse {
-  action: 'ADD_ITEMS' | 'UPDATE_ORDER_TYPE' | 'UPDATE_DETAILS' | 'REMOVE_ITEMS' | 'SHOW_ORDER' | 'ANSWER_QUESTION' | 'CLEAR_ORDER'
+  action: 'ADD_ITEMS' | 'UPDATE_ORDER_TYPE' | 'UPDATE_DETAILS' | 'REMOVE_ITEMS' | 'SHOW_ORDER' | 'ANSWER_QUESTION' | 'CLEAR_ORDER' | 'MODIFY_QUANTITY' | 'SHOW_MENU'
   itemsToAdd?: Array<{
     productId: string
     productTitle: string
     quantity: number
     comment?: string
+    modifiers?: string[]
   }>
   itemsToRemove?: string[]
+  itemsToModify?: Array<{
+    productId: string
+    quantity: number
+  }>
   newOrderType?: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY'
   updatedDetails?: {
     numberOfPeople?: number
@@ -129,12 +153,31 @@ interface AIActionResponse {
   }
   response: string
   confidence: number
+  suggestions?: string[]
 }
 
 interface VoiceAssistantSheetProps {
   open?: boolean
   onOpenChange?: (open: boolean) => void
   orderId?: string
+}
+
+// Список бесплатных прокси эндпоинтов для OpenAI API
+const FREE_PROXY_ENDPOINTS = [
+  'https://chatgpt-api.shn.hk/v1/chat/completions',
+  'https://api.openai-proxy.com/v1/chat/completions',
+  'https://openai.api.2dost.com/v1/chat/completions',
+  'https://api.aimlapi.com/v1/chat/completions',
+]
+
+// Категории и их иконки
+const CATEGORY_ICONS: { [key: string]: any } = {
+  'main': Utensils,
+  'drinks': Wine,
+  'desserts': Dessert,
+  'coffee': Coffee,
+  'pizza': Pizza,
+  'default': ChefHat
 }
 
 export function VoiceAssistantSheet({ 
@@ -152,10 +195,11 @@ export function VoiceAssistantSheet({
   const [order, setOrder] = useState<ParsedOrder | null>(null)
   const [isCreatingOrder, setIsCreatingOrder] = useState(false)
   const [products, setProducts] = useState<Product[]>([])
-  const [categories, setCategories] = useState<any[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [manualInput, setManualInput] = useState('')
   const [conversation, setConversation] = useState<ConversationMessage[]>([])
   const [isSpeaking, setIsSpeaking] = useState(false)
+  const [activeTab, setActiveTab] = useState('assistant')
   
   const recognitionRef = useRef<SpeechRecognition | null>(null)
   const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null)
@@ -177,8 +221,8 @@ export function VoiceAssistantSheet({
 
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [audioFeedback, setAudioFeedback] = useState(true)
+  const [showSuggestions, setShowSuggestions] = useState(true)
 
-  // Добавляем состояние для отслеживания таймера отпускания
   const [isButtonPressed, setIsButtonPressed] = useState(false)
   const releaseTimerRef = useRef<NodeJS.Timeout | null>(null)
   const isAutoSendRef = useRef(false)
@@ -191,25 +235,25 @@ export function VoiceAssistantSheet({
 
   const translations = {
     ru: {
-      title: "Голосовой ассистент",
-      subtitle: "Нажмите и удерживайте кнопку для записи голоса",
+      title: "Ассистент",
+      subtitle: "Голосовое управление заказами",
       listening: "Слушаю...",
       startListening: "Нажмите и говорите",
       stopListening: "Отпустите чтобы отправить",
-      processing: "Обработка ИИ...",
+      processing: "Анализирую заказ...",
       sendToAI: "Отправить",
       createOrder: "Создать заказ",
       creatingOrder: "Создание заказа...",
       orderCreated: "Заказ успешно создан",
       manualInput: "Или введите заказ текстом:",
-      placeholder: "Например: 'Два борща, один шашлык из баранины'",
+      placeholder: "Например: 'Два борща, один шашлык из баранины, три компота'",
       speakNow: "Говорите сейчас...",
       recognizedText: "Распознанный текст:",
-      parsedOrder: "Распознанный заказ:",
-      noItems: "Нет товаров в заказе",
+      parsedOrder: "Текущий заказ:",
+      noItems: "Заказ пуст",
       items: "Позиции",
-      quantity: "Количество",
-      product: "Товар",
+      quantity: "Кол-во",
+      product: "Блюдо",
       price: "Цена",
       total: "Итого",
       additionalInfo: "Дополнительная информация",
@@ -224,7 +268,7 @@ export function VoiceAssistantSheet({
       errorNoProducts: "Не удалось загрузить меню",
       errorProcessing: "Ошибка при обработке запроса",
       errorCreatingOrder: "Ошибка при создании заказа",
-      clear: "Очистить",
+      clear: "Очистить заказ",
       goBack: "Назад к заказу",
       confidence: "Уверенность ИИ",
       settings: "Настройки",
@@ -232,7 +276,7 @@ export function VoiceAssistantSheet({
       temperature: "Температура",
       maxTokens: "Макс. токенов",
       advancedParsing: "Расширенный парсинг",
-      audioFeedback: "Голос",
+      audioFeedback: "Голосовые ответы",
       conversation: "Диалог",
       aiResponse: "Ответ ИИ",
       speakResponse: "Озвучить ответ",
@@ -240,30 +284,57 @@ export function VoiceAssistantSheet({
       confirmAndCreate: "Подтвердить заказ",
       viewOrder: "Просмотреть заказ",
       continueEditing: "Продолжить редактирование",
-      noRestaurantSelected: "Ресторан не выбран. Пожалуйста, выберите ресторан сначала.",
+      noRestaurantSelected: "Ресторан не выбран",
       pressAndHold: "Нажмите и удерживайте для записи",
-      recording: "Запись... Отпустите чтобы отправить"
+      recording: "Запись... Отпустите чтобы отправить",
+      assistant: "Ассистент",
+      menu: "Меню",
+      order: "Заказ",
+      categories: "Категории",
+      all: "Все",
+      search: "Поиск блюд...",
+      addToOrder: "Добавить в заказ",
+      remove: "Удалить",
+      modify: "Изменить",
+      suggestions: "Популярные команды",
+      quickActions: "Быстрые действия",
+      showMenu: "Показать меню",
+      showOrder: "Показать заказ",
+      addItem: "Добавить блюдо",
+      removeItem: "Удалить блюдо",
+      changeQuantity: "Изменить количество",
+      clearOrder: "Очистить заказ",
+      setTable: "Установить стол",
+      setPeople: "Установить количество персон",
+      orderSummary: "Сводка заказа",
+      itemsCount: "позиций",
+      peopleCount: "персон",
+      table: "Стол",
+      type: "Тип",
+      emptyOrder: "Заказ пуст. Добавьте блюда голосом или из меню.",
+      popularDishes: "Популярные блюда",
+      recommended: "Рекомендуем попробовать"
     },
     ka: {
-      title: "ხმოვანი ასისტენტი",
-      subtitle: "დააჭირეთ და დაიჭირეთ ღილაკი ხმის ჩასაწერად",
+      title: "მიმტანის ასისტენტი",
+      subtitle: "შეკვეთების ხმოვანი მართვა",
       listening: "მოვუსმინოთ...",
       startListening: "დააჭირეთ და თქვით",
       stopListening: "გაათავისუფლეთ რომ გაგზავნოთ",
-      processing: "AI-ის მუშავდება...",
-      sendToAI: "გაგზავნა დასამუშავებლად",
+      processing: "შეკვეთას ვაანალიზებ...",
+      sendToAI: "გაგზავნა",
       createOrder: "შეკვეთის შექმნა",
       creatingOrder: "შეკვეთა იქმნება...",
       orderCreated: "შეკვეთა წარმატებით შეიქმნა",
       manualInput: "ან შეიყვანეთ შეკვეთა ტექსტურად:",
-      placeholder: "მაგალითად: 'ორი ბორში, ერთი ოლივიეს სალათი და სამი კომპოტი'",
+      placeholder: "მაგალითად: 'ორი ბორში, ერთი ბარანინის შაშლიკი, სამი კომპოტი'",
       speakNow: "ისაუბრეთ ახლა...",
       recognizedText: "ამოცნობილი ტექსტი:",
-      parsedOrder: "ამოცნობილი შეკვეთა:",
-      noItems: "შეკვეთაში ნივთები არ არის",
+      parsedOrder: "მიმდინარე შეკვეთა:",
+      noItems: "შეკვეთა ცარიელია",
       items: "პოზიციები",
-      quantity: "რაოდენობა",
-      product: "პროდუქტი",
+      quantity: "რაოდ.",
+      product: "კერძი",
       price: "ფასი",
       total: "სულ",
       additionalInfo: "დამატებითი ინფორმაცია",
@@ -278,120 +349,193 @@ export function VoiceAssistantSheet({
       errorNoProducts: "მენიუს ჩატვირთვა ვერ მოხერხდა",
       errorProcessing: "მოთხოვნის დამუშავების შეცდომა",
       errorCreatingOrder: "შეკვეთის შექმნის შეცდომა",
-      clear: "გასუფთავება",
+      clear: "შეკვეთის გასუფთავება",
       goBack: "უკან შეკვეთაზე",
       confidence: "AI-ის ნდობა",
-      settings: "AI-ის პარამეტრები",
+      settings: "პარამეტრები",
       aiModel: "AI მოდელი",
       temperature: "ტემპერატურა",
       maxTokens: "მაქს. ტოკენები",
       advancedParsing: "გაფართოებული პარსინგი",
-      audioFeedback: "ხმოვანი უკუკავშირი",
-      conversation: "დიალოგი AI-სთან",
+      audioFeedback: "ხმოვანი პასუხები",
+      conversation: "დიალოგი",
       aiResponse: "AI-ის პასუხი",
       speakResponse: "პასუხის გახმოვანება",
       stopSpeech: "საუბრის შეჩერება",
       confirmAndCreate: "შეკვეთის დადასტურება",
       viewOrder: "შეკვეთის ნახვა",
       continueEditing: "რედაქტირების გაგრძელება",
-      noRestaurantSelected: "რესტორანი არ არის არჩეული. გთხოვთ, ჯერ აირჩიოთ რესტორანი.",
+      noRestaurantSelected: "რესტორანი არ არის არჩეული",
       pressAndHold: "დააჭირეთ და დაიჭირეთ ჩასაწერად",
-      recording: "ჩაწერა... გაათავისუფლეთ რომ გაგზავნოთ"
+      recording: "ჩაწერა... გაათავისუფლეთ რომ გაგზავნოთ",
+      assistant: "ასისტენტი",
+      menu: "მენიუ",
+      order: "შეკვეთა",
+      categories: "კატეგორიები",
+      all: "ყველა",
+      search: "ძებნა კერძებში...",
+      addToOrder: "შეკვეთაში დამატება",
+      remove: "წაშლა",
+      modify: "შეცვლა",
+      suggestions: "პოპულარული ბრძანებები",
+      quickActions: "სწრაფი მოქმედებები",
+      showMenu: "მენიუს ნახვა",
+      showOrder: "შეკვეთის ნახვა",
+      addItem: "კერძის დამატება",
+      removeItem: "კერძის წაშლა",
+      changeQuantity: "რაოდენობის შეცვლა",
+      clearOrder: "შეკვეთის გასუფთავება",
+      setTable: "სტოლის მითითება",
+      setPeople: "პირების რაოდენობის მითითება",
+      orderSummary: "შეკვეთის მიმოხილვა",
+      itemsCount: "პოზიცია",
+      peopleCount: "პირი",
+      table: "სტოლი",
+      type: "ტიპი",
+      emptyOrder: "შეკვეთა ცარიელია. დაამატეთ კერძები ხმოვნად ან მენიუდან.",
+      popularDishes: "პოპულარული კერძები",
+      recommended: "გირჩევთ სცადოთ"
     }
   } as const
 
   const t = translations[language]
 
+  // Инициализация и загрузка данных
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [conversation])
-
-useEffect(() => {
     if (open) {
-      if (typeof window !== 'undefined') {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-        
-        if (SpeechRecognition) {
-          recognitionRef.current = new SpeechRecognition()
-          if( !recognitionRef.current) return;
-          recognitionRef.current.continuous = true
-          recognitionRef.current.interimResults = true
-          recognitionRef.current.lang = language === 'ru' ? 'ru-RU' : 'ka-GE'
-
-          if (recognitionRef.current) {
-            recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
-              let interimTranscript = ''
-              let finalTranscript = ''
-
-              for (let i = event.resultIndex; i < event.results.length; i++) {
-                const transcript = event.results[i][0].transcript
-                if (event.results[i].isFinal) {
-                  finalTranscript += transcript + ' '
-                } else {
-                  interimTranscript += transcript
-                }
-              }
-
-              if (finalTranscript) {
-                setTranscript(prev => prev + finalTranscript)
-                finalTranscriptRef.current += finalTranscript
-              }
-            }
-
-            recognitionRef.current.onerror = (event: any) => {
-              console.error('Speech recognition error:', event.error)
-              setIsListening(false)
-              setIsButtonPressed(false)
-              isAutoSendRef.current = false
-              toast.error(language === 'ru' ? 'Ошибка распознавания речи' : 'ხმოვანი ამოცნობის შეცდომა')
-            }
-
-            recognitionRef.current.onend = () => {
-              console.log('Speech recognition ended, final transcript:', finalTranscriptRef.current)
-              setIsListening(false)
-              setIsButtonPressed(false)
-              
-              // Автоматическая отправка при окончании распознавания
-              if (finalTranscriptRef.current.trim() && isAutoSendRef.current) {
-                console.log('Auto-sending transcript:', finalTranscriptRef.current)
-                setTranscript(finalTranscriptRef.current)
-                setTimeout(() => {
-                  processOrderWithAI(finalTranscriptRef.current)
-                  isAutoSendRef.current = false
-                }, 100)
-              }
-            }
-          }
-        } else {
-          toast.error(language === 'ru' 
-            ? 'Браузер не поддерживает распознавание речи' 
-            : 'ბრაუზერი არ უჭერს მხარს ხმოვან ამოცნობას')
-        }
-      }
-
+      initializeSpeechRecognition()
       loadRestaurantAndProducts()
       initializeConversation()
     }
 
     return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop()
-      }
-      if (speechSynthesisRef.current) {
-        speechSynthesis.cancel()
-      }
-      if (releaseTimerRef.current) {
-        clearTimeout(releaseTimerRef.current)
-      }
+      cleanupSpeechRecognition()
     }
   }, [open, language])
+
+  const initializeSpeechRecognition = () => {
+    if (typeof window !== 'undefined') {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+        
+      if (SpeechRecognition) {
+        recognitionRef.current = new SpeechRecognition()
+        if (!recognitionRef.current) return
+        
+        recognitionRef.current.continuous = true
+        recognitionRef.current.interimResults = true
+        recognitionRef.current.lang = language === 'ru' ? 'ru-RU' : 'ka-GE'
+
+        recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
+          let interimTranscript = ''
+          let finalTranscript = ''
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript
+            if (event.results[i].isFinal) {
+              finalTranscript += transcript + ' '
+            } else {
+              interimTranscript += transcript
+            }
+          }
+
+          if (finalTranscript) {
+            setTranscript(prev => prev + finalTranscript)
+            finalTranscriptRef.current += finalTranscript
+          }
+        }
+
+        recognitionRef.current.onerror = (event: any) => {
+          console.error('Speech recognition error:', event.error)
+          setIsListening(false)
+          setIsButtonPressed(false)
+          isAutoSendRef.current = false
+          toast.error(language === 'ru' ? 'Ошибка распознавания речи' : 'ხმოვანი ამოცნობის შეცდომა')
+        }
+
+        recognitionRef.current.onend = () => {
+          console.log('Speech recognition ended')
+          setIsListening(false)
+          setIsButtonPressed(false)
+          
+          if (finalTranscriptRef.current.trim() && isAutoSendRef.current) {
+            console.log('Auto-sending transcript:', finalTranscriptRef.current)
+            setTranscript(finalTranscriptRef.current)
+            setTimeout(() => {
+              processOrderWithAI(finalTranscriptRef.current)
+              isAutoSendRef.current = false
+            }, 100)
+          }
+        }
+      }
+    }
+  }
+
+  const cleanupSpeechRecognition = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+    }
+    if (speechSynthesisRef.current) {
+      speechSynthesis.cancel()
+    }
+    if (releaseTimerRef.current) {
+      clearTimeout(releaseTimerRef.current)
+    }
+  }
 
   const initializeConversation = () => {
     const systemMessage: ConversationMessage = {
       role: 'system',
       content: language === 'ru' 
-        ? 'Ты - помощник официанта в ресторане. Помоги клиенту сформировать заказ. Будь вежливым и полезным. Когда добавляешь товары в заказ, сообщи об этом клиенту. Также можешь предлагать дополнительные товары или изменения типа заказа.'
-        : 'შენ ხარ მიმტანის თანაშემწე რესტორნში. დაეხმარე კლიენტს შეკვეთის ფორმირებაში. იყავი მორიგი და გამოსადეგი. როცა პროდუქტებს შეკვეთაში დაამატებ, აცნობე ამის შესახებ კლიენტს. ასევე შ�იძლია შესთავაზო დამატებითი პროდუქტები ან შეკვეთის ტიპის ცვლილება.',
+        ? `Ты - профессиональный помощник официанта в ресторане. Твоя задача - помогать клиентам формировать заказы.
+
+ОСНОВНЫЕ ПРАВИЛА:
+1. Всегда уточняй детали, если что-то непонятно
+2. Предлагай дополнительные блюда или напитки
+3. Сообщай о изменениях в заказе
+4. Будь вежливым и профессиональным
+5. Подтверждай действия перед выполнением
+
+ДОСТУПНЫЕ ДЕЙСТВИЯ:
+- Добавление блюд в заказ
+- Удаление блюд из заказа
+- Изменение количества
+- Изменение типа заказа
+- Обновление деталей (стол, количество персон)
+- Показ текущего заказа
+- Очистка заказа
+- Ответы на вопросы о меню
+
+ФОРМАТ ОТВЕТА JSON с полями:
+- action: тип действия
+- itemsToAdd/itemsToRemove: для управления заказом
+- response: естественный ответ клиенту
+- confidence: уверенность (0-1)
+- suggestions: предложения для клиента`
+        : `შენ ხარ პროფესიონალი მიმტანის თანაშემწე რესტორნში. შენი მიზანია დაეხმარო კლიენტებს შეკვეთების ფორმირებაში.
+
+ძირითადი წესები:
+1. ყოველთვის დააზუსტე დეტალები, თუ რამე გაუგებარია
+2. შესთავაზე დამატებითი კერძები ან სასმელები
+3. აცნობე შეკვეთის ცვლილებების შესახებ
+4. იყავი მორიგი და პროფესიონალი
+5. დაადასტურე მოქმედებები შესრულებამდე
+
+ხელმისაწვდომი მოქმედებები:
+- კერძების დამატება შეკვეთაში
+- კერძების წაშლა შეკვეთიდან
+- რაოდენობის შეცვლა
+- შეკვეთის ტიპის შეცვლა
+- დეტალების განახლება (სტოლი, პირების რაოდენობა)
+- მიმდინარე შეკვეთის ჩვენება
+- შეკვეთის გასუფთავება
+- პასუხები მენიუს შესახებ კითხვებზე
+
+პასუხის ფორმატი JSON ველებით:
+- action: მოქმედების ტიპი
+- itemsToAdd/itemsToRemove: შეკვეთის მართვისთვის
+- response: ბუნებრივი პასუხი კლიენტს
+- confidence: ნდობა (0-1)
+- suggestions: შემოთავაზებები კლიენტისთვის`,
       timestamp: new Date()
     }
     setConversation([systemMessage])
@@ -415,22 +559,21 @@ useEffect(() => {
       console.log('Loaded categories:', categoriesData)
 
       setProducts(productsData)
-      setCategories(categoriesData)
+      setCategories(categoriesData as any)
     } catch (error) {
       console.error('Error loading data:', error)
       toast.error(t.errorNoProducts)
     }
   }
 
-  // Функции для работы с кнопкой push-to-talk
+  // Управление голосовым вводом
   const handleMouseDown = () => {
-    console.log('Mouse down - starting recording')
+    console.log('Starting recording')
     setIsButtonPressed(true)
     isAutoSendRef.current = true
-    finalTranscriptRef.current = '' // Сбрасываем финальный транскрипт
+    finalTranscriptRef.current = ''
     startListening()
     
-    // Таймер для автоматического отключения через 30 секунд (на всякий случай)
     releaseTimerRef.current = setTimeout(() => {
       if (isListening) {
         console.log('Auto-stop after 30 seconds')
@@ -440,7 +583,7 @@ useEffect(() => {
   }
 
   const handleMouseUp = () => {
-    console.log('Mouse up - stopping recording')
+    console.log('Stopping recording')
     setIsButtonPressed(false)
     if (releaseTimerRef.current) {
       clearTimeout(releaseTimerRef.current)
@@ -476,12 +619,9 @@ useEffect(() => {
       console.log('Stopping speech recognition')
       recognitionRef.current.stop()
       setIsListening(false)
-      
-      // Не отправляем сразу - ждем события onend
     }
   }
 
-  // Обработчик ручной отправки (через кнопку "Отправить")
   const handleManualSend = () => {
     if (!transcript.trim()) {
       toast.error(language === 'ru' ? 'Введите текст заказа' : 'შეიყვანეთ შეკვეთის ტექსტი')
@@ -492,44 +632,189 @@ useEffect(() => {
     processOrderWithAI(transcript)
   }
 
+  // Обработка AI запросов
   const callOpenAI = async (prompt: string): Promise<any> => {
     const userRestaurantId = getRestaurantId()
     
-    const response = await fetch('/api/ai/process-order', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt,
-        products: products.map(p => ({
-          id: p.id,
-          title: p.title,
-          price: p.restaurantPrices?.find(rp => rp.restaurantId === userRestaurantId)?.price || p.price,
-          category: categories.find(c => c.id === p.categoryId)?.title || 'Other'
-        })),
-        currentOrder: order ? {
-          items: order.items.map(item => ({
-            productId: item.product.id,
-            productTitle: item.product.title,
-            quantity: item.quantity,
-            comment: item.comment
-          })),
-          orderType,
-          numberOfPeople: additionalInfo.numberOfPeople,
-          tableNumber: additionalInfo.tableNumber,
-          comment: additionalInfo.comment
-        } : null,
-        config: aiConfig,
-        language
-      })
-    })
-
-    if (!response.ok) {
-      throw new Error('OpenAI API request failed')
+    const requestBody = {
+      model: aiConfig.model,
+      messages: [
+        {
+          role: "system",
+          content: getSystemPrompt()
+        },
+        {
+          role: "user", 
+          content: prompt
+        }
+      ],
+      temperature: aiConfig.temperature,
+      max_tokens: aiConfig.maxTokens,
+      response_format: { type: "json_object" }
     }
 
-    return response.json()
+    let lastError: any = null
+
+    for (const endpoint of FREE_PROXY_ENDPOINTS) {
+      try {
+        console.log(`Trying proxy endpoint: ${endpoint}`)
+        
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.NEXT_PUBLIC_OPENAI_API_KEY}`,
+          },
+          body: JSON.stringify(requestBody),
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          console.log(`Success with endpoint: ${endpoint}`)
+          return data
+        } else {
+          console.warn(`Endpoint ${endpoint} failed with status: ${response.status}`)
+          lastError = new Error(`HTTP ${response.status}`)
+        }
+      } catch (error) {
+        console.warn(`Endpoint ${endpoint} error:`, error)
+        lastError = error
+        continue
+      }
+    }
+
+    // Fallback to API route
+    try {
+      console.log('Trying fallback API route')
+      const response = await fetch('/api/ai/process-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt,
+          products: products.map(p => ({
+            id: p.id,
+            title: p.title,
+            price: p.restaurantPrices?.find(rp => rp.restaurantId === userRestaurantId)?.price || p.price,
+            category: categories.find(c => c.id === p.categoryId)?.title || 'Other',
+            tags: p.tags || []
+          })),
+          currentOrder: order ? {
+            items: order.items.map(item => ({
+              productId: item.product.id,
+              productTitle: item.product.title,
+              quantity: item.quantity,
+              comment: item.comment
+            })),
+            orderType,
+            numberOfPeople: additionalInfo.numberOfPeople,
+            tableNumber: additionalInfo.tableNumber,
+            comment: additionalInfo.comment
+          } : null,
+          config: aiConfig,
+          language
+        })
+      })
+
+      if (response.ok) {
+        return response.json()
+      }
+    } catch (error) {
+      console.error('Fallback API route also failed:', error)
+    }
+
+    throw lastError || new Error('All AI endpoints failed')
+  }
+
+  const getSystemPrompt = () => {
+    const userRestaurantId = getRestaurantId()
+    
+    return language === 'ru' 
+      ? `Ты - умный помощник официанта. Анализируй запросы клиентов и управляй заказом.
+
+КОНТЕКСТ:
+Меню: ${products.map(p => `${p.title} (ID: ${p.id}, Категория: ${categories.find(c => c.id === p.categoryId)?.title})`).join(', ')}
+Текущий заказ: ${order ? order.items.map(item => `${item.quantity}x ${item.product.title}`).join(', ') : 'пуст'}
+Тип заказа: ${getOrderTypeText(orderType, 'ru')}
+Детали: ${additionalInfo.numberOfPeople} персон, стол: ${additionalInfo.tableNumber || 'не указан'}
+
+ИНСТРУКЦИИ:
+1. НИКОГДА не очищай заказ без явной команды "очистить заказ"
+2. При смене типа заказа сохраняй все позиции
+3. Для поиска продуктов используй ID или точные названия
+4. Если продукт не найден, предложи похожие варианты
+5. Поддерживай естественный диалог, уточняй детали
+6. Предлагай дополнительные товары из той же категории
+7. Подтверждай изменения перед применением
+
+ДЕЙСТВИЯ:
+- ADD_ITEMS - добавить товары
+- REMOVE_ITEMS - удалить товары
+- MODIFY_QUANTITY - изменить количество
+- UPDATE_ORDER_TYPE - изменить тип заказа
+- UPDATE_DETAILS - изменить детали
+- SHOW_ORDER - показать заказ
+- SHOW_MENU - показать меню
+- ANSWER_QUESTION - ответить на вопрос
+- CLEAR_ORDER - очистить заказ (ТОЛЬКО по явной команде)
+
+ФОРМАТ ОТВЕТА (JSON):
+{
+  "action": "string",
+  "itemsToAdd": [{"productId": "string", "productTitle": "string", "quantity": number, "comment": "string"}],
+  "itemsToRemove": ["productId"],
+  "itemsToModify": [{"productId": "string", "quantity": number}],
+  "newOrderType": "DINE_IN|TAKEAWAY|DELIVERY",
+  "updatedDetails": {"numberOfPeople": number, "tableNumber": "string", "comment": "string"},
+  "response": "string (естественный ответ)",
+  "confidence": number,
+  "suggestions": ["string"]
+}
+
+ВСЕГДА отвечай в формате JSON!`
+      : `შენ ხარ მიმტანის ჭკვიანი თანაშემწე. ანალიზიერ კლიენტების მოთხოვნები და მართე შეკვეთა.
+
+კონტექსტი:
+მენიუ: ${products.map(p => `${p.title} (ID: ${p.id}, კატეგორია: ${categories.find(c => c.id === p.categoryId)?.title})`).join(', ')}
+მიმდინარე შეკვეთა: ${order ? order.items.map(item => `${item.quantity}x ${item.product.title}`).join(', ') : 'ცარიელი'}
+შეკვეთის ტიპი: ${getOrderTypeText(orderType, 'ka')}
+დეტალები: ${additionalInfo.numberOfPeople} პირი, სტოლი: ${additionalInfo.tableNumber || 'არ არის მითითებული'}
+
+ინსტრუქციები:
+1. არასოდეს გაასუფთაო შეკვეთა უშუალო ბრძანების გარეშე "გასუფთავება"
+2. შეკვეთის ტიპის შეცვლისას შეინახე ყველა პოზიცია
+3. პროდუქტების მოსაძებნად გამოიყენე ID ან ზუსტი სახელები
+4. თუ პროდუქტი არ მოიძებნა, შესთავაზე მსგავსი ვარიანტები
+5. დაიცავ ბუნებრივ დიალოგს, დააზუსტე დეტალები
+6. შესთავაზე დამატებითი პროდუქტები იგივე კატეგორიიდან
+7. დაადასტურე ცვლილებები გამოყენებამდე
+
+მოქმედებები:
+- ADD_ITEMS - პროდუქტების დამატება
+- REMOVE_ITEMS - პროდუქტების წაშლა
+- MODIFY_QUANTITY - რაოდენობის შეცვლა
+- UPDATE_ORDER_TYPE - შეკვეთის ტიპის შეცვლა
+- UPDATE_DETAILS - დეტალების შეცვლა
+- SHOW_ORDER - შეკვეთის ჩვენება
+- SHOW_MENU - მენიუს ჩვენება
+- ANSWER_QUESTION - პასუხი კითხვაზე
+- CLEAR_ORDER - შეკვეთის გასუფთავება (მხოლოდ უშუალო ბრძანებით)
+
+პასუხის ფორმატი (JSON):
+{
+  "action": "string",
+  "itemsToAdd": [{"productId": "string", "productTitle": "string", "quantity": number, "comment": "string"}],
+  "itemsToRemove": ["productId"],
+  "itemsToModify": [{"productId": "string", "quantity": number}],
+  "newOrderType": "DINE_IN|TAKEAWAY|DELIVERY",
+  "updatedDetails": {"numberOfPeople": number, "tableNumber": "string", "comment": "string"},
+  "response": "string (ბუნებრივი პასუხი)",
+  "confidence": number,
+  "suggestions": ["string"]
+}
+
+ყოველთვის უპასუხე JSON ფორმატში!`
   }
 
   const processOrderWithAI = async (text: string) => {
@@ -544,139 +829,15 @@ useEffect(() => {
     const userMessage: ConversationMessage = {
       role: 'user',
       content: text,
-      timestamp: new Date()
+      timestamp: new Date(),
+      type: 'order_update'
     }
     
     setConversation(prev => [...prev, userMessage])
 
     try {
-      const prompt = language === 'ru' 
-        ? `Ты - умный помощник официанта в ресторане. Анализируй запросы клиентов и помогай формировать заказы.
-
-КОНТЕКСТ:
-- Доступные продукты: ${products.map(p => `${p.title} (ID: ${p.id})`).join(', ')}
-- Текущий тип заказа: ${getOrderTypeText(orderType, 'ru')}
-- Текущий заказ: ${order ? order.items.map(item => `${item.quantity}x ${item.product.title}`).join(', ') : 'пуст'}
-- Количество персон: ${additionalInfo.numberOfPeople}
-- Стол: ${additionalInfo.tableNumber || 'не указан'}
-- Комментарий: ${additionalInfo.comment || 'нет'}
-
-ЗАПРОС ПОЛЬЗОВАТЕЛЯ: "${text}"
-
-ИНСТРУКЦИИ:
-1. НИКОГДА не очищай заказ полностью без явной команды "очистить заказ"
-2. При смене типа заказа сохраняй все текущие позиции
-3. Для поиска продуктов используй ID или точные названия из списка доступных
-4. Если продукт не найден, сообщи об этом пользователю
-5. Поддерживай естественный диалог, уточняй детали если нужно
-6. При смене типа заказа используй действие UPDATE_ORDER_TYPE
-
-ДОСТУПНЫЕ ТИПЫ ЗАКАЗА:
-- DINE_IN - питание в ресторане (требуется номер стола)
-- TAKEAWAY - самовывоз
-- DELIVERY - доставка
-
-ПРИМЕРЫ КОМАНД ДЛЯ СМЕНЫ ТИПА ЗАКАЗА:
-- "Хочу забрать заказ с собой" → TAKEAWAY
-- "Сделайте доставку" → DELIVERY  
-- "Буду есть в ресторане" → DINE_IN
-- "Измени на самовывоз" → TAKEAWAY
-
-ДОСТУПНЫЕ ДЕЙСТВИЯ:
-- ADD_ITEMS - добавить товары в существующий заказ
-- UPDATE_ORDER_TYPE - изменить тип заказа без очистки
-- UPDATE_DETAILS - изменить детали (количество персон, стол, комментарий)
-- REMOVE_ITEMS - удалить конкретные товары
-- SHOW_ORDER - показать текущий заказ
-- ANSWER_QUESTION - ответить на вопрос
-- CLEAR_ORDER - очистить заказ (ТОЛЬКО по явной команде)
-
-ФОРМАТ ОТВЕТА:
-{
-  "action": "ADD_ITEMS" | "UPDATE_ORDER_TYPE" | "UPDATE_DETAILS" | "REMOVE_ITEMS" | "SHOW_ORDER" | "ANSWER_QUESTION" | "CLEAR_ORDER",
-  "itemsToAdd": [
-    {
-      "productId": "string (обязательно)",
-      "productTitle": "string (для проверки)",
-      "quantity": number,
-      "comment": "string"
-    }
-  ],
-  "itemsToRemove": ["productId1", "productId2"],
-  "newOrderType": "DINE_IN" | "TAKEAWAY" | "DELIVERY",
-  "updatedDetails": {
-    "numberOfPeople": number,
-    "tableNumber": "string", 
-    "comment": "string"
-  },
-  "response": "string (естественный ответ пользователю на русском)",
-  "confidence": number
-}`
-
-      : `შენ ხარ მიმტანის ჭკვიანი თანაშემწე რესტორნში. ანალიზიერ კლიენტების მოთხოვნები და დაეხმარე მათ შეკვეთების ფორმირებაში.
-
-კონტექსტი:
-- ხელმისაწვდომი პროდუქტები: ${products.map(p => `${p.title} (ID: ${p.id})`).join(', ')}
-- მიმდინარე შეკვეთის ტიპი: ${getOrderTypeText(orderType, 'ka')}
-- მიმდინარე შეკვეთა: ${order ? order.items.map(item => `${item.quantity}x ${item.product.title}`).join(', ') : 'ცარიელი'}
-- პირების რაოდენობა: ${additionalInfo.numberOfPeople}
-- სტოლი: ${additionalInfo.tableNumber || 'არ არის მითითებული'}
-- კომენტარი: ${additionalInfo.comment || 'არა'}
-
-მომხმარებლის მოთხოვნა: "${text}"
-
-ინსტრუქციები:
-1. არასოდეს გაასუფთაო შეკვეთა სრულად უშუალო ბრძანების გარეშე "გასუფთავება"
-2. შეკვეთის ტიპის შეცვლისას შეინახე ყველა მიმდინარე პოზიცია
-3. პროდუქტების მოსაძებნად გამოიყენე ID ან ზუსტი სახელები ხელმისაწვდომი სიიდან
-4. თუ პროდუქტი არ მოიძებნა, აცნობე ამის შესახებ მომხმარებელს
-5. დაიცავ ბუნებრივ დიალოგს, დააზუსტე დეტალები თუ საჭიროა
-6. შეკვეთის ტიპის შეცვლისას გამოიყენე მოქმედება UPDATE_ORDER_TYPE
-
-ხელმისაწვდომი შეკვეთის ტიპები:
-- DINE_IN - ჭამა რესტორნში (საჭიროა სტოლის ნომერი)
-- TAKEAWAY - თვითშეკვეთა
-- DELIVERY - მიწოდება
-
-შეკვეთის ტიპის შეცვლის მაგალითები:
-- "წინასწარ აღება მინდა" → TAKEAWAY
-- "მიწოდება გააკეთეთ" → DELIVERY  
-- "რესტორნში ვჭამ" → DINE_IN
-- "შეცვალე თვითშეკვეთაზე" → TAKEAWAY
-
-ხელმისაწვდომი მოქმედებები:
-- ADD_ITEMS - დაამატე პროდუქტები არსებულ შეკვეთაში
-- UPDATE_ORDER_TYPE - შეცვალე შეკვეთის ტიპი გასუფთავების გარეშე
-- UPDATE_DETAILS - შეცვალე დეტალები (პირების რაოდენობა, სტოლი, კომენტარი)
-- REMOVE_ITEMS - წაშალე კონკრეტული პროდუქტები
-- SHOW_ORDER - აჩვენე მიმდინარე შეკვეთა
-- ANSWER_QUESTION - უპასუხე კითხვას
-- CLEAR_ORDER - გაასუფთავე შეკვეთა (მხოლოდ უშუალო ბრძანებით)
-
-პასუხის ფორმატი:
-{
-  "action": "ADD_ITEMS" | "UPDATE_ORDER_TYPE" | "UPDATE_DETAILS" | "REMOVE_ITEMS" | "SHOW_ORDER" | "ANSWER_QUESTION" | "CLEAR_ORDER",
-  "itemsToAdd": [
-    {
-      "productId": "string (აუცილებელი)",
-      "productTitle": "string (შესამოწმებლად)",
-      "quantity": number,
-      "comment": "string"
-    }
-  ],
-  "itemsToRemove": ["productId1", "productId2"],
-  "newOrderType": "DINE_IN" | "TAKEAWAY" | "DELIVERY",
-  "updatedDetails": {
-    "numberOfPeople": number,
-    "tableNumber": "string",
-    "comment": "string"
-  },
-  "response": "string (ბუნებრივი პასუხი მომხმარებელს ქართულად)",
-  "confidence": number
-}`
-
-      const aiResponse = await callOpenAI(prompt)
-      const parsedData: AIActionResponse = JSON.parse(aiResponse.content)
+      const aiResponse = await callOpenAI(text)
+      const parsedData: AIActionResponse = JSON.parse(aiResponse.choices[0].message.content)
       
       console.log('AI Response:', parsedData)
       
@@ -685,18 +846,15 @@ useEffect(() => {
       const assistantMessage: ConversationMessage = {
         role: 'assistant',
         content: parsedData.response,
-        timestamp: new Date()
+        timestamp: new Date(),
+        type: parsedData.action === 'SHOW_ORDER' ? 'info' : 'order_update'
       }
       
-      let enhancedContent = parsedData.response
-      if (parsedData.action === 'UPDATE_ORDER_TYPE' && parsedData.newOrderType) {
-        const orderTypeChangeText = language === 'ru' 
-          ? `\n\n---\n*✅ Тип заказа изменен на: ${getOrderTypeText(parsedData.newOrderType, 'ru')}*`
-          : `\n\n---\n*✅ შეკვეთის ტიპი შეიცვალა: ${getOrderTypeText(parsedData.newOrderType, 'ka')}*`
-        enhancedContent += orderTypeChangeText
+      // Добавляем предложения если есть
+      if (parsedData.suggestions && parsedData.suggestions.length > 0) {
+        assistantMessage.content += `\n\n${language === 'ru' ? '💡 Предлагаю:' : '💡 გირჩევთ:'}\n${parsedData.suggestions.map(s => `• ${s}`).join('\n')}`
       }
       
-      assistantMessage.content = enhancedContent
       setConversation(prev => [...prev, assistantMessage])
 
       if (audioFeedback) {
@@ -708,13 +866,14 @@ useEffect(() => {
       handleAIError(error)
     } finally {
       setIsProcessing(false)
+      setTranscript('')
     }
   }
 
   const handleAIAction = async (parsedData: AIActionResponse, userText: string) => {
     console.log('Handling AI action:', parsedData.action, parsedData)
     
-    let updatedOrder = order ? { ...order } : { items: [], confidence: 0.7 }
+    let updatedOrder = order ? { ...order } : { items: [], confidence: 0.7, totalAmount: 0 }
     let shouldUpdateOrderType = false
     let newOrderType = orderType
     let shouldUpdateOrder = false
@@ -725,49 +884,36 @@ useEffect(() => {
           if (parsedData.itemsToAdd && parsedData.itemsToAdd.length > 0) {
             console.log('Adding items:', parsedData.itemsToAdd)
             
-            const newItems: ParsedOrderItem[] = []
-            
             for (const item of parsedData.itemsToAdd) {
               const product = findProductByIdOrTitle(item.productId, item.productTitle)
               
               if (product) {
                 console.log(`Found product: ${product.title} (ID: ${product.id})`)
                 
-                // Проверяем, есть ли уже такой товар в заказе
                 const existingItemIndex = updatedOrder.items.findIndex(
                   existingItem => existingItem.product.id === product.id
                 )
                 
                 if (existingItemIndex >= 0) {
-                  // Увеличиваем количество существующего товара
                   updatedOrder.items[existingItemIndex].quantity += item.quantity || 1
-                  console.log(`Increased quantity for existing item: ${updatedOrder.items[existingItemIndex].product.title} -> ${updatedOrder.items[existingItemIndex].quantity}`)
+                  updatedOrder.items[existingItemIndex].totalPrice = 
+                    updatedOrder.items[existingItemIndex].quantity * getProductPrice(product)
                 } else {
-                  // Добавляем новый товар
                   const newItem: ParsedOrderItem = {
                     product,
                     quantity: item.quantity || 1,
-                    comment: item.comment
+                    comment: item.comment,
+                    totalPrice: (item.quantity || 1) * getProductPrice(product)
                   }
-                  newItems.push(newItem)
-                  console.log(`Added new item: ${newItem.product.title} x ${newItem.quantity}`)
+                  updatedOrder.items.push(newItem)
                 }
               } else {
                 console.warn(`Product not found: ID=${item.productId}, Title=${item.productTitle}`)
               }
             }
             
-            // Добавляем новые товары к существующим
-            if (newItems.length > 0) {
-              updatedOrder.items = [...updatedOrder.items, ...newItems]
-            }
-            
             updatedOrder.confidence = Math.max(updatedOrder.confidence, parsedData.confidence)
             shouldUpdateOrder = true
-            
-            console.log('Final order items:', updatedOrder.items)
-          } else {
-            console.log('No items to add')
           }
           break
 
@@ -777,6 +923,23 @@ useEffect(() => {
             updatedOrder.items = updatedOrder.items.filter(item => 
               !parsedData.itemsToRemove!.includes(item.product.id)
             )
+            shouldUpdateOrder = true
+          }
+          break
+
+        case 'MODIFY_QUANTITY':
+          if (parsedData.itemsToModify && parsedData.itemsToModify.length > 0) {
+            console.log('Modifying quantities:', parsedData.itemsToModify)
+            for (const modification of parsedData.itemsToModify) {
+              const itemIndex = updatedOrder.items.findIndex(
+                item => item.product.id === modification.productId
+              )
+              if (itemIndex >= 0) {
+                updatedOrder.items[itemIndex].quantity = modification.quantity
+                updatedOrder.items[itemIndex].totalPrice = 
+                  modification.quantity * getProductPrice(updatedOrder.items[itemIndex].product)
+              }
+            }
             shouldUpdateOrder = true
           }
           break
@@ -811,13 +974,19 @@ useEffect(() => {
           console.log('Showing current order')
           break
 
+        case 'SHOW_MENU':
+          console.log('Showing menu')
+          setActiveTab('menu')
+          break
+
         case 'ANSWER_QUESTION':
           console.log('Answering question')
           break
       }
 
-      // Обновляем состояние заказа только если были изменения
+      // Обновляем общую сумму
       if (shouldUpdateOrder) {
+        updatedOrder.totalAmount = updatedOrder.items.reduce((sum, item) => sum + item.totalPrice, 0)
         console.log('Updating order state:', updatedOrder)
         setOrder(updatedOrder)
       }
@@ -832,12 +1001,16 @@ useEffect(() => {
     }
   }
 
+  const getProductPrice = (product: Product): number => {
+    const userRestaurantId = getRestaurantId()
+    return product.restaurantPrices?.find(rp => rp.restaurantId === userRestaurantId)?.price || product.price
+  }
+
   const findProductByIdOrTitle = (productId: string, productTitle: string): Product | null => {
     console.log(`Searching for product: ID=${productId}, Title=${productTitle}`)
     
-    // Сначала ищем по точному ID
+    // Поиск по ID
     let product = findProductByTitle(productTitle)
-    
     
     
     console.log(`Search result:`, product ? `Found: ${product.title}` : 'Not found')
@@ -916,84 +1089,17 @@ useEffect(() => {
   }
 
   const handleAIError = (error: any) => {
-    try {
-      const parsedOrder = parseOrderText(transcript)
-      if (parsedOrder.items.length > 0) {
-        setOrder(prev => ({
-          items: [...(prev?.items || []), ...parsedOrder.items],
-          confidence: Math.max(prev?.confidence || 0, parsedOrder.confidence)
-        }))
-      }
-    } catch (fallbackError) {
-      console.error('Fallback parser also failed:', fallbackError)
-    }
-    
     const errorMessage: ConversationMessage = {
       role: 'assistant',
       content: language === 'ru' 
         ? 'Извините, произошла ошибка при обработке заказа. Пожалуйста, попробуйте еще раз или опишите заказ более подробно.'
         : 'ბოდიში, მოხდა შეცდომა შეკვეთის დამუშავებისას. გთხოვთ, სცადოთ ხელახლა ან აღწეროთ შეკვეთა უფრო დეტალურად.',
-      timestamp: new Date()
+      timestamp: new Date(),
+      type: 'error'
     }
     setConversation(prev => [...prev, errorMessage])
     
     toast.error(t.errorProcessing)
-  }
-
-  const parseOrderText = (text: string): ParsedOrder => {
-    const items: ParsedOrderItem[] = []
-    const lines = text.split(/[.,]/).filter(line => line.trim())
-    
-    for (const line of lines) {
-      const words = line.trim().toLowerCase().split(/\s+/)
-      
-      const quantityWords = ['один', 'одна', 'одно', 'два', 'две', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять', 'десять']
-      const quantityMap: { [key: string]: number } = {
-        'один': 1, 'одна': 1, 'одно': 1, 'ერთი': 1,
-        'два': 2, 'две': 2, 'ორი': 2,
-        'три': 3, 'სამი': 3, 'четыре': 4, 'ოთხი': 4,
-        'пять': 5, 'ხუთი': 5, 'шесть': 6, 'ექვსი': 6,
-        'семь': 7, 'შვიდი': 7, 'восемь': 8, 'რვა': 8,
-        'девять': 9, 'ცხრა': 9, 'десять': 10, 'ათი': 10
-      }
-
-      let quantity = 1
-      let productName = ''
-      let comment = ''
-
-      for (let i = 0; i < words.length; i++) {
-        const word = words[i]
-        
-        if (quantityWords.includes(word)) {
-          quantity = quantityMap[word]
-          continue
-        }
-        
-        if (!isNaN(parseInt(word))) {
-          quantity = parseInt(word)
-          continue
-        }
-
-        if (!productName) {
-          productName = word
-        } else {
-          productName += ' ' + word
-        }
-      }
-
-      if (productName.trim()) {
-        const product = findProductByTitle(productName.trim())
-        if (product) {
-          items.push({
-            product,
-            quantity,
-            comment: comment || undefined
-          })
-        }
-      }
-    }
-
-    return { items, confidence: 0.7 }
   }
 
   const getOrderTypeText = (type: string, lang: string = language) => {
@@ -1032,6 +1138,96 @@ useEffect(() => {
   const stopSpeech = () => {
     speechSynthesis.cancel()
     setIsSpeaking(false)
+  }
+
+  // Ручное управление заказом
+  const addProductToOrder = (product: Product) => {
+    const userRestaurantId = getRestaurantId()
+    const price = getProductPrice(product)
+    
+    setOrder(prev => {
+      const currentOrder = prev || { items: [], confidence: 1, totalAmount: 0 }
+      const existingItemIndex = currentOrder.items.findIndex(item => item.product.id === product.id)
+      
+      let newItems: ParsedOrderItem[]
+      if (existingItemIndex >= 0) {
+        newItems = [...currentOrder.items]
+        newItems[existingItemIndex].quantity += 1
+        newItems[existingItemIndex].totalPrice = newItems[existingItemIndex].quantity * price
+      } else {
+        newItems = [...currentOrder.items, {
+          product,
+          quantity: 1,
+          totalPrice: price
+        }]
+      }
+      
+      const totalAmount = newItems.reduce((sum, item) => sum + item.totalPrice, 0)
+      
+      return {
+        ...currentOrder,
+        items: newItems,
+        totalAmount,
+        confidence: 1
+      }
+    })
+
+    // Добавляем сообщение в диалог
+    const message: ConversationMessage = {
+      role: 'assistant',
+      content: language === 'ru' 
+        ? `✅ Добавлено: ${product.title}`
+        : `✅ დაემატა: ${product.title}`,
+      timestamp: new Date(),
+      type: 'order_update'
+    }
+    setConversation(prev => [...prev, message])
+  }
+
+  const removeProductFromOrder = (productId: string) => {
+    setOrder(prev => {
+      if (!prev) return prev
+      
+      const newItems = prev.items.filter(item => item.product.id !== productId)
+      const totalAmount = newItems.reduce((sum, item) => sum + item.totalPrice, 0)
+      
+      return {
+        ...prev,
+        items: newItems,
+        totalAmount
+      }
+    })
+  }
+
+  const updateProductQuantity = (productId: string, newQuantity: number) => {
+    if (newQuantity < 1) {
+      removeProductFromOrder(productId)
+      return
+    }
+
+    setOrder(prev => {
+      if (!prev) return prev
+      
+      const newItems = prev.items.map(item => {
+        if (item.product.id === productId) {
+          const price = getProductPrice(item.product)
+          return {
+            ...item,
+            quantity: newQuantity,
+            totalPrice: newQuantity * price
+          }
+        }
+        return item
+      })
+      
+      const totalAmount = newItems.reduce((sum, item) => sum + item.totalPrice, 0)
+      
+      return {
+        ...prev,
+        items: newItems,
+        totalAmount
+      }
+    })
   }
 
   const createOrder = async () => {
@@ -1098,11 +1294,64 @@ useEffect(() => {
     initializeConversation()
   }
 
+  const getCategoryIcon = (categoryTitle: string) => {
+    const categoryKey = categoryTitle.toLowerCase()
+    for (const [key, Icon] of Object.entries(CATEGORY_ICONS)) {
+      if (categoryKey.includes(key)) {
+        return Icon
+      }
+    }
+    return CATEGORY_ICONS.default
+  }
+
+  const popularCommands = language === 'ru' ? [
+    "Добавить борщ",
+    "Показать заказ", 
+    "Удалить шашлык",
+    "Изменить количество",
+    "Очистить заказ",
+    "Стол номер 5",
+    "Нас 4 человека",
+    "Показать меню"
+  ] : [
+    "დაამატე ბორში",
+    "აჩვენე შეკვეთა",
+    "წაშალე შაშლიკი", 
+    "შეცვალე რაოდენობა",
+    "გაასუფთავე შეკვეთა",
+    "სტოლი ნომერი 5",
+    "ჩვენ 4 კაცი ვართ",
+    "აჩვენე მენიუ"
+  ]
+
+  const quickActions = [
+    { 
+      label: t.showMenu, 
+      command: "show menu",
+      icon: Utensils 
+    },
+    { 
+      label: t.showOrder, 
+      command: "show order",
+      icon: ShoppingBag 
+    },
+    { 
+      label: t.clearOrder, 
+      command: "clear order",
+      icon: Trash2 
+    },
+    { 
+      label: t.setTable, 
+      command: "table 1",
+      icon: User 
+    }
+  ]
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent 
         side="right" 
-        className="w-full sm:max-w-2xl h-full flex flex-col p-0 overflow-hidden"
+        className="w-full sm:max-w-4xl h-full flex flex-col p-0 overflow-hidden"
       >
         <SheetHeader className="p-6 border-b">
           <div className="flex items-center justify-between">
@@ -1129,135 +1378,379 @@ useEffect(() => {
           </div>
         </SheetHeader>
 
-        <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {conversation.filter(msg => msg.role !== 'system').map((message, index) => (
-              <div
-                key={index}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+          <TabsList className="grid w-full grid-cols-3 px-6">
+            <TabsTrigger value="assistant" className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" />
+              {t.assistant}
+            </TabsTrigger>
+            <TabsTrigger value="menu" className="flex items-center gap-2">
+              <Utensils className="h-4 w-4" />
+              {t.menu}
+            </TabsTrigger>
+            <TabsTrigger value="order" className="flex items-center gap-2">
+              <ShoppingBag className="h-4 w-4" />
+              {t.order}
+              {order && order.items.length > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 flex items-center justify-center">
+                  {order.items.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Ассистент */}
+          <TabsContent value="assistant" className="flex-1 flex flex-col min-h-0 p-0">
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {conversation.filter(msg => msg.role !== 'system').map((message, index) => (
                 <div
-                  className={`max-w-[80%] p-4 rounded-2xl ${
-                    message.role === 'user' 
-                    ? 'bg-blue-500 text-white rounded-br-none' 
-                    : 'bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-bl-none'
-                  }`}
+                  key={index}
+                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  <div className="flex items-start gap-3">
-                    {message.role === 'assistant' && (
+                  <div
+                    className={`max-w-[80%] p-4 rounded-2xl ${
+                      message.role === 'user' 
+                      ? 'bg-blue-500 text-white rounded-br-none' 
+                      : message.type === 'error'
+                      ? 'bg-red-100 border border-red-200 text-red-800 rounded-bl-none'
+                      : message.type === 'info'
+                      ? 'bg-green-100 border border-green-200 text-green-800 rounded-bl-none'
+                      : 'bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-bl-none'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {message.role === 'assistant' && (
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-r from-green-400 to-blue-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                          AI
+                        </div>
+                      )}
+                      
+                      <div className="flex-1">
+                        <div className="text-sm font-medium mb-2 opacity-80">
+                          {message.role === 'user' 
+                            ? (language === 'ru' ? 'Вы' : 'თქვენ') 
+                            : 'AI Assistant'}
+                        </div>
+                        <div className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</div>
+                        <div className={`text-xs mt-2 ${message.role === 'user' ? 'text-blue-100' : 'text-gray-500'}`}>
+                          {message.timestamp.toLocaleTimeString()}
+                        </div>
+                      </div>
+                      
+                      {message.role === 'user' && (
+                        <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                          {language === 'ru' ? 'В' : 'თ'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              
+              {isListening && (
+                <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-lg p-4 mb-4 animate-pulse">
+                  <div className="flex items-center gap-3">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-white rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                      <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                    </div>
+                    <span className="font-medium">{t.recording}</span>
+                  </div>
+                </div>
+              )}
+
+              {isProcessing && (
+                <div className="flex justify-start">
+                  <div className="max-w-[80%] p-4 rounded-2xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-bl-none">
+                    <div className="flex items-center gap-3">
                       <div className="w-6 h-6 rounded-full bg-gradient-to-r from-green-400 to-blue-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                         AI
                       </div>
-                    )}
-                    
-                    <div className="flex-1">
-                      <div className="text-sm font-medium mb-2 opacity-80">
-                        {message.role === 'user' 
-                          ? (language === 'ru' ? 'Вы' : 'თქვენ') 
-                          : 'AI Assistant'}
-                      </div>
-                      <div className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</div>
-                      <div className={`text-xs mt-2 ${message.role === 'user' ? 'text-blue-100' : 'text-gray-500'}`}>
-                        {message.timestamp.toLocaleTimeString()}
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="text-sm">{t.processing}</span>
                       </div>
                     </div>
-                    
-                    {message.role === 'user' && (
-                      <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                        {language === 'ru' ? 'В' : 'თ'}
-                      </div>
-                    )}
                   </div>
                 </div>
-              </div>
-            ))}
-            
-            {isListening && (
-              <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-lg p-4 mb-4 animate-pulse">
-                <div className="flex items-center gap-3">
-                  <div className="flex space-x-1">
-                    <div className="w-2 h-2 bg-white rounded-full animate-bounce"></div>
-                    <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-                    <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-                  </div>
-                  <span className="font-medium">{t.recording}</span>
-                </div>
-              </div>
-            )}
+              )}
 
-            {isProcessing && (
-              <div className="flex justify-start">
-                <div className="max-w-[80%] p-4 rounded-2xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-bl-none">
-                  <div className="flex items-center gap-3">
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-r from-green-400 to-blue-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                      AI
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm">{t.processing}</span>
-                    </div>
+              {/* Быстрые команды */}
+              {showSuggestions && conversation.length <= 2 && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400">
+                    <Zap className="h-4 w-4" />
+                    {t.quickActions}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {quickActions.map((action, index) => (
+                      <Button
+                        key={index}
+                        variant="outline"
+                        size="sm"
+                        className="h-auto py-2 flex flex-col items-center gap-1 text-xs"
+                        onClick={() => processOrderWithAI(action.command)}
+                      >
+                        <action.icon className="h-4 w-4" />
+                        {action.label}
+                      </Button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400">
+                    <MessageSquare className="h-4 w-4" />
+                    {t.suggestions}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {popularCommands.map((command, index) => (
+                      <Badge 
+                        key={index}
+                        variant="secondary"
+                        className="cursor-pointer hover:bg-gray-200 transition-colors"
+                        onClick={() => processOrderWithAI(command)}
+                      >
+                        {command}
+                      </Badge>
+                    ))}
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Отладочная информация - можно удалить после тестирования */}
-            {/*process.env.NODE_ENV === 'development' && (
-              <Card className="p-4 bg-yellow-50 border-yellow-200">
-                <h4 className="font-semibold text-yellow-800 mb-2">Отладочная информация:</h4>
-                <div className="text-sm text-yellow-700 space-y-1">
-                  <div>Товаров в базе: {products.length}</div>
-                  <div>Товаров в заказе: {order?.items.length || 0}</div>
-                  <div>Транскрипт: {transcript}</div>
+              <div ref={messagesEndRef} />
+            </div>
+
+            <div className="border-t dark:border-gray-700 p-4 space-y-4">
+              <div className="space-y-3">
+                <Textarea
+                  value={transcript}
+                  onChange={(e) => setTranscript(e.target.value)}
+                  placeholder={t.placeholder}
+                  className="min-h-[80px] text-base resize-none"
+                  disabled={isListening}
+                />
+              </div>
+              
+              <div className="flex gap-3">
+                <div className="flex-1 flex gap-3">
+                  <Button
+                    onClick={handleManualSend}
+                    disabled={!transcript.trim() || isProcessing || isListening}
+                    className="flex-1 h-12 text-base"
+                    size="lg"
+                  >
+                    {isProcessing ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4 mr-2" />
+                    )}
+                    {isProcessing ? t.processing : t.sendToAI}
+                  </Button>
+
                   {order && order.items.length > 0 && (
-                    <div>
-                      <div>Текущий заказ:</div>
-                      {order.items.map((item, index) => (
-                        <div key={index}>
-                          - {item.quantity}x {item.product.title}
-                        </div>
-                      ))}
-                    </div>
+                    <Button
+                      onClick={createOrder}
+                      disabled={isCreatingOrder}
+                      className="h-12 px-6 bg-green-600 hover:bg-green-700"
+                      size="lg"
+                    >
+                      {isCreatingOrder ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                      )}
+                      {t.confirmAndCreate}
+                    </Button>
                   )}
                 </div>
-              </Card>
-            )*/}
 
-            <div ref={messagesEndRef} />
-          </div>
+                <Button
+                  onMouseDown={handleMouseDown}
+                  onMouseUp={handleMouseUp}
+                  onMouseLeave={handleMouseUp}
+                  onTouchStart={handleTouchStart}
+                  onTouchEnd={handleTouchEnd}
+                  variant={isListening ? "destructive" : "default"}
+                  className={`h-12 px-6 flex items-center gap-3 transition-all duration-200 ${
+                    isButtonPressed ? 'scale-95' : 'scale-100'
+                  }`}
+                  size="lg"
+                  disabled={isProcessing}
+                >
+                  {isListening ? (
+                    <>
+                      <div className="relative">
+                        <Mic className="h-4 w-4" />
+                        <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-ping"></div>
+                        <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></div>
+                      </div>
+                      <span className="hidden sm:inline">{t.stopListening}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Mic className="h-4 w-4" />
+                      <span className="hidden sm:inline">{t.startListening}</span>
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
 
-          <div className="border-t dark:border-gray-700 p-4 space-y-4">
-            <div className="space-y-3">
-              <Textarea
-                value={transcript}
-                onChange={(e) => setTranscript(e.target.value)}
-                placeholder={t.placeholder}
-                className="min-h-[80px] text-base resize-none"
-                disabled={isListening}
+          {/* Меню */}
+          <TabsContent value="menu" className="flex-1 overflow-y-auto p-0">
+            <div className="p-4 border-b">
+              <Input
+                placeholder={t.search}
+                className="w-full"
               />
             </div>
             
-            <div className="flex gap-3">
-              <div className="flex-1 flex gap-3">
-                <Button
-                  onClick={handleManualSend}
-                  disabled={!transcript.trim() || isProcessing || isListening}
-                  className="flex-1 h-12 text-base"
-                  size="lg"
-                >
-                  {isProcessing ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4 mr-2" />
-                  )}
-                  {isProcessing ? t.processing : t.sendToAI}
-                </Button>
+            <div className="p-4">
+              <div className="flex flex-wrap gap-2 mb-4">
+                <Badge variant="default" className="cursor-pointer">
+                  {t.all}
+                </Badge>
+                {categories.map(category => {
+                  const Icon = getCategoryIcon(category.title)
+                  return (
+                    <Badge key={category.id} variant="outline" className="cursor-pointer flex items-center gap-1">
+                      <Icon className="h-3 w-3" />
+                      {category.title}
+                    </Badge>
+                  )
+                })}
+              </div>
 
-                {order && order.items.length > 0 && (
+              <div className="grid gap-4">
+                {products.map(product => (
+                  <Card key={product.id} className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-lg">{product.title}</h3>
+                        {product.description && (
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                            {product.description}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-4 mt-2">
+                          <span className="font-bold text-green-600">
+                            {getProductPrice(product)} ₾
+                          </span>
+                          {product.tags && product.tags.map(tag => (
+                            <Badge key={tag} variant="secondary" className="text-xs">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                      <Button
+                        onClick={() => addProductToOrder(product)}
+                        size="sm"
+                        className="ml-4"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Заказ */}
+          <TabsContent value="order" className="flex-1 overflow-y-auto p-0">
+            <div className="p-4">
+              {order && order.items.length > 0 ? (
+                <div className="space-y-4">
+                  {/* Сводка заказа */}
+                  <Card className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950 dark:to-purple-950">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <div className="text-gray-600 dark:text-gray-400">{t.itemsCount}</div>
+                        <div className="font-semibold">{order.items.length}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-600 dark:text-gray-400">{t.peopleCount}</div>
+                        <div className="font-semibold">{additionalInfo.numberOfPeople}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-600 dark:text-gray-400">{t.table}</div>
+                        <div className="font-semibold">{additionalInfo.tableNumber || '-'}</div>
+                      </div>
+                      <div>
+                        <div className="text-gray-600 dark:text-gray-400">{t.type}</div>
+                        <div className="font-semibold">{getOrderTypeText(orderType)}</div>
+                      </div>
+                    </div>
+                  </Card>
+
+                  {/* Позиции заказа */}
+                  <div className="space-y-3">
+                    {order.items.map((item, index) => (
+                      <Card key={index} className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3">
+                              <h4 className="font-semibold">{item.product.title}</h4>
+                              {item.comment && (
+                                <Badge variant="outline" className="text-xs">
+                                  {item.comment}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-4 mt-2">
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  onClick={() => updateProductQuantity(item.product.id, item.quantity - 1)}
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <span className="font-medium w-8 text-center">{item.quantity}</span>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  onClick={() => updateProductQuantity(item.product.id, item.quantity + 1)}
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </div>
+                              <span className="font-bold text-green-600">
+                                {item.totalPrice} ₾
+                              </span>
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeProductFromOrder(item.product.id)}
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+
+                  {/* Итого */}
+                  <Card className="p-4 bg-gray-50 dark:bg-gray-900">
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-lg">{t.total}:</span>
+                      <span className="font-bold text-2xl text-green-600">
+                        {order.totalAmount} ₾
+                      </span>
+                    </div>
+                  </Card>
+
                   <Button
                     onClick={createOrder}
                     disabled={isCreatingOrder}
-                    className="h-12 px-6 bg-green-600 hover:bg-green-700"
+                    className="w-full h-12 bg-green-600 hover:bg-green-700"
                     size="lg"
                   >
                     {isCreatingOrder ? (
@@ -1267,42 +1760,26 @@ useEffect(() => {
                     )}
                     {t.confirmAndCreate}
                   </Button>
-                )}
-              </div>
-
-              {/* Измененная кнопка микрофона с push-to-talk функционалом */}
-              <Button
-                onMouseDown={handleMouseDown}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
-                onTouchStart={handleTouchStart}
-                onTouchEnd={handleTouchEnd}
-                variant={isListening ? "destructive" : "default"}
-                className={`h-12 px-6 flex items-center gap-3 transition-all duration-200 ${
-                  isButtonPressed ? 'scale-95' : 'scale-100'
-                }`}
-                size="lg"
-                disabled={isProcessing}
-              >
-                {isListening ? (
-                  <>
-                    <div className="relative">
-                      <Mic className="h-4 w-4" />
-                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-ping"></div>
-                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></div>
-                    </div>
-                    <span className="hidden sm:inline">{t.stopListening}</span>
-                  </>
-                ) : (
-                  <>
-                    <Mic className="h-4 w-4" />
-                    <span className="hidden sm:inline">{t.startListening}</span>
-                  </>
-                )}
-              </Button>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <ShoppingBag className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-400 mb-2">
+                    {t.emptyOrder}
+                  </h3>
+                  <Button
+                    onClick={() => setActiveTab('assistant')}
+                    variant="outline"
+                    className="mt-4"
+                  >
+                    <Mic className="h-4 w-4 mr-2" />
+                    {language === 'ru' ? 'Начать говорить' : 'დაიწყეთ საუბარი'}
+                  </Button>
+                </div>
+              )}
             </div>
-          </div>
-        </div>
+          </TabsContent>
+        </Tabs>
       </SheetContent>
     </Sheet>
   )
@@ -1316,7 +1793,7 @@ export function VoiceAssistantButton() {
     <>
       <Button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
+        className="fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
         size="icon"
       >
         <Brain className="h-6 w-6" />
