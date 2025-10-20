@@ -214,7 +214,7 @@ export function VoiceAssistantSheet({
 
   const [aiConfig, setAiConfig] = useState<AIConfig>({
     model: 'gpt-3.5-turbo',
-    temperature: 0.7,
+    temperature: 0.1,
     maxTokens: 1000,
     useAdvancedParsing: true
   })
@@ -485,8 +485,7 @@ export function VoiceAssistantSheet({
   const initializeConversation = () => {
     const systemMessage: ConversationMessage = {
       role: 'system',
-      content: language === 'ru' 
-        ? `Ты - профессиональный помощник официанта в ресторане. Твоя задача - помогать клиентам формировать заказы.
+      content:  `Ты - профессиональный помощник официанта в ресторане. Твоя задача - помогать клиентам формировать заказы.
 
 ОСНОВНЫЕ ПРАВИЛА:
 1. Всегда уточняй детали, если что-то непонятно
@@ -510,32 +509,7 @@ export function VoiceAssistantSheet({
 - itemsToAdd/itemsToRemove: для управления заказом
 - response: естественный ответ клиенту
 - confidence: уверенность (0-1)
-- suggestions: предложения для клиента`
-        : `შენ ხარ პროფესიონალი მიმტანის თანაშემწე რესტორნში. შენი მიზანია დაეხმარო კლიენტებს შეკვეთების ფორმირებაში.
-
-ძირითადი წესები:
-1. ყოველთვის დააზუსტე დეტალები, თუ რამე გაუგებარია
-2. შესთავაზე დამატებითი კერძები ან სასმელები
-3. აცნობე შეკვეთის ცვლილებების შესახებ
-4. იყავი მორიგი და პროფესიონალი
-5. დაადასტურე მოქმედებები შესრულებამდე
-
-ხელმისაწვდომი მოქმედებები:
-- კერძების დამატება შეკვეთაში
-- კერძების წაშლა შეკვეთიდან
-- რაოდენობის შეცვლა
-- შეკვეთის ტიპის შეცვლა
-- დეტალების განახლება (სტოლი, პირების რაოდენობა)
-- მიმდინარე შეკვეთის ჩვენება
-- შეკვეთის გასუფთავება
-- პასუხები მენიუს შესახებ კითხვებზე
-
-პასუხის ფორმატი JSON ველებით:
-- action: მოქმედების ტიპი
-- itemsToAdd/itemsToRemove: შეკვეთის მართვისთვის
-- response: ბუნებრივი პასუხი კლიენტს
-- confidence: ნდობა (0-1)
-- suggestions: შემოთავაზებები კლიენტისთვის`,
+- suggestions: предложения для клиента`,
       timestamp: new Date()
     }
     setConversation([systemMessage])
@@ -576,10 +550,10 @@ export function VoiceAssistantSheet({
     
     releaseTimerRef.current = setTimeout(() => {
       if (isListening) {
-        console.log('Auto-stop after 30 seconds')
+        console.log('Auto-stop after many seconds')
         handleMouseUp()
       }
-    }, 30000)
+    }, 10000000)
   }
 
   const handleMouseUp = () => {
