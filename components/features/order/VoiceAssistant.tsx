@@ -213,9 +213,9 @@ export function VoiceAssistantSheet({
   })
 
   const [aiConfig, setAiConfig] = useState<AIConfig>({
-    model: 'gpt-3.5-turbo',
-    temperature: 0,
-    maxTokens: 10000,
+    model: 'gpt-4',
+    temperature: 0.1,
+    maxTokens: 1000,
     useAdvancedParsing: true
   })
 
@@ -701,7 +701,7 @@ export function VoiceAssistantSheet({
     throw lastError || new Error('All AI endpoints failed')
   }
 
-const getSystemPrompt = () => {
+ const getSystemPrompt = () => {
   const userRestaurantId = getRestaurantId();
   
   const menuInfo = products.map(p => {
@@ -949,16 +949,16 @@ ${currentOrderInfo}
   }
 
   const handleAIAction = async (parsedData: AIActionResponse, userText: string) => {
-  console.log('Handling AI action:', parsedData.action, parsedData);
-  
-  let updatedOrder = order ? { ...order } : { items: [], confidence: 0.9, totalAmount: 0 };
-  let shouldUpdateOrderType = false;
-  let newOrderType = orderType;
-  let shouldUpdateOrder = false;
+    console.log('Handling AI action:', parsedData.action, parsedData)
+    
+    let updatedOrder = order ? { ...order } : { items: [], confidence: 0.7, totalAmount: 0 }
+    let shouldUpdateOrderType = false
+    let newOrderType = orderType
+    let shouldUpdateOrder = false
 
-  try {
-    switch (parsedData.action) {
-      case 'ADD_ITEMS':
+    try {
+      switch (parsedData.action) {
+        case 'ADD_ITEMS':
         if (parsedData.itemsToAdd && parsedData.itemsToAdd.length > 0) {
           console.log('Adding items:', parsedData.itemsToAdd);
           
@@ -1013,32 +1013,96 @@ ${currentOrderInfo}
         }
         break;
 
-      // ... остальные case остаются без изменений
-    }
+        case 'REMOVE_ITEMS':
+          if (parsedData.itemsToRemove && parsedData.itemsToRemove.length > 0) {
+            console.log('Removing items:', parsedData.itemsToRemove)
+            updatedOrder.items = updatedOrder.items.filter(item => 
+              !parsedData.itemsToRemove!.includes(item.product.id)
+            )
+            shouldUpdateOrder = true
+          }
+          break
 
-    // Обновляем общую сумму
-    if (shouldUpdateOrder) {
-      updatedOrder.totalAmount = updatedOrder.items.reduce((sum, item) => sum + item.totalPrice, 0);
-      console.log('Updating order state:', updatedOrder);
-      setOrder(updatedOrder);
-    }
-    
-    if (shouldUpdateOrderType) {
-      console.log('Updating order type state:', newOrderType);
-      setOrderType(newOrderType);
-    }
+        case 'MODIFY_QUANTITY':
+          if (parsedData.itemsToModify && parsedData.itemsToModify.length > 0) {
+            console.log('Modifying quantities:', parsedData.itemsToModify)
+            for (const modification of parsedData.itemsToModify) {
+              const itemIndex = updatedOrder.items.findIndex(
+                item => item.product.id === modification.productId
+              )
+              if (itemIndex >= 0) {
+                updatedOrder.items[itemIndex].quantity = modification.quantity
+                updatedOrder.items[itemIndex].totalPrice = 
+                  modification.quantity * getProductPrice(updatedOrder.items[itemIndex].product)
+              }
+            }
+            shouldUpdateOrder = true
+          }
+          break
 
-  } catch (error) {
-    console.error('Error in handleAIAction:', error);
+        case 'CLEAR_ORDER':
+          console.log('Clearing order')
+          updatedOrder.items = []
+          shouldUpdateOrder = true
+          break
+
+        case 'UPDATE_ORDER_TYPE':
+          if (parsedData.newOrderType) {
+            console.log('Updating order type to:', parsedData.newOrderType)
+            newOrderType = parsedData.newOrderType
+            shouldUpdateOrderType = true
+          }
+          break
+
+        case 'UPDATE_DETAILS':
+          if (parsedData.updatedDetails) {
+            console.log('Updating details:', parsedData.updatedDetails)
+            const details = parsedData.updatedDetails
+            setAdditionalInfo(prev => ({
+              numberOfPeople: details.numberOfPeople !== undefined ? details.numberOfPeople : prev.numberOfPeople,
+              tableNumber: details.tableNumber !== undefined ? details.tableNumber : prev.tableNumber,
+              comment: details.comment !== undefined ? details.comment : prev.comment
+            }))
+          }
+          break
+
+        case 'SHOW_ORDER':
+          console.log('Showing current order')
+          break
+
+        case 'SHOW_MENU':
+          console.log('Showing menu')
+          setActiveTab('menu')
+          break
+
+        case 'ANSWER_QUESTION':
+          console.log('Answering question')
+          break
+      }
+
+      // Обновляем общую сумму
+      if (shouldUpdateOrder) {
+        updatedOrder.totalAmount = updatedOrder.items.reduce((sum, item) => sum + item.totalPrice, 0)
+        console.log('Updating order state:', updatedOrder)
+        setOrder(updatedOrder)
+      }
+      
+      if (shouldUpdateOrderType) {
+        console.log('Updating order type state:', newOrderType)
+        setOrderType(newOrderType)
+      }
+
+    } catch (error) {
+      console.error('Error in handleAIAction:', error)
+    }
   }
-};
 
   const getProductPrice = (product: Product): number => {
     const userRestaurantId = getRestaurantId()
     return product.restaurantPrices?.find(rp => rp.restaurantId === userRestaurantId)?.price || product.price
   }
 
-  const findProductByIdOrTitle = (productId: string, productTitle: string): Product | null => {
+const findProductByIdOrTitle = (productId: string, productTitle: string): Product | null => {
   console.log(`Поиск продукта: ID="${productId}", Название="${productTitle}"`);
   
   // Приоритет 1: Поиск по точному ID
@@ -1189,6 +1253,7 @@ const extractProductName = (text: string): string => {
     
     return product || null
   }
+ 
 
   const calculateSimilarity = (str1: string, str2: string): number => {
     const longer = str1.length > str2.length ? str1 : str2
