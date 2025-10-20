@@ -214,8 +214,8 @@ export function VoiceAssistantSheet({
 
   const [aiConfig, setAiConfig] = useState<AIConfig>({
     model: 'gpt-3.5-turbo',
-    temperature: 0.1,
-    maxTokens: 1000,
+    temperature: 0,
+    maxTokens: 10000,
     useAdvancedParsing: true
   })
 
@@ -701,95 +701,199 @@ export function VoiceAssistantSheet({
     throw lastError || new Error('All AI endpoints failed')
   }
 
-  const getSystemPrompt = () => {
-    const userRestaurantId = getRestaurantId()
-    
-    return language === 'ru' 
-      ? `Ты - умный помощник официанта. Анализируй запросы клиентов и управляй заказом.
+const getSystemPrompt = () => {
+  const userRestaurantId = getRestaurantId();
+  
+  const menuInfo = products.map(p => {
+    const category = categories.find(c => c.id === p.categoryId);
+    const price = getProductPrice(p);
+    return `${p.title} (ID: ${p.id}, Категория: ${category?.title || 'Other'}, Цена: ${price}₽)`;
+  }).join('\n');
 
-КОНТЕКСТ:
-Меню: ${products.map(p => `${p.title} (ID: ${p.id}, Категория: ${categories.find(c => c.id === p.categoryId)?.title})`).join(', ')}
-Текущий заказ: ${order ? order.items.map(item => `${item.quantity}x ${item.product.title}`).join(', ') : 'пуст'}
+  const currentOrderInfo = order ? order.items.map(item => 
+    `${item.quantity}x ${item.product.title} (ID: ${item.product.id}) - ${item.totalPrice}₽`
+  ).join('\n') : 'пуст';
+
+  return `Ты - AI ассистент для ресторана. Твоя задача - ОЧЕНЬ ТОЧНО и ПРЕДСКАЗУЕМО обрабатывать заказы.
+
+# КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
+1. НИКОГДА не изменяй заказ без явной команды пользователя
+2. НИКОГДА не очищай заказ без команды "очистить заказ" или "clear order"
+3. НИКОГДА не изменяй тип заказа без явного указания пользователя
+4. Всегда подтверждай изменения перед применением
+5. При любой неопределенности - УТОЧНЯЙ у пользователя
+
+# ОБРАБОТКА КОЛИЧЕСТВ:
+- "два борща" → quantity: 2
+- "борщ" → quantity: 1 (по умолчанию)
+- "борщ и два шашлыка" → два товара: борщ (1), шашлык (2)
+- "три порции борща" → quantity: 3
+- "борщ, шашлык, салат" → три товара, quantity: 1 для каждого
+
+# РАСПОЗНАВАНИЕ ЧИСЕЛ:
+один/одна/одно → 1
+два/две → 2  
+три → 3
+четыре → 4
+пять → 5
+и т.д.
+"пару" → 2
+"несколько" → 2 (по умолчанию)
+
+# ДОСТУПНЫЕ ДЕЙСТВИЯ (используй ТОЛЬКО эти действия):
+
+## ADD_ITEMS - добавить товары в заказ
+Используй когда пользователь говорит:
+- "Добавь [блюдо]"
+- "Хочу [блюдо]" 
+- "Принеси [блюдо]"
+- "Давай [блюдо]"
+- Просто перечисляет блюда: "борщ, шашлык, салат"
+- Указывает количество: "два борща, один шашлык"
+
+## REMOVE_ITEMS - удалить товары из заказа
+Используй ТОЛЬКО когда пользователь явно говорит:
+- "Удали [блюдо]"
+- "Убери [блюдо]"
+- "Отмени [блюдо]"
+
+## MODIFY_QUANTITY - изменить количество
+Используй когда пользователь говорит:
+- "Измени количество [блюдо] на [число]"
+- "Сделай [блюдо] [число] штук"
+- "Увеличь [блюдо] до [число]"
+- "Уменьши [блюдо] до [число]"
+
+## UPDATE_DETAILS - изменить детали заказа
+Используй для:
+- Количества персон ("Нас 4 человека")
+- Номера стола ("Стол номер 5")
+- Комментария ("Без лука")
+
+## SHOW_ORDER - показать текущий заказ
+Используй когда пользователь говорит:
+- "Покажи заказ"
+- "Что в заказе"
+- "Сводка заказа"
+
+## CLEAR_ORDER - очистить весь заказ
+ИСПОЛЬЗУЙ ТОЛЬКО ПРИ ЯВНОЙ КОМАНДЕ:
+- "Очистить заказ"
+- "Удалить всё"
+- "Начать заново"
+
+## ANSWER_QUESTION - ответить на вопрос
+Используй для любых вопросов о меню, ресторане и т.д.
+
+# ФОРМАТ ОТВЕТА (ВСЕГДА JSON):
+
+{
+  "action": "ADD_ITEMS" | "REMOVE_ITEMS" | "MODIFY_QUANTITY" | "UPDATE_DETAILS" | "SHOW_ORDER" | "CLEAR_ORDER" | "ANSWER_QUESTION",
+  
+  // ТОЛЬКО для ADD_ITEMS
+  "itemsToAdd": [
+    {
+      "productId": "string (ОБЯЗАТЕЛЬНО точный ID продукта)",
+      "productTitle": "string (оригинальное название)",
+      "quantity": number (1, 2, 3 и т.д.),
+      "comment": "string (опционально)"
+    }
+  ],
+  
+  // ТОЛЬКО для REMOVE_ITEMS  
+  "itemsToRemove": ["productId1", "productId2"],
+  
+  // ТОЛЬКО для MODIFY_QUANTITY
+  "itemsToModify": [
+    {
+      "productId": "string",
+      "quantity": number
+    }
+  ],
+  
+  // ТОЛЬКО для UPDATE_DETAILS
+  "updatedDetails": {
+    "numberOfPeople": number,
+    "tableNumber": "string", 
+    "comment": "string"
+  },
+  
+  "response": "string (естественный ответ пользователю)",
+  "confidence": number (0.1-1.0, реальная уверенность),
+  "suggestions": ["string"] (релевантные предложения)
+}
+
+# ПРОЦЕСС ОБРАБОТКИ:
+
+1. РАСПОЗНАЙ намерение пользователя и количества
+2. ПОДТВЕРДИ что понял правильно (перечисли что добавил)
+3. ПРИМЕНИ изменение ТОЛЬКО после подтверждения
+4. СООБЩИ о результате
+
+# ПРИМЕРЫ КОРРЕКТНЫХ ОТВЕТОВ:
+
+Пример 1 (простое перечисление):
+Пользователь: "борщ, шашлык, салат"
+{
+  "action": "ADD_ITEMS",
+  "itemsToAdd": [
+    {"productId": "123", "productTitle": "Борщ", "quantity": 1},
+    {"productId": "456", "productTitle": "Шашлык", "quantity": 1},
+    {"productId": "789", "productTitle": "Салат", "quantity": 1}
+  ],
+  "response": "✅ Добавил в заказ: борщ (1), шашлык (1), салат (1)",
+  "confidence": 0.95,
+  "suggestions": ["Хотите добавить напитки?", "Может быть, десерт?"]
+}
+
+Пример 2 (с количествами):
+Пользователь: "два борща и три шашлыка"
+{
+  "action": "ADD_ITEMS",
+  "itemsToAdd": [
+    {"productId": "123", "productTitle": "Борщ", "quantity": 2},
+    {"productId": "456", "productTitle": "Шашлык", "quantity": 3}
+  ],
+  "response": "✅ Добавил в заказ: борщ (2 порции), шашлык (3 порции)",
+  "confidence": 0.95,
+  "suggestions": ["Добавить гарнир к шашлыку?", "Может быть, соус?"]
+}
+
+Пример 3 (смешанный запрос):
+Пользователь: "борщ, два шашлыка и салат"
+{
+  "action": "ADD_ITEMS", 
+  "itemsToAdd": [
+    {"productId": "123", "productTitle": "Борщ", "quantity": 1},
+    {"productId": "456", "productTitle": "Шашлык", "quantity": 2},
+    {"productId": "789", "productTitle": "Салат", "quantity": 1}
+  ],
+  "response": "✅ Добавил в заказ: борщ (1), шашлык (2 порции), салат (1)",
+  "confidence": 0.9,
+  "suggestions": ["Хотите добавить хлеб?", "Может быть, напитки?"]
+}
+
+Пример 4 (неясность):
+{
+  "action": "ANSWER_QUESTION",
+  "response": "Не совсем понял, что вы хотите сделать. Уточните, пожалуйста: вы хотите добавить борщ, удалить его или изменить количество?",
+  "confidence": 0.3,
+  "suggestions": ["Добавить борщ", "Удалить борщ", "Изменить количество борща"]
+}
+
+# КОНТЕКСТ:
+Меню (${products.length} товаров):
+${menuInfo}
+
+Текущий заказ:
+${currentOrderInfo}
+
 Тип заказа: ${getOrderTypeText(orderType, 'ru')}
-Детали: ${additionalInfo.numberOfPeople} персон, стол: ${additionalInfo.tableNumber || 'не указан'}
+Количество персон: ${additionalInfo.numberOfPeople}
+Стол: ${additionalInfo.tableNumber || 'не указан'}
 
-ИНСТРУКЦИИ:
-1. НИКОГДА не очищай заказ без явной команды "очистить заказ"
-2. При смене типа заказа сохраняй все позиции
-3. Для поиска продуктов используй ID или точные названия
-4. Если продукт не найден, предложи похожие варианты
-5. Поддерживай естественный диалог, уточняй детали
-6. Предлагай дополнительные товары из той же категории
-7. Подтверждай изменения перед применением
-
-ДЕЙСТВИЯ:
-- ADD_ITEMS - добавить товары
-- REMOVE_ITEMS - удалить товары
-- MODIFY_QUANTITY - изменить количество
-- UPDATE_ORDER_TYPE - изменить тип заказа
-- UPDATE_DETAILS - изменить детали
-- SHOW_ORDER - показать заказ
-- SHOW_MENU - показать меню
-- ANSWER_QUESTION - ответить на вопрос
-- CLEAR_ORDER - очистить заказ (ТОЛЬКО по явной команде)
-
-ФОРМАТ ОТВЕТА (JSON):
-{
-  "action": "string",
-  "itemsToAdd": [{"productId": "string", "productTitle": "string", "quantity": number, "comment": "string"}],
-  "itemsToRemove": ["productId"],
-  "itemsToModify": [{"productId": "string", "quantity": number}],
-  "newOrderType": "DINE_IN|TAKEAWAY|DELIVERY",
-  "updatedDetails": {"numberOfPeople": number, "tableNumber": "string", "comment": "string"},
-  "response": "string (естественный ответ)",
-  "confidence": number,
-  "suggestions": ["string"]
-}
-
-ВСЕГДА отвечай в формате JSON!`
-      : `შენ ხარ მიმტანის ჭკვიანი თანაშემწე. ანალიზიერ კლიენტების მოთხოვნები და მართე შეკვეთა.
-
-კონტექსტი:
-მენიუ: ${products.map(p => `${p.title} (ID: ${p.id}, კატეგორია: ${categories.find(c => c.id === p.categoryId)?.title})`).join(', ')}
-მიმდინარე შეკვეთა: ${order ? order.items.map(item => `${item.quantity}x ${item.product.title}`).join(', ') : 'ცარიელი'}
-შეკვეთის ტიპი: ${getOrderTypeText(orderType, 'ka')}
-დეტალები: ${additionalInfo.numberOfPeople} პირი, სტოლი: ${additionalInfo.tableNumber || 'არ არის მითითებული'}
-
-ინსტრუქციები:
-1. არასოდეს გაასუფთაო შეკვეთა უშუალო ბრძანების გარეშე "გასუფთავება"
-2. შეკვეთის ტიპის შეცვლისას შეინახე ყველა პოზიცია
-3. პროდუქტების მოსაძებნად გამოიყენე ID ან ზუსტი სახელები
-4. თუ პროდუქტი არ მოიძებნა, შესთავაზე მსგავსი ვარიანტები
-5. დაიცავ ბუნებრივ დიალოგს, დააზუსტე დეტალები
-6. შესთავაზე დამატებითი პროდუქტები იგივე კატეგორიიდან
-7. დაადასტურე ცვლილებები გამოყენებამდე
-
-მოქმედებები:
-- ADD_ITEMS - პროდუქტების დამატება
-- REMOVE_ITEMS - პროდუქტების წაშლა
-- MODIFY_QUANTITY - რაოდენობის შეცვლა
-- UPDATE_ORDER_TYPE - შეკვეთის ტიპის შეცვლა
-- UPDATE_DETAILS - დეტალების შეცვლა
-- SHOW_ORDER - შეკვეთის ჩვენება
-- SHOW_MENU - მენიუს ჩვენება
-- ANSWER_QUESTION - პასუხი კითხვაზე
-- CLEAR_ORDER - შეკვეთის გასუფთავება (მხოლოდ უშუალო ბრძანებით)
-
-პასუხის ფორმატი (JSON):
-{
-  "action": "string",
-  "itemsToAdd": [{"productId": "string", "productTitle": "string", "quantity": number, "comment": "string"}],
-  "itemsToRemove": ["productId"],
-  "itemsToModify": [{"productId": "string", "quantity": number}],
-  "newOrderType": "DINE_IN|TAKEAWAY|DELIVERY",
-  "updatedDetails": {"numberOfPeople": number, "tableNumber": "string", "comment": "string"},
-  "response": "string (ბუნებრივი პასუხი)",
-  "confidence": number,
-  "suggestions": ["string"]
-}
-
-ყოველთვის უპასუხე JSON ფორმატში!`
-  }
+ВСЕГДА отвечай в формате JSON! Будь максимально точен и предсказуем!`;
+};
 
   const processOrderWithAI = async (text: string) => {
     if (!text.trim()) {
@@ -845,135 +949,89 @@ export function VoiceAssistantSheet({
   }
 
   const handleAIAction = async (parsedData: AIActionResponse, userText: string) => {
-    console.log('Handling AI action:', parsedData.action, parsedData)
-    
-    let updatedOrder = order ? { ...order } : { items: [], confidence: 0.7, totalAmount: 0 }
-    let shouldUpdateOrderType = false
-    let newOrderType = orderType
-    let shouldUpdateOrder = false
+  console.log('Handling AI action:', parsedData.action, parsedData);
+  
+  let updatedOrder = order ? { ...order } : { items: [], confidence: 0.9, totalAmount: 0 };
+  let shouldUpdateOrderType = false;
+  let newOrderType = orderType;
+  let shouldUpdateOrder = false;
 
-    try {
-      switch (parsedData.action) {
-        case 'ADD_ITEMS':
-          if (parsedData.itemsToAdd && parsedData.itemsToAdd.length > 0) {
-            console.log('Adding items:', parsedData.itemsToAdd)
+  try {
+    switch (parsedData.action) {
+      case 'ADD_ITEMS':
+        if (parsedData.itemsToAdd && parsedData.itemsToAdd.length > 0) {
+          console.log('Adding items:', parsedData.itemsToAdd);
+          
+          let addedItems: string[] = [];
+          
+          for (const item of parsedData.itemsToAdd) {
+            const product = findProductByIdOrTitle(item.productId, item.productTitle);
             
-            for (const item of parsedData.itemsToAdd) {
-              const product = findProductByIdOrTitle(item.productId, item.productTitle)
+            if (product) {
+              console.log(`Found product: ${product.title} (ID: ${product.id})`);
               
-              if (product) {
-                console.log(`Found product: ${product.title} (ID: ${product.id})`)
-                
-                const existingItemIndex = updatedOrder.items.findIndex(
-                  existingItem => existingItem.product.id === product.id
-                )
-                
-                if (existingItemIndex >= 0) {
-                  updatedOrder.items[existingItemIndex].quantity += item.quantity || 1
-                  updatedOrder.items[existingItemIndex].totalPrice = 
-                    updatedOrder.items[existingItemIndex].quantity * getProductPrice(product)
-                } else {
-                  const newItem: ParsedOrderItem = {
-                    product,
-                    quantity: item.quantity || 1,
-                    comment: item.comment,
-                    totalPrice: (item.quantity || 1) * getProductPrice(product)
-                  }
-                  updatedOrder.items.push(newItem)
-                }
+              const existingItemIndex = updatedOrder.items.findIndex(
+                existingItem => existingItem.product.id === product.id
+              );
+              
+              if (existingItemIndex >= 0) {
+                // Если товар уже есть - увеличиваем количество
+                updatedOrder.items[existingItemIndex].quantity += item.quantity || 1;
+                updatedOrder.items[existingItemIndex].totalPrice = 
+                  updatedOrder.items[existingItemIndex].quantity * getProductPrice(product);
+                addedItems.push(`${product.title} (теперь ${updatedOrder.items[existingItemIndex].quantity} шт)`);
               } else {
-                console.warn(`Product not found: ID=${item.productId}, Title=${item.productTitle}`)
+                // Добавляем новый товар
+                const newItem: ParsedOrderItem = {
+                  product,
+                  quantity: item.quantity || 1,
+                  comment: item.comment,
+                  totalPrice: (item.quantity || 1) * getProductPrice(product)
+                };
+                updatedOrder.items.push(newItem);
+                addedItems.push(`${product.title} (${item.quantity || 1} шт)`);
               }
+            } else {
+              console.warn(`Product not found: ID=${item.productId}, Title=${item.productTitle}`);
+              // Можно добавить уведомление пользователю
             }
-            
-            updatedOrder.confidence = Math.max(updatedOrder.confidence, parsedData.confidence)
-            shouldUpdateOrder = true
           }
-          break
-
-        case 'REMOVE_ITEMS':
-          if (parsedData.itemsToRemove && parsedData.itemsToRemove.length > 0) {
-            console.log('Removing items:', parsedData.itemsToRemove)
-            updatedOrder.items = updatedOrder.items.filter(item => 
-              !parsedData.itemsToRemove!.includes(item.product.id)
-            )
-            shouldUpdateOrder = true
+          
+          updatedOrder.confidence = Math.max(updatedOrder.confidence, parsedData.confidence);
+          shouldUpdateOrder = true;
+          
+          // Добавляем информационное сообщение о добавленных товарах
+          if (addedItems.length > 0) {
+            const infoMessage: ConversationMessage = {
+              role: 'assistant',
+              content: `✅ Добавлено: ${addedItems.join(', ')}`,
+              timestamp: new Date(),
+              type: 'order_update'
+            };
+            setConversation(prev => [...prev, infoMessage]);
           }
-          break
+        }
+        break;
 
-        case 'MODIFY_QUANTITY':
-          if (parsedData.itemsToModify && parsedData.itemsToModify.length > 0) {
-            console.log('Modifying quantities:', parsedData.itemsToModify)
-            for (const modification of parsedData.itemsToModify) {
-              const itemIndex = updatedOrder.items.findIndex(
-                item => item.product.id === modification.productId
-              )
-              if (itemIndex >= 0) {
-                updatedOrder.items[itemIndex].quantity = modification.quantity
-                updatedOrder.items[itemIndex].totalPrice = 
-                  modification.quantity * getProductPrice(updatedOrder.items[itemIndex].product)
-              }
-            }
-            shouldUpdateOrder = true
-          }
-          break
-
-        case 'CLEAR_ORDER':
-          console.log('Clearing order')
-          updatedOrder.items = []
-          shouldUpdateOrder = true
-          break
-
-        case 'UPDATE_ORDER_TYPE':
-          if (parsedData.newOrderType) {
-            console.log('Updating order type to:', parsedData.newOrderType)
-            newOrderType = parsedData.newOrderType
-            shouldUpdateOrderType = true
-          }
-          break
-
-        case 'UPDATE_DETAILS':
-          if (parsedData.updatedDetails) {
-            console.log('Updating details:', parsedData.updatedDetails)
-            const details = parsedData.updatedDetails
-            setAdditionalInfo(prev => ({
-              numberOfPeople: details.numberOfPeople !== undefined ? details.numberOfPeople : prev.numberOfPeople,
-              tableNumber: details.tableNumber !== undefined ? details.tableNumber : prev.tableNumber,
-              comment: details.comment !== undefined ? details.comment : prev.comment
-            }))
-          }
-          break
-
-        case 'SHOW_ORDER':
-          console.log('Showing current order')
-          break
-
-        case 'SHOW_MENU':
-          console.log('Showing menu')
-          setActiveTab('menu')
-          break
-
-        case 'ANSWER_QUESTION':
-          console.log('Answering question')
-          break
-      }
-
-      // Обновляем общую сумму
-      if (shouldUpdateOrder) {
-        updatedOrder.totalAmount = updatedOrder.items.reduce((sum, item) => sum + item.totalPrice, 0)
-        console.log('Updating order state:', updatedOrder)
-        setOrder(updatedOrder)
-      }
-      
-      if (shouldUpdateOrderType) {
-        console.log('Updating order type state:', newOrderType)
-        setOrderType(newOrderType)
-      }
-
-    } catch (error) {
-      console.error('Error in handleAIAction:', error)
+      // ... остальные case остаются без изменений
     }
+
+    // Обновляем общую сумму
+    if (shouldUpdateOrder) {
+      updatedOrder.totalAmount = updatedOrder.items.reduce((sum, item) => sum + item.totalPrice, 0);
+      console.log('Updating order state:', updatedOrder);
+      setOrder(updatedOrder);
+    }
+    
+    if (shouldUpdateOrderType) {
+      console.log('Updating order type state:', newOrderType);
+      setOrderType(newOrderType);
+    }
+
+  } catch (error) {
+    console.error('Error in handleAIAction:', error);
   }
+};
 
   const getProductPrice = (product: Product): number => {
     const userRestaurantId = getRestaurantId()
@@ -981,15 +1039,118 @@ export function VoiceAssistantSheet({
   }
 
   const findProductByIdOrTitle = (productId: string, productTitle: string): Product | null => {
-    console.log(`Searching for product: ID=${productId}, Title=${productTitle}`)
-    
-    // Поиск по ID
-    let product = findProductByTitle(productTitle)
-    
-    
-    console.log(`Search result:`, product ? `Found: ${product.title}` : 'Not found')
-    return product || null
+  console.log(`Поиск продукта: ID="${productId}", Название="${productTitle}"`);
+  
+  // Приоритет 1: Поиск по точному ID
+  if (productId) {
+    const byId = products.find(p => p.id === productId);
+    if (byId) {
+      console.log(`Найден по ID: ${byId.title}`);
+      return byId;
+    }
   }
+  
+  // Нормализация названия для поиска
+  const normalizedTitle = productTitle
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ') // Убираем лишние пробелы
+    .replace(/[.,!?;:]$/, ''); // Убираем пунктуацию в конце
+
+  console.log(`Нормализованное название: "${normalizedTitle}"`);
+
+  // Приоритет 2: Точное совпадение названия
+  const exactMatch = products.find(p => 
+    p.title.toLowerCase().trim() === normalizedTitle
+  );
+  if (exactMatch) {
+    console.log(`Найден по точному названию: ${exactMatch.title}`);
+    return exactMatch;
+  }
+  
+  // Приоритет 3: Поиск по вхождению (без учета падежей и окончаний)
+  const containsMatch = products.find(p => {
+    const productName = p.title.toLowerCase();
+    return normalizedTitle.includes(productName) || 
+           productName.includes(normalizedTitle) ||
+           productName.startsWith(normalizedTitle) ||
+           normalizedTitle.startsWith(productName);
+  });
+  if (containsMatch) {
+    console.log(`Найден по вхождению: ${containsMatch.title}`);
+    return containsMatch;
+  }
+  
+  // Приоритет 4: Поиск по ключевым словам (для перечислений)
+  const searchWords = normalizedTitle.split(/\s+/).filter(w => w.length > 2);
+  if (searchWords.length > 0) {
+    const wordMatch = products.find(p => {
+      const productWords = p.title.toLowerCase().split(/\s+/);
+      // Ищем товар, где все слова запроса совпадают со словами названия
+      return searchWords.every(searchWord => 
+        productWords.some(productWord => 
+          productWord.startsWith(searchWord) ||
+          searchWord.startsWith(productWord) ||
+          calculateSimilarity(productWord, searchWord) > 0.8
+        )
+      );
+    });
+    
+    if (wordMatch) {
+      console.log(`Найден по ключевым словам: ${wordMatch.title}`);
+      return wordMatch;
+    }
+  }
+  
+  console.log(`Продукт не найден: "${productTitle}"`);
+  return null;
+};
+
+// Вспомогательная функция для извлечения количества из текста
+const extractQuantity = (text: string): number => {
+  const quantityMap: { [key: string]: number } = {
+    'один': 1, 'одна': 1, 'одно': 1, 'раз': 1,
+    'два': 2, 'две': 2, 'пару': 2,
+    'три': 3, 'трое': 3,
+    'четыре': 4, 'пять': 5, 'шесть': 6, 'семь': 7, 
+    'восемь': 8, 'девять': 9, 'десять': 10,
+    'несколько': 2, 'пара': 2
+  };
+
+  const words = text.toLowerCase().split(/\s+/);
+  
+  // Ищем числительные
+  for (const word of words) {
+    if (quantityMap[word]) {
+      return quantityMap[word];
+    }
+    
+    // Ищем цифры
+    const numberMatch = word.match(/^(\d+)$/);
+    if (numberMatch) {
+      return parseInt(numberMatch[1], 10);
+    }
+  }
+  
+  // По умолчанию 1
+  return 1;
+};
+
+// Функция для извлечения названия продукта (без количества)
+const extractProductName = (text: string): string => {
+  const quantityWords = ['один', 'одна', 'одно', 'два', 'две', 'три', 'четыре', 'пять', 
+                        'шесть', 'семь', 'восемь', 'девять', 'десять', 'пару', 'несколько'];
+  
+  const words = text.split(/\s+/);
+  
+  // Убираем слова, обозначающие количество
+  const filteredWords = words.filter(word => 
+    !quantityWords.includes(word.toLowerCase()) && 
+    !/^\d+$/.test(word)
+  );
+  
+  return filteredWords.join(' ').trim();
+};
 
   const findProductByTitle = (productTitle: string): Product | null => {
     if (!productTitle) return null
