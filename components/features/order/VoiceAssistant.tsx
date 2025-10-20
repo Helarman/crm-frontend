@@ -210,7 +210,7 @@ export function VoiceAssistantSheet({
   })
 
   const [aiConfig, setAiConfig] = useState<AIConfig>({
-    model: 'gpt-4',
+    model: 'gpt-3.5-turbo',
     temperature: 0.1,
     maxTokens: 1000,
     useAdvancedParsing: true
