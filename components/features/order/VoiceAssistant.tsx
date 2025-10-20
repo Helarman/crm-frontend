@@ -164,10 +164,7 @@ interface VoiceAssistantSheetProps {
 
 // Список бесплатных прокси эндпоинтов для OpenAI API
 const FREE_PROXY_ENDPOINTS = [
-  'https://chatgpt-api.shn.hk/v1/chat/completions',
   'https://api.openai-proxy.com/v1/chat/completions',
-  'https://openai.api.2dost.com/v1/chat/completions',
-  'https://api.aimlapi.com/v1/chat/completions',
 ]
 
 // Категории и их иконки
