@@ -141,20 +141,9 @@ interface VoiceAssistantSheetProps {
   orderId?: string
 }
 
-// Прокси эндпоинты для OpenAI API
-const OPENAI_PROXY_ENDPOINTS = [
-  'https://api.openai.com/v1',
-  'https://api.openai-proxy.org/v1',
-  'https://chatgpt-api.shn.hk/v1',
-]
 
 // Категории и их иконки
 const CATEGORY_ICONS: { [key: string]: any } = {
-  'main': Utensils,
-  'drinks': Wine,
-  'desserts': Dessert,
-  'coffee': Coffee,
-  'pizza': Pizza,
   'default': ChefHat
 }
 
@@ -173,7 +162,7 @@ export function VoiceAssistantSheet({
   const router = useRouter()
   const { user } = useAuth()
   const { language } = useLanguageStore()
-  
+  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>('')
   const [isListening, setIsListening] = useState(false)
   const [transcript, setTranscript] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
@@ -396,6 +385,7 @@ export function VoiceAssistantSheet({
 
   const t = translations[language]
 
+  
   // Инициализация и загрузка данных
   useEffect(() => {
     if (open) {
@@ -527,12 +517,17 @@ export function VoiceAssistantSheet({
     }
   }
 
- const processAudioWithWhisper = async (audioBlob: Blob) => {
+const processAudioWithWhisper = async (audioBlob: Blob) => {
   setIsProcessing(true);
   
   try {
+    // Просто меняем MIME type на поддерживаемый
+    const supportedBlob = new Blob([audioBlob], { 
+      type: 'audio/wav' 
+    });
+    
     const formData = new FormData();
-    formData.append('file', audioBlob, 'recording.webm');
+    formData.append('file', supportedBlob, 'audio.wav');
     formData.append('model', 'whisper-1');
     formData.append('language', language === 'ru' ? 'ru' : 'ka');
     
@@ -547,6 +542,26 @@ export function VoiceAssistantSheet({
     }
   } catch (error) {
     console.error('Error processing audio:', error);
+    
+    // Fallback: попробовать с оригинальным blob но другим именем файла
+    try {
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'audio.webm');
+      formData.append('model', 'whisper-1');
+      formData.append('language', language === 'ru' ? 'ru' : 'ka');
+      
+      const result = await openAIService.transcribeAudio(formData);
+      const transcribedText = result.text.trim();
+      
+      if (transcribedText) {
+        setTranscript(transcribedText);
+        await processOrderWithAI(transcribedText);
+        return;
+      }
+    } catch (fallbackError) {
+      console.error('Fallback also failed:', fallbackError);
+    }
+    
     toast.error(language === 'ru' ? 'Ошибка обработки аудио' : 'აუდიოს დამუშავების შეცდომა');
   } finally {
     setIsProcessing(false);
