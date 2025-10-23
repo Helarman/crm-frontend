@@ -1,9 +1,8 @@
 class OpenAIService {
   private proxyBaseUrl: string;
 
-  constructor() {
-    // URL вашего NestJS прокси сервера
-    this.proxyBaseUrl = process.env.NEXT_PUBLIC_OPENAI_PROXY_URL || 'http://localhost:3001';
+  constructor() { 
+    this.proxyBaseUrl = 'https://jukirililuk.beget.app';
   }
 
   async makeRequest(endpoint: string, body: any, apiKey?: string) {
