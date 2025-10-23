@@ -50,6 +50,8 @@ import { OrderService } from '@/lib/api/order.service'
 import { ProductService } from '@/lib/api/product.service'
 import { CategoryService } from '@/lib/api/category.service'
 import { useLanguageStore } from '@/lib/stores/language-store'
+import { openAIService } from '@/lib/api/openai-proxy.service'
+
 
 interface Product {
   id: string
@@ -438,57 +440,85 @@ export function VoiceAssistantSheet({
     }
   }
 
-  // Запись аудио с использованием MediaRecorder API
-  const startAudioRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 16000,
-        } 
-      })
-      
-      audioChunksRef.current = []
-      mediaRecorderRef.current = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      })
-      
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data)
-        }
+ const startAudioRecording = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ 
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        sampleRate: 16000,
+      } 
+    });
+    
+    audioChunksRef.current = [];
+    
+    // Пробуем разные MIME types в порядке предпочтения
+    const mimeTypes = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus', 
+      'audio/mp4',
+      'audio/wav'
+    ];
+    
+    let selectedMimeType = '';
+    for (const mimeType of mimeTypes) {
+      if (MediaRecorder.isTypeSupported(mimeType)) {
+        selectedMimeType = mimeType;
+        break;
       }
-      
-      mediaRecorderRef.current.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-        await processAudioWithWhisper(audioBlob)
-        
-        // Останавливаем все треки
-        stream.getTracks().forEach(track => track.stop())
-        
-        if (audioContextRef.current) {
-          audioContextRef.current.close()
-          audioContextRef.current = null
-        }
-        
-        if (animationRef.current) {
-          cancelAnimationFrame(animationRef.current)
-        }
-        
-        setAudioLevel(0)
-      }
-      
-      mediaRecorderRef.current.start(1000) // Собираем данные каждую секунду
-      setIsRecording(true)
-      await initializeAudioAnalyzer(stream)
-      
-    } catch (error) {
-      console.error('Error starting audio recording:', error)
-      toast.error(t.audioError)
-      setIsRecording(false)
     }
+    
+    if (!selectedMimeType) {
+      selectedMimeType = 'audio/webm';
+    }
+    
+    console.log('Selected MIME type:', selectedMimeType);
+    
+    mediaRecorderRef.current = new MediaRecorder(stream, {
+      mimeType: selectedMimeType
+    });
+    
+    mediaRecorderRef.current.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        audioChunksRef.current.push(event.data);
+      }
+    };
+    
+    mediaRecorderRef.current.onstop = async () => {
+      const audioBlob = new Blob(audioChunksRef.current, { 
+        type: selectedMimeType.includes('wav') ? 'audio/wav' : 
+              selectedMimeType.includes('mp4') ? 'audio/mp4' : 
+              selectedMimeType.includes('ogg') ? 'audio/ogg' : 
+              'audio/webm'
+      });
+      
+      await processAudioWithWhisper(audioBlob);
+      
+      stream.getTracks().forEach(track => track.stop());
+      
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+      
+      setAudioLevel(0);
+    };
+    
+    mediaRecorderRef.current.start(1000);
+    setIsRecording(true);
+    await initializeAudioAnalyzer(stream);
+    
+  } catch (error) {
+    console.error('Error starting audio recording:', error);
+    toast.error(t.audioError);
+    setIsRecording(false);
   }
+};
 
   const stopAudioRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
@@ -497,81 +527,31 @@ export function VoiceAssistantSheet({
     }
   }
 
-  // Обработка аудио через Whisper API
-  const processAudioWithWhisper = async (audioBlob: Blob) => {
-    setIsProcessing(true)
+ const processAudioWithWhisper = async (audioBlob: Blob) => {
+  setIsProcessing(true);
+  
+  try {
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'recording.webm');
+    formData.append('model', 'whisper-1');
+    formData.append('language', language === 'ru' ? 'ru' : 'ka');
     
-    try {
-      const formData = new FormData()
-      formData.append('file', audioBlob, 'recording.webm')
-      formData.append('model', 'whisper-1')
-      formData.append('language', language === 'ru' ? 'ru' : 'ka')
-      
-      // Пробуем разные прокси эндпоинты
-      let lastError: any = null
-      
-      for (const endpoint of OPENAI_PROXY_ENDPOINTS) {
-        try {
-          console.log(`Trying Whisper endpoint: ${endpoint}`)
-          
-          const response = await fetch(`${endpoint}/audio/transcriptions`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${process.env.NEXT_PUBLIC_OPENAI_API_KEY}`,
-            },
-            body: formData,
-          })
-          
-          if (response.ok) {
-            const result = await response.json()
-            const transcribedText = result.text.trim()
-            
-            console.log('Whisper transcription:', transcribedText)
-            
-            if (transcribedText) {
-              setTranscript(transcribedText)
-              await processOrderWithAI(transcribedText)
-            } else {
-              toast.error(language === 'ru' ? 'Не удалось распознать речь' : 'მეტყველების ამოცნობა ვერ მოხერხდა')
-            }
-            
-            return
-          } else {
-            console.warn(`Whisper endpoint ${endpoint} failed: ${response.status}`)
-            lastError = new Error(`HTTP ${response.status}`)
-          }
-        } catch (error) {
-          console.warn(`Whisper endpoint ${endpoint} error:`, error)
-          lastError = error
-          continue
-        }
-      }
-      
-      // Fallback на наш API route
-      const fallbackResponse = await fetch('/api/ai/transcribe', {
-        method: 'POST',
-        body: formData,
-      })
-      
-      if (fallbackResponse.ok) {
-        const result = await fallbackResponse.json()
-        const transcribedText = result.text.trim()
-        
-        if (transcribedText) {
-          setTranscript(transcribedText)
-          await processOrderWithAI(transcribedText)
-        }
-      } else {
-        throw lastError || new Error('All Whisper endpoints failed')
-      }
-      
-    } catch (error) {
-      console.error('Error processing audio with Whisper:', error)
-      toast.error(language === 'ru' ? 'Ошибка обработки аудио' : 'აუდიოს დამუშავების შეცდომა')
-    } finally {
-      setIsProcessing(false)
+    const result = await openAIService.transcribeAudio(formData);
+    const transcribedText = result.text.trim();
+    
+    if (transcribedText) {
+      setTranscript(transcribedText);
+      await processOrderWithAI(transcribedText);
+    } else {
+      toast.error(language === 'ru' ? 'Не удалось распознать речь' : 'მეტყველების ამოცნობა ვერ მოხერხდა');
     }
+  } catch (error) {
+    console.error('Error processing audio:', error);
+    toast.error(language === 'ru' ? 'Ошибка обработки аудио' : 'აუდიოს დამუშავების შეცდომა');
+  } finally {
+    setIsProcessing(false);
   }
+};
 
   const cleanupAudio = () => {
     if (mediaRecorderRef.current && isRecording) {
@@ -673,100 +653,23 @@ export function VoiceAssistantSheet({
     processOrderWithAI(transcript)
   }
 
-  // Обработка AI запросов с использованием прокси
-  const callOpenAI = async (prompt: string): Promise<any> => {
-    const userRestaurantId = getRestaurantId()
-    
-    const requestBody = {
-      model: aiConfig.model,
-      messages: [
-        {
-          role: "system",
-          content: getSystemPrompt()
-        },
-        {
-          role: "user", 
-          content: prompt
-        }
-      ],
-      temperature: aiConfig.temperature,
-      max_tokens: aiConfig.maxTokens,
-      response_format: { type: "json_object" }
+const callOpenAI = async (prompt: string): Promise<any> => {
+  const response = await openAIService.chatCompletion([
+    {
+      role: "system",
+      content: getSystemPrompt()
+    },
+    {
+      role: "user", 
+      content: prompt
     }
+  ], {
+    temperature: aiConfig.temperature,
+    max_tokens: aiConfig.maxTokens,
+  });
 
-    let lastError: any = null
-
-    for (const endpoint of OPENAI_PROXY_ENDPOINTS) {
-      try {
-        console.log(`Trying proxy endpoint: ${endpoint}`)
-        
-        const response = await fetch(`${endpoint}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.NEXT_PUBLIC_OPENAI_API_KEY}`,
-          },
-          body: JSON.stringify(requestBody),
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          console.log(`Success with endpoint: ${endpoint}`)
-          return data
-        } else {
-          console.warn(`Endpoint ${endpoint} failed with status: ${response.status}`)
-          lastError = new Error(`HTTP ${response.status}`)
-        }
-      } catch (error) {
-        console.warn(`Endpoint ${endpoint} error:`, error)
-        lastError = error
-        continue
-      }
-    }
-
-    // Fallback to API route
-    try {
-      console.log('Trying fallback API route')
-      const response = await fetch('/api/ai/process-order', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          prompt,
-          products: products.map(p => ({
-            id: p.id,
-            title: p.title,
-            price: getProductPrice(p),
-            category: categories.find(c => c.id === p.categoryId)?.title || 'Other',
-            tags: p.tags || []
-          })),
-          currentOrder: order ? {
-            items: order.items.map(item => ({
-              productId: item.product.id,
-              productTitle: item.product.title,
-              quantity: item.quantity,
-              comment: item.comment
-            })),
-            orderType,
-            numberOfPeople: additionalInfo.numberOfPeople,
-            tableNumber: additionalInfo.tableNumber,
-            comment: additionalInfo.comment
-          } : null,
-          config: aiConfig,
-          language
-        })
-      })
-
-      if (response.ok) {
-        return response.json()
-      }
-    } catch (error) {
-      console.error('Fallback API route also failed:', error)
-    }
-
-    throw lastError || new Error('All AI endpoints failed')
-  }
+  return response;
+};
 
   const getSystemPrompt = () => {
     const userRestaurantId = getRestaurantId();
@@ -946,70 +849,36 @@ ${currentOrderInfo}
       setTranscript('')
     }
   }
-
-  // Генерация речи через OpenAI TTS
-  const speakResponseWithOpenAI = async (text: string) => {
-    if (!audioFeedback) return
+const speakResponseWithOpenAI = async (text: string) => {
+  if (!audioFeedback) return;
+  
+  try {
+    const speechText = text.length > 500 ? text.substring(0, 500) + '...' : text;
+    const audioBlob = await openAIService.textToSpeech(
+      speechText, 
+      language === 'ru' ? 'alloy' : 'nova'
+    );
     
-    try {
-      const speechText = text.length > 500 ? text.substring(0, 500) + '...' : text
-      
-      // Пробуем разные прокси эндпоинты для TTS
-      let lastError: any = null
-      
-      for (const endpoint of OPENAI_PROXY_ENDPOINTS) {
-        try {
-          const response = await fetch(`${endpoint}/audio/speech`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${process.env.NEXT_PUBLIC_OPENAI_API_KEY}`,
-            },
-            body: JSON.stringify({
-              model: 'tts-1',
-              input: speechText,
-              voice: language === 'ru' ? 'alloy' : 'nova',
-              response_format: 'mp3'
-            })
-          })
-          
-          if (response.ok) {
-            const audioBlob = await response.blob()
-            const audioUrl = URL.createObjectURL(audioBlob)
-            const audio = new Audio(audioUrl)
-            
-            audio.onplay = () => setIsSpeaking(true)
-            audio.onended = () => {
-              setIsSpeaking(false)
-              URL.revokeObjectURL(audioUrl)
-            }
-            audio.onerror = () => {
-              setIsSpeaking(false)
-              URL.revokeObjectURL(audioUrl)
-            }
-            
-            await audio.play()
-            return
-          } else {
-            console.warn(`TTS endpoint ${endpoint} failed: ${response.status}`)
-            lastError = new Error(`HTTP ${response.status}`)
-          }
-        } catch (error) {
-          console.warn(`TTS endpoint ${endpoint} error:`, error)
-          lastError = error
-          continue
-        }
-      }
-      
-      // Fallback на стандартный SpeechSynthesis
-      speakResponse(speechText)
-      
-    } catch (error) {
-      console.error('Error with OpenAI TTS:', error)
-      // Fallback на стандартный SpeechSynthesis
-      speakResponse(text)
-    }
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+    
+    audio.onplay = () => setIsSpeaking(true);
+    audio.onended = () => {
+      setIsSpeaking(false);
+      URL.revokeObjectURL(audioUrl);
+    };
+    audio.onerror = () => {
+      setIsSpeaking(false);
+      URL.revokeObjectURL(audioUrl);
+    };
+    
+    await audio.play();
+  } catch (error) {
+    console.error('Error with TTS:', error);
+    // Fallback на стандартный SpeechSynthesis
+    speakResponse(text);
   }
+};
 
   // Стандартный SpeechSynthesis как fallback
   const speakResponse = (text: string) => {
