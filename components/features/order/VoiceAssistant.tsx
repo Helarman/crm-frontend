@@ -453,76 +453,58 @@ export function VoiceAssistantSheet({
     }
   }
 
- const startAudioRecording = async () => {
+ // Замените функцию startAudioRecording на эту версию:
+
+const startAudioRecording = async () => {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ 
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
         sampleRate: 16000,
+        channelCount: 1, // моно для лучшего распознавания
       } 
     });
     
     audioChunksRef.current = [];
     
-    // Пробуем разные MIME types в порядке предпочтения
-    const mimeTypes = [
-      'audio/webm;codecs=opus',
-      'audio/webm',
-      'audio/ogg;codecs=opus', 
-      'audio/mp4',
-      'audio/wav'
-    ];
+    // Создаем MediaRecorder с WAV-совместимыми настройками
+    const options = {
+      mimeType: 'audio/webm;codecs=pcm' // пробуем получить PCM данные
+    };
     
-    let selectedMimeType = '';
-    for (const mimeType of mimeTypes) {
-      if (MediaRecorder.isTypeSupported(mimeType)) {
-        selectedMimeType = mimeType;
-        break;
-      }
+    let mediaRecorder: MediaRecorder;
+    
+    try {
+      mediaRecorder = new MediaRecorder(stream, options);
+    } catch (e) {
+      console.log('PCM not supported, falling back to default');
+      mediaRecorder = new MediaRecorder(stream);
     }
     
-    if (!selectedMimeType) {
-      selectedMimeType = 'audio/webm';
-    }
+    mediaRecorderRef.current = mediaRecorder;
     
-    console.log('Selected MIME type:', selectedMimeType);
-    
-    mediaRecorderRef.current = new MediaRecorder(stream, {
-      mimeType: selectedMimeType
-    });
-    
-    mediaRecorderRef.current.ondataavailable = (event) => {
+    mediaRecorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
         audioChunksRef.current.push(event.data);
       }
     };
     
-    mediaRecorderRef.current.onstop = async () => {
-      const audioBlob = new Blob(audioChunksRef.current, { 
-        type: selectedMimeType.includes('wav') ? 'audio/wav' : 
-              selectedMimeType.includes('mp4') ? 'audio/mp4' : 
-              selectedMimeType.includes('ogg') ? 'audio/ogg' : 
-              'audio/webm'
-      });
-      
-      await processAudioWithWhisper(audioBlob);
-      
-      stream.getTracks().forEach(track => track.stop());
-      
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-        audioContextRef.current = null;
+    mediaRecorder.onstop = async () => {
+      try {
+        // Конвертируем в WAV формат
+        const audioBlob = await convertToWav(audioChunksRef.current);
+        await processAudioWithWhisper(audioBlob);
+      } catch (error) {
+        console.error('Error processing recording:', error);
+        toast.error(t.audioError);
+      } finally {
+        stream.getTracks().forEach(track => track.stop());
+        cleanupAudioResources();
       }
-      
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-      
-      setAudioLevel(0);
     };
     
-    mediaRecorderRef.current.start(1000);
+    mediaRecorder.start(1000);
     setIsRecording(true);
     await initializeAudioAnalyzer(stream);
     
@@ -533,21 +515,117 @@ export function VoiceAssistantSheet({
   }
 };
 
-  const stopAudioRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop()
-      setIsRecording(false)
+// Добавьте функцию конвертации в WAV
+const convertToWav = async (chunks: Blob[]): Promise<Blob> => {
+  const blob = new Blob(chunks, { type: 'audio/webm' });
+  
+  try {
+    // Пробуем использовать AudioContext для конвертации
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioContext = new AudioContext({ sampleRate: 16000 });
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    
+    // Кодируем обратно в WAV
+    const wavBuffer = encodeWAV(audioBuffer);
+    return new Blob([wavBuffer], { type: 'audio/wav' });
+  } catch (error) {
+    console.warn('AudioContext conversion failed, using original format:', error);
+    // Если конвертация не удалась, отправляем как есть
+    return blob;
+  }
+};
+
+// Функция для кодирования WAV
+const encodeWAV = (audioBuffer: AudioBuffer): ArrayBuffer => {
+  const numChannels = audioBuffer.numberOfChannels;
+  const sampleRate = audioBuffer.sampleRate;
+  const length = audioBuffer.length * numChannels * 2;
+  const buffer = new ArrayBuffer(44 + length);
+  const view = new DataView(buffer);
+  
+  // WAV header
+  const writeString = (offset: number, string: string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  };
+  
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + length, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numChannels * 2, true);
+  view.setUint16(32, numChannels * 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, length, true);
+  
+  // Audio data
+  const channels = [];
+  for (let i = 0; i < numChannels; i++) {
+    channels.push(audioBuffer.getChannelData(i));
+  }
+  
+  let offset = 44;
+  for (let i = 0; i < audioBuffer.length; i++) {
+    for (let channel = 0; channel < numChannels; channel++) {
+      const sample = Math.max(-1, Math.min(1, channels[channel][i]));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+      offset += 2;
     }
   }
+  
+  return buffer;
+};
 
- const processAudioWithWhisper = async (audioBlob: Blob) => {
+// Функция очистки ресурсов
+const cleanupAudioResources = () => {
+  if (audioContextRef.current) {
+    audioContextRef.current.close();
+    audioContextRef.current = null;
+  }
+  
+  if (animationRef.current) {
+    cancelAnimationFrame(animationRef.current);
+  }
+  
+  setAudioLevel(0);
+};
+
+// Обновите функцию processAudioWithWhisper для явного указания формата
+const processAudioWithWhisper = async (audioBlob: Blob) => {
   setIsProcessing(true);
   
   try {
     const formData = new FormData();
-    formData.append('file', audioBlob, 'recording.webm');
+    
+    // Определяем тип файла
+    let fileName = 'audio.wav';
+    let fileType = 'audio/wav';
+    
+    if (audioBlob.type.includes('webm')) {
+      fileName = 'audio.webm';
+      fileType = 'audio/webm';
+    } else if (audioBlob.type.includes('ogg')) {
+      fileName = 'audio.ogg';
+      fileType = 'audio/ogg';
+    }
+    
+    formData.append('file', audioBlob, fileName);
     formData.append('model', 'whisper-1');
     formData.append('language', language === 'ru' ? 'ru' : 'ka');
+    formData.append('response_format', 'json');
+    
+    console.log('Sending audio to Whisper:', {
+      size: audioBlob.size,
+      type: audioBlob.type,
+      fileName,
+      fileType
+    });
     
     const result = await openAIService.transcribeAudio(formData);
     const transcribedText = result.text.trim();
@@ -565,6 +643,14 @@ export function VoiceAssistantSheet({
     setIsProcessing(false);
   }
 };
+
+  const stopAudioRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop()
+      setIsRecording(false)
+    }
+  }
+
 
   const cleanupAudio = () => {
     if (mediaRecorderRef.current && isRecording) {
