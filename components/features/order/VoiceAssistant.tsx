@@ -51,6 +51,7 @@ import { ProductService } from '@/lib/api/product.service'
 import { CategoryService } from '@/lib/api/category.service'
 import { useLanguageStore } from '@/lib/stores/language-store'
 import { openAIService } from '@/lib/api/openai-proxy.service'
+import { Restaurant } from '@/lib/types/restaurant'
 
 
 interface Product {
@@ -141,20 +142,9 @@ interface VoiceAssistantSheetProps {
   orderId?: string
 }
 
-// Прокси эндпоинты для OpenAI API
-const OPENAI_PROXY_ENDPOINTS = [
-  'https://api.openai.com/v1',
-  'https://api.openai-proxy.org/v1',
-  'https://chatgpt-api.shn.hk/v1',
-]
 
 // Категории и их иконки
 const CATEGORY_ICONS: { [key: string]: any } = {
-  'main': Utensils,
-  'drinks': Wine,
-  'desserts': Dessert,
-  'coffee': Coffee,
-  'pizza': Pizza,
   'default': ChefHat
 }
 
@@ -173,7 +163,7 @@ export function VoiceAssistantSheet({
   const router = useRouter()
   const { user } = useAuth()
   const { language } = useLanguageStore()
-  
+  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>('')
   const [isListening, setIsListening] = useState(false)
   const [transcript, setTranscript] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
@@ -218,10 +208,6 @@ export function VoiceAssistantSheet({
   const releaseTimerRef = useRef<NodeJS.Timeout | null>(null)
   const isAutoSendRef = useRef(false)
 
-  const getRestaurantId = (): string => {
-    if (typeof window === 'undefined') return ''
-    return localStorage.getItem('selectedRestaurantId') || ''
-  }
 
   const translations = {
     ru: {
@@ -396,6 +382,24 @@ export function VoiceAssistantSheet({
 
   const t = translations[language]
 
+  useEffect(() => {
+    if (user?.restaurant?.length > 0) {
+      const savedRestaurantId = localStorage.getItem('selectedRestaurantId')
+      const defaultRestaurantId = user.restaurant[0].id
+      
+      const isValidSavedRestaurant = savedRestaurantId && 
+        user.restaurant.some((r: Restaurant) => r.id === savedRestaurantId)
+      
+      const newRestaurantId = isValidSavedRestaurant ? savedRestaurantId : defaultRestaurantId
+      
+      setSelectedRestaurantId(newRestaurantId)
+      
+      if (!isValidSavedRestaurant || savedRestaurantId !== newRestaurantId) {
+        localStorage.setItem('selectedRestaurantId', newRestaurantId)
+      }
+    }
+  }, [user])
+
   // Инициализация и загрузка данных
   useEffect(() => {
     if (open) {
@@ -408,7 +412,16 @@ export function VoiceAssistantSheet({
     }
   }, [open, language])
 
-  // Инициализация аудио анализатора
+  const handleRestaurantChange = (restaurantId: string) => {
+    setSelectedRestaurantId(restaurantId)
+    localStorage.setItem('selectedRestaurantId', restaurantId)
+    loadRestaurantAndProducts()
+  }
+
+  const getRestaurantId = (): string => {
+    return selectedRestaurantId || localStorage.getItem('selectedRestaurantId') || ''
+  }
+
   const initializeAudioAnalyzer = async (stream: MediaStream) => {
     try {
       audioContextRef.current = new AudioContext()
@@ -1416,21 +1429,44 @@ const speakResponseWithOpenAI = async (text: string) => {
               <Brain className="h-6 w-6 text-purple-500" />
               <div>
                 <SheetTitle className="text-xl">{t.title}</SheetTitle>
-                <SheetDescription className="text-sm mt-1">
-                  {t.subtitle}
-                </SheetDescription>
               </div>
             </div>
             <div className="flex items-center gap-2">
+
+              {user?.restaurant && user.restaurant.length > 1 && (
+                <Select value={selectedRestaurantId} onValueChange={handleRestaurantChange}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder={language === 'ru' ? 'Выберите ресторан' : 'აირჩიეთ რესტორანი'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {user.restaurant.map((restaurant: Restaurant) => (
+                      <SelectItem key={restaurant.id} value={restaurant.id}>
+                        {restaurant.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
               <Button
-                variant="outline"
+                 variant="outline"
+          
                 size="sm"
                 onClick={() => setAudioFeedback(!audioFeedback)}
                 className="flex items-center gap-2"
               >
                 {audioFeedback ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-                {t.audioFeedback}
               </Button>
+
+                <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setAudioFeedback(!audioFeedback)}
+                className="flex items-center gap-2"
+              >
+               <X className="h-4 w-4" /> 
+              </Button>
+
             </div>
           </div>
         </SheetHeader>
