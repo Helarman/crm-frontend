@@ -51,6 +51,7 @@ import { ProductService } from '@/lib/api/product.service'
 import { CategoryService } from '@/lib/api/category.service'
 import { useLanguageStore } from '@/lib/stores/language-store'
 import { openAIService } from '@/lib/api/openai-proxy.service'
+import { Restaurant } from '@/lib/types/restaurant'
 
 
 interface Product {
@@ -207,10 +208,6 @@ export function VoiceAssistantSheet({
   const releaseTimerRef = useRef<NodeJS.Timeout | null>(null)
   const isAutoSendRef = useRef(false)
 
-  const getRestaurantId = (): string => {
-    if (typeof window === 'undefined') return ''
-    return localStorage.getItem('selectedRestaurantId') || ''
-  }
 
   const translations = {
     ru: {
@@ -385,7 +382,24 @@ export function VoiceAssistantSheet({
 
   const t = translations[language]
 
-  
+  useEffect(() => {
+    if (user?.restaurant?.length > 0) {
+      const savedRestaurantId = localStorage.getItem('selectedRestaurantId')
+      const defaultRestaurantId = user.restaurant[0].id
+      
+      const isValidSavedRestaurant = savedRestaurantId && 
+        user.restaurant.some((r: Restaurant) => r.id === savedRestaurantId)
+      
+      const newRestaurantId = isValidSavedRestaurant ? savedRestaurantId : defaultRestaurantId
+      
+      setSelectedRestaurantId(newRestaurantId)
+      
+      if (!isValidSavedRestaurant || savedRestaurantId !== newRestaurantId) {
+        localStorage.setItem('selectedRestaurantId', newRestaurantId)
+      }
+    }
+  }, [user])
+
   // Инициализация и загрузка данных
   useEffect(() => {
     if (open) {
@@ -398,7 +412,16 @@ export function VoiceAssistantSheet({
     }
   }, [open, language])
 
-  // Инициализация аудио анализатора
+  const handleRestaurantChange = (restaurantId: string) => {
+    setSelectedRestaurantId(restaurantId)
+    localStorage.setItem('selectedRestaurantId', restaurantId)
+    loadRestaurantAndProducts()
+  }
+
+  const getRestaurantId = (): string => {
+    return selectedRestaurantId || localStorage.getItem('selectedRestaurantId') || ''
+  }
+
   const initializeAudioAnalyzer = async (stream: MediaStream) => {
     try {
       audioContextRef.current = new AudioContext()
@@ -517,17 +540,12 @@ export function VoiceAssistantSheet({
     }
   }
 
-const processAudioWithWhisper = async (audioBlob: Blob) => {
+ const processAudioWithWhisper = async (audioBlob: Blob) => {
   setIsProcessing(true);
   
   try {
-    // Просто меняем MIME type на поддерживаемый
-    const supportedBlob = new Blob([audioBlob], { 
-      type: 'audio/wav' 
-    });
-    
     const formData = new FormData();
-    formData.append('file', supportedBlob, 'audio.wav');
+    formData.append('file', audioBlob, 'recording.webm');
     formData.append('model', 'whisper-1');
     formData.append('language', language === 'ru' ? 'ru' : 'ka');
     
@@ -542,26 +560,6 @@ const processAudioWithWhisper = async (audioBlob: Blob) => {
     }
   } catch (error) {
     console.error('Error processing audio:', error);
-    
-    // Fallback: попробовать с оригинальным blob но другим именем файла
-    try {
-      const formData = new FormData();
-      formData.append('file', audioBlob, 'audio.webm');
-      formData.append('model', 'whisper-1');
-      formData.append('language', language === 'ru' ? 'ru' : 'ka');
-      
-      const result = await openAIService.transcribeAudio(formData);
-      const transcribedText = result.text.trim();
-      
-      if (transcribedText) {
-        setTranscript(transcribedText);
-        await processOrderWithAI(transcribedText);
-        return;
-      }
-    } catch (fallbackError) {
-      console.error('Fallback also failed:', fallbackError);
-    }
-    
     toast.error(language === 'ru' ? 'Ошибка обработки аудио' : 'აუდიოს დამუშავების შეცდომა');
   } finally {
     setIsProcessing(false);
@@ -1431,21 +1429,44 @@ const speakResponseWithOpenAI = async (text: string) => {
               <Brain className="h-6 w-6 text-purple-500" />
               <div>
                 <SheetTitle className="text-xl">{t.title}</SheetTitle>
-                <SheetDescription className="text-sm mt-1">
-                  {t.subtitle}
-                </SheetDescription>
               </div>
             </div>
             <div className="flex items-center gap-2">
+
+              {user?.restaurant && user.restaurant.length > 1 && (
+                <Select value={selectedRestaurantId} onValueChange={handleRestaurantChange}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder={language === 'ru' ? 'Выберите ресторан' : 'აირჩიეთ რესტორანი'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {user.restaurant.map((restaurant: Restaurant) => (
+                      <SelectItem key={restaurant.id} value={restaurant.id}>
+                        {restaurant.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
               <Button
-                variant="outline"
+                 variant="outline"
+          
                 size="sm"
                 onClick={() => setAudioFeedback(!audioFeedback)}
                 className="flex items-center gap-2"
               >
                 {audioFeedback ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-                {t.audioFeedback}
               </Button>
+
+                <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setAudioFeedback(!audioFeedback)}
+                className="flex items-center gap-2"
+              >
+               <X className="h-4 w-4" /> 
+              </Button>
+
             </div>
           </div>
         </SheetHeader>
