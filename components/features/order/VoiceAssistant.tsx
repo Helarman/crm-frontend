@@ -1584,19 +1584,22 @@ const speakResponseWithOpenAI = async (text: string) => {
         side="right" 
         className="w-full sm:max-w-4xl h-full flex flex-col p-0 overflow-hidden"
       >
-        <SheetHeader className="p-6 border-b">
-          <div className="flex items-center justify-between">
+       <SheetHeader className="p-4 sm:p-6 border-b">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <Brain className="h-6 w-6 text-purple-500" />
               <div>
                 <SheetTitle className="text-xl">{t.title}</SheetTitle>
+                <SheetDescription className="hidden sm:block">
+                  {t.subtitle}
+                </SheetDescription>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-
+            
+            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               {user?.restaurant && user.restaurant.length > 1 && (
                 <Select value={selectedRestaurantId} onValueChange={handleRestaurantChange}>
-                  <SelectTrigger className="w-[200px]">
+                  <SelectTrigger className="w-full sm:w-[200px]">
                     <SelectValue placeholder={language === 'ru' ? 'Выберите ресторан' : 'აირჩიეთ რესტორანი'} />
                   </SelectTrigger>
                   <SelectContent>
@@ -1609,25 +1612,29 @@ const speakResponseWithOpenAI = async (text: string) => {
                 </Select>
               )}
 
-              <Button
-                 variant="outline"
-          
-                size="sm"
-                onClick={() => setAudioFeedback(!audioFeedback)}
-                className="flex items-center gap-2"
-              >
-                {audioFeedback ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setAudioFeedback(!audioFeedback)}
+                  className="flex-1 sm:flex-none flex items-center gap-2"
+                >
+                  {audioFeedback ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                  <span className="hidden sm:inline">
+                    {audioFeedback ? (language === 'ru' ? 'Звук вкл' : 'ხმა ჩართულია') : (language === 'ru' ? 'Звук выкл' : 'ხმა გამორთულია')}
+                  </span>
+                </Button>
 
                 <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setAudioFeedback(!audioFeedback)}
-                className="flex items-center gap-2"
-              >
-               <X className="h-4 w-4" /> 
-              </Button>
-
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onOpenChange?.(false)}
+                  className="flex-1 sm:flex-none flex items-center gap-2"
+                >
+                  <X className="h-4 w-4" />
+                  <span className="hidden sm:inline">{language === 'ru' ? 'Закрыть' : 'დახურვა'}</span>
+                </Button>
+              </div>
             </div>
           </div>
         </SheetHeader>
@@ -1773,84 +1780,85 @@ const speakResponseWithOpenAI = async (text: string) => {
               <div ref={messagesEndRef} />
             </div>
 
-            <div className="border-t dark:border-gray-700 p-4 space-y-4">
-              <div className="space-y-3">
+           <div className="border-t dark:border-gray-700 p-3 sm:p-4 space-y-3 sm:space-y-4">
+              <div className="space-y-2 sm:space-y-3">
                 <Textarea
                   value={transcript}
                   onChange={(e) => setTranscript(e.target.value)}
                   placeholder={t.placeholder}
-                  className="min-h-[80px] text-base resize-none"
+                  className="min-h-[60px] sm:min-h-[80px] text-sm sm:text-base resize-none"
                   disabled={isRecording}
                 />
               </div>
               
-              <div className="flex gap-3">
-                <div className="flex-1 flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                <div className="flex gap-2 sm:gap-3 flex-1">
                   <Button
                     onClick={handleManualSend}
                     disabled={!transcript.trim() || isProcessing || isRecording}
-                    className="flex-1 h-12 text-base"
+                    className="flex-1 h-10 sm:h-12 text-sm sm:text-base"
                     size="lg"
                   >
                     {isProcessing ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 animate-spin" />
                     ) : (
-                      <Send className="h-4 w-4 mr-2" />
+                      <Send className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                     )}
                     {isProcessing ? t.processing : t.sendToAI}
                   </Button>
 
-                  {order && order.items.length > 0 && (
-                    <Button
-                      onClick={createOrder}
-                      disabled={isCreatingOrder}
-                      className="h-12 px-6 bg-green-600 hover:bg-green-700"
-                      size="lg"
-                    >
-                      {isCreatingOrder ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      ) : (
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                      )}
-                      {t.confirmAndCreate}
-                    </Button>
-                  )}
+                  <Button
+                    onMouseDown={handleMouseDown}
+                    onMouseUp={handleMouseUp}
+                    onMouseLeave={handleMouseUp}
+                    onTouchStart={handleTouchStart}
+                    onTouchEnd={handleTouchEnd}
+                    variant={isRecording ? "destructive" : "default"}
+                    className={`h-10 sm:h-12 px-3 sm:px-6 flex items-center gap-2 transition-all duration-200 ${
+                      isButtonPressed ? 'scale-95' : 'scale-100'
+                    }`}
+                    size="lg"
+                    disabled={isProcessing}
+                  >
+                    {isRecording ? (
+                      <>
+                        <div className="relative">
+                          <Mic className="h-3 w-3 sm:h-4 sm:w-4" />
+                          <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full animate-ping"></div>
+                          <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full"></div>
+                        </div>
+                        <span className="text-sm">{t.stopListening}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="h-3 w-3 sm:h-4 sm:w-4" />
+                        <span className="text-sm">{t.startListening}</span>
+                      </>
+                    )}
+                  </Button>
                 </div>
-
-                <Button
-                  onMouseDown={handleMouseDown}
-                  onMouseUp={handleMouseUp}
-                  onMouseLeave={handleMouseUp}
-                  onTouchStart={handleTouchStart}
-                  onTouchEnd={handleTouchEnd}
-                  variant={isRecording ? "destructive" : "default"}
-                  className={`h-12 px-6 flex items-center gap-3 transition-all duration-200 ${
-                    isButtonPressed ? 'scale-95' : 'scale-100'
-                  }`}
-                  size="lg"
-                  disabled={isProcessing}
-                >
-                  {isRecording ? (
-                    <>
-                      <div className="relative">
-                        <Mic className="h-4 w-4" />
-                        <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-ping"></div>
-                        <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full"></div>
-                      </div>
-                      <span className="hidden sm:inline">{t.stopListening}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Mic className="h-4 w-4" />
-                      <span className="hidden sm:inline">{t.startListening}</span>
-                    </>
-                  )}
-                </Button>
               </div>
+
+              {order && order.items.length > 0 && (
+                <div className="flex gap-2 sm:gap-3">
+                  <Button
+                    onClick={createOrder}
+                    disabled={isCreatingOrder}
+                    className="flex-1 h-10 sm:h-12 bg-green-600 hover:bg-green-700 text-sm sm:text-base"
+                    size="lg"
+                  >
+                    {isCreatingOrder ? (
+                      <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 animate-spin" />
+                    ) : (
+                      <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                    )}
+                    {t.confirmAndCreate}
+                  </Button>
+                </div>
+              )}
             </div>
           </TabsContent>
 
-          {/* Меню */}
           <TabsContent value="menu" className="flex-1 overflow-y-auto p-0">
             <div className="p-4 border-b">
               <Input
@@ -1911,7 +1919,6 @@ const speakResponseWithOpenAI = async (text: string) => {
             </div>
           </TabsContent>
 
-          {/* Заказ */}
           <TabsContent value="order" className="flex-1 overflow-y-auto p-0">
             <div className="p-4">
               {order && order.items.length > 0 ? (
