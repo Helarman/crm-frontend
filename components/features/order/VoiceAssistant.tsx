@@ -869,6 +869,9 @@ const callOpenAI = async (prompt: string): Promise<any> => {
 3. НИКОГДА не изменяй тип заказа без явного указания пользователя
 4. Всегда подтверждай изменения перед применением
 5. При любой неопределенности - УТОЧНЯЙ у пользователя
+6. СРАЗУ добавляй товары в заказ при упоминании без лишних подтверждений
+7. СРАЗУ изменяй количество при явном указании
+8. СРАЗУ удаляй товары при явной команде удаления
 
 # ОБРАБОТКА КОЛИЧЕСТВ:
 - "два борща" → quantity: 2
@@ -927,7 +930,7 @@ const callOpenAI = async (prompt: string): Promise<any> => {
 {
   "action": "ADD_ITEMS" | "REMOVE_ITEMS" | "MODIFY_QUANTITY" | "UPDATE_DETAILS" | "SHOW_ORDER" | "CLEAR_ORDER" | "ANSWER_QUESTION",
   
-  // ТОЛЬКО для ADD_ITEMS
+  // ТОЛЬКО для ADD_ITEMS - сразу добавляй
   "itemsToAdd": [
     {
       "productId": "string (ОБЯЗАТЕЛЬНО точный ID продукта)",
@@ -937,10 +940,10 @@ const callOpenAI = async (prompt: string): Promise<any> => {
     }
   ],
   
-  // ТОЛЬКО для REMOVE_ITEMS  
+  // ТОЛЬКО для REMOVE_ITEMS   - сразу удаляй 
   "itemsToRemove": ["productId1", "productId2"],
   
-  // ТОЛЬКО для MODIFY_QUANTITY
+  // ТОЛЬКО для MODIFY_QUANTITY - сразу изменяй
   "itemsToModify": [
     {
       "productId": "string",
@@ -948,7 +951,7 @@ const callOpenAI = async (prompt: string): Promise<any> => {
     }
   ],
   
-  // ТОЛЬКО для UPDATE_DETAILS
+  // ТОЛЬКО для UPDATE_DETAILS - сразу обновляй
   "updatedDetails": {
     "numberOfPeople": number,
     "tableNumber": "string", 
@@ -971,7 +974,7 @@ ${currentOrderInfo}
 Количество персон: ${additionalInfo.numberOfPeople}
 Стол: ${additionalInfo.tableNumber || 'не указан'}
 
-ВСЕГДА отвечай в формате JSON! Будь максимально точен и предсказуем!`;
+ВСЕГДА отвечай в формате JSON! Будь максимально точен и предсказуем! Действуй уверенно!`;
   };
 
  const processOrderWithAI = async (text: string) => {
