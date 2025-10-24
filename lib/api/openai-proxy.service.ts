@@ -2,7 +2,7 @@ class OpenAIService {
   private proxyBaseUrl: string;
 
   constructor() { 
-    this.proxyBaseUrl = 'https://jukirililuk.beget.app';
+    this.proxyBaseUrl = 'http://localhost:3001';
   }
 
   async makeRequest(endpoint: string, body: any, apiKey?: string) {

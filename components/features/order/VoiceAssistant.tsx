@@ -192,7 +192,7 @@ export function VoiceAssistantSheet({
   })
 
   const [aiConfig, setAiConfig] = useState<AIConfig>({
-    model: 'gpt-3.5-turbo',
+    model: 'gpt-4o',
     temperature: 0.1,
     maxTokens: 1000,
     useAdvancedParsing: true
@@ -753,21 +753,84 @@ const processAudioWithWhisper = async (audioBlob: Blob) => {
   }
 
 const callOpenAI = async (prompt: string): Promise<any> => {
-  const response = await openAIService.chatCompletion([
-    {
-      role: "system",
-      content: getSystemPrompt()
-    },
-    {
-      role: "user", 
-      content: prompt
-    }
-  ], {
-    temperature: aiConfig.temperature,
-    max_tokens: aiConfig.maxTokens,
-  });
+  try {
+    const response = await openAIService.chatCompletion([
+      {
+        role: "system",
+        content: getSystemPrompt()
+      },
+      {
+        role: "user", 
+        content: prompt
+      }
+    ], {
+      model: aiConfig.model,
+      temperature: aiConfig.temperature,
+      max_tokens: aiConfig.maxTokens,
+    });
 
-  return response;
+    console.log('Raw AI response:', response);
+
+    // Для GPT-4o структура ответа может отличаться
+    let content;
+    
+    if (typeof response === 'string') {
+      // Если ответ пришел как строка
+      content = response;
+    } else if (response.choices && response.choices[0] && response.choices[0].message) {
+      // Стандартная структура OpenAI
+      content = response.choices[0].message.content;
+    } else if (response.content) {
+      // Альтернативная структура
+      content = response.content;
+    } else if (response.message) {
+      // Еще один возможный вариант
+      content = response.message.content || response.message;
+    } else {
+      console.error('Unexpected response structure:', response);
+      throw new Error('Invalid response structure from AI');
+    }
+
+    console.log('Extracted content:', content);
+
+    // Если content уже объект, возвращаем его
+    if (typeof content === 'object') {
+      return content;
+    }
+
+    // Очищаем ответ от возможных лишних символов
+    const cleanedContent = content.trim();
+    
+    // Удаляем markdown code blocks если есть
+    const jsonContent = cleanedContent
+      .replace(/```json\s*/g, '')
+      .replace(/```\s*/g, '')
+      .trim();
+
+    console.log('Cleaned content for parsing:', jsonContent);
+
+    // Парсим JSON
+    try {
+      const parsed = JSON.parse(jsonContent);
+      console.log('Successfully parsed JSON:', parsed);
+      return parsed;
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError);
+      console.error('Content that failed to parse:', jsonContent);
+      
+      // Если парсинг не удался, создаем fallback ответ
+      return {
+        action: "ANSWER_QUESTION",
+        response: jsonContent,
+        confidence: 0.5,
+        suggestions: []
+      };
+    }
+
+  } catch (error) {
+    console.error('Error calling OpenAI:', error);
+    throw error;
+  }
 };
 
   const getSystemPrompt = () => {
@@ -896,58 +959,55 @@ ${currentOrderInfo}
 ВСЕГДА отвечай в формате JSON! Будь максимально точен и предсказуем!`;
   };
 
-  const processOrderWithAI = async (text: string) => {
-    if (!text.trim()) {
-      console.log('Empty text, skipping processing')
-      return
-    }
-
-    console.log('Processing with AI:', text)
-    setIsProcessing(true)
-    
-    const userMessage: ConversationMessage = {
-      role: 'user',
-      content: text,
-      timestamp: new Date(),
-      type: 'order_update'
-    }
-    
-    setConversation(prev => [...prev, userMessage])
-
-    try {
-      const aiResponse = await callOpenAI(text)
-      const parsedData: AIActionResponse = JSON.parse(aiResponse.choices[0].message.content)
-      
-      console.log('AI Response:', parsedData)
-      
-      await handleAIAction(parsedData, text)
-      
-      const assistantMessage: ConversationMessage = {
-        role: 'assistant',
-        content: parsedData.response,
-        timestamp: new Date(),
-        type: parsedData.action === 'SHOW_ORDER' ? 'info' : 'order_update'
-      }
-      
-      // Добавляем предложения если есть
-      if (parsedData.suggestions && parsedData.suggestions.length > 0) {
-        assistantMessage.content += `\n\n${language === 'ru' ? '💡 Предлагаю:' : '💡 გირჩევთ:'}\n${parsedData.suggestions.map(s => `• ${s}`).join('\n')}`
-      }
-      
-      setConversation(prev => [...prev, assistantMessage])
-
-      if (audioFeedback) {
-        speakResponseWithOpenAI(parsedData.response)
-      }
-
-    } catch (error) {
-      console.error('Error processing order with AI:', error)
-      handleAIError(error)
-    } finally {
-      setIsProcessing(false)
-      setTranscript('')
-    }
+ const processOrderWithAI = async (text: string) => {
+  if (!text.trim()) {
+    console.log('Empty text, skipping processing')
+    return
   }
+
+  console.log('Processing with AI:', text)
+  setIsProcessing(true)
+  
+  const userMessage: ConversationMessage = {
+    role: 'user',
+    content: text,
+    timestamp: new Date(),
+    type: 'order_update'
+  }
+  
+  setConversation(prev => [...prev, userMessage])
+
+  try {
+    const parsedData = await callOpenAI(text)
+    
+    console.log('Parsed AI Response:', parsedData)
+    
+    // Если ответ уже парсился в callOpenAI, используем его напрямую
+    await handleAIAction(parsedData, text)
+    
+    const assistantMessage: ConversationMessage = {
+      role: 'assistant',
+      content: parsedData.response,
+      timestamp: new Date(),
+      type: parsedData.action === 'SHOW_ORDER' ? 'info' : 'order_update'
+    }
+    
+    
+    setConversation(prev => [...prev, assistantMessage])
+
+    if (audioFeedback) {
+      speakResponseWithOpenAI(parsedData.response)
+    }
+
+  } catch (error) {
+    console.error('Error processing order with AI:', error)
+    handleAIError(error)
+  } finally {
+    setIsProcessing(false)
+    setTranscript('')
+  }
+}
+
 const speakResponseWithOpenAI = async (text: string) => {
   if (!audioFeedback) return;
   
