@@ -292,10 +292,14 @@ export function VoiceAssistantSheet({
       recommended: "Рекомендуем попробовать",
       recordingAudio: "Запись аудио...",
       processingAudio: "Обработка аудио...",
-      audioError: "Ошибка записи аудио"
+      audioError: "Ошибка записи аудио",
+      startRecording: "Начать запись",
+    stopRecording: "Остановить запись",
     },
     ka: {
       title: "მიმტანის ასისტენტი",
+      startRecording: "ჩაწერის დაწყება",
+    stopRecording: "ჩაწერის შეჩერება",
       subtitle: "შეკვეთების ხმოვანი მართვა",
       listening: "მოვუსმინოთ...",
       startListening: "დააჭირეთ და თქვით",
@@ -598,6 +602,36 @@ const encodeWAV = (audioBuffer: AudioBuffer): ArrayBuffer => {
   
   return buffer;
 };
+
+const cleanTranscript = (text: string): string => {
+  if (!text) return '';
+  
+  const phrasesToRemove = [
+    'редактор субтитров',
+    'корректор',
+    'субтитры сделал',
+    'субтитры сделала',
+    'а.семкин',
+    'а.егорова',
+    'dimatorzok',
+    'dima torzok'
+  ];
+
+  let cleanedText = text.toLowerCase();
+  
+  phrasesToRemove.forEach(phrase => {
+    cleanedText = cleanedText.replace(phrase, '');
+  });
+  
+  // Удаляем лишние пробелы и пунктуацию
+  cleanedText = cleanedText
+    .replace(/\s+/g, ' ')
+    .replace(/[.,!?;:]$/, '')
+    .trim();
+  
+  return cleanedText;
+};
+
 const processAudioWithWhisper = async (audioBlob: Blob) => {
   setIsProcessing(true);
   
@@ -625,11 +659,30 @@ const processAudioWithWhisper = async (audioBlob: Blob) => {
     });
     
     const result = await openAIService.transcribeAudio(formData);
-    const transcribedText = result.text.trim();
+    const rawTranscribedText = result.text.trim();
     
-    if (transcribedText) {
-      setTranscript(transcribedText);
-      await processOrderWithAI(transcribedText);
+    // ОЧИСТКА ТРАНСКРИПЦИИ ОТ СЛУЖЕБНЫХ ФРАЗ
+    const cleanedText = cleanTranscript(rawTranscribedText);
+    
+    console.log('Transcription:', {
+      raw: rawTranscribedText,
+      cleaned: cleanedText
+    });
+    
+    if (cleanedText) {
+      setTranscript(cleanedText);
+      await processOrderWithAI(cleanedText);
+    } else if (rawTranscribedText) {
+      // Если после очистки текст пустой, но был распознан
+      const infoMessage: ConversationMessage = {
+        role: 'assistant',
+        content: language === 'ru' 
+          ? 'Распознаны служебные фразы. Пожалуйста, повторите ваш заказ.'
+          : 'სერვისური ფრაზები ამოიცნო. გთხოვთ, გაიმეოროთ თქვენი შეკვეთა.',
+        timestamp: new Date(),
+        type: 'info'
+      };
+      setConversation(prev => [...prev, infoMessage]);
     } else {
       toast.error(language === 'ru' ? 'Не удалось распознать речь' : 'მეტყველების ამოცნობა ვერ მოხერხდა');
     }
@@ -638,6 +691,23 @@ const processAudioWithWhisper = async (audioBlob: Blob) => {
     toast.error(language === 'ru' ? 'Ошибка обработки аудио' : 'აუდიოს დამუშავების შეცდომა');
   } finally {
     setIsProcessing(false);
+  }
+};
+
+const toggleRecording = async () => {
+  if (isRecording) {
+    // Останавливаем запись
+    console.log('Stopping audio recording');
+    stopAudioRecording();
+  } else {
+    // Начинаем запись
+    console.log('Starting audio recording');
+    try {
+      await startAudioRecording();
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      toast.error(t.audioError);
+    }
   }
 };
 
@@ -1811,34 +1881,30 @@ const speakResponseWithOpenAI = async (text: string) => {
                   </Button>
 
                   <Button
-                    onMouseDown={handleMouseDown}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
-                    onTouchStart={handleTouchStart}
-                    onTouchEnd={handleTouchEnd}
-                    variant={isRecording ? "destructive" : "default"}
-                    className={`h-10 sm:h-12 px-3 sm:px-6 flex items-center gap-2 transition-all duration-200 ${
-                      isButtonPressed ? 'scale-95' : 'scale-100'
-                    }`}
-                    size="lg"
-                    disabled={isProcessing}
-                  >
-                    {isRecording ? (
-                      <>
-                        <div className="relative">
-                          <Mic className="h-3 w-3 sm:h-4 sm:w-4" />
-                          <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full animate-ping"></div>
-                          <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full"></div>
-                        </div>
-                        <span className="text-sm">{t.stopListening}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Mic className="h-3 w-3 sm:h-4 sm:w-4" />
-                        <span className="text-sm">{t.startListening}</span>
-                      </>
-                    )}
-                  </Button>
+  onClick={toggleRecording}
+  variant={isRecording ? "destructive" : "default"}
+  className={`h-10 sm:h-12 px-3 sm:px-6 flex items-center gap-2 transition-all duration-200 ${
+    isRecording ? 'animate-pulse' : ''
+  }`}
+  size="lg"
+  disabled={isProcessing}
+>
+  {isRecording ? (
+    <>
+      <div className="relative">
+        <Square className="h-3 w-3 sm:h-4 sm:w-4" />
+        <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full animate-ping"></div>
+        <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full"></div>
+      </div>
+      <span className="text-sm">{language === 'ru' ? 'Остановить запись' : 'ჩაწერის შეჩერება'}</span>
+    </>
+  ) : (
+    <>
+      <Mic className="h-3 w-3 sm:h-4 sm:w-4" />
+      <span className="text-sm">{language === 'ru' ? 'Начать запись' : 'ჩაწერის დაწყება'}</span>
+    </>
+  )}
+</Button>
                 </div>
               </div>
 
