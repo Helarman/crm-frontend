@@ -53,6 +53,11 @@ import { useLanguageStore } from '@/lib/stores/language-store'
 import { openAIService } from '@/lib/api/openai-proxy.service'
 import { Restaurant } from '@/lib/types/restaurant'
 
+interface Additive {
+  id: string
+  title: string
+  price: number
+}
 
 interface Product {
   id: string
@@ -61,7 +66,7 @@ interface Product {
   categoryId: string
   description?: string
   images?: string[]
-  additives?: any[]
+  additives?: Additive[]
   restaurantPrices?: Array<{
     restaurantId: string
     price: number
@@ -82,7 +87,7 @@ interface ParsedOrderItem {
   product: Product
   quantity: number
   comment?: string
-  additives?: string[]
+  additives?: Additive[]
   modifiers?: string[]
   totalPrice: number
 }
@@ -112,18 +117,24 @@ interface ConversationMessage {
 }
 
 interface AIActionResponse {
-  action: 'ADD_ITEMS' | 'UPDATE_ORDER_TYPE' | 'UPDATE_DETAILS' | 'REMOVE_ITEMS' | 'SHOW_ORDER' | 'ANSWER_QUESTION' | 'CLEAR_ORDER' | 'MODIFY_QUANTITY' | 'SHOW_MENU'
+  action: 'ADD_ITEMS' | 'UPDATE_ORDER_TYPE' | 'UPDATE_DETAILS' | 'REMOVE_ITEMS' | 'SHOW_ORDER' | 'ANSWER_QUESTION' | 'CLEAR_ORDER' | 'MODIFY_QUANTITY' | 'SHOW_MENU' | 'MODIFY_ADDITIVES'
   itemsToAdd?: Array<{
     productId: string
     productTitle: string
     quantity: number
     comment?: string
     modifiers?: string[]
+    additives?: string[]
   }>
   itemsToRemove?: string[]
   itemsToModify?: Array<{
     productId: string
     quantity: number
+    additives?: string[]
+  }>
+  additivesToModify?: Array<{
+    productId: string
+    additives: string[]
   }>
   newOrderType?: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY'
   updatedDetails?: {
@@ -142,17 +153,9 @@ interface VoiceAssistantSheetProps {
   orderId?: string
 }
 
-
 // Категории и их иконки
 const CATEGORY_ICONS: { [key: string]: any } = {
   'default': ChefHat
-}
-
-// Типы для аудио записи
-interface AudioRecorder {
-  start: () => Promise<void>
-  stop: () => Promise<Blob>
-  isRecording: boolean
 }
 
 export function VoiceAssistantSheet({ 
@@ -175,6 +178,7 @@ export function VoiceAssistantSheet({
   const [conversation, setConversation] = useState<ConversationMessage[]>([])
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [activeTab, setActiveTab] = useState('assistant')
+  const [selectedAdditives, setSelectedAdditives] = useState<{[key: string]: string[]}>({})
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
@@ -208,7 +212,6 @@ export function VoiceAssistantSheet({
   const releaseTimerRef = useRef<NodeJS.Timeout | null>(null)
   const isAutoSendRef = useRef(false)
 
-
   const translations = {
     ru: {
       title: "Ассистент",
@@ -222,7 +225,7 @@ export function VoiceAssistantSheet({
       creatingOrder: "Создание заказа...",
       orderCreated: "Заказ успешно создан",
       manualInput: "Или введите заказ текстом:",
-      placeholder: "Например: 'Два борща, один шашлык из баранины, три компота'",
+      placeholder: "Например: 'Два борща с хлебом, один шашлык с соусом, три компота'",
       speakNow: "Говорите сейчас...",
       recognizedText: "Распознанный текст:",
       parsedOrder: "Текущий заказ:",
@@ -294,12 +297,17 @@ export function VoiceAssistantSheet({
       processingAudio: "Обработка аудио...",
       audioError: "Ошибка записи аудио",
       startRecording: "Начать запись",
-    stopRecording: "Остановить запись",
+      stopRecording: "Остановить запись",
+      additives: "Добавки",
+      withAdditives: "с добавками",
+      modifyAdditives: "Изменить добавки",
+      forAdditives: "forAdditives"
     },
     ka: {
       title: "მიმტანის ასისტენტი",
+      forAdditives: "forAdditives",
       startRecording: "ჩაწერის დაწყება",
-    stopRecording: "ჩაწერის შეჩერება",
+      stopRecording: "ჩაწერის შეჩერება",
       subtitle: "შეკვეთების ხმოვანი მართვა",
       listening: "მოვუსმინოთ...",
       startListening: "დააჭირეთ და თქვით",
@@ -310,7 +318,7 @@ export function VoiceAssistantSheet({
       creatingOrder: "შეკვეთა იქმნება...",
       orderCreated: "შეკვეთა წარმატებით შეიქმნა",
       manualInput: "ან შეიყვანეთ შეკვეთა ტექსტურად:",
-      placeholder: "მაგალითად: 'ორი ბორში, ერთი ბარანინის შაშლიკი, სამი კომპოტი'",
+      placeholder: "მაგალითად: 'ორი ბორში პურთან ერთად, ერთი ბარანინის შაშლიკი სოუსით, სამი კომპოტი'",
       speakNow: "ისაუბრეთ ახლა...",
       recognizedText: "ამოცნობილი ტექსტი:",
       parsedOrder: "მიმდინარე შეკვეთა:",
@@ -380,7 +388,10 @@ export function VoiceAssistantSheet({
       recommended: "გირჩევთ სცადოთ",
       recordingAudio: "აუდიოს ჩაწერა...",
       processingAudio: "აუდიოს დამუშავება...",
-      audioError: "აუდიო ჩაწერის შეცდომა"
+      audioError: "აუდიო ჩაწერის შეცდომა",
+      additives: "დანამატები",
+      withAdditives: "დანამატებით",
+      modifyAdditives: "დანამატების შეცვლა"
     }
   } as const
 
@@ -404,7 +415,6 @@ export function VoiceAssistantSheet({
     }
   }, [user])
 
-  // Инициализация и загрузка данных
   useEffect(() => {
     if (open) {
       loadRestaurantAndProducts()
@@ -457,285 +467,276 @@ export function VoiceAssistantSheet({
     }
   }
 
-const startAudioRecording = async () => {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ 
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        sampleRate: 16000, 
-        channelCount: 1, 
-        autoGainControl: true
-      } 
-    });
-    
-    audioChunksRef.current = [];
-    
-   
-    const mimeTypes = [
-      'audio/wav',
-      'audio/mpeg',
-      'audio/mp4',
-      'audio/webm;codecs=opus',
-      'audio/webm'
-    ];
-    
-    let supportedType = '';
-    for (const mimeType of mimeTypes) {
-      if (MediaRecorder.isTypeSupported(mimeType)) {
-        supportedType = mimeType;
-        break;
+  const startAudioRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 16000, 
+          channelCount: 1, 
+          autoGainControl: true
+        } 
+      });
+      
+      audioChunksRef.current = [];
+      
+      const mimeTypes = [
+        'audio/wav',
+        'audio/mpeg',
+        'audio/mp4',
+        'audio/webm;codecs=opus',
+        'audio/webm'
+      ];
+      
+      let supportedType = '';
+      for (const mimeType of mimeTypes) {
+        if (MediaRecorder.isTypeSupported(mimeType)) {
+          supportedType = mimeType;
+          break;
+        }
       }
-    }
-    
-    console.log('Using audio format:', supportedType);
-    
-    const mediaRecorder = new MediaRecorder(stream, {
-      mimeType: supportedType
-    });
-    
-    mediaRecorderRef.current = mediaRecorder;
-    
-    mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        audioChunksRef.current.push(event.data);
-      }
-    };
-    
-    mediaRecorder.onstop = async () => {
-      try {
-        const audioBlob = new Blob(audioChunksRef.current, { 
-          type: supportedType 
-        });
-        
-        console.log('Audio blob details:', {
-          size: audioBlob.size,
-          type: audioBlob.type,
-          duration: audioChunksRef.current.length
-        });
-        
-        await processAudioWithWhisper(audioBlob);
-      } catch (error) {
-        console.error('Error processing recording:', error);
-        toast.error(t.audioError);
-      } finally {
-        // Останавливаем все треки
-        stream.getTracks().forEach(track => track.stop());
-        cleanupAudioResources();
-      }
-    };
-    
-    mediaRecorder.start(100);
-    setIsRecording(true);
-    await initializeAudioAnalyzer(stream);
-    
-  } catch (error) {
-    console.error('Error starting audio recording:', error);
-    toast.error(t.audioError);
-    setIsRecording(false);
-  }
-};
-
-const convertToWavIfNeeded = async (blob: Blob): Promise<Blob> => {
-  if (blob.type.includes('wav')) {
-    return blob;
-  }
-  
-  try {
-    const arrayBuffer = await blob.arrayBuffer();
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
-      sampleRate: 16000
-    });
-    
-    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-    
-    const wavBuffer = encodeWAV(audioBuffer);
-    return new Blob([wavBuffer], { type: 'audio/wav' });
-  } catch (error) {
-    console.warn('WAV conversion failed, using original format:', error);
-    return blob;
-  }
-};
-
-const encodeWAV = (audioBuffer: AudioBuffer): ArrayBuffer => {
-  const numChannels = audioBuffer.numberOfChannels;
-  const sampleRate = audioBuffer.sampleRate;
-  const length = audioBuffer.length * numChannels * 2;
-  const buffer = new ArrayBuffer(44 + length);
-  const view = new DataView(buffer);
-  
-  // WAV header
-  const writeString = (offset: number, string: string) => {
-    for (let i = 0; i < string.length; i++) {
-      view.setUint8(offset + i, string.charCodeAt(i));
+      
+      console.log('Using audio format:', supportedType);
+      
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: supportedType
+      });
+      
+      mediaRecorderRef.current = mediaRecorder;
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+      
+      mediaRecorder.onstop = async () => {
+        try {
+          const audioBlob = new Blob(audioChunksRef.current, { 
+            type: supportedType 
+          });
+          
+          console.log('Audio blob details:', {
+            size: audioBlob.size,
+            type: audioBlob.type,
+            duration: audioChunksRef.current.length
+          });
+          
+          await processAudioWithWhisper(audioBlob);
+        } catch (error) {
+          console.error('Error processing recording:', error);
+          toast.error(t.audioError);
+        } finally {
+          stream.getTracks().forEach(track => track.stop());
+          cleanupAudioResources();
+        }
+      };
+      
+      mediaRecorder.start(100);
+      setIsRecording(true);
+      await initializeAudioAnalyzer(stream);
+      
+    } catch (error) {
+      console.error('Error starting audio recording:', error);
+      toast.error(t.audioError);
+      setIsRecording(false);
     }
   };
-  
-  writeString(0, 'RIFF');
-  view.setUint32(4, 36 + length, true);
-  writeString(8, 'WAVE');
-  writeString(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM format
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * numChannels * 2, true); // byte rate
-  view.setUint16(32, numChannels * 2, true); // block align
-  view.setUint16(34, 16, true); // bits per sample
-  writeString(36, 'data');
-  view.setUint32(40, length, true);
-  
-  // Audio data (PCM)
-  const channels = [];
-  for (let i = 0; i < numChannels; i++) {
-    channels.push(audioBuffer.getChannelData(i));
-  }
-  
-  let offset = 44;
-  for (let i = 0; i < audioBuffer.length; i++) {
-    for (let channel = 0; channel < numChannels; channel++) {
-      const sample = Math.max(-1, Math.min(1, channels[channel][i]));
-      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
-      offset += 2;
-    }
-  }
-  
-  return buffer;
-};
 
-const cleanTranscript = (text: string): string => {
-  if (!text) return '';
-  
-  const phrasesToRemove = [
-    'редактор субтитров',
-    'корректор',
-    'субтитры сделал',
-    'субтитры сделала',
-    'а.семкин',
-    'а.егорова',
-    'dimatorzok',
-    'dima torzok'
-  ];
-
-  let cleanedText = text.toLowerCase();
-  
-  phrasesToRemove.forEach(phrase => {
-    cleanedText = cleanedText.replace(phrase, '');
-  });
-  
-  // Удаляем лишние пробелы и пунктуацию
-  cleanedText = cleanedText
-    .replace(/\s+/g, ' ')
-    .replace(/[.,!?;:]$/, '')
-    .trim();
-  
-  return cleanedText;
-};
-
-const processAudioWithWhisper = async (audioBlob: Blob) => {
-  setIsProcessing(true);
-  
-  try {
-    const processedBlob = await convertToWavIfNeeded(audioBlob);
-    
-    const formData = new FormData();
-    
-    let fileName = 'audio.wav';
-    if (processedBlob.type.includes('mpeg') || processedBlob.type.includes('mp4')) {
-      fileName = 'audio.mp3';
-    } else if (processedBlob.type.includes('webm')) {
-      fileName = 'audio.webm';
+  const convertToWavIfNeeded = async (blob: Blob): Promise<Blob> => {
+    if (blob.type.includes('wav')) {
+      return blob;
     }
     
-    formData.append('file', processedBlob, fileName);
-    formData.append('model', 'whisper-1');
-    formData.append('language', language === 'ru' ? 'ru' : 'ka');
-    formData.append('response_format', 'json');
-    
-    console.log('Sending audio to Whisper:', {
-      size: processedBlob.size,
-      type: processedBlob.type,
-      fileName
-    });
-    
-    const result = await openAIService.transcribeAudio(formData);
-    const rawTranscribedText = result.text.trim();
-    
-    // ОЧИСТКА ТРАНСКРИПЦИИ ОТ СЛУЖЕБНЫХ ФРАЗ
-    const cleanedText = cleanTranscript(rawTranscribedText);
-    
-    console.log('Transcription:', {
-      raw: rawTranscribedText,
-      cleaned: cleanedText
-    });
-    
-    if (cleanedText) {
-      setTranscript(cleanedText);
-      await processOrderWithAI(cleanedText);
-    } else if (rawTranscribedText) {
-      // Если после очистки текст пустой, но был распознан
-      const infoMessage: ConversationMessage = {
-        role: 'assistant',
-        content: language === 'ru' 
-          ? 'Распознаны служебные фразы. Пожалуйста, повторите ваш заказ.'
-          : 'სერვისური ფრაზები ამოიცნო. გთხოვთ, გაიმეოროთ თქვენი შეკვეთა.',
-        timestamp: new Date(),
-        type: 'info'
-      };
-      setConversation(prev => [...prev, infoMessage]);
-    } else {
-      toast.error(language === 'ru' ? 'Не удалось распознать речь' : 'მეტყველების ამოცნობა ვერ მოხერხდა');
-    }
-  } catch (error) {
-    console.error('Error processing audio:', error);
-    toast.error(language === 'ru' ? 'Ошибка обработки аудио' : 'აუდიოს დამუშავების შეცდომა');
-  } finally {
-    setIsProcessing(false);
-  }
-};
-
-const toggleRecording = async () => {
-  if (isRecording) {
-    // Останавливаем запись
-    console.log('Stopping audio recording');
-    stopAudioRecording();
-  } else {
-    // Начинаем запись
-    console.log('Starting audio recording');
     try {
-      await startAudioRecording();
+      const arrayBuffer = await blob.arrayBuffer();
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
+        sampleRate: 16000
+      });
+      
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      
+      const wavBuffer = encodeWAV(audioBuffer);
+      return new Blob([wavBuffer], { type: 'audio/wav' });
     } catch (error) {
-      console.error('Error starting recording:', error);
-      toast.error(t.audioError);
+      console.warn('WAV conversion failed, using original format:', error);
+      return blob;
     }
-  }
-};
+  };
 
-const cleanupAudioResources = () => {
-  if (audioContextRef.current) {
-    audioContextRef.current.close().catch(console.error);
-    audioContextRef.current = null;
-  }
-  
-  if (analyserRef.current) {
-    analyserRef.current.disconnect();
-    analyserRef.current = null;
-  }
-  
-  if (animationRef.current) {
-    cancelAnimationFrame(animationRef.current);
-    animationRef.current = 0;
-  }
-  
-  setAudioLevel(0);
-};
+  const encodeWAV = (audioBuffer: AudioBuffer): ArrayBuffer => {
+    const numChannels = audioBuffer.numberOfChannels;
+    const sampleRate = audioBuffer.sampleRate;
+    const length = audioBuffer.length * numChannels * 2;
+    const buffer = new ArrayBuffer(44 + length);
+    const view = new DataView(buffer);
+    
+    const writeString = (offset: number, string: string) => {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    };
+    
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + length, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * numChannels * 2, true);
+    view.setUint16(32, numChannels * 2, true);
+    view.setUint16(34, 16, true);
+    writeString(36, 'data');
+    view.setUint32(40, length, true);
+    
+    const channels = [];
+    for (let i = 0; i < numChannels; i++) {
+      channels.push(audioBuffer.getChannelData(i));
+    }
+    
+    let offset = 44;
+    for (let i = 0; i < audioBuffer.length; i++) {
+      for (let channel = 0; channel < numChannels; channel++) {
+        const sample = Math.max(-1, Math.min(1, channels[channel][i]));
+        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+        offset += 2;
+      }
+    }
+    
+    return buffer;
+  };
+
+  const cleanTranscript = (text: string): string => {
+    if (!text) return '';
+    
+    const phrasesToRemove = [
+      'редактор субтитров',
+      'корректор',
+      'субтитры сделал',
+      'субтитры сделала',
+      'а.семкин',
+      'а.егорова',
+      'dimatorzok',
+      'dima torzok'
+    ];
+
+    let cleanedText = text.toLowerCase();
+    
+    phrasesToRemove.forEach(phrase => {
+      cleanedText = cleanedText.replace(phrase, '');
+    });
+    
+    cleanedText = cleanedText
+      .replace(/\s+/g, ' ')
+      .replace(/[.,!?;:]$/, '')
+      .trim();
+    
+    return cleanedText;
+  };
+
+  const processAudioWithWhisper = async (audioBlob: Blob) => {
+    setIsProcessing(true);
+    
+    try {
+      const processedBlob = await convertToWavIfNeeded(audioBlob);
+      
+      const formData = new FormData();
+      
+      let fileName = 'audio.wav';
+      if (processedBlob.type.includes('mpeg') || processedBlob.type.includes('mp4')) {
+        fileName = 'audio.mp3';
+      } else if (processedBlob.type.includes('webm')) {
+        fileName = 'audio.webm';
+      }
+      
+      formData.append('file', processedBlob, fileName);
+      formData.append('model', 'whisper-1');
+      formData.append('language', language === 'ru' ? 'ru' : 'ka');
+      formData.append('response_format', 'json');
+      
+      console.log('Sending audio to Whisper:', {
+        size: processedBlob.size,
+        type: processedBlob.type,
+        fileName
+      });
+      
+      const result = await openAIService.transcribeAudio(formData);
+      const rawTranscribedText = result.text.trim();
+      
+      const cleanedText = cleanTranscript(rawTranscribedText);
+      
+      console.log('Transcription:', {
+        raw: rawTranscribedText,
+        cleaned: cleanedText
+      });
+      
+      if (cleanedText) {
+        setTranscript(cleanedText);
+        await processOrderWithAI(cleanedText);
+      } else if (rawTranscribedText) {
+        const infoMessage: ConversationMessage = {
+          role: 'assistant',
+          content: language === 'ru' 
+            ? 'Распознаны служебные фразы. Пожалуйста, повторите ваш заказ.'
+            : 'სერვისური ფრაზები ამოიცნო. გთხოვთ, გაიმეოროთ თქვენი შეკვეთა.',
+          timestamp: new Date(),
+          type: 'info'
+        };
+        setConversation(prev => [...prev, infoMessage]);
+      } else {
+        toast.error(language === 'ru' ? 'Не удалось распознать речь' : 'მეტყველების ამოცნობა ვერ მოხერხდა');
+      }
+    } catch (error) {
+      console.error('Error processing audio:', error);
+      toast.error(language === 'ru' ? 'Ошибка обработки аудио' : 'აუდიოს დამუშავების შეცდომა');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const toggleRecording = async () => {
+    if (isRecording) {
+      console.log('Stopping audio recording');
+      stopAudioRecording();
+    } else {
+      console.log('Starting audio recording');
+      try {
+        await startAudioRecording();
+      } catch (error) {
+        console.error('Error starting recording:', error);
+        toast.error(t.audioError);
+      }
+    }
+  };
+
+  const cleanupAudioResources = () => {
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(console.error);
+      audioContextRef.current = null;
+    }
+    
+    if (analyserRef.current) {
+      analyserRef.current.disconnect();
+      analyserRef.current = null;
+    }
+    
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = 0;
+    }
+    
+    setAudioLevel(0);
+  };
+
   const stopAudioRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop()
       setIsRecording(false)
     }
   }
-
 
   const cleanupAudio = () => {
     if (mediaRecorderRef.current && isRecording) {
@@ -790,7 +791,6 @@ const cleanupAudioResources = () => {
     }
   }
 
-  // Управление голосовым вводом
   const handleMouseDown = async () => {
     console.log('Starting audio recording')
     setIsButtonPressed(true)
@@ -837,86 +837,76 @@ const cleanupAudioResources = () => {
     processOrderWithAI(transcript)
   }
 
-const callOpenAI = async (prompt: string): Promise<any> => {
-  try {
-    const response = await openAIService.chatCompletion([
-      {
-        role: "system",
-        content: getSystemPrompt()
-      },
-      {
-        role: "user", 
-        content: prompt
-      }
-    ], {
-      model: aiConfig.model,
-      temperature: aiConfig.temperature,
-      max_tokens: aiConfig.maxTokens,
-    });
-
-    console.log('Raw AI response:', response);
-
-    // Для GPT-4o структура ответа может отличаться
-    let content;
-    
-    if (typeof response === 'string') {
-      // Если ответ пришел как строка
-      content = response;
-    } else if (response.choices && response.choices[0] && response.choices[0].message) {
-      // Стандартная структура OpenAI
-      content = response.choices[0].message.content;
-    } else if (response.content) {
-      // Альтернативная структура
-      content = response.content;
-    } else if (response.message) {
-      // Еще один возможный вариант
-      content = response.message.content || response.message;
-    } else {
-      console.error('Unexpected response structure:', response);
-      throw new Error('Invalid response structure from AI');
-    }
-
-    console.log('Extracted content:', content);
-
-    // Если content уже объект, возвращаем его
-    if (typeof content === 'object') {
-      return content;
-    }
-
-    // Очищаем ответ от возможных лишних символов
-    const cleanedContent = content.trim();
-    
-    // Удаляем markdown code blocks если есть
-    const jsonContent = cleanedContent
-      .replace(/```json\s*/g, '')
-      .replace(/```\s*/g, '')
-      .trim();
-
-    console.log('Cleaned content for parsing:', jsonContent);
-
-    // Парсим JSON
+  const callOpenAI = async (prompt: string): Promise<any> => {
     try {
-      const parsed = JSON.parse(jsonContent);
-      console.log('Successfully parsed JSON:', parsed);
-      return parsed;
-    } catch (parseError) {
-      console.error('JSON parse error:', parseError);
-      console.error('Content that failed to parse:', jsonContent);
-      
-      // Если парсинг не удался, создаем fallback ответ
-      return {
-        action: "ANSWER_QUESTION",
-        response: jsonContent,
-        confidence: 0.5,
-        suggestions: []
-      };
-    }
+      const response = await openAIService.chatCompletion([
+        {
+          role: "system",
+          content: getSystemPrompt()
+        },
+        {
+          role: "user", 
+          content: prompt
+        }
+      ], {
+        model: aiConfig.model,
+        temperature: aiConfig.temperature,
+        max_tokens: aiConfig.maxTokens,
+      });
 
-  } catch (error) {
-    console.error('Error calling OpenAI:', error);
-    throw error;
-  }
-};
+      console.log('Raw AI response:', response);
+
+      let content;
+      
+      if (typeof response === 'string') {
+        content = response;
+      } else if (response.choices && response.choices[0] && response.choices[0].message) {
+        content = response.choices[0].message.content;
+      } else if (response.content) {
+        content = response.content;
+      } else if (response.message) {
+        content = response.message.content || response.message;
+      } else {
+        console.error('Unexpected response structure:', response);
+        throw new Error('Invalid response structure from AI');
+      }
+
+      console.log('Extracted content:', content);
+
+      if (typeof content === 'object') {
+        return content;
+      }
+
+      const cleanedContent = content.trim();
+      
+      const jsonContent = cleanedContent
+        .replace(/```json\s*/g, '')
+        .replace(/```\s*/g, '')
+        .trim();
+
+      console.log('Cleaned content for parsing:', jsonContent);
+
+      try {
+        const parsed = JSON.parse(jsonContent);
+        console.log('Successfully parsed JSON:', parsed);
+        return parsed;
+      } catch (parseError) {
+        console.error('JSON parse error:', parseError);
+        console.error('Content that failed to parse:', jsonContent);
+        
+        return {
+          action: "ANSWER_QUESTION",
+          response: jsonContent,
+          confidence: 0.5,
+          suggestions: []
+        };
+      }
+
+    } catch (error) {
+      console.error('Error calling OpenAI:', error);
+      throw error;
+    }
+  };
 
   const getSystemPrompt = () => {
     const userRestaurantId = getRestaurantId();
@@ -924,55 +914,52 @@ const callOpenAI = async (prompt: string): Promise<any> => {
     const menuInfo = products.map(p => {
       const category = categories.find(c => c.id === p.categoryId);
       const price = getProductPrice(p);
-      return `${p.title} (ID: ${p.id}, Категория: ${category?.title || 'Other'}, Цена: ${price}₽)`;
-    }).join('\n');
+      const additivesInfo = p.additives ? p.additives.map(a => `  - ${a.title} (ID: ${a.id}, +${a.price}₽)`).join('\n') : '  Нет добавок';
+      return `${p.title} (ID: ${p.id}, Категория: ${category?.title || 'Other'}, Цена: ${price}₽)\nДобавки:\n${additivesInfo}`;
+    }).join('\n\n');
 
-    const currentOrderInfo = order ? order.items.map(item => 
-      `${item.quantity}x ${item.product.title} (ID: ${item.product.id}) - ${item.totalPrice}₽`
-    ).join('\n') : 'пуст';
+    const currentOrderInfo = order ? order.items.map(item => {
+      const additivesText = item.additives && item.additives.length > 0 
+        ? ` с ${item.additives.map(a => a.title).join(', ')}`
+        : '';
+      return `${item.quantity}x ${item.product.title}${additivesText} (ID: ${item.product.id}) - ${item.totalPrice}₽`;
+    }).join('\n') : 'пуст';
 
     return `Ты - AI ассистент для ресторана. Твоя задача - ОЧЕНЬ ТОЧНО и ПРЕДСКАЗУЕМО обрабатывать заказы.
 
-# КРИТИЧЕСКИ ВАЖНЫЕ ПРАВИЛА:
-1. НИКОГДА не изменяй заказ без явной команды пользователя
-2. НИКОГДА не очищай заказ без команды "очистить заказ" или "clear order"
-3. НИКОГДА не изменяй тип заказа без явного указания пользователя
-4. Всегда подтверждай изменения перед применением
-5. При любой неопределенности - УТОЧНЯЙ у пользователя
-6. СРАЗУ добавляй товары в заказ при упоминании без лишних подтверждений
-7. СРАЗУ изменяй количество при явном указании
-8. СРАЗУ удаляй товары при явной команде удаления
+# РАБОТА С ДОБАВКАМИ:
+## КОМАНДЫ ДЛЯ ДОБАВОК:
+- "Борщ с хлебом" → добавляет хлеб к борщу
+- "Шашлык с соусом и овощами" → добавляет соус и овощи
+- "Кофе с молоком и сахаром" → добавляет молоко и сахар
+- "Убери лук из салата" → удаляет лук из салата
+- "Добавь сыр к пасте" → добавляет сыр
 
-# ОБРАБОТКА КОЛИЧЕСТВ:
-- "два борща" → quantity: 2
-- "борщ" → quantity: 1 (по умолчанию)
-- "борщ и два шашлыка" → два товара: борщ (1), шашлык (2)
-- "три порции борща" → quantity: 3
-- "борщ, шашлык, салат" → три товара, quantity: 1 для каждого
+## ФОРМАТ ДОБАВОК:
+Всегда используй ID добавок из списка ниже.
 
 # ДОСТУПНЫЕ ДЕЙСТВИЯ (используй ТОЛЬКО эти действия):
 
 ## ADD_ITEMS - добавить товары в заказ
 Используй когда пользователь говорит:
-- "Добавь [блюдо]"
-- "Хочу [блюдо]" 
-- "Принеси [блюдо]"
-- "Давай [блюдо]"
-- Просто перечисляет блюда: "борщ, шашлык, салат"
-- Указывает количество: "два борща, один шашлык"
+- "Добавь [блюдо] с [добавка]"
+- "Хочу [блюдо] с [добавка1] и [добавка2]" 
+- Просто перечисляет блюда с добавками: "борщ с хлебом, шашлык с соусом"
 
 ## REMOVE_ITEMS - удалить товары из заказа
 Используй ТОЛЬКО когда пользователь явно говорит:
 - "Удали [блюдо]"
 - "Убери [блюдо]"
-- "Отмени [блюдо]"
 
 ## MODIFY_QUANTITY - изменить количество
 Используй когда пользователь говорит:
 - "Измени количество [блюдо] на [число]"
-- "Сделай [блюдо] [число] штук"
-- "Увеличь [блюдо] до [число]"
-- "Уменьши [блюдо] до [число]"
+
+## MODIFY_ADDITIVES - изменить добавки товара
+Используй когда пользователь говорит:
+- "Добавь [добавка] к [товар]"
+- "Убери [добавка] из [товар]"
+- "Измени добавки для [товар]"
 
 ## UPDATE_DETAILS - изменить детали заказа
 Используй для:
@@ -984,13 +971,11 @@ const callOpenAI = async (prompt: string): Promise<any> => {
 Используй когда пользователь говорит:
 - "Покажи заказ"
 - "Что в заказе"
-- "Сводка заказа"
 
 ## CLEAR_ORDER - очистить весь заказ
 ИСПОЛЬЗУЙ ТОЛЬКО ПРИ ЯВНОЙ КОМАНДЕ:
 - "Очистить заказ"
 - "Удалить всё"
-- "Начать заново"
 
 ## ANSWER_QUESTION - ответить на вопрос
 Используй для любых вопросов о меню, ресторане и т.д.
@@ -998,7 +983,7 @@ const callOpenAI = async (prompt: string): Promise<any> => {
 # ФОРМАТ ОТВЕТА (ВСЕГДА JSON):
 
 {
-  "action": "ADD_ITEMS" | "REMOVE_ITEMS" | "MODIFY_QUANTITY" | "UPDATE_DETAILS" | "SHOW_ORDER" | "CLEAR_ORDER" | "ANSWER_QUESTION",
+  "action": "ADD_ITEMS" | "REMOVE_ITEMS" | "MODIFY_QUANTITY" | "MODIFY_ADDITIVES" | "UPDATE_DETAILS" | "SHOW_ORDER" | "CLEAR_ORDER" | "ANSWER_QUESTION",
   
   // ТОЛЬКО для ADD_ITEMS - сразу добавляй
   "itemsToAdd": [
@@ -1006,18 +991,28 @@ const callOpenAI = async (prompt: string): Promise<any> => {
       "productId": "string (ОБЯЗАТЕЛЬНО точный ID продукта)",
       "productTitle": "string (оригинальное название)",
       "quantity": number (1, 2, 3 и т.д.),
-      "comment": "string (опционально)"
+      "comment": "string (опционально)",
+      "additives": ["additiveId1", "additiveId2"] // МАССИВ ID ДОБАВОК
     }
   ],
   
-  // ТОЛЬКО для REMOVE_ITEMS   - сразу удаляй 
+  // ТОЛЬКО для REMOVE_ITEMS - сразу удаляй 
   "itemsToRemove": ["productId1", "productId2"],
   
   // ТОЛЬКО для MODIFY_QUANTITY - сразу изменяй
   "itemsToModify": [
     {
       "productId": "string",
-      "quantity": number
+      "quantity": number,
+      "additives": ["additiveId1", "additiveId2"] // ОПЦИОНАЛЬНО - новые добавки
+    }
+  ],
+  
+  // ТОЛЬКО для MODIFY_ADDITIVES - изменяй только добавки
+  "additivesToModify": [
+    {
+      "productId": "string",
+      "additives": ["additiveId1", "additiveId2"] // НОВЫЕ ДОБАВКИ
     }
   ],
   
@@ -1033,6 +1028,12 @@ const callOpenAI = async (prompt: string): Promise<any> => {
   "suggestions": ["string"] (релевантные предложения)
 }
 
+# ПРИМЕРЫ:
+- "Борщ с хлебом" → ADD_ITEMS с additives: ["хлеб_id"]
+- "Кофе с молоком" → ADD_ITEMS с additives: ["молоко_id"]
+- "Убери лук из салата" → MODIFY_ADDITIVES с additives без лука
+- "Добавь сыр к пасте" → MODIFY_ADDITIVES с additives + сыр
+
 # КОНТЕКСТ:
 Меню (${products.length} товаров):
 ${menuInfo}
@@ -1047,87 +1048,83 @@ ${currentOrderInfo}
 ВСЕГДА отвечай в формате JSON! Будь максимально точен и предсказуем! Действуй уверенно!`;
   };
 
- const processOrderWithAI = async (text: string) => {
-  if (!text.trim()) {
-    console.log('Empty text, skipping processing')
-    return
-  }
+  const processOrderWithAI = async (text: string) => {
+    if (!text.trim()) {
+      console.log('Empty text, skipping processing')
+      return
+    }
 
-  console.log('Processing with AI:', text)
-  setIsProcessing(true)
-  
-  const userMessage: ConversationMessage = {
-    role: 'user',
-    content: text,
-    timestamp: new Date(),
-    type: 'order_update'
-  }
-  
-  setConversation(prev => [...prev, userMessage])
-
-  try {
-    const parsedData = await callOpenAI(text)
+    console.log('Processing with AI:', text)
+    setIsProcessing(true)
     
-    console.log('Parsed AI Response:', parsedData)
-    
-    // Если ответ уже парсился в callOpenAI, используем его напрямую
-    await handleAIAction(parsedData, text)
-    
-    const assistantMessage: ConversationMessage = {
-      role: 'assistant',
-      content: parsedData.response,
+    const userMessage: ConversationMessage = {
+      role: 'user',
+      content: text,
       timestamp: new Date(),
-      type: parsedData.action === 'SHOW_ORDER' ? 'info' : 'order_update'
+      type: 'order_update'
     }
     
-    
-    setConversation(prev => [...prev, assistantMessage])
+    setConversation(prev => [...prev, userMessage])
 
-    if (audioFeedback) {
-      speakResponseWithOpenAI(parsedData.response)
+    try {
+      const parsedData = await callOpenAI(text)
+      
+      console.log('Parsed AI Response:', parsedData)
+      
+      await handleAIAction(parsedData, text)
+      
+      const assistantMessage: ConversationMessage = {
+        role: 'assistant',
+        content: parsedData.response,
+        timestamp: new Date(),
+        type: parsedData.action === 'SHOW_ORDER' ? 'info' : 'order_update'
+      }
+      
+      setConversation(prev => [...prev, assistantMessage])
+
+      if (audioFeedback) {
+        speakResponseWithOpenAI(parsedData.response)
+      }
+
+    } catch (error) {
+      console.error('Error processing order with AI:', error)
+      handleAIError(error)
+    } finally {
+      setIsProcessing(false)
+      setTranscript('')
     }
-
-  } catch (error) {
-    console.error('Error processing order with AI:', error)
-    handleAIError(error)
-  } finally {
-    setIsProcessing(false)
-    setTranscript('')
   }
-}
 
-const speakResponseWithOpenAI = async (text: string) => {
-  if (!audioFeedback) return;
-  
-  try {
-    const speechText = text.length > 500 ? text.substring(0, 500) + '...' : text;
-    const audioBlob = await openAIService.textToSpeech(
-      speechText, 
-      language === 'ru' ? 'alloy' : 'nova'
-    );
+  const speakResponseWithOpenAI = async (text: string) => {
+    if (!audioFeedback) return;
     
-    const audioUrl = URL.createObjectURL(audioBlob);
-    const audio = new Audio(audioUrl);
-    
-    audio.onplay = () => setIsSpeaking(true);
-    audio.onended = () => {
-      setIsSpeaking(false);
-      URL.revokeObjectURL(audioUrl);
-    };
-    audio.onerror = () => {
-      setIsSpeaking(false);
-      URL.revokeObjectURL(audioUrl);
-    };
-    
-    await audio.play();
-  } catch (error) {
-    console.error('Error with TTS:', error);
-    // Fallback на стандартный SpeechSynthesis
-    speakResponse(text);
-  }
-};
+    try {
+      const speechText = text.length > 500 ? text.substring(0, 500) + '...' : text;
+      const audioBlob = await openAIService.textToSpeech(
+        speechText, 
+        language === 'ru' ? 'alloy' : 'nova'
+      );
+      
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      
+      audio.onplay = () => setIsSpeaking(true);
+      audio.onended = () => {
+        setIsSpeaking(false);
+        URL.revokeObjectURL(audioUrl);
+      };
+      audio.onerror = () => {
+        setIsSpeaking(false);
+        URL.revokeObjectURL(audioUrl);
+      };
+      
+      await audio.play();
+    } catch (error) {
+      console.error('Error with TTS:', error);
+      speakResponse(text);
+    }
+  };
 
-  // Стандартный SpeechSynthesis как fallback
   const speakResponse = (text: string) => {
     if (!audioFeedback) return
     
@@ -1162,7 +1159,7 @@ const speakResponseWithOpenAI = async (text: string) => {
       switch (parsedData.action) {
         case 'ADD_ITEMS':
           if (parsedData.itemsToAdd && parsedData.itemsToAdd.length > 0) {
-            console.log('Adding items:', parsedData.itemsToAdd);
+            console.log('Adding items with additives:', parsedData.itemsToAdd);
             
             let addedItems: string[] = [];
             
@@ -1170,26 +1167,37 @@ const speakResponseWithOpenAI = async (text: string) => {
               const product = findProductByIdOrTitle(item.productId, item.productTitle);
               
               if (product) {
-                console.log(`Found product: ${product.title} (ID: ${product.id})`);
+                console.log(`Found product: ${product.title} with additives:`, item.additives);
+                
+                const selectedAdditives = (item.additives || [])
+                  .map(additiveId => product.additives?.find(a => a.id === additiveId))
+                  .filter(Boolean) as Additive[];
+                
+                const additivesPrice = selectedAdditives.reduce((sum, additive) => sum + additive.price, 0);
+                const itemTotalPrice = (item.quantity || 1) * (getProductPrice(product) + additivesPrice);
                 
                 const existingItemIndex = updatedOrder.items.findIndex(
-                  existingItem => existingItem.product.id === product.id
+                  existingItem => 
+                    existingItem.product.id === product.id &&
+                    JSON.stringify(existingItem.additives?.map(a => a.id) || []) === JSON.stringify(item.additives || []) &&
+                    existingItem.comment === item.comment
                 );
                 
                 if (existingItemIndex >= 0) {
                   updatedOrder.items[existingItemIndex].quantity += item.quantity || 1;
                   updatedOrder.items[existingItemIndex].totalPrice = 
-                    updatedOrder.items[existingItemIndex].quantity * getProductPrice(product);
-                  addedItems.push(`${product.title} (теперь ${updatedOrder.items[existingItemIndex].quantity} шт)`);
+                    updatedOrder.items[existingItemIndex].quantity * (getProductPrice(product) + additivesPrice);
+                  addedItems.push(`${product.title} с ${selectedAdditives.map(a => a.title).join(', ')} (теперь ${updatedOrder.items[existingItemIndex].quantity} шт)`);
                 } else {
                   const newItem: ParsedOrderItem = {
                     product,
                     quantity: item.quantity || 1,
                     comment: item.comment,
-                    totalPrice: (item.quantity || 1) * getProductPrice(product)
+                    additives: selectedAdditives,
+                    totalPrice: itemTotalPrice
                   };
                   updatedOrder.items.push(newItem);
-                  addedItems.push(`${product.title} (${item.quantity || 1} шт)`);
+                  addedItems.push(`${product.title} с ${selectedAdditives.map(a => a.title).join(', ')} (${item.quantity || 1} шт)`);
                 }
               } else {
                 console.warn(`Product not found: ID=${item.productId}, Title=${item.productTitle}`);
@@ -1211,29 +1219,77 @@ const speakResponseWithOpenAI = async (text: string) => {
           }
           break;
 
+        case 'MODIFY_ADDITIVES':
+          if (parsedData.additivesToModify && parsedData.additivesToModify.length > 0) {
+            console.log('Modifying additives:', parsedData.additivesToModify);
+            
+            for (const modification of parsedData.additivesToModify) {
+              const itemIndex = updatedOrder.items.findIndex(
+                item => item.product.id === modification.productId
+              );
+              
+              if (itemIndex >= 0) {
+                const product = updatedOrder.items[itemIndex].product;
+                const selectedAdditives = (modification.additives || [])
+                  .map(additiveId => product.additives?.find(a => a.id === additiveId))
+                  .filter(Boolean) as Additive[];
+                
+                const additivesPrice = selectedAdditives.reduce((sum, additive) => sum + additive.price, 0);
+                
+                updatedOrder.items[itemIndex].additives = selectedAdditives;
+                updatedOrder.items[itemIndex].totalPrice = 
+                  updatedOrder.items[itemIndex].quantity * (getProductPrice(product) + additivesPrice);
+                  
+                const infoMessage: ConversationMessage = {
+                  role: 'assistant',
+                  content: language === 'ru' 
+                    ? `✅ Обновлены добавки для ${product.title}: ${selectedAdditives.map(a => a.title).join(', ') || 'нет добавок'}`
+                    : `✅ განახლდა დანამატები ${product.title}-სთვის: ${selectedAdditives.map(a => a.title).join(', ') || 'დანამატები არ არის'}`,
+                  timestamp: new Date(),
+                  type: 'order_update'
+                };
+                setConversation(prev => [...prev, infoMessage]);
+              }
+            }
+            shouldUpdateOrder = true;
+          }
+          break;
+
+        case 'MODIFY_QUANTITY':
+          if (parsedData.itemsToModify && parsedData.itemsToModify.length > 0) {
+            console.log('Modifying quantities and additives:', parsedData.itemsToModify);
+            for (const modification of parsedData.itemsToModify) {
+              const itemIndex = updatedOrder.items.findIndex(
+                item => item.product.id === modification.productId
+              );
+              if (itemIndex >= 0) {
+                const product = updatedOrder.items[itemIndex].product;
+                
+                if (modification.additives) {
+                  const selectedAdditives = modification.additives
+                    .map(additiveId => product.additives?.find(a => a.id === additiveId))
+                    .filter(Boolean) as Additive[];
+                  updatedOrder.items[itemIndex].additives = selectedAdditives;
+                }
+                
+                const additivesPrice = (updatedOrder.items[itemIndex].additives || [])
+                  .reduce((sum: number, additive: Additive) => sum + additive.price, 0);
+                
+                updatedOrder.items[itemIndex].quantity = modification.quantity;
+                updatedOrder.items[itemIndex].totalPrice = 
+                  modification.quantity * (getProductPrice(product) + additivesPrice);
+              }
+            }
+            shouldUpdateOrder = true;
+          }
+          break;
+
         case 'REMOVE_ITEMS':
           if (parsedData.itemsToRemove && parsedData.itemsToRemove.length > 0) {
             console.log('Removing items:', parsedData.itemsToRemove)
             updatedOrder.items = updatedOrder.items.filter(item => 
               !parsedData.itemsToRemove!.includes(item.product.id)
             )
-            shouldUpdateOrder = true
-          }
-          break
-
-        case 'MODIFY_QUANTITY':
-          if (parsedData.itemsToModify && parsedData.itemsToModify.length > 0) {
-            console.log('Modifying quantities:', parsedData.itemsToModify)
-            for (const modification of parsedData.itemsToModify) {
-              const itemIndex = updatedOrder.items.findIndex(
-                item => item.product.id === modification.productId
-              )
-              if (itemIndex >= 0) {
-                updatedOrder.items[itemIndex].quantity = modification.quantity
-                updatedOrder.items[itemIndex].totalPrice = 
-                  modification.quantity * getProductPrice(updatedOrder.items[itemIndex].product)
-              }
-            }
             shouldUpdateOrder = true
           }
           break
@@ -1279,18 +1335,18 @@ const speakResponseWithOpenAI = async (text: string) => {
       }
 
       if (shouldUpdateOrder) {
-        updatedOrder.totalAmount = updatedOrder.items.reduce((sum, item) => sum + item.totalPrice, 0)
-        console.log('Updating order state:', updatedOrder)
-        setOrder(updatedOrder)
+        updatedOrder.totalAmount = updatedOrder.items.reduce((sum, item) => sum + item.totalPrice, 0);
+        console.log('Updating order state:', updatedOrder);
+        setOrder(updatedOrder);
       }
       
       if (shouldUpdateOrderType) {
-        console.log('Updating order type state:', newOrderType)
-        setOrderType(newOrderType)
+        console.log('Updating order type state:', newOrderType);
+        setOrderType(newOrderType);
       }
 
     } catch (error) {
-      console.error('Error in handleAIAction:', error)
+      console.error('Error in handleAIAction:', error);
     }
   }
 
@@ -1424,47 +1480,77 @@ const speakResponseWithOpenAI = async (text: string) => {
     return types[lang as keyof typeof types][type as keyof typeof types.ru] || type
   }
 
-  // Ручное управление заказом
-  const addProductToOrder = (product: Product) => {
-    const price = getProductPrice(product)
+  const handleAdditiveToggle = (productId: string, additiveId: string) => {
+    setSelectedAdditives(prev => {
+      const current = prev[productId] || [];
+      const updated = current.includes(additiveId)
+        ? current.filter(id => id !== additiveId)
+        : [...current, additiveId];
+      
+      return {
+        ...prev,
+        [productId]: updated
+      };
+    });
+  };
+
+  const addProductToOrder = (product: Product, selectedAdditives: Additive[] = []) => {
+    const basePrice = getProductPrice(product);
+    const additivesPrice = selectedAdditives.reduce((sum, additive) => sum + additive.price, 0);
+    const totalPrice = basePrice + additivesPrice;
     
     setOrder(prev => {
-      const currentOrder = prev || { items: [], confidence: 1, totalAmount: 0 }
-      const existingItemIndex = currentOrder.items.findIndex(item => item.product.id === product.id)
+      const currentOrder = prev || { items: [], confidence: 1, totalAmount: 0 };
+      const existingItemIndex = currentOrder.items.findIndex(item => 
+        item.product.id === product.id &&
+        JSON.stringify(item.additives?.map(a => a.id) || []) === JSON.stringify(selectedAdditives.map(a => a.id)) &&
+        item.comment === ''
+      );
       
-      let newItems: ParsedOrderItem[]
+      let newItems: ParsedOrderItem[];
       if (existingItemIndex >= 0) {
-        newItems = [...currentOrder.items]
-        newItems[existingItemIndex].quantity += 1
-        newItems[existingItemIndex].totalPrice = newItems[existingItemIndex].quantity * price
+        newItems = [...currentOrder.items];
+        newItems[existingItemIndex].quantity += 1;
+        newItems[existingItemIndex].totalPrice = newItems[existingItemIndex].quantity * totalPrice;
       } else {
         newItems = [...currentOrder.items, {
           product,
           quantity: 1,
-          totalPrice: price
-        }]
+          additives: selectedAdditives,
+          totalPrice
+        }];
       }
       
-      const totalAmount = newItems.reduce((sum, item) => sum + item.totalPrice, 0)
+      const totalAmount = newItems.reduce((sum, item) => sum + item.totalPrice, 0);
       
       return {
         ...currentOrder,
         items: newItems,
         totalAmount,
         confidence: 1
-      }
-    })
+      };
+    });
+
+    const additiveText = selectedAdditives.length > 0 
+      ? ` ${t.withAdditives}: ${selectedAdditives.map(a => a.title).join(', ')}`
+      : '';
 
     const message: ConversationMessage = {
       role: 'assistant',
       content: language === 'ru' 
-        ? `✅ Добавлено: ${product.title}`
-        : `✅ დაემატა: ${product.title}`,
+        ? `✅ Добавлено: ${product.title}${additiveText}`
+        : `✅ დაემატა: ${product.title}${additiveText}`,
       timestamp: new Date(),
       type: 'order_update'
-    }
-    setConversation(prev => [...prev, message])
-  }
+    };
+    setConversation(prev => [...prev, message]);
+    
+    // Сбрасываем выбранные добавки для этого продукта
+    setSelectedAdditives(prev => ({
+      ...prev,
+      [product.id]: []
+    }));
+  };
 
   const removeProductFromOrder = (productId: string) => {
     setOrder(prev => {
@@ -1492,11 +1578,15 @@ const speakResponseWithOpenAI = async (text: string) => {
       
       const newItems = prev.items.map(item => {
         if (item.product.id === productId) {
-          const price = getProductPrice(item.product)
+          const product = item.product;
+          const additivesPrice = (item.additives || [])
+            .reduce((sum: number, additive: Additive) => sum + additive.price, 0);
+          const totalPrice = newQuantity * (getProductPrice(product) + additivesPrice);
+          
           return {
             ...item,
             quantity: newQuantity,
-            totalPrice: newQuantity * price
+            totalPrice
           }
         }
         return item
@@ -1536,7 +1626,8 @@ const speakResponseWithOpenAI = async (text: string) => {
         items: order.items.map(item => ({
           productId: item.product.id,
           quantity: item.quantity,
-          comment: item.comment
+          comment: item.comment,
+          additiveIds: item.additives?.map(a => a.id) || []
         }))
       }
 
@@ -1567,6 +1658,7 @@ const speakResponseWithOpenAI = async (text: string) => {
     setTranscript('')
     setManualInput('')
     setOrder(null)
+    setSelectedAdditives({})
     setAdditionalInfo({
       numberOfPeople: 1,
       tableNumber: '',
@@ -1587,7 +1679,11 @@ const speakResponseWithOpenAI = async (text: string) => {
   }
 
   const popularCommands = language === 'ru' ? [
-    "Добавить борщ",
+    "Борщ с хлебом",
+    "Кофе с молоком и сахаром",
+    "Шашлык с соусом",
+    "Салат с сыром",
+    "Пицца с грибами и оливками",
     "Показать заказ", 
     "Удалить шашлык",
     "Изменить количество",
@@ -1596,7 +1692,11 @@ const speakResponseWithOpenAI = async (text: string) => {
     "Нас 4 человека",
     "Показать меню"
   ] : [
-    "დაამატე ბორში",
+    "ბორში პურთან ერთად",
+    "ყავა რძით და შაქრით",
+    "შაშლიკი სოუსით",
+    "სალათი ყველით",
+    "პიცა სოკოებით და ზეთისხილით",
     "აჩვენე შეკვეთა",
     "წაშალე შაშლიკი", 
     "შეცვალე რაოდენობა",
@@ -1629,7 +1729,6 @@ const speakResponseWithOpenAI = async (text: string) => {
     }
   ]
 
-  // Визуализатор аудио уровня
   const AudioVisualizer = () => {
     const bars = 5
     return (
@@ -1657,7 +1756,7 @@ const speakResponseWithOpenAI = async (text: string) => {
         side="right" 
         className="w-full sm:max-w-4xl h-full flex flex-col p-0 overflow-hidden"
       >
-       <SheetHeader className="p-4 sm:p-6 border-b">
+        <SheetHeader className="p-4 sm:p-6 border-b">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <Brain className="h-6 w-6 text-purple-500" />
@@ -1853,7 +1952,7 @@ const speakResponseWithOpenAI = async (text: string) => {
               <div ref={messagesEndRef} />
             </div>
 
-           <div className="border-t dark:border-gray-700 p-3 sm:p-4 space-y-3 sm:space-y-4">
+            <div className="border-t dark:border-gray-700 p-3 sm:p-4 space-y-3 sm:space-y-4">
               <div className="space-y-2 sm:space-y-3">
                 <Textarea
                   value={transcript}
@@ -1881,30 +1980,30 @@ const speakResponseWithOpenAI = async (text: string) => {
                   </Button>
 
                   <Button
-  onClick={toggleRecording}
-  variant={isRecording ? "destructive" : "default"}
-  className={`h-10 sm:h-12 px-3 sm:px-6 flex items-center gap-2 transition-all duration-200 ${
-    isRecording ? 'animate-pulse' : ''
-  }`}
-  size="lg"
-  disabled={isProcessing}
->
-  {isRecording ? (
-    <>
-      <div className="relative">
-        <Square className="h-3 w-3 sm:h-4 sm:w-4" />
-        <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full animate-ping"></div>
-        <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full"></div>
-      </div>
-      <span className="text-sm">{language === 'ru' ? 'Остановить запись' : 'ჩაწერის შეჩერება'}</span>
-    </>
-  ) : (
-    <>
-      <Mic className="h-3 w-3 sm:h-4 sm:w-4" />
-      <span className="text-sm">{language === 'ru' ? 'Начать запись' : 'ჩაწერის დაწყება'}</span>
-    </>
-  )}
-</Button>
+                    onClick={toggleRecording}
+                    variant={isRecording ? "destructive" : "default"}
+                    className={`h-10 sm:h-12 px-3 sm:px-6 flex items-center gap-2 transition-all duration-200 ${
+                      isRecording ? 'animate-pulse' : ''
+                    }`}
+                    size="lg"
+                    disabled={isProcessing}
+                  >
+                    {isRecording ? (
+                      <>
+                        <div className="relative">
+                          <Square className="h-3 w-3 sm:h-4 sm:w-4" />
+                          <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full animate-ping"></div>
+                          <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full"></div>
+                        </div>
+                        <span className="text-sm">{t.stopRecording}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="h-3 w-3 sm:h-4 sm:w-4" />
+                        <span className="text-sm">{t.startRecording}</span>
+                      </>
+                    )}
+                  </Button>
                 </div>
               </div>
 
@@ -1928,6 +2027,7 @@ const speakResponseWithOpenAI = async (text: string) => {
             </div>
           </TabsContent>
 
+          {/* Меню */}
           <TabsContent value="menu" className="flex-1 overflow-y-auto p-0">
             <div className="p-4 border-b">
               <Input
@@ -1953,41 +2053,74 @@ const speakResponseWithOpenAI = async (text: string) => {
               </div>
 
               <div className="grid gap-4">
-                {products.map(product => (
-                  <Card key={product.id} className="p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-lg">{product.title}</h3>
-                        {product.description && (
-                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                            {product.description}
-                          </p>
-                        )}
-                        <div className="flex items-center gap-4 mt-2">
-                          <span className="font-bold text-green-600">
-                            {getProductPrice(product)} ₽
-                          </span>
-                          {product.tags && product.tags.map(tag => (
-                            <Badge key={tag} variant="secondary" className="text-xs">
-                              {tag}
-                            </Badge>
-                          ))}
+                {products.map(product => {
+                  const productAdditives = selectedAdditives[product.id] || [];
+                  const selectedAdditivesList = product.additives?.filter(a => 
+                    productAdditives.includes(a.id)
+                  ) || [];
+                  
+                  return (
+                    <Card key={product.id} className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-lg">{product.title}</h3>
+                          {product.description && (
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                              {product.description}
+                            </p>
+                          )}
+                          
+                          {/* Добавки */}
+                          {product.additives && product.additives.length > 0 && (
+                            <div className="mt-3 space-y-2">
+                              <div className="text-xs font-medium text-gray-600">{t.additives}:</div>
+                              <div className="flex flex-wrap gap-1">
+                                {product.additives.map(additive => (
+                                  <Badge
+                                    key={additive.id}
+                                    variant={productAdditives.includes(additive.id) ? "default" : "outline"}
+                                    className="cursor-pointer text-xs flex items-center gap-1"
+                                    onClick={() => handleAdditiveToggle(product.id, additive.id)}
+                                  >
+                                    {additive.title} (+{additive.price}₽)
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          
+                          <div className="flex items-center gap-4 mt-3">
+                            <span className="font-bold text-green-600">
+                              {getProductPrice(product)} ₽
+                              {selectedAdditivesList.length > 0 && (
+                                <span className="text-xs text-gray-500 ml-1">
+                                  + {selectedAdditivesList.reduce((sum, a) => sum + a.price, 0)}₽ {t.forAdditives}
+                                </span>
+                              )}
+                            </span>
+                            {product.tags && product.tags.map(tag => (
+                              <Badge key={tag} variant="secondary" className="text-xs">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
                         </div>
+                        <Button
+                          onClick={() => addProductToOrder(product, selectedAdditivesList)}
+                          size="sm"
+                          className="ml-4"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
                       </div>
-                      <Button
-                        onClick={() => addProductToOrder(product)}
-                        size="sm"
-                        className="ml-4"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </Card>
-                ))}
+                    </Card>
+                  );
+                })}
               </div>
             </div>
           </TabsContent>
 
+          {/* Заказ */}
           <TabsContent value="order" className="flex-1 overflow-y-auto p-0">
             <div className="p-4">
               {order && order.items.length > 0 ? (
@@ -2028,6 +2161,17 @@ const speakResponseWithOpenAI = async (text: string) => {
                                 </Badge>
                               )}
                             </div>
+                            
+                            {/* Добавки */}
+                            {item.additives && item.additives.length > 0 && (
+                              <div className="text-xs text-gray-600 mt-1">
+                                {t.additives}: {item.additives.map(a => a.title).join(', ')}
+                                <span className="text-green-600 ml-1">
+                                  (+{item.additives.reduce((sum, additive) => sum + additive.price, 0)}₽)
+                                </span>
+                              </div>
+                            )}
+                            
                             <div className="flex items-center gap-4 mt-2">
                               <div className="flex items-center gap-2">
                                 <Button
@@ -2112,57 +2256,6 @@ const speakResponseWithOpenAI = async (text: string) => {
       </SheetContent>
     </Sheet>
   )
-}
-
-// API Route для транскрипции аудио
-export async function POST(request: Request) {
-  try {
-    const formData = await request.formData()
-    const file = formData.get('file') as File
-    const model = formData.get('model') as string
-    const language = formData.get('language') as string
-
-    if (!file) {
-      return new Response(JSON.stringify({ error: 'No file provided' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' }
-      })
-    }
-
-    // Конвертируем файл в нужный формат если необходимо
-    const audioBlob = new Blob([await file.arrayBuffer()], { type: file.type })
-
-    const openaiFormData = new FormData()
-    openaiFormData.append('file', audioBlob, 'audio.webm')
-    openaiFormData.append('model', model || 'whisper-1')
-    if (language) {
-      openaiFormData.append('language', language)
-    }
-
-    const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-      },
-      body: openaiFormData,
-    })
-
-    if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.statusText}`)
-    }
-
-    const result = await response.json()
-    return new Response(JSON.stringify(result), {
-      headers: { 'Content-Type': 'application/json' }
-    })
-
-  } catch (error) {
-    console.error('Transcription error:', error)
-    return new Response(JSON.stringify({ error: 'Transcription failed' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    })
-  }
 }
 
 // Компонент с кнопкой для открытия ассистента
