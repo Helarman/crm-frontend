@@ -16,10 +16,35 @@ import {
 import { Card } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { Restaurant } from '../staff/StaffTable'
 
-interface Restaurant {
-  id: string
-  title: string
+const RESTAURANT_STORAGE_KEY = 'kitchenSelectedRestaurantId';
+
+const translations = {
+  authRequired: {
+    ru: 'Пожалуйста, авторизуйтесь для просмотра заказов',
+    ka: 'გთხოვთ, გაიაროთ ავტორიზაცია შეკვეთების სანახავად'
+  },
+  noRestaurants: {
+    ru: 'У вас нет доступных ресторанов',
+    ka: 'თქვენ არ გაქვთ ხელმისაწვდომი რესტორანები'
+  },
+  selectRestaurant: {
+    ru: 'Выберите ресторан',
+    ka: 'აირჩიეთ რესტორანი'
+  },
+  kitchenOrders: {
+    ru: 'Заказы на кухне',
+    ka: 'სამზარეულოს შეკვეთები'
+  },
+  noOrders: {
+    ru: 'Нет заказов для приготовления',
+    ka: 'მოსამზადებელი შეკვეთები არ არის'
+  },
+  orderError: {
+    ru: 'Ошибка загрузки заказов',
+    ka: 'შეკვეთების ჩატვირთვის შეცდომა'
+  }
 }
 
 export function KitchenOrdersList() {
@@ -33,15 +58,36 @@ export function KitchenOrdersList() {
     mutate 
   } = useRestaurantOrders(selectedRestaurantId)
 
-  // Set first restaurant as default when user is loaded
+  // Установка выбранного ресторана с сохранением в localStorage
   useEffect(() => {
     if (user?.restaurant?.length > 0) {
-      setSelectedRestaurantId(user.restaurant[0].id)
+      const savedRestaurantId = localStorage.getItem(RESTAURANT_STORAGE_KEY);
+      const defaultRestaurantId = user.restaurant[0].id;
+      
+      // Проверяем, что сохраненный ресторан все еще доступен пользователю
+      const isValidSavedRestaurant = savedRestaurantId && 
+        user.restaurant.some((r: Restaurant) => r.id === savedRestaurantId);
+      
+      const newRestaurantId = isValidSavedRestaurant ? savedRestaurantId : defaultRestaurantId;
+      
+      setSelectedRestaurantId(newRestaurantId);
+      
+      // Сохраняем в localStorage если это новый выбор или если предыдущий был невалидным
+      if (!isValidSavedRestaurant || savedRestaurantId !== newRestaurantId) {
+        localStorage.setItem(RESTAURANT_STORAGE_KEY, newRestaurantId);
+      }
     }
   }, [user])
 
+  // Сохраняем выбор ресторана при изменении
+  useEffect(() => {
+    if (selectedRestaurantId) {
+      localStorage.setItem(RESTAURANT_STORAGE_KEY, selectedRestaurantId);
+    }
+  }, [selectedRestaurantId])
+
   // Фильтруем заказы по нужным статусам
-  const filteredOrders = orders.filter(( order : OrderResponse) => 
+  const filteredOrders = orders.filter((order: OrderResponse) => 
     ['CONFIRMED', 'PREPARING'].includes(order.status)
   )
 
@@ -70,14 +116,14 @@ export function KitchenOrdersList() {
   }
 
   const handleOrderClick = (orderId: string) => {
-    
+    // Обработка клика по заказу
   }
 
   if (!user) {
     return (
       <Card className="p-6 text-center">
         <p className="text-muted-foreground">
-          Пожалуйста, авторизуйтесь для просмотра заказов
+          {translations.authRequired.ru}
         </p>
       </Card>
     )
@@ -87,7 +133,7 @@ export function KitchenOrdersList() {
     return (
       <Card className="p-6 text-center">
         <p className="text-muted-foreground">
-          У вас нет доступных ресторанов
+          {translations.noRestaurants.ru}
         </p>
       </Card>
     )
@@ -97,7 +143,7 @@ export function KitchenOrdersList() {
     return (
       <Card className="p-6 text-center">
         <p className="text-destructive">
-          Ошибка загрузки заказов: {ordersError.message}
+          {translations.orderError.ru}: {ordersError.message}
         </p>
       </Card>
     )
@@ -105,30 +151,32 @@ export function KitchenOrdersList() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between gap-4">
-        <h2 className="text-2xl font-bold">Заказы на кухне</h2>
+      <div className="flex justify-between items-center gap-4 flex-col lg:flex-row">
+        <h2 className="text-2xl font-bold">{translations.kitchenOrders.ru}</h2>
         
-        {user.restaurant.length > 1 && (
-          <Select
-            value={selectedRestaurantId}
-            onValueChange={setSelectedRestaurantId}
-          >
-            <SelectTrigger className="w-[280px]">
-              <SelectValue placeholder="Выберите ресторан" />
-            </SelectTrigger>
-            <SelectContent>
-              {user.restaurant.map((restaurant: Restaurant) => (
-                <SelectItem key={restaurant.id} value={restaurant.id}>
-                  {restaurant.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+        <div className="flex gap-2">
+          {user.restaurant.length > 1 && (
+            <Select
+              value={selectedRestaurantId}
+              onValueChange={setSelectedRestaurantId}
+            >
+              <SelectTrigger className="w-[280px]">
+                <SelectValue placeholder={translations.selectRestaurant.ru} />
+              </SelectTrigger>
+              <SelectContent>
+                {user.restaurant.map((restaurant: Restaurant) => (
+                  <SelectItem key={restaurant.id} value={restaurant.id}>
+                    {restaurant.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
       </div>
 
-      {ordersLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {ordersLoading || !selectedRestaurantId ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(6)].map((_, i) => (
             <Skeleton key={i} className="h-[300px] w-full rounded-lg" />
           ))}
@@ -136,7 +184,7 @@ export function KitchenOrdersList() {
       ) : sortedOrders.length === 0 ? (
         <Card className="p-6 text-center">
           <p className="text-muted-foreground">
-            Нет заказов для приготовления
+            {translations.noOrders.ru}
           </p>
         </Card>
       ) : (
@@ -148,6 +196,7 @@ export function KitchenOrdersList() {
               className="cursor-pointer transition-transform hover:scale-[1.02]"
             >
               <OrderCard
+              selectedRestaurantId={selectedRestaurantId}
                 className="min-h-[300px] w-full"
                 order={order}
                 variant="kitchen"

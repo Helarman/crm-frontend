@@ -98,6 +98,7 @@ export interface CreateRestaurantDto {
   name: string;
   description?: string;
   address: string;
+  useWarehouse?: boolean
 }
 
 interface AddUserDto {
@@ -107,6 +108,14 @@ interface AddUserDto {
 interface AddProductDto {
   productId: string;
 }
+
+export interface UpdateRestaurantDto {
+  name?: string;
+  description?: string;
+  address?: string;
+  useWarehouse?: boolean; 
+}
+
 
 export const RestaurantService = {
   // Рестораны
@@ -125,7 +134,7 @@ export const RestaurantService = {
     return data;
   },
 
-  update: async (id: string, dto: CreateRestaurantDto) => {
+  update: async (id: string, dto: UpdateRestaurantDto) => {
     const { data } = await api.put(`/restaurants/${id}`, dto);
     return data;
   },

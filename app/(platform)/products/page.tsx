@@ -59,29 +59,29 @@ const MenuPage = () => {
         </h1>
 
         <Tabs defaultValue="menu">
-          <TabsList className="grid grid-cols-4">
-            <TabsTrigger value="menu">
-              <div className="flex items-center gap-2">
-                <Utensils className="h-4 w-4" />
-                {translations.menu.title[language]}
+          <TabsList className="flex w-full flex-col gap-2 sm:flex-row sm:grid sm:grid-cols-4">
+            <TabsTrigger value="menu" className="flex-1">
+              <div className="flex items-center gap-2 justify-center sm:justify-start">
+                <Utensils className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">{translations.menu.title[language]}</span>
               </div>
             </TabsTrigger>
-            <TabsTrigger value="additives">
-              <div className="flex items-center gap-2">
-                <PlusCircle className="h-4 w-4" />
-                {translations.additives.title[language]}
+            <TabsTrigger value="additives" className="flex-1">
+              <div className="flex items-center gap-2 justify-center sm:justify-start">
+                <PlusCircle className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">{translations.additives.title[language]}</span>
               </div>
             </TabsTrigger>
-            <TabsTrigger value="categories">
-              <div className="flex items-center gap-2">
-                <ListTree className="h-4 w-4" />
-                {translations.categories.title[language]}
+            <TabsTrigger value="categories" className="flex-1">
+              <div className="flex items-center gap-2 justify-center sm:justify-start">
+                <ListTree className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">{translations.categories.title[language]}</span>
               </div>
             </TabsTrigger>
-            <TabsTrigger value="workshops">
-              <div className="flex items-center gap-2">
-                <Factory className="h-4 w-4" />
-                {translations.workshops.title[language]}
+            <TabsTrigger value="workshops" className="flex-1">
+              <div className="flex items-center gap-2 justify-center sm:justify-start">
+                <Factory className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">{translations.workshops.title[language]}</span>
               </div>
             </TabsTrigger>
           </TabsList>

@@ -1267,39 +1267,40 @@ const handleDeleteItem = async () => {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-5">
-          <TabsTrigger value="inventory">
-            <div className="flex items-center gap-2">
-              <Package className="h-4 w-4" />
-              {t('inventory')}
-            </div>
-          </TabsTrigger>
-          <TabsTrigger value="categories">
-            <div className="flex items-center gap-2">
-              <Folder className="h-4 w-4" />
-              {t('categories')}
-            </div>
-          </TabsTrigger>
-          <TabsTrigger value="locations">
-            <div className="flex items-center gap-2">
-              <Refrigerator className="h-4 w-4" />
-              {t('locations')}
-            </div>
-          </TabsTrigger>
-          <TabsTrigger value="premixes">
-            <div className="flex items-center gap-2">
-              <ChefHat className="h-4 w-4" />
-              {t('premixes')}
-            </div>
-          </TabsTrigger>
-          <TabsTrigger value="transactions">
-            <div className="flex items-center gap-2">
-              <ArrowLeftRight className="h-4 w-4" />
-              {t('transactions')}
-            </div>
-          </TabsTrigger>
-        </TabsList>
+     <Tabs value={activeTab} onValueChange={setActiveTab}>
+  <TabsList className="flex w-full flex-col gap-2 sm:flex-row sm:grid sm:grid-cols-5">
+    <TabsTrigger value="inventory" className="flex-1">
+      <div className="flex items-center gap-2 justify-center sm:justify-start">
+        <Package className="h-4 w-4 flex-shrink-0" />
+        <span className="truncate text-xs sm:text-sm">{t('inventory')}</span>
+      </div>
+    </TabsTrigger>
+    <TabsTrigger value="categories" className="flex-1">
+      <div className="flex items-center gap-2 justify-center sm:justify-start">
+        <Folder className="h-4 w-4 flex-shrink-0" />
+        <span className="truncate text-xs sm:text-sm">{t('categories')}</span>
+      </div>
+    </TabsTrigger>
+    <TabsTrigger value="locations" className="flex-1">
+      <div className="flex items-center gap-2 justify-center sm:justify-start">
+        <Refrigerator className="h-4 w-4 flex-shrink-0" />
+        <span className="truncate text-xs sm:text-sm">{t('locations')}</span>
+      </div>
+    </TabsTrigger>
+    <TabsTrigger value="premixes" className="flex-1">
+      <div className="flex items-center gap-2 justify-center sm:justify-start">
+        <ChefHat className="h-4 w-4 flex-shrink-0" />
+        <span className="truncate text-xs sm:text-sm">{t('premixes')}</span>
+      </div>
+    </TabsTrigger>
+    <TabsTrigger value="transactions" className="flex-1">
+      <div className="flex items-center gap-2 justify-center sm:justify-start">
+        <ArrowLeftRight className="h-4 w-4 flex-shrink-0" />
+        <span className="truncate text-xs sm:text-sm">{t('transactions')}</span>
+      </div>
+    </TabsTrigger>
+  </TabsList>
+
 
         <TabsContent value="inventory">
           <Card>

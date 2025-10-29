@@ -8,6 +8,7 @@ import dynamic from 'next/dynamic';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch'; // Добавляем импорт Switch
 import { NetworkService } from '@/lib/api/network.service';
 
 const MapWithNoSSR = dynamic(
@@ -24,6 +25,7 @@ interface RestaurantFormValues {
   longitude: string;
   networkId: string;
   images?: string[];
+  useWarehouse: boolean; // Добавляем новое поле
 }
 
 interface EditRestaurantFormProps {
@@ -44,7 +46,10 @@ export function EditRestaurantForm({
   const { language } = useLanguageStore();
 
   const { register, handleSubmit, setValue, formState: { errors, isDirty }, watch } = useForm<RestaurantFormValues>({
-    defaultValues: initialValues
+    defaultValues: {
+      ...initialValues,
+      useWarehouse: initialValues.useWarehouse || false // Устанавливаем значение по умолчанию
+    }
   });
 
   const translations = {
@@ -62,7 +67,9 @@ export function EditRestaurantForm({
       requiredField: 'Обязательное поле',
       language: 'Язык',
       selectNetwork: 'Выберите сеть *',
-      noNetworks: 'Нет доступных сетей'
+      noNetworks: 'Нет доступных сетей',
+      useWarehouse: 'Использовать складскую систему',
+      useWarehouseDescription: 'Включить управление складом и учет остатков'
     },
     en: {
       title: 'Name *',
@@ -78,7 +85,9 @@ export function EditRestaurantForm({
       requiredField: 'Required field',
       language: 'Language',
       selectNetwork: 'Select network *',
-      noNetworks: 'No networks available'
+      noNetworks: 'No networks available',
+      useWarehouse: 'Use warehouse system',
+      useWarehouseDescription: 'Enable warehouse management and stock tracking'
     },
     ka: {
       title: 'სახელი *',
@@ -94,11 +103,16 @@ export function EditRestaurantForm({
       requiredField: 'სავალდებულო ველი',
       language: 'ენა',
       selectNetwork: 'აირჩიეთ ქსელი *',
-      noNetworks: 'ხელმისაწვდომი ქსელი არ არის'
+      noNetworks: 'ხელმისაწვდომი ქსელი არ არის',
+      useWarehouse: 'საწყობის სისტემის გამოყენება',
+      useWarehouseDescription: 'ჩართეთ საწყობის მენეჯმენტი და მარაგების თვალყურის დევნება'
     }
   };
 
   const t = translations[language];
+
+  // Следим за значением useWarehouse
+  const useWarehouseValue = watch('useWarehouse');
 
   useEffect(() => {
     const fetchNetworks = async () => {
@@ -128,6 +142,10 @@ export function EditRestaurantForm({
     setValue('longitude', lng.toString(), { shouldDirty: true });
   };
 
+  const handleWarehouseToggle = (checked: boolean) => {
+    setValue('useWarehouse', checked, { shouldDirty: true });
+  };
+
   const onSubmitHandler = handleSubmit(async (data) => {
     setIsUploading(true);
     try {
@@ -135,7 +153,8 @@ export function EditRestaurantForm({
         ...data,
         latitude: coordinates?.lat.toString(),
         longitude: coordinates?.lng.toString(),
-        networkId: data.networkId
+        networkId: data.networkId,
+        useWarehouse: data.useWarehouse
       });
     } catch (error) {
       console.error('Error updating restaurant:', error);
@@ -213,6 +232,23 @@ export function EditRestaurantForm({
           id="legalInfo"
           {...register('legalInfo')}
           rows={4}
+        />
+      </div>
+
+      {/* Warehouse Switch */}
+      <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
+        <div className="space-y-0.5">
+          <Label htmlFor="useWarehouse" className="text-base">
+            {t.useWarehouse}
+          </Label>
+          <p className="text-sm text-muted-foreground">
+            {t.useWarehouseDescription}
+          </p>
+        </div>
+        <Switch
+          id="useWarehouse"
+          checked={useWarehouseValue}
+          onCheckedChange={handleWarehouseToggle}
         />
       </div>
 

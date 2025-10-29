@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { WarehouseService } from '@/lib/api/warehouse.service'
 import { motion, AnimatePresence } from 'framer-motion'
 import { OrderItem } from '@/lib/types/order'
+import { useRestaurant } from '@/lib/hooks/useRestaurant'
 
 type OrderItemWithStatus = {
   id: string
@@ -139,11 +140,12 @@ type WarningMessage = {
   color: string;
 };
 
-export function OrderCard({ order, variant = 'default', onStatusChange, className }: {
+export function OrderCard({ order, variant = 'default', onStatusChange, className, selectedRestaurantId }: {
   order: OrderResponse
   variant?: 'default' | 'kitchen' | 'delivery'
   onStatusChange?: (updatedOrder: OrderResponse) => void
   className?: string
+  selectedRestaurantId?: string // Добавляем проп для ID ресторана
 }) {
   const router = useRouter()
   const { user } = useAuth()
@@ -162,6 +164,9 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
   const commentRef = useRef<HTMLDivElement>(null)
   const [isCommentOverflowing, setIsCommentOverflowing] = useState(false)
   const orderId = order.id;
+
+  // Получаем данные ресторана
+  const { data: restaurant } = useRestaurant(selectedRestaurantId as string)
 
   // Get user's workshop IDs
   const userWorkshopIds = user?.workshops?.map((workshop: any) => workshop.workshopId) || [];
@@ -292,6 +297,9 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
   const t = translations[language as Language];
 
   const currentStatusStyle = statusColors[order.status] || statusColors.CREATED
+
+  // Проверяем, нужно ли использовать склад для этого ресторана
+  const shouldUseWarehouse = restaurant?.useWarehouse
 
   // Calculate order totals
   const calculateItemsTotal = () => {
@@ -458,6 +466,11 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
       const item = order.items.find(i => i.id === itemId)
       if (!item) return
 
+      if (!shouldUseWarehouse) {
+        await handleStatusChange(itemId, OrderItemStatus.COMPLETED)
+        return
+      }
+
       const ingredientsToWriteOff = await Promise.all(
         item.product.ingredients.map(async (ingredient: Ingredient) => {
           try {
@@ -483,7 +496,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
 
       setWriteOffItems(validIngredients)
       setCurrentItemId(itemId)
-      handleConfirmWriteOff()
+      setWriteOffDialogOpen(true)
     } catch (error) {
       console.error('Error preparing write-off:', error)
       toast.error(t.writeOffError)
@@ -495,12 +508,16 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
 
     setIsWritingOff(true)
     try {
-      throw Error
-    
+      throw Error('later')
+
+      // После успешного списания меняем статус блюда
+      //await handleStatusChange(currentItemId, OrderItemStatus.IN_PROGRESS)
+      
+      toast.success(t.writeOffSuccess)
+      setWriteOffDialogOpen(false)
     } catch (error) {
       console.error('Error writing off inventory:', error)
       toast.error(t.writeOffError)
-      throw error
     } finally {
       setIsWritingOff(false)
     }
@@ -571,6 +588,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
 
   return (
     <div>
+      {JSON.stringify(shouldUseWarehouse)}
       <Card 
         className={cn(
           "flex flex-col h-full relative overflow-hidden min-h-[280px]",
