@@ -13,12 +13,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { 
-  Mic, 
-  MicOff, 
-  Play, 
-  Square, 
-  Send, 
+import {
+  Mic,
+  MicOff,
+  Play,
+  Square,
+  Send,
   ArrowLeft,
   Loader2,
   CheckCircle,
@@ -158,10 +158,10 @@ const CATEGORY_ICONS: { [key: string]: any } = {
   'default': ChefHat
 }
 
-export function VoiceAssistantSheet({ 
-  open = false, 
+export function VoiceAssistantSheet({
+  open = false,
   onOpenChange,
-  orderId 
+  orderId
 }: VoiceAssistantSheetProps) {
   const router = useRouter()
   const { user } = useAuth()
@@ -178,8 +178,8 @@ export function VoiceAssistantSheet({
   const [conversation, setConversation] = useState<ConversationMessage[]>([])
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [activeTab, setActiveTab] = useState('assistant')
-  const [selectedAdditives, setSelectedAdditives] = useState<{[key: string]: string[]}>({})
-  
+  const [selectedAdditives, setSelectedAdditives] = useState<{ [key: string]: string[] }>({})
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null)
@@ -187,7 +187,7 @@ export function VoiceAssistantSheet({
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const animationRef = useRef<number>(0)
-  
+
   const [orderType, setOrderType] = useState<'DINE_IN' | 'TAKEAWAY' | 'DELIVERY'>('DINE_IN')
   const [additionalInfo, setAdditionalInfo] = useState({
     numberOfPeople: 1,
@@ -301,7 +301,11 @@ export function VoiceAssistantSheet({
       additives: "Добавки",
       withAdditives: "с добавками",
       modifyAdditives: "Изменить добавки",
-      forAdditives: "forAdditives"
+      forAdditives: "forAdditives",
+      errorNoTableNumber: 'Укажите номер стола',
+      errorNoPeopleCount: 'Укажите количество посетителей',
+      tableNumberRequired: 'Номер стола обязателен для заказа в ресторане',
+      peopleCountRequired: 'Количество посетителей обязательно для заказа в ресторане',
     },
     ka: {
       title: "მიმტანის ასისტენტი",
@@ -391,7 +395,11 @@ export function VoiceAssistantSheet({
       audioError: "აუდიო ჩაწერის შეცდომა",
       additives: "დანამატები",
       withAdditives: "დანამატებით",
-      modifyAdditives: "დანამატების შეცვლა"
+      modifyAdditives: "დანამატების შეცვლა",
+      errorNoTableNumber: 'მიუთითეთ სტოლის ნომერი',
+      errorNoPeopleCount: 'მიუთითეთ ვიზიტორების რაოдენობა',
+      tableNumberRequired: 'სტოლის ნომერი სავალდებულოა რესტორნში შეკვეთისთვის',
+      peopleCountRequired: 'ვიზიტორების რაოდენობა სავალდებულოა რესტორნში შეკვეთისთვის',
     }
   } as const
 
@@ -401,14 +409,14 @@ export function VoiceAssistantSheet({
     if (user?.restaurant?.length > 0) {
       const savedRestaurantId = localStorage.getItem('selectedRestaurantId')
       const defaultRestaurantId = user.restaurant[0].id
-      
-      const isValidSavedRestaurant = savedRestaurantId && 
+
+      const isValidSavedRestaurant = savedRestaurantId &&
         user.restaurant.some((r: Restaurant) => r.id === savedRestaurantId)
-      
+
       const newRestaurantId = isValidSavedRestaurant ? savedRestaurantId : defaultRestaurantId
-      
+
       setSelectedRestaurantId(newRestaurantId)
-      
+
       if (!isValidSavedRestaurant || savedRestaurantId !== newRestaurantId) {
         localStorage.setItem('selectedRestaurantId', newRestaurantId)
       }
@@ -443,13 +451,13 @@ export function VoiceAssistantSheet({
       analyserRef.current = audioContextRef.current.createAnalyser()
       analyserRef.current.fftSize = 256
       source.connect(analyserRef.current)
-      
+
       const bufferLength = analyserRef.current.frequencyBinCount
       const dataArray = new Uint8Array(bufferLength)
-      
+
       const updateAudioLevel = () => {
         if (!analyserRef.current || !isRecording) return
-        
+
         analyserRef.current.getByteFrequencyData(dataArray)
         let sum = 0
         for (let i = 0; i < bufferLength; i++) {
@@ -457,10 +465,10 @@ export function VoiceAssistantSheet({
         }
         const average = sum / bufferLength
         setAudioLevel(Math.min(average / 128, 1))
-        
+
         animationRef.current = requestAnimationFrame(updateAudioLevel)
       }
-      
+
       updateAudioLevel()
     } catch (error) {
       console.error('Error initializing audio analyzer:', error)
@@ -469,18 +477,18 @@ export function VoiceAssistantSheet({
 
   const startAudioRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          sampleRate: 16000, 
-          channelCount: 1, 
+          sampleRate: 16000,
+          channelCount: 1,
           autoGainControl: true
-        } 
+        }
       });
-      
+
       audioChunksRef.current = [];
-      
+
       const mimeTypes = [
         'audio/wav',
         'audio/mpeg',
@@ -488,7 +496,7 @@ export function VoiceAssistantSheet({
         'audio/webm;codecs=opus',
         'audio/webm'
       ];
-      
+
       let supportedType = '';
       for (const mimeType of mimeTypes) {
         if (MediaRecorder.isTypeSupported(mimeType)) {
@@ -496,33 +504,33 @@ export function VoiceAssistantSheet({
           break;
         }
       }
-      
+
       console.log('Using audio format:', supportedType);
-      
+
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: supportedType
       });
-      
+
       mediaRecorderRef.current = mediaRecorder;
-      
+
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
         }
       };
-      
+
       mediaRecorder.onstop = async () => {
         try {
-          const audioBlob = new Blob(audioChunksRef.current, { 
-            type: supportedType 
+          const audioBlob = new Blob(audioChunksRef.current, {
+            type: supportedType
           });
-          
+
           console.log('Audio blob details:', {
             size: audioBlob.size,
             type: audioBlob.type,
             duration: audioChunksRef.current.length
           });
-          
+
           await processAudioWithWhisper(audioBlob);
         } catch (error) {
           console.error('Error processing recording:', error);
@@ -532,11 +540,11 @@ export function VoiceAssistantSheet({
           cleanupAudioResources();
         }
       };
-      
+
       mediaRecorder.start(100);
       setIsRecording(true);
       await initializeAudioAnalyzer(stream);
-      
+
     } catch (error) {
       console.error('Error starting audio recording:', error);
       toast.error(t.audioError);
@@ -548,15 +556,15 @@ export function VoiceAssistantSheet({
     if (blob.type.includes('wav')) {
       return blob;
     }
-    
+
     try {
       const arrayBuffer = await blob.arrayBuffer();
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({
         sampleRate: 16000
       });
-      
+
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      
+
       const wavBuffer = encodeWAV(audioBuffer);
       return new Blob([wavBuffer], { type: 'audio/wav' });
     } catch (error) {
@@ -571,13 +579,13 @@ export function VoiceAssistantSheet({
     const length = audioBuffer.length * numChannels * 2;
     const buffer = new ArrayBuffer(44 + length);
     const view = new DataView(buffer);
-    
+
     const writeString = (offset: number, string: string) => {
       for (let i = 0; i < string.length; i++) {
         view.setUint8(offset + i, string.charCodeAt(i));
       }
     };
-    
+
     writeString(0, 'RIFF');
     view.setUint32(4, 36 + length, true);
     writeString(8, 'WAVE');
@@ -591,12 +599,12 @@ export function VoiceAssistantSheet({
     view.setUint16(34, 16, true);
     writeString(36, 'data');
     view.setUint32(40, length, true);
-    
+
     const channels = [];
     for (let i = 0; i < numChannels; i++) {
       channels.push(audioBuffer.getChannelData(i));
     }
-    
+
     let offset = 44;
     for (let i = 0; i < audioBuffer.length; i++) {
       for (let channel = 0; channel < numChannels; channel++) {
@@ -605,13 +613,13 @@ export function VoiceAssistantSheet({
         offset += 2;
       }
     }
-    
+
     return buffer;
   };
 
   const cleanTranscript = (text: string): string => {
     if (!text) return '';
-    
+
     const phrasesToRemove = [
       'редактор субтитров',
       'корректор',
@@ -624,62 +632,62 @@ export function VoiceAssistantSheet({
     ];
 
     let cleanedText = text.toLowerCase();
-    
+
     phrasesToRemove.forEach(phrase => {
       cleanedText = cleanedText.replace(phrase, '');
     });
-    
+
     cleanedText = cleanedText
       .replace(/\s+/g, ' ')
       .replace(/[.,!?;:]$/, '')
       .trim();
-    
+
     return cleanedText;
   };
 
   const processAudioWithWhisper = async (audioBlob: Blob) => {
     setIsProcessing(true);
-    
+
     try {
       const processedBlob = await convertToWavIfNeeded(audioBlob);
-      
+
       const formData = new FormData();
-      
+
       let fileName = 'audio.wav';
       if (processedBlob.type.includes('mpeg') || processedBlob.type.includes('mp4')) {
         fileName = 'audio.mp3';
       } else if (processedBlob.type.includes('webm')) {
         fileName = 'audio.webm';
       }
-      
+
       formData.append('file', processedBlob, fileName);
       formData.append('model', 'whisper-1');
       formData.append('language', language === 'ru' ? 'ru' : 'ka');
       formData.append('response_format', 'json');
-      
+
       console.log('Sending audio to Whisper:', {
         size: processedBlob.size,
         type: processedBlob.type,
         fileName
       });
-      
+
       const result = await openAIService.transcribeAudio(formData);
       const rawTranscribedText = result.text.trim();
-      
+
       const cleanedText = cleanTranscript(rawTranscribedText);
-      
+
       console.log('Transcription:', {
         raw: rawTranscribedText,
         cleaned: cleanedText
       });
-      
+
       if (cleanedText) {
         setTranscript(cleanedText);
         await processOrderWithAI(cleanedText);
       } else if (rawTranscribedText) {
         const infoMessage: ConversationMessage = {
           role: 'assistant',
-          content: language === 'ru' 
+          content: language === 'ru'
             ? 'Распознаны служебные фразы. Пожалуйста, повторите ваш заказ.'
             : 'სერვისური ფრაზები ამოიცნო. გთხოვთ, გაიმეოროთ თქვენი შეკვეთა.',
           timestamp: new Date(),
@@ -717,17 +725,17 @@ export function VoiceAssistantSheet({
       audioContextRef.current.close().catch(console.error);
       audioContextRef.current = null;
     }
-    
+
     if (analyserRef.current) {
       analyserRef.current.disconnect();
       analyserRef.current = null;
     }
-    
+
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current);
       animationRef.current = 0;
     }
-    
+
     setAudioLevel(0);
   };
 
@@ -742,19 +750,19 @@ export function VoiceAssistantSheet({
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop()
     }
-    
+
     if (audioContextRef.current) {
       audioContextRef.current.close()
     }
-    
+
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current)
     }
-    
+
     if (speechSynthesisRef.current) {
       speechSynthesis.cancel()
     }
-    
+
     if (releaseTimerRef.current) {
       clearTimeout(releaseTimerRef.current)
     }
@@ -772,7 +780,7 @@ export function VoiceAssistantSheet({
   const loadRestaurantAndProducts = async () => {
     try {
       const userRestaurantId = getRestaurantId()
-      
+
       if (!userRestaurantId) {
         toast.error(t.noRestaurantSelected)
         return
@@ -795,7 +803,7 @@ export function VoiceAssistantSheet({
     console.log('Starting audio recording')
     setIsButtonPressed(true)
     isAutoSendRef.current = true
-    
+
     try {
       await startAudioRecording()
     } catch (error) {
@@ -807,11 +815,11 @@ export function VoiceAssistantSheet({
   const handleMouseUp = () => {
     console.log('Stopping audio recording')
     setIsButtonPressed(false)
-    
+
     if (releaseTimerRef.current) {
       clearTimeout(releaseTimerRef.current)
     }
-    
+
     if (isRecording) {
       stopAudioRecording()
     }
@@ -832,7 +840,7 @@ export function VoiceAssistantSheet({
       toast.error(language === 'ru' ? 'Введите текст заказа' : 'შეიყვანეთ შეკვეთის ტექსტი')
       return
     }
-    
+
     isAutoSendRef.current = false
     processOrderWithAI(transcript)
   }
@@ -845,7 +853,7 @@ export function VoiceAssistantSheet({
           content: getSystemPrompt()
         },
         {
-          role: "user", 
+          role: "user",
           content: prompt
         }
       ], {
@@ -857,7 +865,7 @@ export function VoiceAssistantSheet({
       console.log('Raw AI response:', response);
 
       let content;
-      
+
       if (typeof response === 'string') {
         content = response;
       } else if (response.choices && response.choices[0] && response.choices[0].message) {
@@ -878,7 +886,7 @@ export function VoiceAssistantSheet({
       }
 
       const cleanedContent = content.trim();
-      
+
       const jsonContent = cleanedContent
         .replace(/```json\s*/g, '')
         .replace(/```\s*/g, '')
@@ -893,7 +901,7 @@ export function VoiceAssistantSheet({
       } catch (parseError) {
         console.error('JSON parse error:', parseError);
         console.error('Content that failed to parse:', jsonContent);
-        
+
         return {
           action: "ANSWER_QUESTION",
           response: jsonContent,
@@ -910,7 +918,7 @@ export function VoiceAssistantSheet({
 
   const getSystemPrompt = () => {
     const userRestaurantId = getRestaurantId();
-    
+
     const menuInfo = products.map(p => {
       const category = categories.find(c => c.id === p.categoryId);
       const price = getProductPrice(p);
@@ -919,13 +927,16 @@ export function VoiceAssistantSheet({
     }).join('\n\n');
 
     const currentOrderInfo = order ? order.items.map(item => {
-      const additivesText = item.additives && item.additives.length > 0 
+      const additivesText = item.additives && item.additives.length > 0
         ? ` с ${item.additives.map(a => a.title).join(', ')}`
         : '';
       return `${item.quantity}x ${item.product.title}${additivesText} (ID: ${item.product.id}) - ${item.totalPrice}₽`;
     }).join('\n') : 'пуст';
 
     return `Ты - AI ассистент для ресторана. Твоя задача - ОЧЕНЬ ТОЧНО и ПРЕДСКАЗУЕМО обрабатывать заказы.
+## ДЛЯ ЗАКАЗА В РЕСТОРАНЕ (DINE_IN) ОБЯЗАТЕЛЬНО:
+- Номер стола (tableNumber)
+- Количество посетителей (numberOfPeople)
 
 # РАБОТА С ДОБАВКАМИ:
 ## КОМАНДЫ ДЛЯ ДОБАВОК:
@@ -1056,30 +1067,30 @@ ${currentOrderInfo}
 
     console.log('Processing with AI:', text)
     setIsProcessing(true)
-    
+
     const userMessage: ConversationMessage = {
       role: 'user',
       content: text,
       timestamp: new Date(),
       type: 'order_update'
     }
-    
+
     setConversation(prev => [...prev, userMessage])
 
     try {
       const parsedData = await callOpenAI(text)
-      
+
       console.log('Parsed AI Response:', parsedData)
-      
+
       await handleAIAction(parsedData, text)
-      
+
       const assistantMessage: ConversationMessage = {
         role: 'assistant',
         content: parsedData.response,
         timestamp: new Date(),
         type: parsedData.action === 'SHOW_ORDER' ? 'info' : 'order_update'
       }
-      
+
       setConversation(prev => [...prev, assistantMessage])
 
       if (audioFeedback) {
@@ -1097,17 +1108,17 @@ ${currentOrderInfo}
 
   const speakResponseWithOpenAI = async (text: string) => {
     if (!audioFeedback) return;
-    
+
     try {
       const speechText = text.length > 500 ? text.substring(0, 500) + '...' : text;
       const audioBlob = await openAIService.textToSpeech(
-        speechText, 
+        speechText,
         language === 'ru' ? 'alloy' : 'nova'
       );
-      
+
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
-      
+
       audio.onplay = () => setIsSpeaking(true);
       audio.onended = () => {
         setIsSpeaking(false);
@@ -1117,7 +1128,7 @@ ${currentOrderInfo}
         setIsSpeaking(false);
         URL.revokeObjectURL(audioUrl);
       };
-      
+
       await audio.play();
     } catch (error) {
       console.error('Error with TTS:', error);
@@ -1127,18 +1138,18 @@ ${currentOrderInfo}
 
   const speakResponse = (text: string) => {
     if (!audioFeedback) return
-    
+
     const speechText = text.length > 500 ? text.substring(0, 500) + '...' : text
-    
+
     speechSynthesisRef.current = new SpeechSynthesisUtterance(speechText)
     speechSynthesisRef.current.lang = language === 'ru' ? 'ru-RU' : 'ka-GE'
     speechSynthesisRef.current.rate = 0.8
     speechSynthesisRef.current.pitch = 1
-    
+
     speechSynthesisRef.current.onstart = () => setIsSpeaking(true)
     speechSynthesisRef.current.onend = () => setIsSpeaking(false)
     speechSynthesisRef.current.onerror = () => setIsSpeaking(false)
-    
+
     speechSynthesis.speak(speechSynthesisRef.current)
   }
 
@@ -1149,7 +1160,7 @@ ${currentOrderInfo}
 
   const handleAIAction = async (parsedData: AIActionResponse, userText: string) => {
     console.log('Handling AI action:', parsedData.action, parsedData)
-    
+
     let updatedOrder = order ? { ...order } : { items: [], confidence: 0.7, totalAmount: 0 }
     let shouldUpdateOrderType = false
     let newOrderType = orderType
@@ -1161,31 +1172,32 @@ ${currentOrderInfo}
           if (parsedData.itemsToAdd && parsedData.itemsToAdd.length > 0) {
             console.log('Adding items with additives:', parsedData.itemsToAdd);
             
-            let addedItems: string[] = [];
             
+            let addedItems: string[] = [];
+
             for (const item of parsedData.itemsToAdd) {
               const product = findProductByIdOrTitle(item.productId, item.productTitle);
-              
+
               if (product) {
                 console.log(`Found product: ${product.title} with additives:`, item.additives);
-                
+
                 const selectedAdditives = (item.additives || [])
                   .map(additiveId => product.additives?.find(a => a.id === additiveId))
                   .filter(Boolean) as Additive[];
-                
+
                 const additivesPrice = selectedAdditives.reduce((sum, additive) => sum + additive.price, 0);
                 const itemTotalPrice = (item.quantity || 1) * (getProductPrice(product) + additivesPrice);
-                
+
                 const existingItemIndex = updatedOrder.items.findIndex(
-                  existingItem => 
+                  existingItem =>
                     existingItem.product.id === product.id &&
                     JSON.stringify(existingItem.additives?.map(a => a.id) || []) === JSON.stringify(item.additives || []) &&
                     existingItem.comment === item.comment
                 );
-                
+
                 if (existingItemIndex >= 0) {
                   updatedOrder.items[existingItemIndex].quantity += item.quantity || 1;
-                  updatedOrder.items[existingItemIndex].totalPrice = 
+                  updatedOrder.items[existingItemIndex].totalPrice =
                     updatedOrder.items[existingItemIndex].quantity * (getProductPrice(product) + additivesPrice);
                   addedItems.push(`${product.title} с ${selectedAdditives.map(a => a.title).join(', ')} (теперь ${updatedOrder.items[existingItemIndex].quantity} шт)`);
                 } else {
@@ -1203,10 +1215,10 @@ ${currentOrderInfo}
                 console.warn(`Product not found: ID=${item.productId}, Title=${item.productTitle}`);
               }
             }
-            
+
             updatedOrder.confidence = Math.max(updatedOrder.confidence, parsedData.confidence);
             shouldUpdateOrder = true;
-            
+
             if (addedItems.length > 0) {
               const infoMessage: ConversationMessage = {
                 role: 'assistant',
@@ -1216,33 +1228,50 @@ ${currentOrderInfo}
               };
               setConversation(prev => [...prev, infoMessage]);
             }
+          if (orderType === 'DINE_IN' && 
+              (!additionalInfo.tableNumber || !additionalInfo.numberOfPeople)) {
+            
+            const missingFields = []
+            if (!additionalInfo.tableNumber) missingFields.push('номер стола')
+            if (!additionalInfo.numberOfPeople) missingFields.push('количество посетителей')
+            
+            const questionMessage: ConversationMessage = {
+              role: 'assistant',
+              content: language === 'ru' 
+                ? `Для завершения заказа в ресторане, пожалуйста, укажите: ${missingFields.join(' и ')}`
+                : `რესტორნში შეკვეთის დასასრულებლად, გთხოვთ, მიუთითოთ: ${missingFields.join(' და ')}`,
+              timestamp: new Date(),
+              type: 'info'
+            };
+            setConversation(prev => [...prev, questionMessage]);
           }
-          break;
+        }
+        break;
 
         case 'MODIFY_ADDITIVES':
           if (parsedData.additivesToModify && parsedData.additivesToModify.length > 0) {
             console.log('Modifying additives:', parsedData.additivesToModify);
-            
+
             for (const modification of parsedData.additivesToModify) {
               const itemIndex = updatedOrder.items.findIndex(
                 item => item.product.id === modification.productId
               );
-              
+
               if (itemIndex >= 0) {
                 const product = updatedOrder.items[itemIndex].product;
                 const selectedAdditives = (modification.additives || [])
                   .map(additiveId => product.additives?.find(a => a.id === additiveId))
                   .filter(Boolean) as Additive[];
-                
+
                 const additivesPrice = selectedAdditives.reduce((sum, additive) => sum + additive.price, 0);
-                
+
                 updatedOrder.items[itemIndex].additives = selectedAdditives;
-                updatedOrder.items[itemIndex].totalPrice = 
+                updatedOrder.items[itemIndex].totalPrice =
                   updatedOrder.items[itemIndex].quantity * (getProductPrice(product) + additivesPrice);
-                  
+
                 const infoMessage: ConversationMessage = {
                   role: 'assistant',
-                  content: language === 'ru' 
+                  content: language === 'ru'
                     ? `✅ Обновлены добавки для ${product.title}: ${selectedAdditives.map(a => a.title).join(', ') || 'нет добавок'}`
                     : `✅ განახლდა დანამატები ${product.title}-სთვის: ${selectedAdditives.map(a => a.title).join(', ') || 'დანამატები არ არის'}`,
                   timestamp: new Date(),
@@ -1264,19 +1293,19 @@ ${currentOrderInfo}
               );
               if (itemIndex >= 0) {
                 const product = updatedOrder.items[itemIndex].product;
-                
+
                 if (modification.additives) {
                   const selectedAdditives = modification.additives
                     .map(additiveId => product.additives?.find(a => a.id === additiveId))
                     .filter(Boolean) as Additive[];
                   updatedOrder.items[itemIndex].additives = selectedAdditives;
                 }
-                
+
                 const additivesPrice = (updatedOrder.items[itemIndex].additives || [])
                   .reduce((sum: number, additive: Additive) => sum + additive.price, 0);
-                
+
                 updatedOrder.items[itemIndex].quantity = modification.quantity;
-                updatedOrder.items[itemIndex].totalPrice = 
+                updatedOrder.items[itemIndex].totalPrice =
                   modification.quantity * (getProductPrice(product) + additivesPrice);
               }
             }
@@ -1287,7 +1316,7 @@ ${currentOrderInfo}
         case 'REMOVE_ITEMS':
           if (parsedData.itemsToRemove && parsedData.itemsToRemove.length > 0) {
             console.log('Removing items:', parsedData.itemsToRemove)
-            updatedOrder.items = updatedOrder.items.filter(item => 
+            updatedOrder.items = updatedOrder.items.filter(item =>
               !parsedData.itemsToRemove!.includes(item.product.id)
             )
             shouldUpdateOrder = true
@@ -1339,7 +1368,7 @@ ${currentOrderInfo}
         console.log('Updating order state:', updatedOrder);
         setOrder(updatedOrder);
       }
-      
+
       if (shouldUpdateOrderType) {
         console.log('Updating order type state:', newOrderType);
         setOrderType(newOrderType);
@@ -1357,7 +1386,7 @@ ${currentOrderInfo}
 
   const findProductByIdOrTitle = (productId: string, productTitle: string): Product | null => {
     console.log(`Поиск продукта: ID="${productId}", Название="${productTitle}"`);
-    
+
     if (productId) {
       const byId = products.find(p => p.id === productId);
       if (byId) {
@@ -1365,7 +1394,7 @@ ${currentOrderInfo}
         return byId;
       }
     }
-    
+
     const normalizedTitle = productTitle
       .toLowerCase()
       .trim()
@@ -1374,45 +1403,45 @@ ${currentOrderInfo}
 
     console.log(`Нормализованное название: "${normalizedTitle}"`);
 
-    const exactMatch = products.find(p => 
+    const exactMatch = products.find(p =>
       p.title.toLowerCase().trim() === normalizedTitle
     );
     if (exactMatch) {
       console.log(`Найден по точному названию: ${exactMatch.title}`);
       return exactMatch;
     }
-    
+
     const containsMatch = products.find(p => {
       const productName = p.title.toLowerCase();
-      return normalizedTitle.includes(productName) || 
-             productName.includes(normalizedTitle) ||
-             productName.startsWith(normalizedTitle) ||
-             normalizedTitle.startsWith(productName);
+      return normalizedTitle.includes(productName) ||
+        productName.includes(normalizedTitle) ||
+        productName.startsWith(normalizedTitle) ||
+        normalizedTitle.startsWith(productName);
     });
     if (containsMatch) {
       console.log(`Найден по вхождению: ${containsMatch.title}`);
       return containsMatch;
     }
-    
+
     const searchWords = normalizedTitle.split(/\s+/).filter(w => w.length > 2);
     if (searchWords.length > 0) {
       const wordMatch = products.find(p => {
         const productWords = p.title.toLowerCase().split(/\s+/);
-        return searchWords.every(searchWord => 
-          productWords.some(productWord => 
+        return searchWords.every(searchWord =>
+          productWords.some(productWord =>
             productWord.startsWith(searchWord) ||
             searchWord.startsWith(productWord) ||
             calculateSimilarity(productWord, searchWord) > 0.8
           )
         );
       });
-      
+
       if (wordMatch) {
         console.log(`Найден по ключевым словам: ${wordMatch.title}`);
         return wordMatch;
       }
     }
-    
+
     console.log(`Продукт не найден: "${productTitle}"`);
     return null;
   };
@@ -1420,16 +1449,16 @@ ${currentOrderInfo}
   const calculateSimilarity = (str1: string, str2: string): number => {
     const longer = str1.length > str2.length ? str1 : str2
     const shorter = str1.length > str2.length ? str2 : str1
-    
+
     if (longer.length === 0) return 1.0
-    
+
     return (longer.length - editDistance(longer, shorter)) / parseFloat(longer.length.toString())
   }
 
   const editDistance = (s1: string, s2: string): number => {
     s1 = s1.toLowerCase()
     s2 = s2.toLowerCase()
-    
+
     const costs = new Array()
     for (let i = 0; i <= s1.length; i++) {
       let lastValue = i
@@ -1453,14 +1482,14 @@ ${currentOrderInfo}
   const handleAIError = (error: any) => {
     const errorMessage: ConversationMessage = {
       role: 'assistant',
-      content: language === 'ru' 
+      content: language === 'ru'
         ? 'Извините, произошла ошибка при обработке заказа. Пожалуйста, попробуйте еще раз или опишите заказ более подробно.'
         : 'ბოდიში, მოხდა შეცდომა შეკვეთის დამუშავებისას. გთხოვთ, სცადოთ ხელახლა ან აღწეროთ შეკვეთა უფრო დეტალურად.',
       timestamp: new Date(),
       type: 'error'
     }
     setConversation(prev => [...prev, errorMessage])
-    
+
     toast.error(t.errorProcessing)
   }
 
@@ -1468,7 +1497,7 @@ ${currentOrderInfo}
     const types = {
       ru: {
         DINE_IN: 'в ресторане',
-        TAKEAWAY: 'с собой', 
+        TAKEAWAY: 'с собой',
         DELIVERY: 'доставка'
       },
       ka: {
@@ -1486,7 +1515,7 @@ ${currentOrderInfo}
       const updated = current.includes(additiveId)
         ? current.filter(id => id !== additiveId)
         : [...current, additiveId];
-      
+
       return {
         ...prev,
         [productId]: updated
@@ -1498,15 +1527,15 @@ ${currentOrderInfo}
     const basePrice = getProductPrice(product);
     const additivesPrice = selectedAdditives.reduce((sum, additive) => sum + additive.price, 0);
     const totalPrice = basePrice + additivesPrice;
-    
+
     setOrder(prev => {
       const currentOrder = prev || { items: [], confidence: 1, totalAmount: 0 };
-      const existingItemIndex = currentOrder.items.findIndex(item => 
+      const existingItemIndex = currentOrder.items.findIndex(item =>
         item.product.id === product.id &&
         JSON.stringify(item.additives?.map(a => a.id) || []) === JSON.stringify(selectedAdditives.map(a => a.id)) &&
         item.comment === ''
       );
-      
+
       let newItems: ParsedOrderItem[];
       if (existingItemIndex >= 0) {
         newItems = [...currentOrder.items];
@@ -1520,9 +1549,9 @@ ${currentOrderInfo}
           totalPrice
         }];
       }
-      
+
       const totalAmount = newItems.reduce((sum, item) => sum + item.totalPrice, 0);
-      
+
       return {
         ...currentOrder,
         items: newItems,
@@ -1531,20 +1560,20 @@ ${currentOrderInfo}
       };
     });
 
-    const additiveText = selectedAdditives.length > 0 
+    const additiveText = selectedAdditives.length > 0
       ? ` ${t.withAdditives}: ${selectedAdditives.map(a => a.title).join(', ')}`
       : '';
 
     const message: ConversationMessage = {
       role: 'assistant',
-      content: language === 'ru' 
+      content: language === 'ru'
         ? `✅ Добавлено: ${product.title}${additiveText}`
         : `✅ დაემატა: ${product.title}${additiveText}`,
       timestamp: new Date(),
       type: 'order_update'
     };
     setConversation(prev => [...prev, message]);
-    
+
     // Сбрасываем выбранные добавки для этого продукта
     setSelectedAdditives(prev => ({
       ...prev,
@@ -1555,10 +1584,10 @@ ${currentOrderInfo}
   const removeProductFromOrder = (productId: string) => {
     setOrder(prev => {
       if (!prev) return prev
-      
+
       const newItems = prev.items.filter(item => item.product.id !== productId)
       const totalAmount = newItems.reduce((sum, item) => sum + item.totalPrice, 0)
-      
+
       return {
         ...prev,
         items: newItems,
@@ -1575,14 +1604,14 @@ ${currentOrderInfo}
 
     setOrder(prev => {
       if (!prev) return prev
-      
+
       const newItems = prev.items.map(item => {
         if (item.product.id === productId) {
           const product = item.product;
           const additivesPrice = (item.additives || [])
             .reduce((sum: number, additive: Additive) => sum + additive.price, 0);
           const totalPrice = newQuantity * (getProductPrice(product) + additivesPrice);
-          
+
           return {
             ...item,
             quantity: newQuantity,
@@ -1591,9 +1620,9 @@ ${currentOrderInfo}
         }
         return item
       })
-      
+
       const totalAmount = newItems.reduce((sum, item) => sum + item.totalPrice, 0)
-      
+
       return {
         ...prev,
         items: newItems,
@@ -1609,10 +1638,23 @@ ${currentOrderInfo}
     }
 
     const userRestaurantId = getRestaurantId()
-    
+
     if (!userRestaurantId) {
       toast.error(t.noRestaurantSelected)
       return
+    }
+
+    // Проверка обязательных полей для заказа в ресторане
+    if (orderType === 'DINE_IN') {
+      if (!additionalInfo.tableNumber.trim()) {
+        toast.error(language === 'ru' ? 'Укажите номер стола' : 'მიუთითეთ სტოლის ნომერი')
+        return
+      }
+
+      if (!additionalInfo.numberOfPeople || additionalInfo.numberOfPeople < 1) {
+        toast.error(language === 'ru' ? 'Укажите количество посетителей' : 'მიუთითეთ ვიზიტორების რაოდენობა')
+        return
+      }
     }
 
     setIsCreatingOrder(true)
@@ -1631,20 +1673,20 @@ ${currentOrderInfo}
         }))
       }
 
-      const createdOrder = orderId 
+      const createdOrder = orderId
         ? await OrderService.updateOrder(orderId, orderData)
         : await OrderService.create(orderData)
-      
+
       toast.success(t.orderCreated)
-      
+
       if (audioFeedback) {
         speakResponseWithOpenAI(language === 'ru' ? 'Заказ успешно создан' : 'შეკვეთა წარმატებით შეიქმნა')
       }
-      
+
       if (onOpenChange) {
         onOpenChange(false)
       }
-      
+
       router.push(`/orders/${createdOrder.id}`)
     } catch (error) {
       console.error('Error creating order:', error)
@@ -1684,7 +1726,7 @@ ${currentOrderInfo}
     "Шашлык с соусом",
     "Салат с сыром",
     "Пицца с грибами и оливками",
-    "Показать заказ", 
+    "Показать заказ",
     "Удалить шашлык",
     "Изменить количество",
     "Очистить заказ",
@@ -1698,7 +1740,7 @@ ${currentOrderInfo}
     "სალათი ყველით",
     "პიცა სოკოებით და ზეთისხილით",
     "აჩვენე შეკვეთა",
-    "წაშალე შაშლიკი", 
+    "წაშალე შაშლიკი",
     "შეცვალე რაოდენობა",
     "გაასუფთავე შეკვეთა",
     "სტოლი ნომერი 5",
@@ -1707,25 +1749,25 @@ ${currentOrderInfo}
   ]
 
   const quickActions = [
-    { 
-      label: t.showMenu, 
+    {
+      label: t.showMenu,
       command: "show menu",
-      icon: Utensils 
+      icon: Utensils
     },
-    { 
-      label: t.showOrder, 
+    {
+      label: t.showOrder,
       command: "show order",
-      icon: ShoppingBag 
+      icon: ShoppingBag
     },
-    { 
-      label: t.clearOrder, 
+    {
+      label: t.clearOrder,
       command: "clear order",
-      icon: Trash2 
+      icon: Trash2
     },
-    { 
-      label: t.setTable, 
+    {
+      label: t.setTable,
       command: "table 1",
-      icon: User 
+      icon: User
     }
   ]
 
@@ -1736,11 +1778,10 @@ ${currentOrderInfo}
         {Array.from({ length: bars }).map((_, i) => (
           <div
             key={i}
-            className={`w-1 rounded-full transition-all duration-100 ${
-              audioLevel > i / bars 
-                ? 'bg-green-500' 
-                : 'bg-gray-300'
-            }`}
+            className={`w-1 rounded-full transition-all duration-100 ${audioLevel > i / bars
+              ? 'bg-green-500'
+              : 'bg-gray-300'
+              }`}
             style={{
               height: `${Math.max(8, audioLevel * 32 * (i + 1) / bars)}px`
             }}
@@ -1752,8 +1793,8 @@ ${currentOrderInfo}
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent 
-        side="right" 
+      <SheetContent
+        side="right"
         className="w-full sm:max-w-4xl h-full flex flex-col p-0 overflow-hidden"
       >
         <SheetHeader className="p-4 sm:p-6 border-b">
@@ -1767,7 +1808,7 @@ ${currentOrderInfo}
                 </SheetDescription>
               </div>
             </div>
-            
+
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               {user?.restaurant && user.restaurant.length > 1 && (
                 <Select value={selectedRestaurantId} onValueChange={handleRestaurantChange}>
@@ -1841,15 +1882,14 @@ ${currentOrderInfo}
                   className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
-                    className={`max-w-[80%] p-4 rounded-2xl ${
-                      message.role === 'user' 
-                      ? 'bg-blue-500 text-white rounded-br-none' 
+                    className={`max-w-[80%] p-4 rounded-2xl ${message.role === 'user'
+                      ? 'bg-blue-500 text-white rounded-br-none'
                       : message.type === 'error'
-                      ? 'bg-red-100 border border-red-200 text-red-800 rounded-bl-none'
-                      : message.type === 'info'
-                      ? 'bg-green-100 border border-green-200 text-green-800 rounded-bl-none'
-                      : 'bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-bl-none'
-                    }`}
+                        ? 'bg-red-100 border border-red-200 text-red-800 rounded-bl-none'
+                        : message.type === 'info'
+                          ? 'bg-green-100 border border-green-200 text-green-800 rounded-bl-none'
+                          : 'bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-bl-none'
+                      }`}
                   >
                     <div className="flex items-start gap-3">
                       {message.role === 'assistant' && (
@@ -1857,11 +1897,11 @@ ${currentOrderInfo}
                           AI
                         </div>
                       )}
-                      
+
                       <div className="flex-1">
                         <div className="text-sm font-medium mb-2 opacity-80">
-                          {message.role === 'user' 
-                            ? (language === 'ru' ? 'Вы' : 'თქვენ') 
+                          {message.role === 'user'
+                            ? (language === 'ru' ? 'Вы' : 'თქვენ')
                             : 'AI Assistant'}
                         </div>
                         <div className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</div>
@@ -1869,7 +1909,7 @@ ${currentOrderInfo}
                           {message.timestamp.toLocaleTimeString()}
                         </div>
                       </div>
-                      
+
                       {message.role === 'user' && (
                         <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                           {language === 'ru' ? 'В' : 'თ'}
@@ -1879,7 +1919,7 @@ ${currentOrderInfo}
                   </div>
                 </div>
               ))}
-              
+
               {isRecording && (
                 <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-lg p-4 mb-4">
                   <div className="flex items-center gap-3">
@@ -1936,7 +1976,7 @@ ${currentOrderInfo}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {popularCommands.map((command, index) => (
-                      <Badge 
+                      <Badge
                         key={index}
                         variant="secondary"
                         className="cursor-pointer hover:bg-gray-200 transition-colors"
@@ -1962,7 +2002,7 @@ ${currentOrderInfo}
                   disabled={isRecording}
                 />
               </div>
-              
+
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <div className="flex gap-2 sm:gap-3 flex-1">
                   <Button
@@ -1982,9 +2022,8 @@ ${currentOrderInfo}
                   <Button
                     onClick={toggleRecording}
                     variant={isRecording ? "destructive" : "default"}
-                    className={`h-10 sm:h-12 px-3 sm:px-6 flex items-center gap-2 transition-all duration-200 ${
-                      isRecording ? 'animate-pulse' : ''
-                    }`}
+                    className={`h-10 sm:h-12 px-3 sm:px-6 flex items-center gap-2 transition-all duration-200 ${isRecording ? 'animate-pulse' : ''
+                      }`}
                     size="lg"
                     disabled={isProcessing}
                   >
@@ -2011,14 +2050,20 @@ ${currentOrderInfo}
                 <div className="flex gap-2 sm:gap-3">
                   <Button
                     onClick={createOrder}
-                    disabled={isCreatingOrder}
-                    className="flex-1 h-10 sm:h-12 bg-green-600 hover:bg-green-700 text-sm sm:text-base"
+                    disabled={isCreatingOrder ||
+                      (orderType === 'DINE_IN' &&
+                        (!additionalInfo.tableNumber.trim() ||
+                          !additionalInfo.numberOfPeople ||
+                          additionalInfo.numberOfPeople < 1)
+                      )
+                    }
+                    className="w-full h-12 bg-green-600 hover:bg-green-700 disabled:bg-gray-400"
                     size="lg"
                   >
                     {isCreatingOrder ? (
-                      <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 animate-spin" />
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                     ) : (
-                      <CheckCircle className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                      <CheckCircle className="h-4 w-4 mr-2" />
                     )}
                     {t.confirmAndCreate}
                   </Button>
@@ -2035,7 +2080,7 @@ ${currentOrderInfo}
                 className="w-full"
               />
             </div>
-            
+
             <div className="p-4">
               <div className="flex flex-wrap gap-2 mb-4">
                 <Badge variant="default" className="cursor-pointer">
@@ -2055,10 +2100,10 @@ ${currentOrderInfo}
               <div className="grid gap-4">
                 {products.map(product => {
                   const productAdditives = selectedAdditives[product.id] || [];
-                  const selectedAdditivesList = product.additives?.filter(a => 
+                  const selectedAdditivesList = product.additives?.filter(a =>
                     productAdditives.includes(a.id)
                   ) || [];
-                  
+
                   return (
                     <Card key={product.id} className="p-4">
                       <div className="flex items-start justify-between">
@@ -2069,7 +2114,7 @@ ${currentOrderInfo}
                               {product.description}
                             </p>
                           )}
-                          
+
                           {/* Добавки */}
                           {product.additives && product.additives.length > 0 && (
                             <div className="mt-3 space-y-2">
@@ -2088,7 +2133,7 @@ ${currentOrderInfo}
                               </div>
                             </div>
                           )}
-                          
+
                           <div className="flex items-center gap-4 mt-3">
                             <span className="font-bold text-green-600">
                               {getProductPrice(product)} ₽
@@ -2161,7 +2206,7 @@ ${currentOrderInfo}
                                 </Badge>
                               )}
                             </div>
-                            
+
                             {/* Добавки */}
                             {item.additives && item.additives.length > 0 && (
                               <div className="text-xs text-gray-600 mt-1">
@@ -2171,7 +2216,7 @@ ${currentOrderInfo}
                                 </span>
                               </div>
                             )}
-                            
+
                             <div className="flex items-center gap-4 mt-2">
                               <div className="flex items-center gap-2">
                                 <Button
@@ -2271,9 +2316,9 @@ export function VoiceAssistantButton() {
       >
         <Brain className="h-6 w-6" />
       </Button>
-      
-      <VoiceAssistantSheet 
-        open={isOpen} 
+
+      <VoiceAssistantSheet
+        open={isOpen}
         onOpenChange={setIsOpen}
       />
     </>
@@ -2293,8 +2338,8 @@ export function useVoiceAssistant() {
   }, [])
 
   const Assistant = useCallback(({ orderId }: { orderId?: string }) => (
-    <VoiceAssistantSheet 
-      open={isOpen} 
+    <VoiceAssistantSheet
+      open={isOpen}
       onOpenChange={setIsOpen}
       orderId={orderId}
     />
