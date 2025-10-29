@@ -588,7 +588,6 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
 
   return (
     <div>
-      {JSON.stringify(shouldUseWarehouse)}
       <Card 
         className={cn(
           "flex flex-col h-full relative overflow-hidden min-h-[280px]",

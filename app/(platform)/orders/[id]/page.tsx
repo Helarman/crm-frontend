@@ -525,7 +525,7 @@ export default function WaiterOrderPage() {
   // Функции для работы с категориями
   const handleCategoryClick = (category: Category) => {
     const subcategories = categories.filter(cat => cat.parentId === category.id);
-    
+
     if (subcategories.length > 0) {
       // Если есть подкатегории, переходим к ним
       setCategoryNavigation(prev => ({
@@ -548,7 +548,7 @@ export default function WaiterOrderPage() {
       // Возвращаемся на уровень выше
       const newBreadcrumbs = [...categoryNavigation.breadcrumbs];
       const parentCategory = newBreadcrumbs.pop();
-      
+
       setCategoryNavigation({
         currentCategory: null,
         parentCategory: newBreadcrumbs.length > 0 ? newBreadcrumbs[newBreadcrumbs.length - 1] : null,
@@ -593,9 +593,9 @@ export default function WaiterOrderPage() {
       const subcategoryIds = categories
         .filter(cat => cat.parentId === categoryNavigation.parentCategory?.id)
         .map(cat => cat.id);
-      
-      return products.filter(product => 
-        subcategoryIds.includes(product.categoryId) || 
+
+      return products.filter(product =>
+        subcategoryIds.includes(product.categoryId) ||
         product.categoryId === categoryNavigation.parentCategory?.id
       );
     } else {
@@ -606,15 +606,15 @@ export default function WaiterOrderPage() {
 
   const fetchDiscounts = async () => {
     if (!order?.restaurant?.id) return;
-    
+
     try {
       setDiscountsLoading(true);
       const data = await DiscountService.getByRestaurant(order.restaurant.id);
       setDiscounts(data);
     } catch (error) {
       console.error('Failed to fetch discounts:', error);
-      toast.error(language === 'ru' 
-        ? 'Ошибка загрузки скидок' 
+      toast.error(language === 'ru'
+        ? 'Ошибка загрузки скидок'
         : 'ფასდაკლებების ჩატვირთვის შეცდომა');
     } finally {
       setDiscountsLoading(false);
@@ -629,7 +629,7 @@ export default function WaiterOrderPage() {
 
   const recalculateDiscount = async () => {
     if (!orderId || !order?.customer) return;
-    
+
     try {
       const updatedOrder = await OrderService.applyCustomerDiscount(orderId as string);
       setOrder(updatedOrder);
@@ -640,14 +640,14 @@ export default function WaiterOrderPage() {
 
   const createOrderLog = async (action: string) => {
     if (!orderId || !user) return;
-    
+
     try {
       await OrderService.createLog({
         orderId: orderId as string,
         action,
         userId: user.id,
       });
-      
+
       fetchOrderLogs();
     } catch (err) {
       console.error('Ошибка при создании лога:', err);
@@ -656,7 +656,7 @@ export default function WaiterOrderPage() {
 
   const fetchOrderLogs = async () => {
     if (!orderId) return;
-    
+
     try {
       setLogsLoading(true);
       const logsData = await OrderService.getOrderLogs(orderId as string);
@@ -688,7 +688,7 @@ export default function WaiterOrderPage() {
 
   const handleUpdateQuantity = async (item: OrderItem, newQuantity: number) => {
     if (!order || !isOrderEditable) return;
-    
+
     try {
       setIsUpdating(true);
       const updatedOrder = await OrderService.updateOrderItemQuantity(
@@ -697,11 +697,11 @@ export default function WaiterOrderPage() {
         newQuantity
       );
       setOrder(updatedOrder);
-      
+
       await createOrderLog(
         `${language === 'ru' ? 'Изменено количество' : 'რაოდენობა შეიცვალა'}: ${item.product.title} → ${newQuantity}`
       );
-      
+
       toast.success(language === 'ru' ? 'Количество обновлено' : 'რაოდენობა განახლდა');
     } catch (error) {
       toast.error(language === 'ru' ? 'Ошибка обновления' : 'განახლების შეცდომა');
@@ -712,7 +712,7 @@ export default function WaiterOrderPage() {
 
   const handlePartialRefund = async () => {
     if (!order || !selectedItemForRefund || !refundReason.trim() || refundQuantity <= 0) return;
-    
+
     try {
       setIsUpdating(true);
       const updatedOrder = await OrderService.partialRefundOrderItem(
@@ -723,25 +723,25 @@ export default function WaiterOrderPage() {
         user?.id
       );
       setOrder(updatedOrder);
-      
+
       await recalculateDiscount();
       await createOrderLog(
         `${t.logs.itemRefunded}: ${selectedItemForRefund.product.title} x ${refundQuantity}`
       );
-      
+
       toast.success(
-        language === 'ru' 
-          ? `Возвращено ${refundQuantity} шт.` 
+        language === 'ru'
+          ? `Возвращено ${refundQuantity} шт.`
           : `დაბრუნებულია ${refundQuantity} ცალი`
       );
-      
+
       setShowPartialRefundDialog(false);
       setRefundReason('');
       setRefundQuantity(1);
     } catch (error) {
       toast.error(
-        language === 'ru' 
-          ? 'Ошибка при возврате' 
+        language === 'ru'
+          ? 'Ошибка при возврате'
           : 'დაბრუნების შეცდომა'
       );
     } finally {
@@ -750,41 +750,41 @@ export default function WaiterOrderPage() {
   };
 
   const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => {
-  if (!order || newQuantity < 0) return;
-  
-  try {
-    setIsUpdating(true);
-    
-    if (newQuantity === 0) {
-      await OrderService.removeItemFromOrder(order.id, item.id);
-    } else {
-      await OrderService.updateOrderItemQuantity(
-        order.id,
-        item.id,
-        newQuantity,
-        user?.id
+    if (!order || newQuantity < 0) return;
+
+    try {
+      setIsUpdating(true);
+
+      if (newQuantity === 0) {
+        await OrderService.removeItemFromOrder(order.id, item.id);
+      } else {
+        await OrderService.updateOrderItemQuantity(
+          order.id,
+          item.id,
+          newQuantity,
+          user?.id
+        );
+      }
+
+      const updatedOrder = await OrderService.getById(order.id);
+      setOrder(updatedOrder);
+
+      await createOrderLog(
+        newQuantity === 0
+          ? `${t.logs.itemRemoved}: ${item.product.title}`
+          : `${language === 'ru' ? 'Изменено количество' : 'რაოდენობა შეიცვალა'}: ${item.product.title} → ${newQuantity}`
       );
+
+    } catch (error) {
+      toast.error(
+        language === 'ru'
+          ? 'Ошибка изменения количества'
+          : 'რაოდენობის შეცვლის შეცდომა'
+      );
+    } finally {
+      setIsUpdating(false);
     }
-    
-    const updatedOrder = await OrderService.getById(order.id);
-    setOrder(updatedOrder);
-    
-    await createOrderLog(
-      newQuantity === 0 
-        ? `${t.logs.itemRemoved}: ${item.product.title}`
-        : `${language === 'ru' ? 'Изменено количество' : 'რაოდენობა შეიცვალა'}: ${item.product.title} → ${newQuantity}`
-    );
-    
-  } catch (error) {
-    toast.error(
-      language === 'ru' 
-        ? 'Ошибка изменения количества' 
-        : 'რაოდენობის შეცვლის შეცდომა'
-    );
-  } finally {
-    setIsUpdating(false);
-  }
-};
+  };
 
   const handleRouteChange = (path: string) => {
     if (order?.status === 'CREATED') {
@@ -812,23 +812,23 @@ export default function WaiterOrderPage() {
 
     try {
       setIsUpdating(true);
-      
+
       const updatedOrder = await OrderService.updateStatus(order.id, { status: 'PREPARING' });
-      
+
       await Promise.all(
-        order.items.map(item => 
+        order.items.map(item =>
           OrderService.updateItemStatus(order.id, item.id, { status: OrderItemStatus.IN_PROGRESS })
-      ));
-      
+        ));
+
       const refreshedOrder = await OrderService.getById(order.id);
       setOrder(refreshedOrder);
-      
+
       await createOrderLog(t.logs.orderConfirmed);
-      
+
       toast.success(language === 'ru' ? 'Заказ подтвержден' : 'შეკვეთა დადასტურებულია');
     } catch (error) {
-      toast.error(language === 'ru' 
-        ? 'Ошибка подтверждения заказа' 
+      toast.error(language === 'ru'
+        ? 'Ошибка подтверждения заказа'
         : 'შეკვეთის დადასტურების შეცდომა');
     } finally {
       setIsUpdating(false);
@@ -839,19 +839,19 @@ export default function WaiterOrderPage() {
     if (language === 'ru') {
       const lastDigit = minutes % 10;
       const lastTwoDigits = minutes % 100;
-      
+
       if (lastTwoDigits >= 11 && lastTwoDigits <= 19) {
         return `${minutes} ${t.minutesForm5}`;
       }
-      
+
       if (lastDigit === 1) {
         return `${minutes} ${t.minutesForm1}`;
       }
-      
+
       if (lastDigit >= 2 && lastDigit <= 4) {
         return `${minutes} ${t.minutesForm2}`;
       }
-      
+
       return `${minutes} ${t.minutesForm5}`;
     } else {
       return `${minutes} ${t.minutes}`;
@@ -874,15 +874,15 @@ export default function WaiterOrderPage() {
       setIsUpdating(true);
       const updatedOrder = await OrderService.updateStatus(order.id, { status: 'COMPLETED' });
       setOrder(updatedOrder);
-      
+
       await createOrderLog(t.logs.orderCompleted);
-      
+
       toast.success(language === 'ru' ? 'Заказ завершен' : 'შეკვეთა დასრულებულია');
       setShowCompleteDialog(false);
       setShowPaymentDialog(false);
     } catch (error) {
-      toast.error(language === 'ru' 
-        ? 'Ошибка завершения заказа' 
+      toast.error(language === 'ru'
+        ? 'Ошибка завершения заказа'
         : 'შეკვეთის დასრულების შეცდომა');
     } finally {
       setIsUpdating(false);
@@ -899,14 +899,14 @@ export default function WaiterOrderPage() {
       setIsUpdating(true);
       const updatedOrder = await OrderService.updateStatus(order.id, { status: 'CANCELLED' });
       setOrder(updatedOrder);
-      
+
       await createOrderLog(t.logs.orderCancelled);
-      
+
       toast.success(language === 'ru' ? 'Заказ отменен' : 'შეკვეთა გაუქმებულია');
       setShowCancelDialog(false);
     } catch (error) {
-      toast.error(language === 'ru' 
-        ? 'Ошибка отмены заказа' 
+      toast.error(language === 'ru'
+        ? 'Ошибка отмены заказа'
         : 'შეკვეთის გაუქმების შეცდომა');
     } finally {
       setIsUpdating(false);
@@ -916,7 +916,7 @@ export default function WaiterOrderPage() {
   const handleRefundItem = async () => {
     if (!order) return;
     if (!selectedItemForRefund || !refundReason.trim()) return;
-    
+
     try {
       setIsUpdating(true);
       const updatedOrder = await OrderService.refundItem(
@@ -928,17 +928,17 @@ export default function WaiterOrderPage() {
         }
       );
       setOrder(updatedOrder);
-      
+
       await recalculateDiscount();
-      
+
       await createOrderLog(`${t.logs.itemRefunded} : ${selectedItemForRefund.product.title} x ${selectedItemForRefund.quantity}`);
-      
+
       toast.success(language === 'ru' ? 'Блюдо возвращено' : 'კერძი დაბრუნებულია');
       setShowRefundDialog(false);
       setRefundReason('');
     } catch (error) {
-      toast.error(language === 'ru' 
-        ? 'Ошибка при возврате блюда' 
+      toast.error(language === 'ru'
+        ? 'Ошибка при возврате блюда'
         : 'კერძის დაბრუნების შეცდომა');
     } finally {
       setIsUpdating(false);
@@ -947,10 +947,10 @@ export default function WaiterOrderPage() {
 
   const handleEditOrderSubmit = async () => {
     if (!orderId || !isOrderEditable) return;
-    
+
     try {
       setIsUpdating(true);
-      
+
       await OrderService.updateOrder(orderId as string, {
         type: editFormData.type,
         payment: {
@@ -963,16 +963,16 @@ export default function WaiterOrderPage() {
         deliveryNotes: editFormData.deliveryNotes,
         deliveryTime: editFormData.deliveryTime,
       });
-      
+
       await fetchOrder();
-      
+
       await createOrderLog(t.logs.orderEdited);
-      
+
       toast.success(language === 'ru' ? 'Заказ обновлен' : 'შეკვეთა განახლდა');
       setShowEditForm(false);
     } catch (err) {
-      toast.error(language === 'ru' 
-        ? 'Ошибка обновления заказа' 
+      toast.error(language === 'ru'
+        ? 'Ошибка обновления заказа'
         : 'შეკვეთის განახლების შეცდომა');
       console.error('Ошибка при обновлении заказа:', err);
     } finally {
@@ -982,27 +982,27 @@ export default function WaiterOrderPage() {
 
   const handleApplyPromoCode = async () => {
     if (!orderId || !promoCode.trim()) return;
-    
+
     try {
       setPromoCodeLoading(true);
       setPromoCodeError('');
-      
+
       const discount = await DiscountService.getByPromoCode(promoCode);
-      
+
       if (discount.minOrderAmount && calculateOrderTotal() < discount.minOrderAmount) {
         setPromoCodeError(t.discountMinAmount.replace('{amount}', discount.minOrderAmount.toString()));
         return;
       }
-      
+
       const updatedOrder = await OrderService.applyDiscountToOrder(
         orderId as string,
         discount.id
       );
-      
+
       setOrder(updatedOrder);
       setPromoCode('');
       await createOrderLog(`${t.logs.discountApplied}: ${discount.title}`);
-      
+
       toast.success(t.discountApplied);
     } catch (error) {
       console.error('Failed to apply promo code:', error);
@@ -1014,13 +1014,13 @@ export default function WaiterOrderPage() {
 
   const handleRemoveDiscount = async () => {
     if (!orderId) return;
-    
+
     try {
       setIsUpdating(true);
       const updatedOrder = await OrderService.removeDiscountFromOrder(orderId as string);
       setOrder(updatedOrder);
       await createOrderLog(t.discountRemoved);
-      
+
       toast.success(t.discountRemoved);
     } catch (error) {
       console.error('Failed to remove discount:', error);
@@ -1032,18 +1032,18 @@ export default function WaiterOrderPage() {
 
   const calculateItemPrice = (item: OrderItem) => {
     if (item.isRefund) return 0;
-    
+
     const restaurantPrice = item.product.restaurantPrices?.find(
       p => p.restaurantId === order?.restaurant?.id
     );
     let basePrice = restaurantPrice?.price ?? item.product.price;
-    
+
     if (order?.customer?.discountApplied) {
       basePrice = basePrice * (1 - order.customer.personalDiscount / 100);
     }
-    
+
     const additivesPrice = item.additives.reduce((sum, a) => sum + a.price, 0);
-    
+
     return (basePrice + additivesPrice) * item.quantity;
   };
 
@@ -1052,17 +1052,17 @@ export default function WaiterOrderPage() {
       p => p.restaurantId === order?.restaurant?.id
     );
     let price = restaurantPrice?.price ?? product.price;
-    
+
     if (order?.customer?.discountApplied) {
       price = price * (1 - order.customer.personalDiscount / 100);
     }
-    
+
     return price;
   };
 
   const calculateOrderTotal = () => {
     if (!order) return 0;
-    
+
     const itemsTotal = order.items.reduce((sum, item) => {
       return sum + calculateItemPrice(item);
     }, 0);
@@ -1087,13 +1087,13 @@ export default function WaiterOrderPage() {
 
     return total;
   };
-  
+
   const handleReorderItem = async (item: OrderItem) => {
     if (!order) return;
-    
+
     try {
       setIsUpdating(true);
-      
+
       const updatedOrder = await OrderService.addItemToOrder(
         order.id,
         {
@@ -1103,22 +1103,22 @@ export default function WaiterOrderPage() {
           comment: item.comment
         }
       );
-      
+
       setOrder(updatedOrder);
-      
+
       await OrderService.setReorderedFlag(order.id, true);
-      
+
       await createOrderLog(`${t.logs.itemAdded}: ${item.product.title} x ${item.quantity} (${t.reorder})`);
-      
+
       toast.success(
-        language === 'ru' 
-          ? 'Дозаказ добавлен' 
+        language === 'ru'
+          ? 'Дозаказ добавлен'
           : 'დამატებითი შეკვეთა დაემატა'
       );
     } catch (error) {
       toast.error(
-        language === 'ru' 
-          ? 'Ошибка при дозаказе' 
+        language === 'ru'
+          ? 'Ошибка при дозаказе'
           : 'დამატებითი შეკვეთის შეცდომა'
       );
     } finally {
@@ -1126,111 +1126,111 @@ export default function WaiterOrderPage() {
     }
   };
 
-const handleQuantityChange = useCallback(async (product: Product, newQuantity: number, additives: string[], comment: string) => {
-  if (!orderId || !isOrderEditable || !order) return;
+  const handleQuantityChange = useCallback(async (product: Product, newQuantity: number, additives: string[], comment: string) => {
+    if (!orderId || !isOrderEditable || !order) return;
 
-  const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`;
+    const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`;
 
-  // Проверяем существующие items
-  const existingItem = order.items.find(item => 
-    item.product.id === product.id &&
-    JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
-    item.comment === comment &&
-    item.status === OrderItemStatus.CREATED // Только для items со статусом CREATED
-  );
+    // Проверяем существующие items
+    const existingItem = order.items.find(item =>
+      item.product.id === product.id &&
+      JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
+      item.comment === comment &&
+      item.status === OrderItemStatus.CREATED // Только для items со статусом CREATED
+    );
 
-  if (pendingAdditions[key]?.timer) {
-    clearTimeout(pendingAdditions[key].timer!);
-  }
+    if (pendingAdditions[key]?.timer) {
+      clearTimeout(pendingAdditions[key].timer!);
+    }
 
-  if (newQuantity === 0) {
-    setPendingAdditions(prev => {
-      const newState = { ...prev };
-      delete newState[key];
-      return newState;
-    });
-    return;
-  }
-
-  const timer = setTimeout(async () => {
-    try {
-      setIsUpdating(true);
-      
-      // Если есть существующий item со статусом CREATED - обновляем его количество
-      if (existingItem) {
-        await OrderService.updateOrderItemQuantity(
-          orderId as string,
-          existingItem.id,
-          newQuantity
-        );
-      } else {
-        // Иначе создаем новый item
-        await OrderService.updateStatus(orderId as string, { status: 'CREATED' });
-
-        await OrderService.addItemToOrder(
-          orderId as string,
-          {
-            productId: product.id,
-            quantity: newQuantity,
-            additiveIds: additives,
-            comment,
-          }
-        );
-      }
-
-      const updatedOrder = await OrderService.getById(orderId as string);
-      setOrder(updatedOrder);
-      
-      await applyAutoDiscounts(updatedOrder);
-      
-      await createOrderLog(
-        existingItem 
-          ? `${language === 'ru' ? 'Обновлено количество' : 'რაოდენობა განახლდა'}: ${product.title} → ${newQuantity}`
-          : `${t.logs.itemAdded}: ${product.title} x ${newQuantity}`
-      );
-      
+    if (newQuantity === 0) {
       setPendingAdditions(prev => {
         const newState = { ...prev };
         delete newState[key];
         return newState;
       });
-    } catch (err) {
-      toast.error(language === 'ru' ? 'Ошибка при обновлении заказа' : 'შეკვეთის განახლების შეცდომა');
-      console.error('Error:', err);
-    } finally {
-      setIsUpdating(false);
+      return;
     }
-  }, 1000);
 
-  setPendingAdditions(prev => ({
-    ...prev,
-    [key]: {
-      quantity: newQuantity,
-      additives,
-      comment,
-      timer,
-    },
-  }));
-}, [orderId, isOrderEditable, language, order]);
+    const timer = setTimeout(async () => {
+      try {
+        setIsUpdating(true);
+
+        // Если есть существующий item со статусом CREATED - обновляем его количество
+        if (existingItem) {
+          await OrderService.updateOrderItemQuantity(
+            orderId as string,
+            existingItem.id,
+            newQuantity
+          );
+        } else {
+          // Иначе создаем новый item
+          await OrderService.updateStatus(orderId as string, { status: 'CREATED' });
+
+          await OrderService.addItemToOrder(
+            orderId as string,
+            {
+              productId: product.id,
+              quantity: newQuantity,
+              additiveIds: additives,
+              comment,
+            }
+          );
+        }
+
+        const updatedOrder = await OrderService.getById(orderId as string);
+        setOrder(updatedOrder);
+
+        await applyAutoDiscounts(updatedOrder);
+
+        await createOrderLog(
+          existingItem
+            ? `${language === 'ru' ? 'Обновлено количество' : 'რაოდენობა განახლდა'}: ${product.title} → ${newQuantity}`
+            : `${t.logs.itemAdded}: ${product.title} x ${newQuantity}`
+        );
+
+        setPendingAdditions(prev => {
+          const newState = { ...prev };
+          delete newState[key];
+          return newState;
+        });
+      } catch (err) {
+        toast.error(language === 'ru' ? 'Ошибка при обновлении заказа' : 'შეკვეთის განახლების შეცდომა');
+        console.error('Error:', err);
+      } finally {
+        setIsUpdating(false);
+      }
+    }, 1000);
+
+    setPendingAdditions(prev => ({
+      ...prev,
+      [key]: {
+        quantity: newQuantity,
+        additives,
+        comment,
+        timer,
+      },
+    }));
+  }, [orderId, isOrderEditable, language, order]);
 
   const getDisplayQuantity = (product: Product, additives: string[], comment: string) => {
-  const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`
-  
-  // Сначала проверяем pending additions
-  if (pendingAdditions[key]) {
-    return pendingAdditions[key].quantity
+    const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`
+
+    // Сначала проверяем pending additions
+    if (pendingAdditions[key]) {
+      return pendingAdditions[key].quantity
+    }
+
+    // Затем проверяем существующие items только со статусом CREATED
+    const existingItem = order?.items.find(item =>
+      item.product.id === product.id &&
+      JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
+      item.comment === comment &&
+      item.status === OrderItemStatus.CREATED
+    );
+
+    return existingItem ? existingItem.quantity : 0;
   }
-  
-  // Затем проверяем существующие items только со статусом CREATED
-  const existingItem = order?.items.find(item => 
-    item.product.id === product.id &&
-    JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
-    item.comment === comment &&
-    item.status === OrderItemStatus.CREATED
-  );
-  
-  return existingItem ? existingItem.quantity : 0;
-}
   const handleAdditivesChange = (productId: string, newAdditives: string[]) => {
     setProductAdditives(prev => ({
       ...prev,
@@ -1250,7 +1250,7 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
       setLoading(true);
       const data = await OrderService.getById(orderId as string);
       setOrder(data);
-      
+
       setEditFormData(prev => ({
         ...prev,
         type: data.type || 'DINE_IN',
@@ -1262,7 +1262,7 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
         deliveryNotes: data.deliveryNotes || '',
         deliveryTime: data.deliveryTime || '',
       }));
-      
+
       if (data.restaurant?.id) {
         const [products, categories] = await Promise.all([
           ProductService.getByRestaurant(data.restaurant.id),
@@ -1274,7 +1274,7 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
         const additives: Record<string, string[]> = {};
         const comments: Record<string, string> = {};
 
-        products.forEach((product : Product) => {
+        products.forEach((product: Product) => {
           additives[product.id] = [];
           comments[product.id] = '';
         });
@@ -1294,7 +1294,7 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
 
   const handlePrecheck = async () => {
     if (!order) return;
-    
+
     try {
       setIsUpdating(true);
       await OrderService.setPrecheckFlag(order.id, true);
@@ -1302,8 +1302,8 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
       setShowPrecheckDialog(true);
       await createOrderLog(t.logs.precheckPrinted);
     } catch (error) {
-      toast.error(language === 'ru' 
-        ? 'Ошибка при формировании пречека' 
+      toast.error(language === 'ru'
+        ? 'Ошибка при формировании пречека'
         : 'პრეჩეკის ფორმირების შეცდომა');
     } finally {
       setIsUpdating(false);
@@ -1322,8 +1322,8 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
       const applicableDiscounts = activeDiscounts.filter(discount => {
         const now = new Date();
         const isActive = !discount.endDate || new Date(discount.endDate) > now;
-        const meetsMinAmount = !discount.minOrderAmount || 
-                              calculateOrderTotal() >= discount.minOrderAmount;
+        const meetsMinAmount = !discount.minOrderAmount ||
+          calculateOrderTotal() >= discount.minOrderAmount;
         return isActive && meetsMinAmount;
       });
 
@@ -1343,24 +1343,24 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
 
   const handleApplyCustomer = async () => {
     if (!orderId || !customerCode) return;
-    
+
     try {
       setCustomerLoading(true);
       const customer = await CustomerService.getCustomerByShortCode(customerCode);
-      
+
       await OrderService.applyCustomerToOrder(
         orderId as string,
         customer.id
       );
-      
+
       const updatedOrder = await OrderService.getById(orderId as string);
       setOrder(updatedOrder);
-      
+
       await applyAutoDiscounts(updatedOrder);
-      
+
       setCustomerCode('');
       toast.success(t.customerApplied);
-      
+
     } catch (error) {
       toast.error(t.customerNotFound);
     } finally {
@@ -1370,18 +1370,18 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
 
   const handleRemoveCustomer = async () => {
     if (!orderId || !order?.customer) return;
-    
+
     try {
       setIsUpdating(true);
       const updatedOrder = await OrderService.removeCustomerFromOrder(orderId as string);
       setOrder(updatedOrder);
       setPointsToUse(0);
       await createOrderLog(t.logs.customerRemoved);
-      
+
       toast.success(language === 'ru' ? 'Клиент удален из заказа' : 'კლიენტი წაშლილია შეკვეთიდან');
     } catch (error) {
-      toast.error(language === 'ru' 
-        ? 'Ошибка при удалении клиента' 
+      toast.error(language === 'ru'
+        ? 'Ошибка при удалении клиента'
         : 'კლიენტის წაშლის შეცდომა');
     } finally {
       setIsUpdating(false);
@@ -1396,8 +1396,8 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
       await createOrderLog(t.logs.discountApplied);
       toast.success(t.discountApplied);
     } catch (error) {
-      toast.error(language === 'ru' 
-        ? 'Ошибка при применении скидки' 
+      toast.error(language === 'ru'
+        ? 'Ошибка при применении скидки'
         : 'ფასდაკლების გამოყენების შეცდომა');
     } finally {
       setIsUpdating(false);
@@ -1406,7 +1406,7 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
 
   const handleApplyPoints = async () => {
     if (!orderId || !order?.customer || pointsToUse <= 0) return;
-    
+
     try {
       setIsUpdating(true);
       const updatedOrder = await OrderService.applyCustomerPoints(
@@ -1414,14 +1414,14 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
         pointsToUse
       );
       setOrder(updatedOrder);
-      
+
       await applyAutoDiscounts(updatedOrder);
-      
+
       await createOrderLog(`${t.logs.pointsApplied}: ${pointsToUse}`);
       toast.success(t.pointsApplied);
     } catch (error) {
-      toast.error(language === 'ru' 
-        ? 'Ошибка при применении баллов' 
+      toast.error(language === 'ru'
+        ? 'Ошибка при применении баллов'
         : 'ქულების გამოყენების შეცდომა');
     } finally {
       setIsUpdating(false);
@@ -1430,18 +1430,18 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
 
   const handleRemovePoints = async () => {
     if (!orderId || !order?.customer) return;
-    
+
     try {
       setIsUpdating(true);
       const updatedOrder = await OrderService.removeCustomerPoints(orderId as string);
       setOrder(updatedOrder);
       setPointsToUse(0);
       await createOrderLog(t.logs.pointsRemoved);
-      
+
       toast.success(language === 'ru' ? 'Баллы сброшены' : 'ქულები გაუქმებულია');
     } catch (error) {
-      toast.error(language === 'ru' 
-        ? 'Ошибка при сбросе баллов' 
+      toast.error(language === 'ru'
+        ? 'Ошибка при сбросе баллов'
         : 'ქულების გაუქმების შეცდომა');
     } finally {
       setIsUpdating(false);
@@ -1461,8 +1461,8 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
   const getStatusBadge = (status: OrderItemStatus) => {
     let variant: 'default' | 'secondary' | 'destructive' | 'outline' = 'outline';
     let text = '';
-    
-    switch(status) {
+
+    switch (status) {
       case OrderItemStatus.CREATED:
         variant = 'secondary';
         text = t.statusCreated;
@@ -1487,7 +1487,7 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
         variant = 'outline';
         text = status;
     }
-    
+
     return <Badge variant={variant} className="text-xs">{text}</Badge>;
   };
 
@@ -1496,18 +1496,18 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
 
     const canEditQuantity = item.status === OrderItemStatus.CREATED && isOrderEditable;
     const canReorder = [
-      OrderItemStatus.COMPLETED, 
+      OrderItemStatus.COMPLETED,
       OrderItemStatus.IN_PROGRESS,
-      OrderItemStatus.CREATED, 
+      OrderItemStatus.CREATED,
     ].includes(item.status) && isOrderEditable && !item.isRefund;
-    
+
     const canRefund = ['COMPLETED', 'DELIVERING', 'PREPARING'].includes(order.status) && !item.isRefund;
 
     const canRefundItem = [
-      OrderItemStatus.COMPLETED, 
+      OrderItemStatus.COMPLETED,
       OrderItemStatus.IN_PROGRESS
     ].includes(item.status) && isOrderEditable && !item.isRefund;
-    
+
     return (
       <div className="mt-3 flex items-center justify-between border-t pt-3">
         <div className="text-sm">
@@ -1573,217 +1573,217 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
     );
   };
 
-const renderCompactItemCard = (item: OrderItem) => {
-  const getCookingTime = () => {
-    if (!item.timestamps.startedAt) return null;
-    
-    const startTime = new Date(item.timestamps.startedAt).getTime();
-    let endTime = item.timestamps.completedAt 
-      ? new Date(item.timestamps.completedAt).getTime() 
-      : Date.now();
-    
-    const cookingTimeMinutes = Math.round((endTime - startTime) / (1000 * 60));
-    
-    return cookingTimeMinutes;
-  };
+  const renderCompactItemCard = (item: OrderItem) => {
+    const getCookingTime = () => {
+      if (!item.timestamps.startedAt) return null;
 
-  const cookingTime = getCookingTime();
-  const canEditQuantity = item.status === OrderItemStatus.CREATED && isOrderEditable;
-  const canReorder = [
-    OrderItemStatus.COMPLETED, 
-    OrderItemStatus.IN_PROGRESS,
-    OrderItemStatus.CREATED, 
-  ].includes(item.status) && isOrderEditable && !item.isRefund;
-  
-  const canRefund = ['COMPLETED', 'DELIVERING', 'PREPARING'].includes(order?.status || '') && !item.isRefund;
-  const canRefundItem = [
-    OrderItemStatus.COMPLETED, 
-    OrderItemStatus.IN_PROGRESS
-  ].includes(item.status) && isOrderEditable && !item.isRefund;
+      const startTime = new Date(item.timestamps.startedAt).getTime();
+      let endTime = item.timestamps.completedAt
+        ? new Date(item.timestamps.completedAt).getTime()
+        : Date.now();
 
-  return (
-    <Card 
-      key={item.id} 
-      className={`p-3 ${item.isReordered ? 'border-l-4 border-blue-500 dark:border-blue-400' : ''} ${item.isRefund ? 'bg-red-50 dark:bg-red-900/20' : 'bg-card'}`}
-    >  
-      <div className="flex items-center gap-3">
-        {/* Изображение продукта */}
-        <div className="flex-shrink-0 w-16 h-16 relative">
-          {item.product.image ? (
-            <Image
-              src={item.product.image}
-              alt={item.product.title}
-              width={64}
-              height={64}
-              className="w-16 h-16 object-cover rounded-md"
-            />
-          ) : (
-            <div className="w-16 h-16 bg-muted rounded-md flex items-center justify-center">
-              <Utensils className="h-6 w-6 text-muted-foreground" />
-            </div>
-          )}
-        </div>
+      const cookingTimeMinutes = Math.round((endTime - startTime) / (1000 * 60));
 
-        {/* Основная информация */}
-        <div className="flex-1 min-w-0 items-center">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="font-medium text-sm truncate">
-                  {item.product.title}
-                </h3>
-                {item.isReordered && (
-                  <Badge variant="secondary" className="text-xs">
-                    {t.reorderedItem}
-                  </Badge>
-                )}
+      return cookingTimeMinutes;
+    };
+
+    const cookingTime = getCookingTime();
+    const canEditQuantity = item.status === OrderItemStatus.CREATED && isOrderEditable;
+    const canReorder = [
+      OrderItemStatus.COMPLETED,
+      OrderItemStatus.IN_PROGRESS,
+      OrderItemStatus.CREATED,
+    ].includes(item.status) && isOrderEditable && !item.isRefund;
+
+    const canRefund = ['COMPLETED', 'DELIVERING', 'PREPARING'].includes(order?.status || '') && !item.isRefund;
+    const canRefundItem = [
+      OrderItemStatus.COMPLETED,
+      OrderItemStatus.IN_PROGRESS
+    ].includes(item.status) && isOrderEditable && !item.isRefund;
+
+    return (
+      <Card
+        key={item.id}
+        className={`p-3 ${item.isReordered ? 'border-l-4 border-blue-500 dark:border-blue-400' : ''} ${item.isRefund ? 'bg-red-50 dark:bg-red-900/20' : 'bg-card'}`}
+      >
+        <div className="flex items-center gap-3">
+          {/* Изображение продукта */}
+          <div className="flex-shrink-0 w-16 h-16 relative">
+            {item.product.image ? (
+              <Image
+                src={item.product.image}
+                alt={item.product.title}
+                width={64}
+                height={64}
+                className="w-16 h-16 object-cover rounded-md"
+              />
+            ) : (
+              <div className="w-16 h-16 bg-muted rounded-md flex items-center justify-center">
+                <Utensils className="h-6 w-6 text-muted-foreground" />
               </div>
-              
-              <p className="text-sm font-semibold text-green-600 dark:text-green-400 mb-1">
-                {calculateItemPrice(item)} ₽
-              </p>
+            )}
+          </div>
 
-              {item.timestamps.startedAt && cookingTime !== null && (
-                <p className="text-xs text-muted-foreground mb-1">
-                  {item.timestamps.completedAt 
-                    ? `${t.cookedIn} ${getCookingTimeText(cookingTime, language)}`
-                    : `${t.cookingFor} ${getCookingTimeText(cookingTime, language)}`}
+          {/* Основная информация */}
+          <div className="flex-1 min-w-0 items-center">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-medium text-sm truncate">
+                    {item.product.title}
+                  </h3>
+                  {item.isReordered && (
+                    <Badge variant="secondary" className="text-xs">
+                      {t.reorderedItem}
+                    </Badge>
+                  )}
+                </div>
+
+                <p className="text-sm font-semibold text-green-600 dark:text-green-400 mb-1">
+                  {calculateItemPrice(item)} ₽
                 </p>
-              )}
 
-              {/* Дополнения и комментарии */}
-              <div className="space-y-1">
-                {item.additives.length > 0 && (
-                  <div className="text-xs text-muted-foreground flex items-start">
-                    <Plus className="h-3 w-3 mr-1 mt-0.5 flex-shrink-0" />
-                    <span className="truncate">{item.additives.map(a => a.title).join(', ')}</span>
-                  </div>
-                )}
-                {item.comment && (
-                  <div className="text-xs text-muted-foreground flex items-start">
-                    <MessageSquare className="h-3 w-3 mr-1 mt-0.5 flex-shrink-0" />
-                    <span className="truncate">{item.comment}</span>
-                  </div>
-                )}
-                {item.isRefund && item.refundReason && (
-                  <div className="text-xs text-red-500 dark:text-red-400 flex items-start">
-                    <AlertCircle className="h-3 w-3 mr-1 mt-0.5 flex-shrink-0" />
-                    <span className="truncate">{item.refundReason}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Правая часть - элементы управления */}
-            <div className="flex items-center gap-3 flex-shrink-0 ">
-
-              {/* Счетчик количества и кнопки */}
-              <div className="flex items-center gap-3">
-                {/* Счетчик количества */}
-                <div className="flex-shrink-0">
-                {getStatusBadge(item.status)}
-              </div>
-                {canEditQuantity && (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      onClick={() => handleQuantitItemChange(item, item.quantity - 1)}
-                      disabled={item.quantity <= 1}
-                    >
-                      <Minus className="h-4 w-4" />
-                    </Button>
-                    <span className="text-lg font-semibold w-8 text-center">
-                      {item.quantity}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      onClick={() => handleQuantitItemChange(item, item.quantity + 1)}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
+                {item.timestamps.startedAt && cookingTime !== null && (
+                  <p className="text-xs text-muted-foreground mb-1">
+                    {item.timestamps.completedAt
+                      ? `${t.cookedIn} ${getCookingTimeText(cookingTime, language)}`
+                      : `${t.cookingFor} ${getCookingTimeText(cookingTime, language)}`}
+                  </p>
                 )}
 
-                {/* Кнопки действий */}
-                <div className="flex items-center gap-2">
-                  {/* Дозаказ */}
-                  {canReorder && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-9 w-9 p-0 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
-                      onClick={() => handleReorderItem(item)}
-                      disabled={isUpdating}
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                    </Button>
+                {/* Дополнения и комментарии */}
+                <div className="space-y-1">
+                  {item.additives.length > 0 && (
+                    <div className="text-xs text-muted-foreground flex items-start">
+                      <Plus className="h-3 w-3 mr-1 mt-0.5 flex-shrink-0" />
+                      <span className="truncate">{item.additives.map(a => a.title).join(', ')}</span>
+                    </div>
                   )}
-
-                  {/* Возврат */}
-                  {canRefund && canRefundItem && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-9 w-9 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-                      onClick={() => {
-                        setSelectedItemForRefund(item);
-                        setMaxRefundQuantity(item.quantity);
-                        setRefundQuantity(1);
-                        setShowRefundDialog(true);
-                      }}
-                      disabled={isUpdating}
-                    >
-                      <Undo className="h-4 w-4" />
-                    </Button>
+                  {item.comment && (
+                    <div className="text-xs text-muted-foreground flex items-start">
+                      <MessageSquare className="h-3 w-3 mr-1 mt-0.5 flex-shrink-0" />
+                      <span className="truncate">{item.comment}</span>
+                    </div>
                   )}
+                  {item.isRefund && item.refundReason && (
+                    <div className="text-xs text-red-500 dark:text-red-400 flex items-start">
+                      <AlertCircle className="h-3 w-3 mr-1 mt-0.5 flex-shrink-0" />
+                      <span className="truncate">{item.refundReason}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-                  {/* Удаление */}
+              {/* Правая часть - элементы управления */}
+              <div className="flex items-center gap-3 flex-shrink-0 ">
+
+                {/* Счетчик количества и кнопки */}
+                <div className="flex items-center gap-3">
+                  {/* Счетчик количества */}
+                  <div className="flex-shrink-0">
+                    {getStatusBadge(item.status)}
+                  </div>
                   {canEditQuantity && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-9 w-9 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-                      onClick={() => handleQuantitItemChange(item, 0)}
-                      disabled={isUpdating}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => handleQuantitItemChange(item, item.quantity - 1)}
+                        disabled={item.quantity <= 1}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <span className="text-lg font-semibold w-8 text-center">
+                        {item.quantity}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => handleQuantitItemChange(item, item.quantity + 1)}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
                   )}
+
+                  {/* Кнопки действий */}
+                  <div className="flex items-center gap-2">
+                    {/* Дозаказ */}
+                    {canReorder && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-9 w-9 p-0 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
+                        onClick={() => handleReorderItem(item)}
+                        disabled={isUpdating}
+                      >
+                        <RefreshCw className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    {/* Возврат */}
+                    {canRefund && canRefundItem && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-9 w-9 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => {
+                          setSelectedItemForRefund(item);
+                          setMaxRefundQuantity(item.quantity);
+                          setRefundQuantity(1);
+                          setShowRefundDialog(true);
+                        }}
+                        disabled={isUpdating}
+                      >
+                        <Undo className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    {/* Удаление */}
+                    {canEditQuantity && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-9 w-9 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => handleQuantitItemChange(item, 0)}
+                        disabled={isUpdating}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </Card>
-  );
-};
+      </Card>
+    );
+  };
 
   const renderItemCard = (item: OrderItem) => {
     const getCookingTime = () => {
       if (!item.timestamps.startedAt) return null;
-      
+
       const startTime = new Date(item.timestamps.startedAt).getTime();
-      let endTime = item.timestamps.completedAt 
-        ? new Date(item.timestamps.completedAt).getTime() 
+      let endTime = item.timestamps.completedAt
+        ? new Date(item.timestamps.completedAt).getTime()
         : Date.now();
-      
+
       const cookingTimeMinutes = Math.round((endTime - startTime) / (1000 * 60));
-      
+
       return cookingTimeMinutes;
     };
 
     const cookingTime = getCookingTime();
-    
+
     return (
-      <Card 
-        key={item.id} 
+      <Card
+        key={item.id}
         className={`p-4 ${item.isReordered ? 'border-l-4 border-blue-500 dark:border-blue-400' : ''} ${item.isRefund ? 'bg-red-50 dark:bg-red-900/20' : 'bg-card'}`}
-      >  
+      >
         <div className="flex justify-between items-start gap-4">
           <div className="flex-1">
             <div className="flex items-center gap-2">
@@ -1796,7 +1796,7 @@ const renderCompactItemCard = (item: OrderItem) => {
                 </Badge>
               )}
             </div>
-            
+
             {item.product.restaurantPrices[0] && (
               <p className="text-sm text-muted-foreground mt-1">
                 {getProductPrice(item.product)} ₽ × {item.quantity}шт. = {calculateItemPrice(item)} ₽
@@ -1805,7 +1805,7 @@ const renderCompactItemCard = (item: OrderItem) => {
 
             {item.timestamps.startedAt && cookingTime !== null && (
               <p className="text-sm text-muted-foreground mt-1">
-                {item.timestamps.completedAt 
+                {item.timestamps.completedAt
                   ? `${t.cookedIn} ${getCookingTimeText(cookingTime, language)}`
                   : `${t.cookingFor} ${getCookingTimeText(cookingTime, language)}`}
               </p>
@@ -1841,20 +1841,20 @@ const renderCompactItemCard = (item: OrderItem) => {
               <Clock className="h-3 w-3 mr-2" />
               {t.createdAt}: {new Date(item.timestamps.createdAt).toLocaleString()}
             </div>
-            
+
             {item.timestamps.startedAt && (
               <div className="flex  flex-col">
                 <span className='flex items-center'>
                   <Play className="h-3 w-3 mr-2" />
-                  {t.startedAt}: {new Date(item.timestamps.startedAt).toLocaleString()}   
+                  {t.startedAt}: {new Date(item.timestamps.startedAt).toLocaleString()}
                 </span>
-                
+
                 <span className='text-xs ml-5'>
                   ({item.startedBy && item.startedBy.name})
                 </span>
               </div>
             )}
-            
+
             {item.timestamps.completedAt && (
               <div className="flex items-center">
                 <Check className="h-3 w-3 mr-2" />
@@ -1866,7 +1866,7 @@ const renderCompactItemCard = (item: OrderItem) => {
                 )}
               </div>
             )}
-            
+
             {item.timestamps.pausedAt && (
               <div className="flex items-center">
                 <Pause className="h-3 w-3 mr-2" />
@@ -1878,7 +1878,7 @@ const renderCompactItemCard = (item: OrderItem) => {
                 )}
               </div>
             )}
-            
+
             {item.timestamps.refundedAt && (
               <div className="flex items-center text-red-500 dark:text-red-400">
                 <Undo className="h-3 w-3 mr-2" />
@@ -1944,7 +1944,7 @@ const renderCompactItemCard = (item: OrderItem) => {
                     </div>
                   )}
                 </div>
-                <div className="flex-shrink-0 text-sm text-muted-foreground w-32 text-center"> 
+                <div className="flex-shrink-0 text-sm text-muted-foreground w-32 text-center">
                   {formatDate(log.createdAt)}
                 </div>
               </div>
@@ -2054,200 +2054,200 @@ const renderCompactItemCard = (item: OrderItem) => {
   };
 
   // Рендер карточек категорий с горизонтальной прокруткой
-const renderCategoryCards = () => {
-  const displayCategories = getDisplayCategories();
-  
-  return (
-    <div className="space-y-4">
-      {/* Заголовок раздела */}
-      <div className="mb-4 text-center">
-        <h3 className="text-lg font-semibold">
-          {categoryNavigation.parentCategory 
-            ? categoryNavigation.parentCategory.title
-            : categoryNavigation.currentCategory
-            ? categoryNavigation.currentCategory.title
-            : t.allCategories
-          }
-        </h3>
-      </div>
+  const renderCategoryCards = () => {
+    const displayCategories = getDisplayCategories();
 
-      {/* Горизонтальная прокрутка категорий с кнопкой назад */}
-      {(displayCategories.length > 0 || categoryNavigation.parentCategory) && (
-        <div className="relative">
-          <div className="flex overflow-x-auto pb-4 scrollbar-hide gap-4 px-2">
-            {/* Кнопка назад - только если есть родительская категория */}
-            {(categoryNavigation.parentCategory || categoryNavigation.breadcrumbs.length > 0) && (
-              <Card
-                className="flex-shrink-0 w-64 h-32 cursor-pointer hover:shadow-lg transition-shadow duration-200 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30"
-                onClick={handleBackToCategories}
-              >
-                <div className="p-4 h-full flex flex-col justify-between">
-                  <div className="text-center">
-                    <h4 className="font-semibold text-lg text-blue-600 dark:text-blue-400">
-                      {t.backToCategories}
-                    </h4>
-                  </div>
-                  <div className="flex justify-center">
-                    <ChevronLeft className="h-4 w-4 text-blue-400" />
-                  </div>
-                </div>
-              </Card>
-            )}
-            
-            {/* Карточки категорий */}
-            {displayCategories.map((category) => {
-              return (
+    return (
+      <div className="space-y-4">
+        {/* Заголовок раздела */}
+        <div className="mb-4 text-center">
+          <h3 className="text-lg font-semibold">
+            {categoryNavigation.parentCategory
+              ? categoryNavigation.parentCategory.title
+              : categoryNavigation.currentCategory
+                ? categoryNavigation.currentCategory.title
+                : t.allCategories
+            }
+          </h3>
+        </div>
+
+        {/* Горизонтальная прокрутка категорий с кнопкой назад */}
+        {(displayCategories.length > 0 || categoryNavigation.parentCategory) && (
+          <div className="relative">
+            <div className="flex overflow-x-auto pb-4 scrollbar-hide gap-4 px-2">
+              {/* Кнопка назад - только если есть родительская категория */}
+              {(categoryNavigation.parentCategory || categoryNavigation.breadcrumbs.length > 0) && (
                 <Card
-                  key={category.id}
-                  className="flex-shrink-0 w-64 h-32 cursor-pointer hover:shadow-lg transition-shadow duration-200"
-                  onClick={() => handleCategoryClick(category)}
+                  className="flex-shrink-0 w-64 h-32 cursor-pointer hover:shadow-lg transition-shadow duration-200 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30"
+                  onClick={handleBackToCategories}
                 >
                   <div className="p-4 h-full flex flex-col justify-between">
                     <div className="text-center">
-                      <h4 className="font-semibold text-lg mb-2">{category.title}</h4>
+                      <h4 className="font-semibold text-lg text-blue-600 dark:text-blue-400">
+                        {t.backToCategories}
+                      </h4>
                     </div>
                     <div className="flex justify-center">
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      <ChevronLeft className="h-4 w-4 text-blue-400" />
                     </div>
                   </div>
                 </Card>
-              );
-            })}
+              )}
+
+              {/* Карточки категорий */}
+              {displayCategories.map((category) => {
+                return (
+                  <Card
+                    key={category.id}
+                    className="flex-shrink-0 w-64 h-32 cursor-pointer hover:shadow-lg transition-shadow duration-200"
+                    onClick={() => handleCategoryClick(category)}
+                  >
+                    <div className="p-4 h-full flex flex-col justify-between">
+                      <div className="text-center">
+                        <h4 className="font-semibold text-lg mb-2">{category.title}</h4>
+                      </div>
+                      <div className="flex justify-center">
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Сообщение когда нет категорий */}
-      {displayCategories.length === 0 && !categoryNavigation.parentCategory && (
-        <div className="text-center py-8 text-muted-foreground">
-          {t.noSubcategories}
-        </div>
-      )}
+        {/* Сообщение когда нет категорий */}
+        {displayCategories.length === 0 && !categoryNavigation.parentCategory && (
+          <div className="text-center py-8 text-muted-foreground">
+            {t.noSubcategories}
+          </div>
+        )}
 
-      {/* Товары отображаются ТОЛЬКО когда выбрана конкретная категория */}
-      {categoryNavigation.currentCategory && getDisplayProducts().length > 0 && (
-        <div className="mt-8">
-          <h4 className="text-lg font-semibold mb-4 text-center">
-            {categoryNavigation.currentCategory.title}
-          </h4>
-          
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            {getDisplayProducts().map((product) => {
-              const additives = productAdditives[product.id] || []
-              const comment = productComments[product.id] || ''
-              const quantity = getDisplayQuantity(product, additives, comment)
+        {/* Товары отображаются ТОЛЬКО когда выбрана конкретная категория */}
+        {categoryNavigation.currentCategory && getDisplayProducts().length > 0 && (
+          <div className="mt-8">
+            <h4 className="text-lg font-semibold mb-4 text-center">
+              {categoryNavigation.currentCategory.title}
+            </h4>
 
-              return (
-                <div key={product.id} className="bg-card rounded-xl shadow-sm overflow-hidden border hover:shadow-md transition-shadow flex flex-col h-full">
-                  <div className="relative aspect-square">
-                    {product.images?.[0] ? (
-                      <Image
-                        src={product.images[0]}
-                        alt={product.title}
-                        width={300}
-                        height={300}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-muted flex items-center justify-center">
-                        <Utensils className="h-12 w-12 text-muted-foreground" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-4 flex flex-col flex-grow">
-                    <div className="flex-grow">
-                      <div className="mb-2">
-                        <h3 className="font-semibold text-lg">
-                          {product.title}
-                        </h3>
-                        <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                          {getProductPrice(product)} ₽
-                        </p>
-                      </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              {getDisplayProducts().map((product) => {
+                const additives = productAdditives[product.id] || []
+                const comment = productComments[product.id] || ''
+                const quantity = getDisplayQuantity(product, additives, comment)
 
-                      {product.additives && product.additives.length > 0 && (
-                        <div className="mb-3">
-                          <div className="text-sm font-medium text-muted-foreground mb-1">
-                            {t.additives}
-                          </div>
-                          <SearchableSelect
-                            options={product.additives.map(additive => ({
-                              id: additive.id,
-                              label: `${additive.title} (+${additive.price} ₽)`
-                            }))}
-                            value={additives}
-                            onChange={(newAdditives) => {
-                              handleAdditivesChange(product.id, newAdditives)
-                              if (quantity > 0) {
-                                handleQuantityChange(
-                                  product,
-                                  quantity,
-                                  newAdditives,
-                                  comment
-                                )
-                              }
-                            }}
-                            placeholder={t.selectAdditives}
-                            searchPlaceholder={t.searchAdditives}
-                            emptyText={t.noAdditivesFound}
-                            multiple={true}
-                            disabled={!isOrderEditable}
-                          />
+                return (
+                  <div key={product.id} className="bg-card rounded-xl shadow-sm overflow-hidden border hover:shadow-md transition-shadow flex flex-col h-full">
+                    <div className="relative aspect-square">
+                      {product.images?.[0] ? (
+                        <Image
+                          src={product.images[0]}
+                          alt={product.title}
+                          width={300}
+                          height={300}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-muted flex items-center justify-center">
+                          <Utensils className="h-12 w-12 text-muted-foreground" />
                         </div>
                       )}
                     </div>
-
-                    <div className="mt-auto">
-                      <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            onClick={() => {
-                              const newQuantity = Math.max(0, quantity - 1)
-                              handleQuantityChange(product, newQuantity, additives, comment)
-                            }}
-                            disabled={quantity === 0 || !isOrderEditable || order?.attentionFlags.isPrecheck}
-                          >
-                            <Minus className="h-4 w-4" />
-                          </Button>
-                          <span className="font-medium w-8 text-center">{quantity}</span>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            onClick={() => {
-                              const newQuantity = quantity + 1
-                              handleQuantityChange(product, newQuantity, additives, comment)
-                            }}
-                            disabled={!isOrderEditable}
-                          >
-                            <Plus className="h-4 w-4" />
-                          </Button>
+                    <div className="p-4 flex flex-col flex-grow">
+                      <div className="flex-grow">
+                        <div className="mb-2">
+                          <h3 className="font-semibold text-lg">
+                            {product.title}
+                          </h3>
+                          <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                            {getProductPrice(product)} ₽
+                          </p>
                         </div>
-                        <span className="text-lg font-bold">
-                          {getProductPrice(product) * quantity} ₽
-                        </span>
+
+                        {product.additives && product.additives.length > 0 && (
+                          <div className="mb-3">
+                            <div className="text-sm font-medium text-muted-foreground mb-1">
+                              {t.additives}
+                            </div>
+                            <SearchableSelect
+                              options={product.additives.map(additive => ({
+                                id: additive.id,
+                                label: `${additive.title} (+${additive.price} ₽)`
+                              }))}
+                              value={additives}
+                              onChange={(newAdditives) => {
+                                handleAdditivesChange(product.id, newAdditives)
+                                if (quantity > 0) {
+                                  handleQuantityChange(
+                                    product,
+                                    quantity,
+                                    newAdditives,
+                                    comment
+                                  )
+                                }
+                              }}
+                              placeholder={t.selectAdditives}
+                              searchPlaceholder={t.searchAdditives}
+                              emptyText={t.noAdditivesFound}
+                              multiple={true}
+                              disabled={!isOrderEditable}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-auto">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={() => {
+                                const newQuantity = Math.max(0, quantity - 1)
+                                handleQuantityChange(product, newQuantity, additives, comment)
+                              }}
+                              disabled={quantity === 0 || !isOrderEditable || order?.attentionFlags.isPrecheck}
+                            >
+                              <Minus className="h-4 w-4" />
+                            </Button>
+                            <span className="font-medium w-8 text-center">{quantity}</span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={() => {
+                                const newQuantity = quantity + 1
+                                handleQuantityChange(product, newQuantity, additives, comment)
+                              }}
+                              disabled={!isOrderEditable}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <span className="text-lg font-bold">
+                            {getProductPrice(product) * quantity} ₽
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Сообщение когда выбрана категория но нет товаров */}
-      {categoryNavigation.currentCategory && getDisplayProducts().length === 0 && (
-        <div className="text-center py-8 text-muted-foreground">
-          {t.noProductsFound}
-        </div>
-      )}
-    </div>
-  );
-};
+        {/* Сообщение когда выбрана категория но нет товаров */}
+        {categoryNavigation.currentCategory && getDisplayProducts().length === 0 && (
+          <div className="text-center py-8 text-muted-foreground">
+            {t.noProductsFound}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -2295,64 +2295,55 @@ const renderCategoryCards = () => {
 
   return (
     <AccessCheck allowedRoles={['WAITER', 'MANAGER', 'SUPERVISOR']}>
-     <div className="space-y-6">
-             <div className="flex items-center justify-between mb-6">
-               <div className='flex space-x-2'>
-               <Button 
-                 variant="outline" 
-                 onClick={() => handleRouteChange('/orders')}
-                 className="flex items-center gap-2"
-               >
-                 <ArrowLeft className="h-4 w-4" />
-                 {t.back}
-               </Button>
-               <Button onClick={() => router.push(`/orders/${order.id}`)}>
-                 <Mic className="h-4 w-4 mr-2" />
-                  Голосовой ассистент
-               </Button>
-             </div>
-  
-  <div className="flex items-center gap-3">
-    
-    <div className="relative flex bg-muted/50 rounded-xl p-1 border">
-      <div
-        className={`absolute top-1 bottom-1 w-1/2 bg-background rounded-lg shadow-sm transition-transform duration-200 ${
-          viewMode === 'standard' ? 'translate-x-0' : 'translate-x-full'
-        }`}
-      />
-      
-      <button
-        onClick={() => setViewMode('standard')}
-        className={`relative z-10 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-          viewMode === 'standard'
-            ? 'text-foreground'
-            : 'text-muted-foreground hover:text-foreground'
-        }`}
-      >
-        <LayoutTemplate className="h-4 w-4" />
-        <span className="hidden sm:inline">
-          {language === 'ru' ? 'Стандарт' : 'სტანდარტი'}
-        </span>
-      </button>
-      
-      <button
-        onClick={() => setViewMode('compact')}
-        className={`relative z-10 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-          viewMode === 'compact'
-            ? 'text-foreground'
-            : 'text-muted-foreground hover:text-foreground'
-        }`}
-      >
-        <LayoutGrid className="h-4 w-4" />
-        <span className="hidden sm:inline">
-          {language === 'ru' ? 'Компакт' : 'კომპაქტური'}
-        </span>
-      </button>
-    </div>
-  </div>
-</div>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between mb-6">
+          <Button
+            variant="outline"
+            onClick={() => handleRouteChange('/orders')}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t.back}
+          </Button>
+
+          <div className="flex items-center gap-3">
+
+            <div className="relative flex bg-muted/50 rounded-xl p-1 border">
+              <div
+                className={`absolute top-1 bottom-1 w-1/2 bg-background rounded-lg shadow-sm transition-transform duration-200 ${viewMode === 'standard' ? 'translate-x-0' : 'translate-x-full'
+                  }`}
+              />
+
+              <button
+                onClick={() => setViewMode('standard')}
+                className={`relative z-10 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'standard'
+                    ? 'text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                  }`}
+              >
+                <LayoutTemplate className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  {language === 'ru' ? 'Стандарт' : 'სტანდარტი'}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setViewMode('compact')}
+                className={`relative z-10 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'compact'
+                    ? 'text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                  }`}
+              >
+                <LayoutGrid className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  {language === 'ru' ? 'Компакт' : 'კომპაქტური'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
         <OrderHeader order={order} />
-        
+
         <Card className="p-0">
           <Collapsible open={showMenu} onOpenChange={setShowMenu}>
             <CollapsibleTrigger asChild>
@@ -2402,100 +2393,100 @@ const renderCategoryCards = () => {
               <div className="p-4 border-t">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <div className="lg:col-span-2 space-y-6">
-                  {order?.items?.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground flex flex-col items-center">
-                      <Package className="h-8 w-8 mb-2" />
-                      {t.emptyOrder}
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold flex items-center gap-2">
-                        <ShoppingBag className="h-5 w-5" />
-                        {t.originalItems}
-                      </h3>
-                      
-                      {/* Стандартный вид */}
-                      {viewMode === 'standard' ? (
-                        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                          {order.items.filter(item => !item.isRefund).map(renderItemCard)}
-                        </div>
-                      ) : (
-                        /* Компактный вид */
-                        <div className="space-y-2">
-                          {order.items.filter(item => !item.isRefund).map(renderCompactItemCard)}
-                        </div>
-                      )}
+                    {order?.items?.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground flex flex-col items-center">
+                        <Package className="h-8 w-8 mb-2" />
+                        {t.emptyOrder}
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-semibold flex items-center gap-2">
+                          <ShoppingBag className="h-5 w-5" />
+                          {t.originalItems}
+                        </h3>
 
-                      {order.items.some(item => item.isRefund) && (
-                        <div className="space-y-4 border-t pt-6">
-                          <h3 className="text-lg font-semibold flex items-center gap-2">
-                            <Ban className="h-5 w-5" />
-                            {t.itemReturned}
-                          </h3>
-                          
-                          {viewMode === 'standard' ? (
-                            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                              {order.items.filter(item => item.isRefund).map(renderItemCard)}
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              {order.items.filter(item => item.isRefund).map(renderCompactItemCard)}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                        {/* Стандартный вид */}
+                        {viewMode === 'standard' ? (
+                          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {order.items.filter(item => !item.isRefund).map(renderItemCard)}
+                          </div>
+                        ) : (
+                          /* Компактный вид */
+                          <div className="space-y-2">
+                            {order.items.filter(item => !item.isRefund).map(renderCompactItemCard)}
+                          </div>
+                        )}
+
+                        {order.items.some(item => item.isRefund) && (
+                          <div className="space-y-4 border-t pt-6">
+                            <h3 className="text-lg font-semibold flex items-center gap-2">
+                              <Ban className="h-5 w-5" />
+                              {t.itemReturned}
+                            </h3>
+
+                            {viewMode === 'standard' ? (
+                              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                {order.items.filter(item => item.isRefund).map(renderItemCard)}
+                              </div>
+                            ) : (
+                              <div className="space-y-2">
+                                {order.items.filter(item => item.isRefund).map(renderCompactItemCard)}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-6">
                     <div className="flex flex-wrap gap-4 justify-center">
-                      <div 
+                      <div
                         className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags.isReordered ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-muted'}`}
                         title={order.attentionFlags.isReordered ? t.reorder : ''}
                       >
-                        <ShoppingBag 
-                          className={`h-5 w-5 ${order.attentionFlags.isReordered ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}`} 
+                        <ShoppingBag
+                          className={`h-5 w-5 ${order.attentionFlags.isReordered ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}`}
                         />
                         <span className="text-xs mt-1">{t.reorder}</span>
                       </div>
 
-                      <div 
+                      <div
                         className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags.hasDiscount ? 'bg-green-50 dark:bg-green-900/30' : 'bg-muted'}`}
                         title={order.attentionFlags.hasDiscount ? t.discount : ''}
                       >
-                        <Tag 
-                          className={`h-5 w-5 ${order.attentionFlags.hasDiscount ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`} 
+                        <Tag
+                          className={`h-5 w-5 ${order.attentionFlags.hasDiscount ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}
                         />
                         <span className="text-xs mt-1">{t.discount}</span>
                       </div>
 
-                      <div 
+                      <div
                         className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags.discountCanceled ? 'bg-red-50 dark:bg-red-900/30' : 'bg-muted'}`}
                         title={order.attentionFlags.discountCanceled ? t.discountCanceled : ''}
                       >
-                        <Ban 
-                          className={`h-5 w-5 ${order.attentionFlags.discountCanceled ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`} 
+                        <Ban
+                          className={`h-5 w-5 ${order.attentionFlags.discountCanceled ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}
                         />
                         <span className="text-xs mt-1">{t.discountCanceled}</span>
                       </div>
 
-                      <div 
+                      <div
                         className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags.isPrecheck ? 'bg-purple-50 dark:bg-purple-900/30' : 'bg-muted'}`}
                         title={order.attentionFlags.isPrecheck ? t.precheck : ''}
                       >
-                        <Receipt 
-                          className={`h-5 w-5 ${order.attentionFlags.isPrecheck ? 'text-purple-600 dark:text-purple-400' : 'text-muted-foreground'}`} 
+                        <Receipt
+                          className={`h-5 w-5 ${order.attentionFlags.isPrecheck ? 'text-purple-600 dark:text-purple-400' : 'text-muted-foreground'}`}
                         />
                         <span className="text-xs mt-1">{t.precheck}</span>
                       </div>
 
-                      <div 
+                      <div
                         className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags.isRefund ? 'bg-orange-50 dark:bg-orange-900/30' : 'bg-muted'}`}
                         title={order.attentionFlags.isRefund ? t.refund : ''}
                       >
-                        <RefreshCw 
-                          className={`h-5 w-5 ${order.attentionFlags.isRefund ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`} 
+                        <RefreshCw
+                          className={`h-5 w-5 ${order.attentionFlags.isRefund ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}
                         />
                         <span className="text-xs mt-1">{t.refund}</span>
                       </div>
@@ -2521,9 +2512,9 @@ const renderCategoryCards = () => {
                         </CollapsibleContent>
                       </Collapsible>
                     </Card>
-                    
+
                     {renderDiscountsBlock()}
-                          
+
                     <Card className="p-0">
                       <div className="p-4">
                         <div className="flex items-center justify-between">
@@ -2555,8 +2546,8 @@ const renderCategoryCards = () => {
                                   <div key={surcharge.id} className="flex justify-between text-sm">
                                     <span>{surcharge.title}</span>
                                     <span className="font-medium text-red-600">
-                                      {surcharge.type === 'FIXED' 
-                                        ? `+${surcharge.amount.toFixed(2)} ₽` 
+                                      {surcharge.type === 'FIXED'
+                                        ? `+${surcharge.amount.toFixed(2)} ₽`
                                         : `+${surcharge.amount}%`}
                                     </span>
                                   </div>
@@ -2592,11 +2583,10 @@ const renderCategoryCards = () => {
                           disabled={isUpdating}
                           onClick={handlePrecheck}
                           variant={order.attentionFlags.isPrecheck ? "default" : "outline"}
-                          className={`gap-2 w-full text-lg h-14 ${
-                            order.attentionFlags.isPrecheck 
-                              ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 hover:bg-green-100 dark:hover:bg-green-900/30' 
+                          className={`gap-2 w-full text-lg h-14 ${order.attentionFlags.isPrecheck
+                              ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 hover:bg-green-100 dark:hover:bg-green-900/30'
                               : ''
-                          }`}
+                            }`}
                         >
                           {isUpdating ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -2608,7 +2598,7 @@ const renderCategoryCards = () => {
                           {order.attentionFlags.isPrecheck ? t.precheckFormed : t.formPrecheck}
                         </Button>
                       )}
-                      {order.status === 'CREATED'  && (
+                      {order.status === 'CREATED' && (
                         <>
                           {order.items.some(item => item.status === OrderItemStatus.CREATED) && (
                             <Button
@@ -2625,7 +2615,7 @@ const renderCategoryCards = () => {
                               {t.confirm} ({order.items.filter(item => item.status === OrderItemStatus.CREATED).length})
                             </Button>
                           )}
-                          
+
                           <Button
                             disabled={isUpdating}
                             onClick={handleCancelOrder}
@@ -2691,7 +2681,7 @@ const renderCategoryCards = () => {
                   </Label>
                   <OrderTypeSelector
                     value={editFormData.type as OrderType}
-                    onChange={(type) => setEditFormData({...editFormData, type})}
+                    onChange={(type) => setEditFormData({ ...editFormData, type })}
                     language={language}
                     disabled={!isOrderEditable}
                   />
@@ -2787,7 +2777,7 @@ const renderCategoryCards = () => {
                     <MessageSquare className="h-4 w-4" />
                     {t.comment}
                   </Label>
-                  <Textarea 
+                  <Textarea
                     value={editFormData.comment}
                     onChange={(e) => setEditFormData({
                       ...editFormData,
@@ -2800,13 +2790,13 @@ const renderCategoryCards = () => {
 
                 {isOrderEditable && (
                   <div className="flex justify-end gap-2">
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       onClick={() => setShowEditForm(false)}
                     >
                       {t.cancel}
                     </Button>
-                    <Button 
+                    <Button
                       onClick={handleEditOrderSubmit}
                       disabled={isUpdating}
                     >
@@ -2844,7 +2834,7 @@ const renderCategoryCards = () => {
                 {selectedItemForRefund?.product.title} ({selectedItemForRefund?.quantity} шт.)
               </AlertDialogDescription>
             </AlertDialogHeader>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label className="text-sm">
@@ -2895,7 +2885,7 @@ const renderCategoryCards = () => {
                 />
               </div>
             </div>
-            
+
             <AlertDialogFooter className="gap-2 sm:gap-0">
               {refundQuantity < maxRefundQuantity && (
                 <Button
@@ -2910,14 +2900,14 @@ const renderCategoryCards = () => {
               <AlertDialogCancel>
                 {t.cancel}
               </AlertDialogCancel>
-              <AlertDialogAction 
+              <AlertDialogAction
                 onClick={refundQuantity === maxRefundQuantity ? handleRefundItem : handlePartialRefund}
                 disabled={!refundReason.trim() || isUpdating}
               >
                 {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {refundQuantity === maxRefundQuantity 
-                  ? t.confirmRefund 
-                  : language === 'ru' 
+                {refundQuantity === maxRefundQuantity
+                  ? t.confirmRefund
+                  : language === 'ru'
                     ? `Вернуть ${refundQuantity} шт.`
                     : `დაბრუნება ${refundQuantity} ცალი`}
               </AlertDialogAction>
@@ -2939,7 +2929,7 @@ const renderCategoryCards = () => {
               <AlertDialogCancel>
                 {t.cancel}
               </AlertDialogCancel>
-              <AlertDialogAction 
+              <AlertDialogAction
                 onClick={confirmCompleteOrder}
                 disabled={isUpdating}
               >
@@ -2964,7 +2954,7 @@ const renderCategoryCards = () => {
               <AlertDialogCancel>
                 {t.cancel}
               </AlertDialogCancel>
-              <AlertDialogAction 
+              <AlertDialogAction
                 onClick={confirmCancelOrder}
                 disabled={isUpdating}
               >
@@ -2997,11 +2987,11 @@ const renderCategoryCards = () => {
         </AlertDialog>
       </div>
       {showPrecheckDialog && order && (
-          <PrecheckDialog 
-            order={order} 
-            onClose={() => setShowPrecheckDialog(false)} 
-          />
-        )}
+        <PrecheckDialog
+          order={order}
+          onClose={() => setShowPrecheckDialog(false)}
+        />
+      )}
     </AccessCheck>
   );
 }

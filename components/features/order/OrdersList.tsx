@@ -135,8 +135,8 @@ const translations = {
     ka: 'შეკვეთების არქივი'
   },
   recentOrders: {
-    ru: 'Последние заказы',
-    ka: 'ბოლო შეკვეთები'
+    ru: 'Заказы',
+    ka: 'შეკვეთები'
   },
   dateRange: {
     ru: 'Диапазон дат',
@@ -202,15 +202,15 @@ export function OrdersList() {
   }
 
   // Хуки для данных
-  const { 
-    data: activeOrders = [], 
+  const {
+    data: activeOrders = [],
     isLoading: activeLoading,
     error: activeError,
-    mutate: mutateActive 
+    mutate: mutateActive
   } = useActiveRestaurantOrders(selectedRestaurantId)
 
-  const { 
-    data: archiveData, 
+  const {
+    data: archiveData,
     isLoading: archiveLoading,
     error: archiveError,
     mutate: mutateArchive
@@ -220,14 +220,14 @@ export function OrdersList() {
     if (user?.restaurant?.length > 0) {
       const savedRestaurantId = localStorage.getItem(RESTAURANT_STORAGE_KEY);
       const defaultRestaurantId = user.restaurant[0].id;
-      
-      const isValidSavedRestaurant = savedRestaurantId && 
-        user.restaurant.some((r : Restaurant) => r.id === savedRestaurantId);
-      
+
+      const isValidSavedRestaurant = savedRestaurantId &&
+        user.restaurant.some((r: Restaurant) => r.id === savedRestaurantId);
+
       const newRestaurantId = isValidSavedRestaurant ? savedRestaurantId : defaultRestaurantId;
-      
+
       setSelectedRestaurantId(newRestaurantId);
-      
+
       if (!isValidSavedRestaurant || savedRestaurantId !== newRestaurantId) {
         localStorage.setItem(RESTAURANT_STORAGE_KEY, newRestaurantId);
       }
@@ -249,8 +249,8 @@ export function OrdersList() {
   const error = showArchive ? archiveError : activeError
   const totalPages = archiveData?.meta?.totalPages || 1
 
-  const filteredActiveOrders = selectedOrderType === 'ALL' 
-    ? activeOrders 
+  const filteredActiveOrders = selectedOrderType === 'ALL'
+    ? activeOrders
     : activeOrders.filter((order: OrderResponse) => order.type === selectedOrderType)
 
   const sortedOrders = [...(showArchive ? currentData : filteredActiveOrders)].sort((a, b) => {
@@ -260,7 +260,7 @@ export function OrdersList() {
     if (isACompletedOrCancelled === isBCompletedOrCancelled) {
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     }
-    
+
     return isACompletedOrCancelled ? 1 : -1
   })
 
@@ -297,11 +297,11 @@ export function OrdersList() {
   }
 
   const hasActiveFilters = () => {
-    return dateRange?.from || dateRange?.to || 
-           isReordered !== undefined || 
-           hasDiscount !== undefined || 
-           discountCanceled !== undefined || 
-           isRefund !== undefined
+    return dateRange?.from || dateRange?.to ||
+      isReordered !== undefined ||
+      hasDiscount !== undefined ||
+      discountCanceled !== undefined ||
+      isRefund !== undefined
   }
 
   // Рендер пагинации
@@ -312,11 +312,11 @@ export function OrdersList() {
       <Pagination className="mt-6">
         <PaginationContent>
           <PaginationItem>
-            <PaginationPrevious 
+            <PaginationPrevious
               onClick={() => setPage(p => Math.max(1, p - 1))}
             />
           </PaginationItem>
-          
+
           {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
             let pageNum
             if (totalPages <= 5) {
@@ -342,7 +342,7 @@ export function OrdersList() {
           })}
 
           <PaginationItem>
-            <PaginationNext 
+            <PaginationNext
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
             />
           </PaginationItem>
@@ -374,7 +374,7 @@ export function OrdersList() {
   if (isLoading || !selectedRestaurantId) {
     return (
       <div className="space-y-4">
-        <Loading/>
+        <Loading />
       </div>
     )
   }
@@ -392,114 +392,163 @@ export function OrdersList() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4">
-        <div className="flex justify-between flex-col lg:flex-row items-center gap-4">
-          <h2 className="text-2xl font-bold">
-            {showArchive ? t('ordersList') : t('recentOrders')}
-          </h2>
-          
-          <div className="flex flex-wrap gap-2">
-            {ORDER_TYPES.map((type) => {
-              const Icon = type.icon
-              return (
+        {/* Заголовок и основные кнопки */}
+        <div className="flex flex-col gap-4">
+          {/* Первая строка: заголовок и кнопки архив/новый заказ */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <h2 className="text-2xl font-bold">
+              {showArchive ? t('ordersList') : t('recentOrders')}
+            </h2>
+
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto items-center justify-center">
+              <div className="flex gap-2 flex-1 sm:flex-none">
+                {user.restaurant.length > 1 && (
+                  <Select
+                    value={selectedRestaurantId}
+                    onValueChange={setSelectedRestaurantId}
+                  >
+                    <SelectTrigger className="w-full sm:w-[200px]">
+                      <SelectValue placeholder={t('selectRestaurant')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {user.restaurant.map((restaurant: Restaurant) => (
+                        <SelectItem key={restaurant.id} value={restaurant.id}>
+                          {restaurant.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
                 <Button
-                  key={type.value}
-                  variant={selectedOrderType === type.value ? 'default' : 'outline'}
-                  onClick={() => setSelectedOrderType(type.value)}
+                  variant={showArchive ? 'default' : 'outline'}
+                  onClick={() => setShowArchive(!showArchive)}
+                  className="flex-1 sm:flex-none"
                 >
-                  {Icon && <Icon className="h-5 w-5" />}
-                  <span className="font-medium">{type.label[language]}</span>
+                  <Archive className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">{t('showArchive')}</span>
                 </Button>
-              )
-            })}
+
+                {/* Очень широкая кнопка создания заказа */}
+                <Button
+                  onClick={() => router.push('/orders/new')}
+                  className="flex-[2] sm:flex-none min-w-[140px] sm:min-w-[160px] lg:min-w-[180px] xl:min-w-[200px]"
+                  size="lg"
+                >
+                  <span className="font-semibold">{t('newOrder')}</span>
+                </Button>
+              </div>
+            </div>
           </div>
-          
-          <div className='flex space-x-2'>
-            {user.restaurant.length > 1 && (
-              <Select
-                value={selectedRestaurantId}
-                onValueChange={setSelectedRestaurantId}
-              >
-                <SelectTrigger className="w-[280px]">
-                  <SelectValue placeholder={t('selectRestaurant')} />
-                </SelectTrigger>
-                <SelectContent>
-                  {user.restaurant.map((restaurant: Restaurant) => (
-                    <SelectItem key={restaurant.id} value={restaurant.id}>
-                      {restaurant.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            
-            <Button 
-              variant={showArchive ? 'default' : 'outline'} 
-              onClick={() => setShowArchive(!showArchive)}
-            >
-              <Archive className="h-5 w-5 mr-2" />
-              {t('showArchive')}
-            </Button>
-            
-            <Button onClick={() => router.push('/orders/new')}>
-              {t('newOrder')}
-            </Button>
+
+          {/* Вторая строка: фильтры по типам заказов */}
+          <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+            {/* Десктопная версия фильтров */}
+            <div className="hidden md:flex flex-wrap gap-2">
+              {ORDER_TYPES.map((type) => {
+                const Icon = type.icon
+                return (
+                  <Button
+                    key={type.value}
+                    variant={selectedOrderType === type.value ? 'default' : 'outline'}
+                    onClick={() => setSelectedOrderType(type.value)}
+                    className="flex items-center gap-2"
+                  >
+                    {Icon && <Icon className="h-4 w-4" />}
+                    <span className="font-medium">{type.label[language]}</span>
+                  </Button>
+                )
+              })}
+            </div>
+
+            {/* Мобильная версия фильтров */}
+            <div className="flex md:hidden gap-1 w-full justify-center">
+              {ORDER_TYPES.map((type) => {
+                const Icon = type.icon
+                return (
+                  <Button
+                    key={type.value}
+                    variant={selectedOrderType === type.value ? 'default' : 'outline'}
+                    onClick={() => setSelectedOrderType(type.value)}
+                    size="sm"
+                    className="flex-1 min-w-[60px] max-w-[80px] px-2"
+                  >
+                    {Icon && <Icon className="h-4 w-4" />}
+                    <span className="sr-only">{type.label[language]}</span>
+                  </Button>
+                )
+              })}
+            </div>
           </div>
         </div>
 
+        {/* Фильтры архива */}
         {showArchive && (
-          <div className="flex flex-wrap items-center gap-4 p-4 bg-muted/50 rounded-lg">
+          <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 p-4 bg-muted/50 rounded-lg">
             <DateRangePicker
               dateRange={dateRange}
               onDateRangeChange={setDateRange}
-              className="w-[280px]"
+              className="w-full sm:w-[280px]"
             />
 
-            <div className="flex items-center space-x-2 ml-3">
-              <Switch 
-                id="reordered-filter" 
-                checked={isReordered || false}
-                onCheckedChange={(checked) => setIsReordered(checked ? true : undefined)}
-              />
-              <Label htmlFor="reordered-filter">{t('reordered')}</Label>
-            </div>
+            <div className="flex flex-wrap gap-4 sm:gap-6">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="reordered-filter"
+                  checked={isReordered || false}
+                  onCheckedChange={(checked) => setIsReordered(checked ? true : undefined)}
+                />
+                <Label htmlFor="reordered-filter" className="text-sm whitespace-nowrap">
+                  {t('reordered')}
+                </Label>
+              </div>
 
-            <div className="flex items-center space-x-2">
-              <Switch 
-                id="discount-filter" 
-                checked={hasDiscount || false}
-                onCheckedChange={(checked) => setHasDiscount(checked ? true : undefined)}
-              />
-              <Label htmlFor="discount-filter">{t('discount')}</Label>
-            </div>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="discount-filter"
+                  checked={hasDiscount || false}
+                  onCheckedChange={(checked) => setHasDiscount(checked ? true : undefined)}
+                />
+                <Label htmlFor="discount-filter" className="text-sm whitespace-nowrap">
+                  {t('discount')}
+                </Label>
+              </div>
 
-            <div className="flex items-center space-x-2">
-              <Switch 
-                id="discount-canceled-filter" 
-                checked={discountCanceled || false}
-                onCheckedChange={(checked) => setDiscountCanceled(checked ? true : undefined)}
-              />
-              <Label htmlFor="discount-canceled-filter">{t('discountCanceled')}</Label>
-            </div>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="discount-canceled-filter"
+                  checked={discountCanceled || false}
+                  onCheckedChange={(checked) => setDiscountCanceled(checked ? true : undefined)}
+                />
+                <Label htmlFor="discount-canceled-filter" className="text-sm whitespace-nowrap">
+                  {t('discountCanceled')}
+                </Label>
+              </div>
 
-            <div className="flex items-center space-x-2">
-              <Switch 
-                id="refund-filter" 
-                checked={isRefund || false}
-                onCheckedChange={(checked) => setIsRefund(checked ? true : undefined)}
-              />
-              <Label htmlFor="refund-filter">{t('refund')}</Label>
-            </div>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="refund-filter"
+                  checked={isRefund || false}
+                  onCheckedChange={(checked) => setIsRefund(checked ? true : undefined)}
+                />
+                <Label htmlFor="refund-filter" className="text-sm whitespace-nowrap">
+                  {t('refund')}
+                </Label>
+              </div>
 
-            {hasActiveFilters() && (
-              <Button 
-                variant="ghost" 
-                onClick={clearFilters}
-                className="text-destructive"
-              >
-                <X className="h-4 w-4 mr-2" />
-                {t('clearFilters')}
-              </Button>
-            )}
+              {hasActiveFilters() && (
+                <Button
+                  variant="ghost"
+                  onClick={clearFilters}
+                  className="text-destructive h-8 px-2 sm:px-3"
+                  size="sm"
+                >
+                  <X className="h-3 w-3 sm:mr-2" />
+                  <span className="hidden sm:inline">{t('clearFilters')}</span>
+                  <span className="sm:hidden">×</span>
+                </Button>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -512,9 +561,9 @@ export function OrdersList() {
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {sortedOrders.map(order => (
-              <div 
+              <div
                 key={order.id}
                 className="cursor-pointer transition-transform hover:scale-[1.02]"
               >

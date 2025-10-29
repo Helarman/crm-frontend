@@ -952,7 +952,7 @@ export const transactionsTranslations = {
   // Warehouse
   inventory: {
     en: 'Inventory',
-    ru: 'Инвентарь',
+    ru: 'Ингредиенты',
     ka: 'ინვენტარი'
   },
   categories: {

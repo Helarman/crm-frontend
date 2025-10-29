@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import React from 'react';
 import { useDictionaries } from '@/lib/hooks/useDictionaries';
+import { useAuth } from '@/lib/hooks/useAuth';
 
 export default function WarehousePage() {
   const params = useParams();
@@ -32,12 +33,12 @@ export default function WarehousePage() {
   const t = (key: string) => {
     const transactionsTranslation = transactionsTranslations[key as keyof typeof transactionsTranslations];
     const warehouseTranslation = warehouseTranslations[key as keyof typeof warehouseTranslations];
-    
-    return transactionsTranslation?.[language] || 
-           warehouseTranslation?.[language] || 
-           key;
+
+    return transactionsTranslation?.[language] ||
+      warehouseTranslation?.[language] ||
+      key;
   };
-  
+
   const restaurantId = params.id as string;
 
   const [warehouse, setWarehouse] = useState<any>(null);
@@ -165,13 +166,51 @@ export default function WarehousePage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<any>(null);
   const [deleting, setDeleting] = useState(false);
+  const [editWarehouseDialogOpen, setEditWarehouseDialogOpen] = useState(false);
+  const [warehouseName, setWarehouseName] = useState(warehouse?.name || '');
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    checkUserRole();
+  }, []);
+  const { user } = useAuth()
+  const checkUserRole = async () => {
+    try {
 
+      const userRole = user.role;
+      // Предполагаем, что админы и супервайзеры имеют соответствующие роли
+      setIsAdmin(['admin', 'supervisor', 'ADMIN', 'SUPERVISOR'].includes(userRole));
+    } catch (error) {
+      console.error('Failed to check user role:', error);
+      setIsAdmin(false);
+    }
+  };
+
+  // Функция для обновления названия склада
+  const handleUpdateWarehouseName = async () => {
+    if (!warehouseName.trim()) {
+      toast.error(t('nameRequired'));
+      return;
+    }
+
+    try {
+      await WarehouseService.updateWarehouse(warehouse.id, {
+        name: warehouseName
+      });
+
+      await loadWarehouseData();
+      setEditWarehouseDialogOpen(false);
+      toast.success(t('warehouseNameUpdated'));
+    } catch (error: any) {
+      console.error('Failed to update warehouse name:', error);
+      toast.error(error.response?.data?.message || t('updateWarehouseError'));
+    }
+  };
   const handleUpdateCost = async () => {
     if (!editingCostItem || newCost < 0) return;
 
     try {
       await WarehouseService.updateItemCost(
-        editingCostItem.id, 
+        editingCostItem.id,
         newCost
       );
       await loadWarehouseData();
@@ -191,7 +230,7 @@ export default function WarehousePage() {
 
   const handleUpdateCategory = async () => {
     if (!editingCategory) return;
-    
+
     try {
       await WarehouseService.updateInventoryCategory(editingCategory.id, {
         name: editCategoryData.name,
@@ -199,7 +238,7 @@ export default function WarehousePage() {
         color: editCategoryData.color,
         parentId: editCategoryData.parentId === 'none' ? undefined : editCategoryData.parentId,
       });
-      
+
       await loadWarehouseData();
       setEditCategoryDialogOpen(false);
       toast.success(t('categoryUpdated'));
@@ -258,7 +297,7 @@ export default function WarehousePage() {
   };
 
   const filterItems = () => {
-     let filtered = items.filter(item => !item.premixId && item.inventoryItem?.isActive !== false);
+    let filtered = items.filter(item => !item.premixId && item.inventoryItem?.isActive !== false);
 
     if (locationFilter !== 'all') {
       filtered = filtered.filter(item => item.storageLocationId === locationFilter);
@@ -286,36 +325,36 @@ export default function WarehousePage() {
   };
 
   const calculatePremixCost = (premix: any): number => {
-  if (!premix?.ingredients || !items.length) return 0;
-  
-  let totalCost = 0;
-  
-  premix.ingredients.forEach((ingredient: any) => {
-    const inventoryItem = items.find(item => 
-      item.inventoryItem?.id === ingredient.inventoryItemId || 
-      item.id === ingredient.inventoryItemId
-    );
-    
-    if (inventoryItem?.cost && ingredient.quantity) {
-      totalCost += inventoryItem.cost * ingredient.quantity;
-    }
-  });
-  
-  return totalCost;
-};
+    if (!premix?.ingredients || !items.length) return 0;
 
-const calculatePremixCostPerUnit = (premix: any): number => {
-  const totalCost = calculatePremixCost(premix);
-  return premix?.yield ? totalCost / premix.yield : 0;
-};
-const getCategoryItems = (categoryId: string | null) => {
-  return filteredItems.filter(item => {
-    if (categoryId === null) {
-      return !item.inventoryItem?.categoryId;
-    }
-    return item.inventoryItem?.categoryId === categoryId;
-  });
-};
+    let totalCost = 0;
+
+    premix.ingredients.forEach((ingredient: any) => {
+      const inventoryItem = items.find(item =>
+        item.inventoryItem?.id === ingredient.inventoryItemId ||
+        item.id === ingredient.inventoryItemId
+      );
+
+      if (inventoryItem?.cost && ingredient.quantity) {
+        totalCost += inventoryItem.cost * ingredient.quantity;
+      }
+    });
+
+    return totalCost;
+  };
+
+  const calculatePremixCostPerUnit = (premix: any): number => {
+    const totalCost = calculatePremixCost(premix);
+    return premix?.yield ? totalCost / premix.yield : 0;
+  };
+  const getCategoryItems = (categoryId: string | null) => {
+    return filteredItems.filter(item => {
+      if (categoryId === null) {
+        return !item.inventoryItem?.categoryId;
+      }
+      return item.inventoryItem?.categoryId === categoryId;
+    });
+  };
   const renderCategoryOptions = (categories: InventoryCategoryDto[], level = 0) => {
     return categories.map(category => (
       <React.Fragment key={category.id}>
@@ -338,7 +377,7 @@ const getCategoryItems = (categoryId: string | null) => {
     const category = categories.find(c => c.id === categoryId);
     return category?.color || '#6b7280';
   };
-  
+
   const getParentCategoryName = (categoryId: string | null) => {
     if (!categoryId) return null;
     const category = allCategories.find(c => c.id === categoryId);
@@ -521,7 +560,7 @@ const getCategoryItems = (categoryId: string | null) => {
 
     try {
       await WarehouseService.updateInventoryItem(
-        editingItem.inventoryItem?.id || editingItem.id, 
+        editingItem.inventoryItem?.id || editingItem.id,
         {
           name: editItemData.name,
           unit: editItemData.unit,
@@ -561,57 +600,57 @@ const getCategoryItems = (categoryId: string | null) => {
   };
 
   const handleSubmitTransaction = async () => {
-  if (!currentItem || !quantityRef.current || !warehouse?.id) return;
+    if (!currentItem || !quantityRef.current || !warehouse?.id) return;
 
-  const quantity = Number(quantityRef.current.value);
-  const unitCost = unitCostRef.current ? Number(unitCostRef.current.value) : undefined;
-  const reason = reasonRef.current?.value || '';
+    const quantity = Number(quantityRef.current.value);
+    const unitCost = unitCostRef.current ? Number(unitCostRef.current.value) : undefined;
+    const reason = reasonRef.current?.value || '';
 
-  if (quantity <= 0) {
-    toast.error(t('quantityPositive'));
-    return;
-  }
-  
-  if (transactionType === 'receipt' && unitCost === undefined) {
-    toast.error(t('unitCostRequired'));
-    return;
-  }
-
-  if (transactionType === 'writeoff' && !selectedReason) {
-    toast.error(t('reasonRequired'));
-    return;
-  }
-
-  try {
-    const transactionTypeEnum = transactionType === 'receipt' ? 'RECEIPT' : 'WRITE_OFF';
-    
-    await WarehouseService.createTransaction({
-      inventoryItemId: currentItem.inventoryItem?.id || currentItem.id,
-      type: transactionTypeEnum as InventoryTransactionType,
-      warehouseId: warehouse.id,
-      quantity: quantity,
-      unitCost: unitCost, 
-      reason: selectedReason,
-    });
-
-    if (transactionType === 'receipt') {
-      toast.success(t('receiptSuccess'));
-    } else {
-      toast.success(t('writeOffSuccess'));
+    if (quantity <= 0) {
+      toast.error(t('quantityPositive'));
+      return;
     }
-    
-    await loadWarehouseData();
-    setTransactionDialogOpen(false);
-  } catch (error: any) {
-    console.error('Transaction error:', error);
-    toast.error(error.response?.data?.message || t('transactionError'));
-  }
-};
+
+    if (transactionType === 'receipt' && unitCost === undefined) {
+      toast.error(t('unitCostRequired'));
+      return;
+    }
+
+    if (transactionType === 'writeoff' && !selectedReason) {
+      toast.error(t('reasonRequired'));
+      return;
+    }
+
+    try {
+      const transactionTypeEnum = transactionType === 'receipt' ? 'RECEIPT' : 'WRITE_OFF';
+
+      await WarehouseService.createTransaction({
+        inventoryItemId: currentItem.inventoryItem?.id || currentItem.id,
+        type: transactionTypeEnum as InventoryTransactionType,
+        warehouseId: warehouse.id,
+        quantity: quantity,
+        unitCost: unitCost,
+        reason: selectedReason,
+      });
+
+      if (transactionType === 'receipt') {
+        toast.success(t('receiptSuccess'));
+      } else {
+        toast.success(t('writeOffSuccess'));
+      }
+
+      await loadWarehouseData();
+      setTransactionDialogOpen(false);
+    } catch (error: any) {
+      console.error('Transaction error:', error);
+      toast.error(error.response?.data?.message || t('transactionError'));
+    }
+  };
 
   const loadPremixDetails = async (premixId: string) => {
     try {
       const details = await WarehouseService.getPremixWithWarehouseDetails(
-        premixId, 
+        premixId,
         warehouse.id
       );
       setSelectedPremix(details);
@@ -625,7 +664,7 @@ const getCategoryItems = (categoryId: string | null) => {
   const loadPremixTransactions = async (premixId: string) => {
     try {
       const data = await WarehouseService.getPremixTransactions(
-        premixId, 
+        premixId,
         warehouse.id
       );
       setTransactions(data);
@@ -723,33 +762,33 @@ const getCategoryItems = (categoryId: string | null) => {
   };
 
   const handleOpenDeleteDialog = (item: any) => {
-  setItemToDelete(item);
-  setDeleteDialogOpen(true);
-};
+    setItemToDelete(item);
+    setDeleteDialogOpen(true);
+  };
 
-const handleDeleteItem = async () => {
-  if (!itemToDelete) return;
+  const handleDeleteItem = async () => {
+    if (!itemToDelete) return;
 
-  setDeleting(true);
-  try {
-    await WarehouseService.deleteInventoryItem(
-      itemToDelete.inventoryItem?.id || itemToDelete.id
-    );
-    
-    await loadWarehouseData();
-    setDeleteDialogOpen(false);
-    toast.success(t('itemDeleted'));
-  } catch (error: any) {
-    console.error('Failed to delete item:', error);
-    let errorMessage = t('deleteItemError');
-    if (error.response?.data?.message) {
-      errorMessage = error.response.data.message;
+    setDeleting(true);
+    try {
+      await WarehouseService.deleteInventoryItem(
+        itemToDelete.inventoryItem?.id || itemToDelete.id
+      );
+
+      await loadWarehouseData();
+      setDeleteDialogOpen(false);
+      toast.success(t('itemDeleted'));
+    } catch (error: any) {
+      console.error('Failed to delete item:', error);
+      let errorMessage = t('deleteItemError');
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      toast.error(errorMessage);
+    } finally {
+      setDeleting(false);
     }
-    toast.error(errorMessage);
-  } finally {
-    setDeleting(false);
-  }
-};
+  };
 
   const handlePreparePremix = async () => {
     if (!selectedPremix || prepareQuantity <= 0) {
@@ -856,7 +895,7 @@ const handleDeleteItem = async () => {
     return isValid;
   };
 
-  
+
   const handleSavePremixChanges = async () => {
     if (!validateEditPremix() || !editingPremix) return;
 
@@ -926,149 +965,169 @@ const handleDeleteItem = async () => {
   const childCategories = categories.filter(cat => cat.parentId);
 
   const renderCategoryTree = (categories: InventoryCategoryDto[], level: number = 0) => {
-  return categories.map(category => {
-    const categoryItems = getCategoryItems(category.id);
-    const hasItems = categoryItems.length > 0;
-    const hasChildren = category.children && category.children.length > 0;
-    const isExpanded = expandedCategories.has(category.id);
-    
-    // Пропускаем категории, которые не соответствуют фильтру
-    if (categoryFilter !== 'all' && categoryFilter !== category.id && 
-        !(hasChildren && category.children?.some(child => categoryFilter === child.id))) {
-      return null;
-    }
+    return categories.map(category => {
+      const categoryItems = getCategoryItems(category.id);
+      const hasItems = categoryItems.length > 0;
+      const hasChildren = category.children && category.children.length > 0;
+      const isExpanded = expandedCategories.has(category.id);
 
-    return (
-      <Collapsible key={category.id}>
-        <CollapsibleTrigger 
-          className="flex items-center gap-2 p-2 bg-muted rounded-md w-full text-left"
-          style={{ marginLeft: `${level * 16}px` }}
-          onClick={() => toggleCategory(category.id)}
-        >
-          {hasChildren || hasItems ? (
-            isExpanded ? (
-              <ChevronDown className="h-4 w-4" />
+      // Пропускаем категории, которые не соответствуют фильтру
+      if (categoryFilter !== 'all' && categoryFilter !== category.id &&
+        !(hasChildren && category.children?.some(child => categoryFilter === child.id))) {
+        return null;
+      }
+
+      return (
+        <Collapsible key={category.id}>
+          <CollapsibleTrigger
+            className="flex items-center gap-2 p-2 bg-muted rounded-md w-full text-left"
+            style={{ marginLeft: `${level * 16}px` }}
+            onClick={() => toggleCategory(category.id)}
+          >
+            {hasChildren || hasItems ? (
+              isExpanded ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )
             ) : (
-              <ChevronRight className="h-4 w-4" />
-            )
-          ) : (
-            <div className="w-4" /> // Placeholder for alignment
-          )}
-          <span className="font-medium">{category.name}</span>
-          <Badge variant="secondary" className="ml-auto">
-            {categoryItems.length}
-          </Badge>
-        </CollapsibleTrigger>
-        
-        <CollapsibleContent>
-          {/* Items in this category */}
-          {hasItems && (
-            <div style={{ marginLeft: `${(level + 1) * 16}px` }}>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t('name')}</TableHead>
-                    <TableHead>{t('quantity')}</TableHead>
-                    <TableHead>{t('unit')}</TableHead>
-                    <TableHead>{t('cost')}</TableHead>
-                    <TableHead>{t('totalValue')}</TableHead> 
-                    <TableHead>{t('location')}</TableHead>
-                    <TableHead>{t('status')}</TableHead>
-                    <TableHead className="text-right">{t('actions')}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {categoryItems.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-medium">{item.inventoryItem?.name || item.name}</TableCell>
-                      <TableCell>{item.quantity}</TableCell>
-                      <TableCell>{item.inventoryItem?.unit || item.unit}</TableCell>
-                      <TableCell>
-                        {item.cost ? `${item.cost.toFixed(2)}₽` : t('notSet')}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleOpenCostDialog(item)}
-                          className="ml-2"
-                        >
-                          <Edit className="h-3 w-3" />
-                        </Button>
-                      </TableCell>
-                      <TableCell>
-                        {item.cost && item.quantity ? `${(item.cost * item.quantity).toFixed(2)}₽` : t('notSet')}
-                      </TableCell>
-                      <TableCell>
-                        {item.storageLocationId
-                          ? locations.find(l => l.id === item.storageLocationId)?.name
-                          : t('noLocation')}
-                      </TableCell>
-                      <TableCell>
-                        {item.inventoryItem?.isActive !== false ? (
-                          <span className="text-green-600">{t('active')}</span>
-                        ) : (
-                          <span className="text-red-600">{t('inactive')}</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-2">
+              <div className="w-4" /> // Placeholder for alignment
+            )}
+            <span className="font-medium">{category.name}</span>
+            <Badge variant="secondary" className="ml-auto">
+              {categoryItems.length}
+            </Badge>
+          </CollapsibleTrigger>
+
+          <CollapsibleContent>
+            {/* Items in this category */}
+            {hasItems && (
+              <div style={{ marginLeft: `${(level + 1) * 16}px` }}>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>{t('name')}</TableHead>
+                      <TableHead>{t('quantity')}</TableHead>
+                      <TableHead>{t('unit')}</TableHead>
+                      <TableHead>{t('cost')}</TableHead>
+                      <TableHead>{t('totalValue')}</TableHead>
+                      <TableHead>{t('location')}</TableHead>
+                      <TableHead>{t('status')}</TableHead>
+                      <TableHead className="text-right">{t('actions')}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {categoryItems.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell className="font-medium">{item.inventoryItem?.name || item.name}</TableCell>
+                        <TableCell>{item.quantity}</TableCell>
+                        <TableCell>{item.inventoryItem?.unit || item.unit}</TableCell>
+                        <TableCell>
+                          {item.cost ? `${item.cost.toFixed(2)}₽` : t('notSet')}
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleOpenEditDialog(item)}
+                            onClick={() => handleOpenCostDialog(item)}
+                            className="ml-2"
                           >
-                            {t('edit')}
+                            <Edit className="h-3 w-3" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenTransactionDialog(item)}
-                          >
-                            {t('adjustQuantity')}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => loadItemTransactions(item.inventoryItem?.id || item.id)}
-                          >
-                            {t('transactions')}
-                          </Button>
-                           <Button
+                        </TableCell>
+                        <TableCell>
+                          {item.cost && item.quantity ? `${(item.cost * item.quantity).toFixed(2)}₽` : t('notSet')}
+                        </TableCell>
+                        <TableCell>
+                          {item.storageLocationId
+                            ? locations.find(l => l.id === item.storageLocationId)?.name
+                            : t('noLocation')}
+                        </TableCell>
+                        <TableCell>
+                          {item.inventoryItem?.isActive !== false ? (
+                            <span className="text-green-600">{t('active')}</span>
+                          ) : (
+                            <span className="text-red-600">{t('inactive')}</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenEditDialog(item)}
+                            >
+                              {t('edit')}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenTransactionDialog(item)}
+                            >
+                              {t('adjustQuantity')}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => loadItemTransactions(item.inventoryItem?.id || item.id)}
+                            >
+                              {t('transactions')}
+                            </Button>
+                            <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => handleOpenDeleteDialog(item)}
                               className="text-red-600 hover:text-red-800 hover:bg-red-50"
                             >
                               {t('delete')}
-                              </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-          
-          {/* Child categories */}
-          {hasChildren && category.children && (
-            <div style={{ marginLeft: `${(level + 1) * 16}px` }}>
-              {renderCategoryTree(category.children, level + 1)}
-            </div>
-          )}
-        </CollapsibleContent>
-      </Collapsible>
-    );
-  });
-};
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            {/* Child categories */}
+            {hasChildren && category.children && (
+              <div style={{ marginLeft: `${(level + 1) * 16}px` }}>
+                {renderCategoryTree(category.children, level + 1)}
+              </div>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
+      );
+    });
+  };
 
   return (
-    <div className="p-4 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{warehouse.name}</h1>
-        <div className="flex gap-2">
-          <Dialog>
+   <div className="p-4 space-y-6">
+  {/* Шапка с названием и кнопками */}
+  <div className="flex flex-col gap-4 lg:flex-row lg:justify-between lg:items-center">
+    <div className="flex items-center gap-2">
+      <h1 className="text-2xl font-bold">{warehouse.name}</h1>
+      {isAdmin && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            setWarehouseName(warehouse.name);
+            setEditWarehouseDialogOpen(true);
+          }}
+          className="h-8 w-8 p-0"
+          title={t('editWarehouseName')}
+        >
+          <Edit className="h-4 w-4" />
+        </Button>
+      )}
+    </div>
+    
+    {/* Контейнер для кнопок - адаптивный */}
+    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+      <Dialog>
+
             <DialogTrigger asChild>
-              <Button variant="outline">{t('addLocation')}</Button>
+               <Button variant="outline" className="w-full sm:w-auto">{t('addLocation')}</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -1102,7 +1161,7 @@ const handleDeleteItem = async () => {
 
           <Dialog>
             <DialogTrigger asChild>
-              <Button variant="outline">{t('addCategory')}</Button>
+               <Button variant="outline" className="w-full sm:w-auto">{t('addCategory')}</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -1164,7 +1223,7 @@ const handleDeleteItem = async () => {
 
           <Dialog>
             <DialogTrigger asChild>
-              <Button>{t('addItem')}</Button>
+              <Button className="w-full sm:w-auto">{t('addItem')}</Button>
             </DialogTrigger>
             <DialogContent className="max-w-md">
               <DialogHeader>
@@ -1214,16 +1273,16 @@ const handleDeleteItem = async () => {
                   </div>
                 </div>
                 <div>
-                <Label className='mb-1'>{t('cost')}</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={newItem.cost || ''}
-                  onChange={(e) => setNewItem({ ...newItem, cost: Number(e.target.value) })}
-                  placeholder="0.00"
-                />
-              </div>
+                  <Label className='mb-1'>{t('cost')}</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={newItem.cost || ''}
+                    onChange={(e) => setNewItem({ ...newItem, cost: Number(e.target.value) })}
+                    placeholder="0.00"
+                  />
+                </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className='mb-1'>{t('location')}</Label>
@@ -1267,39 +1326,39 @@ const handleDeleteItem = async () => {
         </div>
       </div>
 
-     <Tabs value={activeTab} onValueChange={setActiveTab}>
-  <TabsList className="flex w-full flex-col gap-2 sm:flex-row sm:grid sm:grid-cols-5">
-    <TabsTrigger value="inventory" className="flex-1">
-      <div className="flex items-center gap-2 justify-center sm:justify-start">
-        <Package className="h-4 w-4 flex-shrink-0" />
-        <span className="truncate text-xs sm:text-sm">{t('inventory')}</span>
-      </div>
-    </TabsTrigger>
-    <TabsTrigger value="categories" className="flex-1">
-      <div className="flex items-center gap-2 justify-center sm:justify-start">
-        <Folder className="h-4 w-4 flex-shrink-0" />
-        <span className="truncate text-xs sm:text-sm">{t('categories')}</span>
-      </div>
-    </TabsTrigger>
-    <TabsTrigger value="locations" className="flex-1">
-      <div className="flex items-center gap-2 justify-center sm:justify-start">
-        <Refrigerator className="h-4 w-4 flex-shrink-0" />
-        <span className="truncate text-xs sm:text-sm">{t('locations')}</span>
-      </div>
-    </TabsTrigger>
-    <TabsTrigger value="premixes" className="flex-1">
-      <div className="flex items-center gap-2 justify-center sm:justify-start">
-        <ChefHat className="h-4 w-4 flex-shrink-0" />
-        <span className="truncate text-xs sm:text-sm">{t('premixes')}</span>
-      </div>
-    </TabsTrigger>
-    <TabsTrigger value="transactions" className="flex-1">
-      <div className="flex items-center gap-2 justify-center sm:justify-start">
-        <ArrowLeftRight className="h-4 w-4 flex-shrink-0" />
-        <span className="truncate text-xs sm:text-sm">{t('transactions')}</span>
-      </div>
-    </TabsTrigger>
-  </TabsList>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="flex w-full flex-col gap-2 sm:flex-row sm:grid sm:grid-cols-5">
+          <TabsTrigger value="inventory" className="flex-1">
+            <div className="flex items-center gap-2 justify-center sm:justify-start">
+              <Package className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate text-xs sm:text-sm">{t('inventory')}</span>
+            </div>
+          </TabsTrigger>
+          <TabsTrigger value="categories" className="flex-1">
+            <div className="flex items-center gap-2 justify-center sm:justify-start">
+              <Folder className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate text-xs sm:text-sm">{t('categories')}</span>
+            </div>
+          </TabsTrigger>
+          <TabsTrigger value="locations" className="flex-1">
+            <div className="flex items-center gap-2 justify-center sm:justify-start">
+              <Refrigerator className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate text-xs sm:text-sm">{t('locations')}</span>
+            </div>
+          </TabsTrigger>
+          <TabsTrigger value="premixes" className="flex-1">
+            <div className="flex items-center gap-2 justify-center sm:justify-start">
+              <ChefHat className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate text-xs sm:text-sm">{t('premixes')}</span>
+            </div>
+          </TabsTrigger>
+          <TabsTrigger value="transactions" className="flex-1">
+            <div className="flex items-center gap-2 justify-center sm:justify-start">
+              <ArrowLeftRight className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate text-xs sm:text-sm">{t('transactions')}</span>
+            </div>
+          </TabsTrigger>
+        </TabsList>
 
 
         <TabsContent value="inventory">
@@ -1307,8 +1366,8 @@ const handleDeleteItem = async () => {
             <CardHeader>
               <div className="flex flex-col gap-4">
                 <CardTitle>{t('inventory')}</CardTitle>
-                <div className="flex gap-4 flex-wrap">
-                  <div className="w-48">
+                <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap">
+                  <div className="w-full sm:w-48">
                     <Select
                       value={locationFilter}
                       onValueChange={setLocationFilter}
@@ -1326,7 +1385,7 @@ const handleDeleteItem = async () => {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="w-48">
+                  <div className="w-full sm:w-48">
                     <Select
                       value={categoryFilter}
                       onValueChange={setCategoryFilter}
@@ -1353,7 +1412,7 @@ const handleDeleteItem = async () => {
                 {/* Uncategorized items */}
                 {(categoryFilter === 'all' || categoryFilter === 'uncategorized') && (
                   <Collapsible>
-                    <CollapsibleTrigger 
+                    <CollapsibleTrigger
                       className="flex items-center gap-2 p-2 bg-muted rounded-md w-full text-left"
                       onClick={() => toggleCategory('uncategorized')}
                     >
@@ -1421,14 +1480,14 @@ const handleDeleteItem = async () => {
                                     >
                                       {t('transactions')}
                                     </Button>
-                                      <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleOpenDeleteDialog(item)}
-                              className="text-red-600 hover:text-red-800 hover:bg-red-50"
-                            >
-                              {t('delete')}
-                              </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleOpenDeleteDialog(item)}
+                                      className="text-red-600 hover:text-red-800 hover:bg-red-50"
+                                    >
+                                      {t('delete')}
+                                    </Button>
                                   </div>
                                 </TableCell>
                               </TableRow>
@@ -1521,7 +1580,7 @@ const handleDeleteItem = async () => {
                                 </div>
                               </TableCell>
                             </TableRow>
-                            
+
                             {category.children && category.children.map(childCategory => (
                               <TableRow key={childCategory.id}>
                                 <TableCell className="pl-8">
@@ -1567,80 +1626,80 @@ const handleDeleteItem = async () => {
             </CardContent>
           </Card>
 
-            {/* Edit Category Dialog */}
-            <Dialog open={editCategoryDialogOpen} onOpenChange={setEditCategoryDialogOpen}>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>{t('editCategory')}</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-4">
-                        <div>
-                          <Label className='mb-1'>{t('name')}</Label>
-                          <Input
-                            value={editCategoryData.name}
-                            onChange={(e) => setEditCategoryData({ ...editCategoryData, name: e.target.value })}
-                          />
-                        </div>
-                        <div>
-                          <Label className='mb-1'>{t('description')}</Label>
-                          <Input
-                            value={editCategoryData.description}
-                            onChange={(e) => setEditCategoryData({ ...editCategoryData, description: e.target.value })}
-                          />
-                        </div>
-                        <div>
-                          <Label className='mb-1'>{t('color')}</Label>
-                          <div className="flex gap-2">
-                            <Input
-                              type="color"
-                              value={editCategoryData.color}
-                              onChange={(e) => setEditCategoryData({ ...editCategoryData, color: e.target.value })}
-                              className="w-12 h-12 p-1"
-                            />
-                            <Input
-                              value={editCategoryData.color}
-                              onChange={(e) => setEditCategoryData({ ...editCategoryData, color: e.target.value })}
-                              className="flex-1"
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <Label className='mb-1'>{t('parentCategory')}</Label>
-                          <Select
-                            value={editCategoryData.parentId}
-                            onValueChange={(value) => setEditCategoryData({ ...editCategoryData, parentId: value })}
-                          >
-                            <SelectTrigger className='w-full'>
-                              <SelectValue placeholder={t('parentCategory')} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">{t('noParent')}</SelectItem>
-                              {categories
-                                .filter(cat => !cat.parentId && cat.id !== editingCategory?.id)
-                                .map(category => (
-                                  <React.Fragment key={category.id}>
-                                    <SelectItem value={category.id}>
-                                      {category.name}
-                                    </SelectItem>
-                                    {category.children && category.children
-                                      .filter(child => child.id !== editingCategory?.id)
-                                      .map(child => (
-                                        <SelectItem key={child.id} value={child.id}>
-                                          {'\u00A0'.repeat(4)}{child.name}
-                                        </SelectItem>
-                                      ))
-                                    }
-                                  </React.Fragment>
-                                ))
-                              }
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <Button onClick={handleUpdateCategory}>{t('saveChanges')}</Button>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-          </TabsContent>
+          {/* Edit Category Dialog */}
+          <Dialog open={editCategoryDialogOpen} onOpenChange={setEditCategoryDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{t('editCategory')}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label className='mb-1'>{t('name')}</Label>
+                  <Input
+                    value={editCategoryData.name}
+                    onChange={(e) => setEditCategoryData({ ...editCategoryData, name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className='mb-1'>{t('description')}</Label>
+                  <Input
+                    value={editCategoryData.description}
+                    onChange={(e) => setEditCategoryData({ ...editCategoryData, description: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className='mb-1'>{t('color')}</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="color"
+                      value={editCategoryData.color}
+                      onChange={(e) => setEditCategoryData({ ...editCategoryData, color: e.target.value })}
+                      className="w-12 h-12 p-1"
+                    />
+                    <Input
+                      value={editCategoryData.color}
+                      onChange={(e) => setEditCategoryData({ ...editCategoryData, color: e.target.value })}
+                      className="flex-1"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className='mb-1'>{t('parentCategory')}</Label>
+                  <Select
+                    value={editCategoryData.parentId}
+                    onValueChange={(value) => setEditCategoryData({ ...editCategoryData, parentId: value })}
+                  >
+                    <SelectTrigger className='w-full'>
+                      <SelectValue placeholder={t('parentCategory')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">{t('noParent')}</SelectItem>
+                      {categories
+                        .filter(cat => !cat.parentId && cat.id !== editingCategory?.id)
+                        .map(category => (
+                          <React.Fragment key={category.id}>
+                            <SelectItem value={category.id}>
+                              {category.name}
+                            </SelectItem>
+                            {category.children && category.children
+                              .filter(child => child.id !== editingCategory?.id)
+                              .map(child => (
+                                <SelectItem key={child.id} value={child.id}>
+                                  {'\u00A0'.repeat(4)}{child.name}
+                                </SelectItem>
+                              ))
+                            }
+                          </React.Fragment>
+                        ))
+                      }
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button onClick={handleUpdateCategory}>{t('saveChanges')}</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        </TabsContent>
 
 
 
@@ -1828,60 +1887,60 @@ const handleDeleteItem = async () => {
                 </TableHeader>
                 <TableBody>
                   {premixes.map((premix) => {
-                      const premixItem = items.find(item => item.premixId === premix.id);
-                      const ingredientsCount = premix.ingredients?.length || 0;
-                      const totalCost = calculatePremixCost(premix);
-                      const costPerUnit = calculatePremixCostPerUnit(premix);
-                      return (
-                        <TableRow key={premix.id}>
-                          <TableCell className="font-medium">{premix.name}</TableCell>
-                          <TableCell>
-                            {premixItem?.quantity || 0}
-                          </TableCell>
-                          <TableCell>{premix.unit}</TableCell>
-                          <TableCell>{premix.yield}</TableCell>
-                          <TableCell>
-                            <div className="flex flex-col">
-                              <span className="font-medium">{costPerUnit.toFixed(2)}₽/{premix.unit}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>{ingredientsCount}</TableCell>
-                          <TableCell>
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  loadPremixDetails(premix.id);
-                                  setSelectedPremix(premix);
-                                  setPrepareDialogOpen(true);
-                                }}
-                                title={t('prepare')}
-                              >
-                                {t('prepare')}
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleOpenEditPremixDialog(premix)}
-                                title={t('edit')}
-                              >
-                                {t('edit')}
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                  loadPremixTransactions(premix.id);
-                                }}
-                                title={t('transactions')}
-                              >
-                                {t('transactions')}
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
+                    const premixItem = items.find(item => item.premixId === premix.id);
+                    const ingredientsCount = premix.ingredients?.length || 0;
+                    const totalCost = calculatePremixCost(premix);
+                    const costPerUnit = calculatePremixCostPerUnit(premix);
+                    return (
+                      <TableRow key={premix.id}>
+                        <TableCell className="font-medium">{premix.name}</TableCell>
+                        <TableCell>
+                          {premixItem?.quantity || 0}
+                        </TableCell>
+                        <TableCell>{premix.unit}</TableCell>
+                        <TableCell>{premix.yield}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{costPerUnit.toFixed(2)}₽/{premix.unit}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>{ingredientsCount}</TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                loadPremixDetails(premix.id);
+                                setSelectedPremix(premix);
+                                setPrepareDialogOpen(true);
+                              }}
+                              title={t('prepare')}
+                            >
+                              {t('prepare')}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenEditPremixDialog(premix)}
+                              title={t('edit')}
+                            >
+                              {t('edit')}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                loadPremixTransactions(premix.id);
+                              }}
+                              title={t('transactions')}
+                            >
+                              {t('transactions')}
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
                   })}
                 </TableBody>
               </Table>
@@ -1967,111 +2026,111 @@ const handleDeleteItem = async () => {
               </div>
             </CardHeader>
             <CardContent>
-              <TransactionsTable 
-                transactions={transactions} 
+              <TransactionsTable
+                transactions={transactions}
               />
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
 
-    <Dialog open={transactionDialogOpen} onOpenChange={(open) => {
-      setTransactionDialogOpen(open);
-      if (!open) {
-        setSelectedReason(''); // Сбрасываем при закрытии
-      }
-    }}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {transactionType === 'receipt' ? t('receiptTitle') : t('writeOffTitle')}
-          </DialogTitle>
-        </DialogHeader>
+      <Dialog open={transactionDialogOpen} onOpenChange={(open) => {
+        setTransactionDialogOpen(open);
+        if (!open) {
+          setSelectedReason(''); // Сбрасываем при закрытии
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {transactionType === 'receipt' ? t('receiptTitle') : t('writeOffTitle')}
+            </DialogTitle>
+          </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="flex gap-2">
-            <Button
-              variant={transactionType === 'receipt' ? 'default' : 'outline'}
-              onClick={() => {
-                setTransactionType('receipt');
-                setSelectedReason(''); 
-              }}
-            >
-              {t('receipt')}
-            </Button>
-            <Button
-              variant={transactionType === 'writeoff' ? 'default' : 'outline'}
-              onClick={() => {
-                setTransactionType('writeoff');
-                setSelectedReason(''); 
-              }}
-            >
-              {t('writeOff')}
-            </Button>
-          </div>
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <Button
+                variant={transactionType === 'receipt' ? 'default' : 'outline'}
+                onClick={() => {
+                  setTransactionType('receipt');
+                  setSelectedReason('');
+                }}
+              >
+                {t('receipt')}
+              </Button>
+              <Button
+                variant={transactionType === 'writeoff' ? 'default' : 'outline'}
+                onClick={() => {
+                  setTransactionType('writeoff');
+                  setSelectedReason('');
+                }}
+              >
+                {t('writeOff')}
+              </Button>
+            </div>
 
-          <div>
-            <Label className='mb-1'>{t('quantity')} ({currentItem?.inventoryItem?.unit || currentItem?.unit})</Label>
-            <Input
-              type="number"
-              min="0"
-              step="0.01"
-              defaultValue="0"
-              ref={quantityRef}
-            />
-            {transactionType === 'writeoff' && currentItem && (
-              <p className="text-sm text-muted-foreground">
-                {t('available')}: {currentItem.quantity} {currentItem.inventoryItem?.unit || currentItem.unit}
-              </p>
-            )}
-          </div>
-          {transactionType === 'receipt' && (
             <div>
-              <Label className='mb-1'>{t('unitCost')} (₽)</Label>
+              <Label className='mb-1'>{t('quantity')} ({currentItem?.inventoryItem?.unit || currentItem?.unit})</Label>
               <Input
                 type="number"
                 min="0"
                 step="0.01"
                 defaultValue="0"
-                ref={unitCostRef}
+                ref={quantityRef}
               />
+              {transactionType === 'writeoff' && currentItem && (
+                <p className="text-sm text-muted-foreground">
+                  {t('available')}: {currentItem.quantity} {currentItem.inventoryItem?.unit || currentItem.unit}
+                </p>
+              )}
             </div>
-          )}
-          <div>
-            <Label className='mb-1'>{t('reason')}</Label>
-            {dictionariesLoading ? (
-              <div className="text-sm text-muted-foreground">{t('loadingReasons')}</div>
-            ) : dictionariesError ? (
-              <div className="text-sm text-red-500">{t('loadReasonsError')}</div>
-            ) : (
-              <SearchableSelect
-                options={(transactionType === 'receipt' ? receiptReasons : writeOffReasons)
-                  .map(reason => ({ id: reason, label: reason }))
-                }
-                value={selectedReason ? [selectedReason] : []}
-                onChange={(ids) => setSelectedReason(ids[0] || '')}
-                placeholder={
-                  transactionType === 'receipt' 
-                    ? t('selectReceiptReason') 
-                    : t('selectWriteOffReason')
-                }
-                searchPlaceholder={t('searchReason')}
-                emptyText={t('noReasonsFound')}
-                multiple={false}
-                className="w-full"
-              />
+            {transactionType === 'receipt' && (
+              <div>
+                <Label className='mb-1'>{t('unitCost')} (₽)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  defaultValue="0"
+                  ref={unitCostRef}
+                />
+              </div>
             )}
-          </div>
+            <div>
+              <Label className='mb-1'>{t('reason')}</Label>
+              {dictionariesLoading ? (
+                <div className="text-sm text-muted-foreground">{t('loadingReasons')}</div>
+              ) : dictionariesError ? (
+                <div className="text-sm text-red-500">{t('loadReasonsError')}</div>
+              ) : (
+                <SearchableSelect
+                  options={(transactionType === 'receipt' ? receiptReasons : writeOffReasons)
+                    .map(reason => ({ id: reason, label: reason }))
+                  }
+                  value={selectedReason ? [selectedReason] : []}
+                  onChange={(ids) => setSelectedReason(ids[0] || '')}
+                  placeholder={
+                    transactionType === 'receipt'
+                      ? t('selectReceiptReason')
+                      : t('selectWriteOffReason')
+                  }
+                  searchPlaceholder={t('searchReason')}
+                  emptyText={t('noReasonsFound')}
+                  multiple={false}
+                  className="w-full"
+                />
+              )}
+            </div>
 
-          <Button 
-            onClick={handleSubmitTransaction}
-            disabled={transactionType === 'writeoff' && !selectedReason}
-          >
-            {transactionType === 'receipt' ? t('confirmReceipt') : t('confirmWriteOff')}
-          </Button>
-        </div>
-      </DialogContent>
-     </Dialog>
+            <Button
+              onClick={handleSubmitTransaction}
+              disabled={transactionType === 'writeoff' && !selectedReason}
+            >
+              {transactionType === 'receipt' ? t('confirmReceipt') : t('confirmWriteOff')}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={editItemDialogOpen} onOpenChange={setEditItemDialogOpen}>
         <DialogContent>
@@ -2295,7 +2354,7 @@ const handleDeleteItem = async () => {
                 onChange={(e) => setPrepareQuantity(Number(e.target.value))}
               />
             </div>
-            
+
             {/* Блок с расчетом стоимости */}
             {selectedPremix && (
               <div className="p-3 bg-muted rounded-md">
@@ -2325,7 +2384,7 @@ const handleDeleteItem = async () => {
                     <TableBody>
                       {selectedPremix.ingredients.map((ingredient: any, index: number) => {
                         const required = (ingredient.quantity * prepareQuantity) / selectedPremix.yield;
-                        const availableItem = items.find(i => 
+                        const availableItem = items.find(i =>
                           i.inventoryItem?.id === ingredient.inventoryItemId || i.id === ingredient.inventoryItemId
                         );
                         const available = availableItem?.quantity || 0;
@@ -2411,6 +2470,27 @@ const handleDeleteItem = async () => {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={editWarehouseDialogOpen} onOpenChange={setEditWarehouseDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('editWarehouseName')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className='mb-1'>{t('warehouseName')}</Label>
+              <Input
+                value={warehouseName}
+                onChange={(e) => setWarehouseName(e.target.value)}
+                placeholder={t('enterWarehouseName')}
+              />
+            </div>
+            <Button onClick={handleUpdateWarehouseName}>
+              {t('saveChanges')}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={costDialogOpen} onOpenChange={setCostDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -2456,10 +2536,10 @@ const handleDeleteItem = async () => {
             {/* Информация об удаляемом элементе */}
             <div className="p-3 bg-gray-50 rounded-md">
               <div className="flex items-center gap-3">
-                <div 
+                <div
                   className="w-3 h-3 rounded-full"
-                  style={{ 
-                    backgroundColor: itemToDelete?.inventoryItem?.categoryId 
+                  style={{
+                    backgroundColor: itemToDelete?.inventoryItem?.categoryId
                       ? getCategoryColor(itemToDelete.inventoryItem.categoryId)
                       : '#6b7280'
                   }}
@@ -2485,14 +2565,14 @@ const handleDeleteItem = async () => {
                     {t('itemUsedInProducts')}
                   </h4>
                 </div>
-                
+
                 <div className="space-y-2 max-h-40 overflow-y-auto">
                   {itemToDelete.inventoryItem.ingredients.map((ingredient: any, index: number) => (
                     <div key={index} className="flex items-center justify-between p-2 bg-white rounded border">
                       <div className="flex items-center gap-2">
                         {ingredient.product?.images?.[0] && (
-                          <img 
-                            src={ingredient.product.images[0]} 
+                          <img
+                            src={ingredient.product.images[0]}
                             alt={ingredient.product.title}
                             className="w-6 h-6 object-cover rounded"
                           />
@@ -2505,7 +2585,7 @@ const handleDeleteItem = async () => {
                     </div>
                   ))}
                 </div>
-                
+
                 <p className="text-xs text-amber-700 mt-2">
                   {t('deleteWarningUsedItem')}
                 </p>
