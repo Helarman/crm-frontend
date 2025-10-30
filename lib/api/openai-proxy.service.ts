@@ -20,16 +20,11 @@ class OpenAIService {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
         };
-
-        if (apiKey) {
-          headers['Authorization'] = `Bearer ${apiKey}`;
-        }
-
         const response = await fetch(url, {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
-          credentials: 'include', // Важно для CORS с credentials
+          credentials: 'include',
         });
 
         console.log(`Response status: ${response.status} for ${url}`);
@@ -61,7 +56,7 @@ class OpenAIService {
       temperature: config.temperature || 0.1,
       max_tokens: config.maxTokens || 1000,
       ...config,
-    }, process.env.NEXT_PUBLIC_OPENAI_API_KEY);
+    });
   }
 
  async transcribeAudio(formData: FormData) {
@@ -70,8 +65,7 @@ class OpenAIService {
       
       const response = await fetch(`${this.proxyBaseUrl}/openai/audio/transcriptions`, {
         method: 'POST',
-        body: formData, // Отправляем FormData напрямую
-        // НЕ добавляем заголовок Content-Type - браузер установит его автоматически с boundary
+        body: formData, 
       });
 
       console.log('Transcription response status:', response.status);
@@ -96,7 +90,7 @@ class OpenAIService {
       model: 'tts-1',
       input: text,
       voice,
-    }, process.env.NEXT_PUBLIC_OPENAI_API_KEY);
+    });
   }
 }
 

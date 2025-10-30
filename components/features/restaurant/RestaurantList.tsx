@@ -8,7 +8,7 @@ import { CreateRestaurantForm } from '@/components/features/restaurant/CreateRes
 import Link from 'next/link';
 import { useAuth } from "@/lib/hooks/useAuth"
 import { useLanguageStore } from "@/lib/stores/language-store";
-import { Clock, MapPin, Phone, Globe, Store } from "lucide-react"
+import { Clock, MapPin, Phone, Globe, Store, ChevronDown, ChevronRight } from "lucide-react"
 import {
   Card,
   CardHeader,
@@ -21,6 +21,7 @@ import { useRouter } from "next/navigation"
 import { WarehouseService } from '@/lib/api/warehouse.service';
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface Restaurant {
   id: string;
@@ -33,9 +34,21 @@ interface Restaurant {
   };
 }
 
+interface GroupedRestaurants {
+  [networkId: string]: {
+    network: {
+      id: string;
+      name: string;
+      primaryColor?: string;
+    };
+    restaurants: Restaurant[];
+  };
+}
+
 export function RestaurantList() {
   const router = useRouter()
   const [isCreating, setIsCreating] = useState(false);
+  const [expandedNetworks, setExpandedNetworks] = useState<Set<string>>(new Set());
   const { language } = useLanguageStore();
 
   const translations = {
@@ -50,7 +63,8 @@ export function RestaurantList() {
       address: "Адрес",
       phone: "Телефон",
       network: "Сеть",
-      noNetwork: "Не принадлежит сети"
+      noNetwork: "Не принадлежит сети",
+      noNetworkGroup: "Рестораны без сети"
     },
     ka: {
       restaurants: "რესტორნები",
@@ -63,7 +77,8 @@ export function RestaurantList() {
       address: "მისამართი",
       phone: "ტელეფონი",
       network: "ქსელი",
-      noNetwork: "ქსელს არ ეკუთვნის"
+      noNetwork: "ქსელს არ ეკუთვნის",
+      noNetworkGroup: "ქსელის გარეშე რესტორნები"
     }
   } as const;
 
@@ -86,8 +101,44 @@ export function RestaurantList() {
     }
   };
 
+  const toggleNetwork = (networkId: string) => {
+    setExpandedNetworks(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(networkId)) {
+        newSet.delete(networkId);
+      } else {
+        newSet.add(networkId);
+      }
+      return newSet;
+    });
+  };
+
   const { data: restaurants, error, isLoading, mutate } = useRestaurants();
-  
+
+  // Группируем рестораны по сетям
+  const groupedRestaurants: GroupedRestaurants = restaurants?.reduce((acc: GroupedRestaurants, restaurant: Restaurant) => {
+    const networkId = restaurant.network?.id || 'no-network';
+    const networkName = restaurant.network?.name || t.noNetworkGroup;
+    
+    if (!acc[networkId]) {
+      acc[networkId] = {
+        network: restaurant.network || {
+          id: 'no-network',
+          name: t.noNetworkGroup
+        },
+        restaurants: []
+      };
+    }
+    
+    acc[networkId].restaurants.push(restaurant);
+    return acc;
+  }, {}) || {};
+
+  // Сортируем сети по названию
+  const sortedNetworks = Object.values(groupedRestaurants).sort((a, b) => 
+    a.network.name.localeCompare(b.network.name)
+  );
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -95,9 +146,9 @@ export function RestaurantList() {
           <Skeleton className="h-8 w-48" />
           <Skeleton className="h-10 w-32" />
         </div>
-        <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="space-y-4">
           {[...Array(3)].map((_, i) => (
-            <Card key={i}>
+            <Card key={i} className="w-full">
               <CardHeader>
                 <Skeleton className="h-6 w-3/4" />
               </CardHeader>
@@ -148,127 +199,191 @@ export function RestaurantList() {
         </div>
       )}
 
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
-        {restaurants?.map((restaurant: Restaurant) => (
-          <Card 
-            key={restaurant.id} 
-            className={cn(
-              "hover:shadow-lg transition-shadow group overflow-hidden",
-              restaurant.network?.primaryColor && `border-t-4`
-            )}
-            style={{
-              borderTopColor: restaurant.network?.primaryColor || undefined
-            }}
-          >
-            <CardHeader className="relative">
-              <div className="flex justify-between items-start">
-                <CardTitle 
-                  className="text-lg font-semibold tracking-tight line-clamp-2"
-                  style={{
-                    color: restaurant.network?.primaryColor || undefined
-                  }}
-                >
-                  {restaurant.title}
-                </CardTitle>
-              </div>
-            </CardHeader>
-            
-            <CardContent className="space-y-3">
-              {/* Network Info */}
-              <div className="flex items-center gap-2">
+      <div className="space-y-6">
+        {sortedNetworks.map(({ network, restaurants: networkRestaurants }) => {
+          const isExpanded = expandedNetworks.has(network.id);
+          
+          return (
+            <Collapsible
+              key={network.id}
+              open={isExpanded}
+              onOpenChange={() => toggleNetwork(network.id)}
+              className="space-y-4"
+            >
+              {/* Заголовок группы */}
+              <CollapsibleTrigger asChild>
                 <div 
-                  className="p-2 rounded-full"
-                  style={{
-                    backgroundColor: restaurant.network?.primaryColor ? `${restaurant.network.primaryColor}20` : undefined
-                  }}
-                >
-                  <Store 
-                    className="w-4 h-4" 
-                    style={{
-                      color: restaurant.network?.primaryColor || undefined
-                    }}
-                  />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{t.network}</p>
-                  <p className="text-sm font-medium">
-                    {restaurant.network?.name || t.noNetwork}
-                  </p>
-                </div>
-              </div>
-
-              {/* Address Info */}
-              <div className="flex items-center gap-2">
-                <div 
-                  className="p-2 rounded-full"
-                  style={{
-                    backgroundColor: restaurant.network?.primaryColor ? `${restaurant.network.primaryColor}20` : undefined
-                  }}
-                >
-                  <MapPin 
-                    className="w-4 h-4" 
-                    style={{
-                      color: restaurant.network?.primaryColor || undefined
-                    }}
-                  />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{t.address}</p>
-                  <a className="text-sm font-medium hover:text-primary transition-colors">
-                    {restaurant.address}
-                  </a>
-                </div>
-              </div>
-
-              {/* Phone Info */}
-              <div className="flex items-center gap-2">
-                <div 
-                  className="p-2 rounded-full"
-                  style={{
-                    backgroundColor: restaurant.network?.primaryColor ? `${restaurant.network.primaryColor}20` : undefined
-                  }}
-                >
-                  <Phone 
-                    className="w-4 h-4" 
-                    style={{
-                      color: restaurant.network?.primaryColor || undefined
-                    }}
-                  />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{t.phone}</p>
-                  <a 
-                    href={`tel:123`} 
-                    className="text-sm font-medium hover:text-primary transition-colors"
-                  >
-                    +7 123 456-78-90
-                  </a>
-                </div>
-              </div>
-            </CardContent>
-        
-            <CardFooter className="flex justify-end items-center pt-0">
-              <div className="flex gap-2">
-                <Button 
-                  asChild
-                  variant="outline" 
-                  size="sm"
                   className={cn(
-                    "group-hover:bg-primary/10 group-hover:border-primary/30 transition-colors",
-                    restaurant.network?.primaryColor && "group-hover:border-primary/30"
+                    "flex items-center justify-between p-4 rounded-lg border-2 cursor-pointer transition-all hover:shadow-md",
+                    isExpanded && "shadow-sm"
                   )}
                   style={{
-                    borderColor: restaurant.network?.primaryColor ? `${restaurant.network.primaryColor}30` : undefined,
-                    color: restaurant.network?.primaryColor || undefined,
-                    backgroundColor: restaurant.network?.primaryColor ? `${restaurant.network.primaryColor}10` : undefined
+                    borderColor: network.primaryColor ? `${network.primaryColor}40` : undefined,
+                    backgroundColor: network.primaryColor ? `${network.primaryColor}08` : undefined
                   }}
                 >
-                  <Link href={`/restaurants/${restaurant.id}`}>{t.edit}</Link>
-                </Button>
-              </div>
-            </CardFooter>
-          </Card>
-        ))}
+                  <div className="flex items-center gap-3">
+                    <div 
+                      className="p-2 rounded-lg"
+                      style={{
+                        backgroundColor: network.primaryColor ? `${network.primaryColor}20` : undefined
+                      }}
+                    >
+                      <Store 
+                        className="w-5 h-5" 
+                        style={{
+                          color: network.primaryColor || undefined
+                        }}
+                      />
+                    </div>
+                    <div className="text-left">
+                      <h3 
+                        className="text-xl font-bold"
+                        style={{
+                          color: network.primaryColor || undefined
+                        }}
+                      >
+                        {network.name}
+                      </h3>
+                      <p className="text-sm text-muted-foreground">
+                        {networkRestaurants.length} {t.restaurants.toLowerCase()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isExpanded ? (
+                      <ChevronDown className="w-5 h-5" />
+                    ) : (
+                      <ChevronRight className="w-5 h-5" />
+                    )}
+                  </div>
+                </div>
+              </CollapsibleTrigger>
+
+              {/* Контент группы */}
+              <CollapsibleContent className="space-y-4">
+                {networkRestaurants.map((restaurant: Restaurant) => (
+                  <Card 
+                    key={restaurant.id} 
+                    className={cn(
+                      "w-full hover:shadow-lg transition-shadow group overflow-hidden border-l-4",
+                      network.primaryColor && `border-l-4`
+                    )}
+                    style={{
+                      borderLeftColor: network.primaryColor || undefined
+                    }}
+                  >
+                    <div className="flex">
+                      {/* Основной контент */}
+                      <div className="flex-1 p-6">
+                        <div className="flex items-start justify-between mb-4">
+                          <CardTitle 
+                            className="text-xl font-semibold tracking-tight"
+                            style={{
+                              color: network.primaryColor || undefined
+                            }}
+                          >
+                            {restaurant.title}
+                          </CardTitle>
+                          <Button 
+                            asChild
+                            variant="outline" 
+                            size="sm"
+                            className={cn(
+                              "group-hover:bg-primary/10 group-hover:border-primary/30 transition-colors",
+                              network.primaryColor && "group-hover:border-primary/30"
+                            )}
+                            style={{
+                              borderColor: network.primaryColor ? `${network.primaryColor}30` : undefined,
+                              color: network.primaryColor || undefined,
+                              backgroundColor: network.primaryColor ? `${network.primaryColor}10` : undefined
+                            }}
+                          >
+                            <Link href={`/restaurants/${restaurant.id}`}>{t.edit}</Link>
+                          </Button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {/* Address Info */}
+                          <div className="flex items-start gap-3">
+                            <div 
+                              className="p-2 rounded-full mt-0.5 flex-shrink-0"
+                              style={{
+                                backgroundColor: network.primaryColor ? `${network.primaryColor}20` : undefined
+                              }}
+                            >
+                              <MapPin 
+                                className="w-4 h-4" 
+                                style={{
+                                  color: network.primaryColor || undefined
+                                }}
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs text-muted-foreground mb-1">{t.address}</p>
+                              <p className="text-sm font-medium break-words">
+                                {restaurant.address}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Phone Info */}
+                          <div className="flex items-start gap-3">
+                            <div 
+                              className="p-2 rounded-full mt-0.5 flex-shrink-0"
+                              style={{
+                                backgroundColor: network.primaryColor ? `${network.primaryColor}20` : undefined
+                              }}
+                            >
+                              <Phone 
+                                className="w-4 h-4" 
+                                style={{
+                                  color: network.primaryColor || undefined
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1">{t.phone}</p>
+                              <a 
+                                href={`tel:123`} 
+                                className="text-sm font-medium hover:text-primary transition-colors"
+                              >
+                                +7 123 456-78-90
+                              </a>
+                            </div>
+                          </div>
+
+                          {/* Network Info */}
+                          <div className="flex items-start gap-3">
+                            <div 
+                              className="p-2 rounded-full mt-0.5 flex-shrink-0"
+                              style={{
+                                backgroundColor: network.primaryColor ? `${network.primaryColor}20` : undefined
+                              }}
+                            >
+                              <Globe 
+                                className="w-4 h-4" 
+                                style={{
+                                  color: network.primaryColor || undefined
+                                }}
+                              />
+                            </div>
+                            <div>
+                              <p className="text-xs text-muted-foreground mb-1">{t.network}</p>
+                              <p className="text-sm font-medium">
+                                {network.name}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </CollapsibleContent>
+            </Collapsible>
+          );
+        })}
       </div>
     </div>
   );
