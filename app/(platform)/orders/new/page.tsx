@@ -77,12 +77,121 @@ export default function NewOrderPage() {
     checkActiveShift()
   }, [user, language])
 
+  // Функция для проверки зоны доставки
+  const checkDeliveryZone = async (address: string, restaurantId: string) => {
+    if (!address) {
+      return { success: false, error: language === 'ka' 
+        ? 'შეიყვანეთ მისამართი' 
+        : 'Введите адрес доставки' }
+    }
+
+    try {
+      const token = 'e7a8d3897b07bb4631312ee1e8b376424c6667ea'
+      const url = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address'
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Token ${token}`,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ 
+          query: address, 
+          count: 1,
+          locations: [{ country: "*" }]
+        })
+      })
+
+      if (!response.ok) {
+        return { success: false, error: language === 'ka' 
+          ? 'მისამართის გეოკოდირების შეცდომა' 
+          : 'Ошибка геокодирования адреса' }
+      }
+
+      const data = await response.json()
+      const firstSuggestion = data.suggestions?.[0]
+      if (!firstSuggestion) {
+        return { success: false, error: language === 'ka' 
+          ? 'მისამართი არ მოიძებნა' 
+          : 'Адрес не найден' }
+      }
+
+      const { geo_lat: lat, geo_lon: lng } = firstSuggestion.data
+      if (!lat || !lng) {
+        return { success: false, error: language === 'ka' 
+          ? 'მისამართის კოორდინატები არ მოიძებნა' 
+          : 'Координаты адреса не найдены' }
+      }
+
+      const deliveryZone = await DeliveryZoneService.findZoneForPoint(
+        restaurantId,
+        parseFloat(lat),
+        parseFloat(lng)
+      )
+
+      if (!deliveryZone) {
+        return { 
+          success: false, 
+          error: language === 'ka' 
+            ? 'მისამართი არ არის მიტანის ზონაში' 
+            : 'Адрес не входит в зону доставки',
+          zone: null
+        }
+      }
+
+      return {
+        success: true,
+        zone: {
+          id: deliveryZone.id,
+          title: deliveryZone.title,
+          price: deliveryZone.price,
+          minOrder: deliveryZone.minOrder
+        }
+      }
+    } catch (error) {
+      console.error('Delivery zone check error:', error)
+      return { 
+        success: false, 
+        error: language === 'ka' 
+          ? 'მიტანის ზონის განსაზღვრის შეცდომა' 
+          : 'Ошибка определения зоны доставки' 
+      }
+    }
+  }
+
   const handleCreateOrder = async () => {
     if (!activeShiftId) {
       toast.error(language === 'ka' ? 'არ არის აქტიური ცვლა' : 'Нет активной смены')
       return
     }
 
+    // Проверяем зону доставки для заказов типа DELIVERY
+    if (order.type === 'DELIVERY' && order.deliveryAddress && !order.deliveryZone) {
+      setLoading(true)
+      const zoneCheck = await checkDeliveryZone(order.deliveryAddress, order.restaurantId)
+      
+      if (!zoneCheck.success) {
+        toast.error(zoneCheck.error)
+        setLoading(false)
+        return
+      }
+
+      // Обновляем заказ с найденной зоной
+      setOrder(prev => ({
+        ...prev,
+        deliveryZone: zoneCheck.zone
+      }))
+
+      // Показываем информацию о зоне доставки
+      if (zoneCheck.zone) {
+        toast.success(language === 'ka' 
+          ? `მიტანის ღირებულება: ${zoneCheck.zone.price} ₽` 
+          : `Стоимость доставки: ${zoneCheck.zone.price} ₽`)
+      }
+    }
+
+    // Продолжаем создание заказа
     setLoading(true)
     try {
       let customerId = order.customerId
@@ -114,6 +223,7 @@ export default function NewOrderPage() {
           description: d.title
         })) || []
       }
+      
       console.log('Sending order data:', orderData)
       const createdOrder = await OrderService.create(orderData)
       await OrderService.createLog({

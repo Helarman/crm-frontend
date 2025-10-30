@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { toast } from 'sonner'
 import { AddressInput } from './AddressInput'
-import { 
+import {
   Utensils,
   Banknote,
   Store,
@@ -47,10 +47,9 @@ export const OrderInfoStep = ({
   onSubmit,
   loading
 }: OrderInfoStepProps) => {
-  const [isCheckingDeliveryZone, setIsCheckingDeliveryZone] = useState(false)
   const [isScheduled, setIsScheduled] = useState(false)
   const [scheduledTime, setScheduledTime] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"))
-  
+
   const { surcharges: availableSurcharges } = useSurcharges(order.type, order.restaurantId)
 
   const t = (text: string | undefined, textGe: string | undefined) => {
@@ -58,11 +57,10 @@ export const OrderInfoStep = ({
   }
 
   useEffect(() => {
-    // Автоматически применяем надбавки при изменении типа заказа или ресторана
     if (availableSurcharges.length > 0) {
-      const autoAppliedSurcharges = availableSurcharges.filter(s => 
+      const autoAppliedSurcharges = availableSurcharges.filter(s =>
         !order.surcharges.some(os => os.id === s.id))
-      
+
       if (autoAppliedSurcharges.length > 0) {
         setOrder({
           ...order,
@@ -85,100 +83,26 @@ export const OrderInfoStep = ({
     })
   }
 
-  const checkDeliveryZone = async () => {
-    if (!order.deliveryAddress) {
-      toast.error(language === 'ka' 
-        ? 'შეიყვანეთ მისამართი' 
-        : 'Введите адрес доставки')
-      return
-    }
-    setIsCheckingDeliveryZone(true)
-    try {
-      const token = 'e7a8d3897b07bb4631312ee1e8b376424c6667ea'
-      const url = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address'
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Token ${token}`,
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ 
-          query: order.deliveryAddress, 
-          count: 1,
-          locations: [{ country: "*" }]
-        })
-      })
-
-      if (!response.ok) throw new Error('Failed to geocode address')
-
-      const data = await response.json()
-      const firstSuggestion = data.suggestions?.[0]
-      if (!firstSuggestion) throw new Error('Address not found')
-
-      const { geo_lat: lat, geo_lon: lng } = firstSuggestion.data
-      if (!lat || !lng) throw new Error('Coordinates not found')
-
-      const deliveryZone = await DeliveryZoneService.findZoneForPoint(
-        order.restaurantId,
-        parseFloat(lat),
-        parseFloat(lng)
-      )
-
-      if (!deliveryZone) {
-        toast.error(language === 'ka' 
-          ? 'მისამართი არ არის მიტანის ზონაში' 
-          : 'Адрес не входит в зону доставки')
-        setOrder({ ...order, deliveryZone: null })
-        return
-      }
-
-      setOrder({
-        ...order,
-        deliveryZone: {
-          id: deliveryZone.id,
-          title: deliveryZone.title,
-          price: deliveryZone.price,
-          minOrder: deliveryZone.minOrder
-        }
-      })
-
-      toast.success(language === 'ka' 
-        ? `მიტანის ღირებულება: ${deliveryZone.price} ₽` 
-        : `Стоимость доставки: ${deliveryZone.price} ₽`)
-    } catch (error) {
-      console.error('Delivery zone check error:', error)
-      toast.error(language === 'ka' 
-        ? 'მიტანის ზონის განსაზღვრის შეცდომა' 
-        : 'Ошибка определения зоны доставки')
-    } finally {
-      setIsCheckingDeliveryZone(false)
-    }
-  }
-
   const validateStep = () => {
     if ((order.type === 'DINE_IN' || order.type === 'BANQUET') && !order.tableNumber) {
       toast.error(language === 'ka' ? 'შეიყვანეთ სტოლის ნომერი' : 'Введите номер стола')
       return false
     }
-
+    
     if (order.type === 'DELIVERY') {
       if (!order.deliveryAddress) {
         toast.error(language === 'ka' ? 'შეიყვანეთ მისამართი' : 'Введите адрес доставки')
         return false
       }
-      if (!order.deliveryZone) {
-        toast.error(language === 'ka' 
-          ? 'გთხოვთ დაადასტუროთ მიტანის მისამართი' 
-          : 'Пожалуйста, подтвердите адрес доставки')
+       if (!order.deliveryZone?.price) {
+        toast.error(language === 'ka' ? '' : 'Доставка не возможна')
         return false
       }
     }
 
     if (isScheduled && !scheduledTime) {
-      toast.error(language === 'ka' 
-        ? 'შეიყვანეთ დაგეგმილი დრო' 
+      toast.error(language === 'ka'
+        ? 'შეიყვანეთ დაგეგმილი დრო'
         : 'Введите запланированное время')
       return false
     }
@@ -187,12 +111,13 @@ export const OrderInfoStep = ({
   }
 
   const handleScheduledChange = (checked: boolean) => {
-      setOrder({
-        ...order,
-        isScheduled: checked,
-        scheduledAt: checked ? format(new Date(), "yyyy-MM-dd'T'HH:mm") : undefined
-      })
-    }
+    setOrder({
+      ...order,
+      isScheduled: checked,
+      scheduledAt: checked ? format(new Date(), "yyyy-MM-dd'T'HH:mm") : undefined
+    })
+  }
+
   const handleScheduledTimeChange = (time: string) => {
     setOrder({
       ...order,
@@ -203,7 +128,6 @@ export const OrderInfoStep = ({
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">{language === 'ka' ? 'ახალი შეკვეთა' : 'Новый заказ'}</h1>
-      
       <div className="space-y-3">
         <Label className="flex items-center gap-2">
           <Utensils className="h-4 w-4" />
@@ -211,35 +135,37 @@ export const OrderInfoStep = ({
         </Label>
         <OrderTypeSelector
           value={order.type}
-          onChange={(type) => setOrder({ 
-            ...order, 
-            type, 
-            deliveryZone: null, 
+          onChange={(type) => setOrder({
+            ...order,
+            type,
+            deliveryZone: null,
             surcharges: [],
-            payment: type === 'DELIVERY' 
+            payment: type === 'DELIVERY'
               ? { method: 'CASH_TO_COURIER', status: 'PENDING' }
               : { method: 'CASH', status: 'PENDING' }
           })}
           language={language as any}
         />
       </div>
+
       {order.type === 'DELIVERY' &&
-      <div className="space-y-3">
-        <Label className="flex items-center gap-2">
-          <Banknote className="h-4 w-4" />
-          {language === 'ka' ? 'გადახდის მეთოდი' : 'Способ оплаты'}
-        </Label>
-        <PaymentSelector
-          method={order.payment.method}
-          onChange={(method) => setOrder({
-            ...order,
-            payment: { ...order.payment, method }
-          })}
-          orderType={order.type}
-          language={language as any}
-        />
-      </div>
+        <div className="space-y-3">
+          <Label className="flex items-center gap-2">
+            <Banknote className="h-4 w-4" />
+            {language === 'ka' ? 'გადახდის მეთოდი' : 'Способ оплаты'}
+          </Label>
+          <PaymentSelector
+            method={order.payment.method}
+            onChange={(method) => setOrder({
+              ...order,
+              payment: { ...order.payment, method }
+            })}
+            orderType={order.type}
+            language={language as any}
+          />
+        </div>
       }
+
       {user?.restaurant && user.restaurant.length > 1 && (
         <div className="mb-6 space-y-2">
           <Label className="flex items-center gap-2">
@@ -263,30 +189,32 @@ export const OrderInfoStep = ({
           </Select>
         </div>
       )}
+
       {order.type !== 'DINE_IN' &&
-      <div className="space-y-3">
-        <Label className="text-sm flex items-center gap-2">
-          <Phone className="h-4 w-4" />
-          {language === 'ka' ? 'ტელეფონის ნომერი' : 'Номер телефона'}
-        </Label>
-        <Input
-          type="tel"
-          placeholder={language === 'ka' ? '+995 555 123 456' : '+7 999 123-45-67'}
-          value={order.phone || ''}
-          onChange={(e) => setOrder({
-            ...order,
-            phone: e.target.value
-          })}
-        />
-      </div>
+        <div className="space-y-3">
+          <Label className="text-sm flex items-center gap-2">
+            <Phone className="h-4 w-4" />
+            {language === 'ka' ? 'ტელეფონის ნომერი' : 'Номер телефона'}
+          </Label>
+          <Input
+            type="tel"
+            placeholder={language === 'ka' ? '+995 555 123 456' : '+7 999 123-45-67'}
+            value={order.phone || ''}
+            onChange={(e) => setOrder({
+              ...order,
+              phone: e.target.value
+            })}
+          />
+        </div>
       }
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-3">
           <Label className="text-sm flex items-center gap-2">
             <Users className="h-4 w-4" />
             {language === 'ka' ? 'მომხმარებლების რაოდენობა' : 'Количество посетителей'}
           </Label>
-          <div className="flex items-center gap-2" >
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="icon"
@@ -319,6 +247,7 @@ export const OrderInfoStep = ({
             </Button>
           </div>
         </div>
+
         <div className="space-y-3">
           <Label className="text-sm flex items-center gap-2">
             <Table className="h-4 w-4" />
@@ -369,37 +298,37 @@ export const OrderInfoStep = ({
               <MapPin className="h-4 w-4" />
               {language === 'ka' ? 'მისამართი' : 'Адрес доставки'}
             </Label>
-            <div className="flex w-full">
-              <div className='w-full mr-4'>
-                <AddressInput
-                  value={order.deliveryAddress}
-                  onChange={(e: any) => setOrder({
-                    ...order,
-                    deliveryAddress: e.target.value,
-                    deliveryZone: null
-                  })}
-                  language={language as any}
-                />
-              </div>
-              <Button
-                onClick={checkDeliveryZone}
-                disabled={!order.deliveryAddress || isCheckingDeliveryZone}
-                variant="secondary"
-                className="whitespace-nowrap"
-              >
-                {isCheckingDeliveryZone 
-                  ? language === 'ka' ? 'იტვირთება...' : 'Загрузка...'
-                  : language === 'ka' ? 'ღირებულების შემოწმება' : 'Проверить стоимость'}
-              </Button>
-            </div>
-            {order.deliveryZone && (
+            <AddressInput
+              value={order.deliveryAddress}
+              onChange={(e: any) => setOrder({
+                ...order,
+                deliveryAddress: e.target.value,
+                deliveryZone: null // Сбрасываем зону при изменении адреса
+              })}
+              language={language as any}
+              restaurantId={order.restaurantId}
+              onZoneFound={(zone) => {
+                setOrder({
+                  ...order,
+                  deliveryZone: zone
+                })
+              }}
+            />
+            {order.deliveryZone && order.deliveryZone.price ? (
               <p className="text-sm text-green-600">
-                {language === 'ka' 
+                {language === 'ka'
                   ? `მიტანის ზონა: ${order.deliveryZone.title}, ღირებულება: ${order.deliveryZone.price} ₽`
                   : `Зона доставки: ${order.deliveryZone.title}, стоимость: ${order.deliveryZone.price} ₽`}
               </p>
+            ) : order.deliveryAddress && (
+              <p className="text-sm text-yellow-600">
+                {language === 'ka'
+                  ? 'მიტანის ზონა არ მოიძებნა'
+                  : 'Зона доставки не найдена'}
+              </p>
             )}
           </div>
+
           <div className="space-y-1">
             <Label className="text-sm flex items-center gap-2">
               <Clock className="h-4 w-4" />
@@ -414,7 +343,6 @@ export const OrderInfoStep = ({
               })}
             />
           </div>
-          
         </div>
       )}
 
@@ -430,7 +358,6 @@ export const OrderInfoStep = ({
             ...order,
             comment: e.target.value
           })}
-          
         />
       </div>
 
@@ -460,7 +387,7 @@ export const OrderInfoStep = ({
       </div>
 
       <div className="flex justify-end">
-        <Button 
+        <Button
           onClick={() => {
             if (validateStep()) {
               onSubmit()
@@ -470,7 +397,7 @@ export const OrderInfoStep = ({
           className="text-lg"
           disabled={loading}
         >
-          {loading 
+          {loading
             ? language === 'ka' ? 'შექმნა...' : 'Создание...'
             : language === 'ka' ? 'შეკვეთის შექმნა' : 'Создать заказ'}
         </Button>
