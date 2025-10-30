@@ -43,9 +43,7 @@ import {
   Wine,
   Coffee,
   Dessert,
-  Pizza,
-  MapPin,
-  Phone
+  Pizza
 } from 'lucide-react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { OrderService } from '@/lib/api/order.service'
@@ -54,7 +52,6 @@ import { CategoryService } from '@/lib/api/category.service'
 import { useLanguageStore } from '@/lib/stores/language-store'
 import { openAIService } from '@/lib/api/openai-proxy.service'
 import { Restaurant } from '@/lib/types/restaurant'
-import { DeliveryZoneService } from '@/lib/api/delivery-zone.service'
 
 interface Additive {
   id: string
@@ -144,9 +141,6 @@ interface AIActionResponse {
     numberOfPeople?: number
     tableNumber?: string
     comment?: string
-    deliveryAddress?: string
-    phone?: string
-    deliveryTime?: string
   }
   response: string
   confidence: number
@@ -199,12 +193,6 @@ export function VoiceAssistantSheet({
     numberOfPeople: 1,
     tableNumber: '',
     comment: ''
-  })
-
-  const [deliveryInfo, setDeliveryInfo] = useState({
-    address: '',
-    phone: '',
-    deliveryTime: ''
   })
 
   const [aiConfig, setAiConfig] = useState<AIConfig>({
@@ -313,25 +301,15 @@ export function VoiceAssistantSheet({
       additives: "Добавки",
       withAdditives: "с добавками",
       modifyAdditives: "Изменить добавки",
-      forAdditives: "за добавки",
+      forAdditives: "forAdditives",
       errorNoTableNumber: 'Укажите номер стола',
       errorNoPeopleCount: 'Укажите количество посетителей',
       tableNumberRequired: 'Номер стола обязателен для заказа в ресторане',
       peopleCountRequired: 'Количество посетителей обязательно для заказа в ресторане',
-      deliveryAddress: 'Адрес доставки',
-      phoneNumber: 'Номер телефона',
-      deliveryTime: 'Время доставки',
-      enterAddress: 'Введите адрес доставки',
-      enterPhone: 'Введите номер телефона',
-      addressRequired: 'Адрес доставки обязателен',
-      phoneRequired: 'Номер телефона обязателен',
-      setAddress: 'Установить адрес',
-      setPhone: 'Установить телефон',
-      setDeliveryTime: 'Установить время доставки'
     },
     ka: {
       title: "მიმტანის ასისტენტი",
-      forAdditives: "დანამატებისთვის",
+      forAdditives: "forAdditives",
       startRecording: "ჩაწერის დაწყება",
       stopRecording: "ჩაწერის შეჩერება",
       subtitle: "შეკვეთების ხმოვანი მართვა",
@@ -419,19 +397,9 @@ export function VoiceAssistantSheet({
       withAdditives: "დანამატებით",
       modifyAdditives: "დანამატების შეცვლა",
       errorNoTableNumber: 'მიუთითეთ სტოლის ნომერი',
-      errorNoPeopleCount: 'მიუთითეთ ვიზიტორების რაოდენობა',
+      errorNoPeopleCount: 'მიუთითეთ ვიზიტორების რაოдენობა',
       tableNumberRequired: 'სტოლის ნომერი სავალდებულოა რესტორნში შეკვეთისთვის',
       peopleCountRequired: 'ვიზიტორების რაოდენობა სავალდებულოა რესტორნში შეკვეთისთვის',
-      deliveryAddress: 'მიწოდების მისამართი',
-      phoneNumber: 'ტელეფონის ნომერი',
-      deliveryTime: 'მიწოდების დრო',
-      enterAddress: 'შეიყვანეთ მიწოდების მისამართი',
-      enterPhone: 'შეიყვანეთ ტელეფონის ნომერი',
-      addressRequired: 'მიწოდების მისამართი სავალდებულოა',
-      phoneRequired: 'ტელეფონის ნომერი სავალდებულოა',
-      setAddress: 'მიუთითეთ მისამართი',
-      setPhone: 'მიუთითეთ ტელეფონი',
-      setDeliveryTime: 'მიუთითეთ მიწოდების დრო'
     }
   } as const
 
@@ -966,65 +934,105 @@ export function VoiceAssistantSheet({
     }).join('\n') : 'пуст';
 
     return `Ты - AI ассистент для ресторана. Твоя задача - ОЧЕНЬ ТОЧНО и ПРЕДСКАЗУЕМО обрабатывать заказы.
-
-## ТИПЫ ЗАКАЗОВ И ОБЯЗАТЕЛЬНЫЕ ПОЛЯ:
-
-### ДЛЯ ЗАКАЗА В РЕСТОРАНЕ (DINE_IN) ОБЯЗАТЕЛЬНО:
+## ДЛЯ ЗАКАЗА В РЕСТОРАНЕ (DINE_IN) ОБЯЗАТЕЛЬНО:
 - Номер стола (tableNumber)
 - Количество посетителей (numberOfPeople)
 
-### ДЛЯ ДОСТАВКИ (DELIVERY) ОБЯЗАТЕЛЬНО:
-- Адрес доставки (deliveryAddress)
-- Номер телефона (phone)
+# РАБОТА С ДОБАВКАМИ:
+## КОМАНДЫ ДЛЯ ДОБАВОК:
+- "Борщ с хлебом" → добавляет хлеб к борщу
+- "Шашлык с соусом и овощами" → добавляет соус и овощи
+- "Кофе с молоком и сахаром" → добавляет молоко и сахар
+- "Убери лук из салата" → удаляет лук из салата
+- "Добавь сыр к пасте" → добавляет сыр
 
-### ДЛЯ САМОВЫВОЗА (TAKEAWAY) ОБЯЗАТЕЛЬНО:
-- Номер телефона (phone)
-
-# РАБОТА С ДОСТАВКОЙ:
-## КОМАНДЫ ДЛЯ ДОСТАВКИ:
-- "Доставка на адрес: [адрес]" → устанавливает адрес и тип заказа
-- "Мой телефон: [номер]" → устанавливает номер телефона
-- "Доставка в [время]" → устанавливает время доставки
-- "Заберу сам" → устанавливает тип "с собой" (TAKEAWAY)
-- "В ресторане" → устанавливает тип "в ресторане" (DINE_IN)
-
-## ФОРМАТ АДРЕСА:
-Всегда сохраняй полный адрес как есть.
+## ФОРМАТ ДОБАВОК:
+Всегда используй ID добавок из списка ниже.
 
 # ДОСТУПНЫЕ ДЕЙСТВИЯ (используй ТОЛЬКО эти действия):
+
+## ADD_ITEMS - добавить товары в заказ
+Используй когда пользователь говорит:
+- "Добавь [блюдо] с [добавка]"
+- "Хочу [блюдо] с [добавка1] и [добавка2]" 
+- Просто перечисляет блюда с добавками: "борщ с хлебом, шашлык с соусом"
+
+## REMOVE_ITEMS - удалить товары из заказа
+Используй ТОЛЬКО когда пользователь явно говорит:
+- "Удали [блюдо]"
+- "Убери [блюдо]"
+
+## MODIFY_QUANTITY - изменить количество
+Используй когда пользователь говорит:
+- "Измени количество [блюдо] на [число]"
+
+## MODIFY_ADDITIVES - изменить добавки товара
+Используй когда пользователь говорит:
+- "Добавь [добавка] к [товар]"
+- "Убери [добавка] из [товар]"
+- "Измени добавки для [товар]"
 
 ## UPDATE_DETAILS - изменить детали заказа
 Используй для:
 - Количества персон ("Нас 4 человека")
 - Номера стола ("Стол номер 5")
-- Адреса доставки ("Адрес: ул. Ленина 15")
-- Номера телефона ("Телефон 89123456789")
 - Комментария ("Без лука")
-- Времени доставки ("Доставка в 18:30")
 
-## UPDATE_ORDER_TYPE - изменить тип заказа
-Используй для:
-- "Доставка" → DELIVERY
-- "С собой" → TAKEAWAY  
-- "В ресторане" → DINE_IN
+## SHOW_ORDER - показать текущий заказ
+Используй когда пользователь говорит:
+- "Покажи заказ"
+- "Что в заказе"
+
+## CLEAR_ORDER - очистить весь заказ
+ИСПОЛЬЗУЙ ТОЛЬКО ПРИ ЯВНОЙ КОМАНДЕ:
+- "Очистить заказ"
+- "Удалить всё"
+
+## ANSWER_QUESTION - ответить на вопрос
+Используй для любых вопросов о меню, ресторане и т.д.
 
 # ФОРМАТ ОТВЕТА (ВСЕГДА JSON):
 
 {
-  "action": "ADD_ITEMS" | "REMOVE_ITEMS" | "MODIFY_QUANTITY" | "MODIFY_ADDITIVES" | "UPDATE_DETAILS" | "SHOW_ORDER" | "CLEAR_ORDER" | "ANSWER_QUESTION" | "UPDATE_ORDER_TYPE",
+  "action": "ADD_ITEMS" | "REMOVE_ITEMS" | "MODIFY_QUANTITY" | "MODIFY_ADDITIVES" | "UPDATE_DETAILS" | "SHOW_ORDER" | "CLEAR_ORDER" | "ANSWER_QUESTION",
+  
+  // ТОЛЬКО для ADD_ITEMS - сразу добавляй
+  "itemsToAdd": [
+    {
+      "productId": "string (ОБЯЗАТЕЛЬНО точный ID продукта)",
+      "productTitle": "string (оригинальное название)",
+      "quantity": number (1, 2, 3 и т.д.),
+      "comment": "string (опционально)",
+      "additives": ["additiveId1", "additiveId2"] // МАССИВ ID ДОБАВОК
+    }
+  ],
+  
+  // ТОЛЬКО для REMOVE_ITEMS - сразу удаляй 
+  "itemsToRemove": ["productId1", "productId2"],
+  
+  // ТОЛЬКО для MODIFY_QUANTITY - сразу изменяй
+  "itemsToModify": [
+    {
+      "productId": "string",
+      "quantity": number,
+      "additives": ["additiveId1", "additiveId2"] // ОПЦИОНАЛЬНО - новые добавки
+    }
+  ],
+  
+  // ТОЛЬКО для MODIFY_ADDITIVES - изменяй только добавки
+  "additivesToModify": [
+    {
+      "productId": "string",
+      "additives": ["additiveId1", "additiveId2"] // НОВЫЕ ДОБАВКИ
+    }
+  ],
   
   // ТОЛЬКО для UPDATE_DETAILS - сразу обновляй
   "updatedDetails": {
     "numberOfPeople": number,
     "tableNumber": "string", 
-    "deliveryAddress": "string",
-    "phone": "string",
-    "deliveryTime": "string",
     "comment": "string"
   },
-  
-  // ТОЛЬКО для UPDATE_ORDER_TYPE
-  "newOrderType": "DINE_IN" | "TAKEAWAY" | "DELIVERY",
   
   "response": "string (естественный ответ пользователю)",
   "confidence": number (0.1-1.0, реальная уверенность),
@@ -1032,10 +1040,10 @@ export function VoiceAssistantSheet({
 }
 
 # ПРИМЕРЫ:
-- "Доставка на улицу Пушкина 10" → UPDATE_ORDER_TYPE: DELIVERY + UPDATE_DETAILS: deliveryAddress
-- "Мой телефон 89123456789" → UPDATE_DETAILS: phone
-- "Заберу сам" → UPDATE_ORDER_TYPE: TAKEAWAY
-- "Стол номер 3" → UPDATE_DETAILS: tableNumber + UPDATE_ORDER_TYPE: DINE_IN
+- "Борщ с хлебом" → ADD_ITEMS с additives: ["хлеб_id"]
+- "Кофе с молоком" → ADD_ITEMS с additives: ["молоко_id"]
+- "Убери лук из салата" → MODIFY_ADDITIVES с additives без лука
+- "Добавь сыр к пасте" → MODIFY_ADDITIVES с additives + сыр
 
 # КОНТЕКСТ:
 Меню (${products.length} товаров):
@@ -1047,8 +1055,6 @@ ${currentOrderInfo}
 Тип заказа: ${getOrderTypeText(orderType, 'ru')}
 Количество персон: ${additionalInfo.numberOfPeople}
 Стол: ${additionalInfo.tableNumber || 'не указан'}
-${orderType === 'DELIVERY' ? `Адрес доставки: ${deliveryInfo.address || 'не указан'}\nТелефон: ${deliveryInfo.phone || 'не указан'}` : ''}
-${orderType === 'TAKEAWAY' ? `Телефон: ${deliveryInfo.phone || 'не указан'}` : ''}
 
 ВСЕГДА отвечай в формате JSON! Будь максимально точен и предсказуем! Действуй уверенно!`;
   };
@@ -1166,6 +1172,7 @@ ${orderType === 'TAKEAWAY' ? `Телефон: ${deliveryInfo.phone || 'не ук
           if (parsedData.itemsToAdd && parsedData.itemsToAdd.length > 0) {
             console.log('Adding items with additives:', parsedData.itemsToAdd);
             
+            
             let addedItems: string[] = [];
 
             for (const item of parsedData.itemsToAdd) {
@@ -1221,57 +1228,25 @@ ${orderType === 'TAKEAWAY' ? `Телефон: ${deliveryInfo.phone || 'не ук
               };
               setConversation(prev => [...prev, infoMessage]);
             }
-
-            // Проверяем обязательные поля после добавления товаров
-            if (newOrderType === 'DINE_IN' && 
-                (!additionalInfo.tableNumber || !additionalInfo.numberOfPeople)) {
-              
-              const missingFields = []
-              if (!additionalInfo.tableNumber) missingFields.push('номер стола')
-              if (!additionalInfo.numberOfPeople) missingFields.push('количество посетителей')
-              
-              const questionMessage: ConversationMessage = {
-                role: 'assistant',
-                content: language === 'ru' 
-                  ? `Для завершения заказа в ресторане, пожалуйста, укажите: ${missingFields.join(' и ')}`
-                  : `რესტორნში შეკვეთის დასასრულებლად, გთხოვთ, მიუთითოთ: ${missingFields.join(' და ')}`,
-                timestamp: new Date(),
-                type: 'info'
-              };
-              setConversation(prev => [...prev, questionMessage]);
-            }
-
-            if (newOrderType === 'DELIVERY' && 
-                (!deliveryInfo.address || !deliveryInfo.phone)) {
-              
-              const missingFields = []
-              if (!deliveryInfo.address) missingFields.push('адрес доставки')
-              if (!deliveryInfo.phone) missingFields.push('номер телефона')
-              
-              const questionMessage: ConversationMessage = {
-                role: 'assistant',
-                content: language === 'ru' 
-                  ? `Для завершения заказа с доставкой, пожалуйста, укажите: ${missingFields.join(' и ')}`
-                  : `მიწოდებით შეკვეთის დასასრულებლად, გთხოვთ, მიუთითოთ: ${missingFields.join(' და ')}`,
-                timestamp: new Date(),
-                type: 'info'
-              };
-              setConversation(prev => [...prev, questionMessage]);
-            }
-
-            if (newOrderType === 'TAKEAWAY' && !deliveryInfo.phone) {
-              const questionMessage: ConversationMessage = {
-                role: 'assistant',
-                content: language === 'ru' 
-                  ? `Для завершения заказа с собой, пожалуйста, укажите номер телефона`
-                  : `თვითმიტანის შეკვეთის დასასრულებლად, გთხოვთ, მიუთითოთ ტელეფონის ნომერი`,
-                timestamp: new Date(),
-                type: 'info'
-              };
-              setConversation(prev => [...prev, questionMessage]);
-            }
+          if (orderType === 'DINE_IN' && 
+              (!additionalInfo.tableNumber || !additionalInfo.numberOfPeople)) {
+            
+            const missingFields = []
+            if (!additionalInfo.tableNumber) missingFields.push('номер стола')
+            if (!additionalInfo.numberOfPeople) missingFields.push('количество посетителей')
+            
+            const questionMessage: ConversationMessage = {
+              role: 'assistant',
+              content: language === 'ru' 
+                ? `Для завершения заказа в ресторане, пожалуйста, укажите: ${missingFields.join(' и ')}`
+                : `რესტორნში შეკვეთის დასასრულებლად, გთხოვთ, მიუთითოთ: ${missingFields.join(' და ')}`,
+              timestamp: new Date(),
+              type: 'info'
+            };
+            setConversation(prev => [...prev, questionMessage]);
           }
-          break;
+        }
+        break;
 
         case 'MODIFY_ADDITIVES':
           if (parsedData.additivesToModify && parsedData.additivesToModify.length > 0) {
@@ -1359,17 +1334,6 @@ ${orderType === 'TAKEAWAY' ? `Телефон: ${deliveryInfo.phone || 'не ук
             console.log('Updating order type to:', parsedData.newOrderType)
             newOrderType = parsedData.newOrderType
             shouldUpdateOrderType = true
-            
-            // Сбрасываем нерелевантные поля при смене типа заказа
-            if (parsedData.newOrderType !== 'DINE_IN') {
-              setAdditionalInfo(prev => ({ ...prev, tableNumber: '' }))
-            }
-            if (parsedData.newOrderType !== 'DELIVERY') {
-              setDeliveryInfo(prev => ({ ...prev, address: '' }))
-            }
-            if (parsedData.newOrderType === 'DINE_IN') {
-              setDeliveryInfo(prev => ({ ...prev, phone: '' }))
-            }
           }
           break
 
@@ -1377,22 +1341,11 @@ ${orderType === 'TAKEAWAY' ? `Телефон: ${deliveryInfo.phone || 'не ук
           if (parsedData.updatedDetails) {
             console.log('Updating details:', parsedData.updatedDetails)
             const details = parsedData.updatedDetails
-            
-            // Обновляем основную информацию
             setAdditionalInfo(prev => ({
               numberOfPeople: details.numberOfPeople !== undefined ? details.numberOfPeople : prev.numberOfPeople,
               tableNumber: details.tableNumber !== undefined ? details.tableNumber : prev.tableNumber,
               comment: details.comment !== undefined ? details.comment : prev.comment
             }))
-            
-            // Обновляем информацию о доставке
-            if (details.deliveryAddress !== undefined || details.phone !== undefined || details.deliveryTime !== undefined) {
-              setDeliveryInfo(prev => ({
-                address: details.deliveryAddress !== undefined ? details.deliveryAddress : prev.address,
-                phone: details.phone !== undefined ? details.phone : prev.phone,
-                deliveryTime: details.deliveryTime !== undefined ? details.deliveryTime : prev.deliveryTime
-              }))
-            }
           }
           break
 
@@ -1691,34 +1644,15 @@ ${orderType === 'TAKEAWAY' ? `Телефон: ${deliveryInfo.phone || 'не ук
       return
     }
 
-    // Валидация для заказа в ресторане
+    // Проверка обязательных полей для заказа в ресторане
     if (orderType === 'DINE_IN') {
       if (!additionalInfo.tableNumber.trim()) {
-        toast.error(t.errorNoTableNumber)
+        toast.error(language === 'ru' ? 'Укажите номер стола' : 'მიუთითეთ სტოლის ნომერი')
         return
       }
+
       if (!additionalInfo.numberOfPeople || additionalInfo.numberOfPeople < 1) {
-        toast.error(t.errorNoPeopleCount)
-        return
-      }
-    }
-
-    // Валидация для доставки
-    if (orderType === 'DELIVERY') {
-      if (!deliveryInfo.address.trim()) {
-        toast.error(t.addressRequired)
-        return
-      }
-      if (!deliveryInfo.phone.trim()) {
-        toast.error(t.phoneRequired)
-        return
-      }
-    }
-
-    // Валидация для самовывоза
-    if (orderType === 'TAKEAWAY') {
-      if (!deliveryInfo.phone.trim()) {
-        toast.error(t.phoneRequired)
+        toast.error(language === 'ru' ? 'Укажите количество посетителей' : 'მიუთითეთ ვიზიტორების რაოდენობა')
         return
       }
     }
@@ -1730,9 +1664,6 @@ ${orderType === 'TAKEAWAY' ? `Телефон: ${deliveryInfo.phone || 'не ук
         type: orderType,
         numberOfPeople: additionalInfo.numberOfPeople,
         tableNumber: orderType === 'DINE_IN' ? additionalInfo.tableNumber : undefined,
-        phone: orderType === 'DELIVERY' || orderType === 'TAKEAWAY' ? deliveryInfo.phone : undefined,
-        deliveryAddress: orderType === 'DELIVERY' ? deliveryInfo.address : undefined,
-        deliveryTime: orderType === 'DELIVERY' ? deliveryInfo.deliveryTime : undefined,
         comment: additionalInfo.comment,
         items: order.items.map(item => ({
           productId: item.product.id,
@@ -1775,11 +1706,6 @@ ${orderType === 'TAKEAWAY' ? `Телефон: ${deliveryInfo.phone || 'не ук
       tableNumber: '',
       comment: ''
     })
-    setDeliveryInfo({
-      address: '',
-      phone: '',
-      deliveryTime: ''
-    })
     setOrderType('DINE_IN')
     initializeConversation()
   }
@@ -1795,11 +1721,6 @@ ${orderType === 'TAKEAWAY' ? `Телефон: ${deliveryInfo.phone || 'не ук
   }
 
   const popularCommands = language === 'ru' ? [
-    "Доставка на улицу Пушкина 10",
-    "Мой телефон 89123456789",
-    "Доставка в 18:30",
-    "Заберу сам",
-    "В ресторане",
     "Борщ с хлебом",
     "Кофе с молоком и сахаром",
     "Шашлык с соусом",
@@ -1813,11 +1734,6 @@ ${orderType === 'TAKEAWAY' ? `Телефон: ${deliveryInfo.phone || 'не ук
     "Нас 4 человека",
     "Показать меню"
   ] : [
-    "მიწოდება პუშკინის ქუჩაზე 10",
-    "ჩემი ტელეფონი 555123456",
-    "მიწოდება 18:30-ზე",
-    "თვითონ ავიღებ",
-    "რესტორნში",
     "ბორში პურთან ერთად",
     "ყავა რძით და შაქრით",
     "შაშლიკი სოუსით",
@@ -1852,16 +1768,6 @@ ${orderType === 'TAKEAWAY' ? `Телефон: ${deliveryInfo.phone || 'не ук
       label: t.setTable,
       command: "table 1",
       icon: User
-    },
-    {
-      label: t.setAddress,
-      command: "адрес доставки улица Пушкина 10",
-      icon: MapPin
-    },
-    {
-      label: t.setPhone,
-      command: "мой телефон 89123456789",
-      icon: Phone
     }
   ]
 
@@ -2149,13 +2055,6 @@ ${orderType === 'TAKEAWAY' ? `Телефон: ${deliveryInfo.phone || 'не ук
                         (!additionalInfo.tableNumber.trim() ||
                           !additionalInfo.numberOfPeople ||
                           additionalInfo.numberOfPeople < 1)
-                      ) ||
-                      (orderType === 'DELIVERY' &&
-                        (!deliveryInfo.address.trim() ||
-                          !deliveryInfo.phone.trim())
-                      ) ||
-                      (orderType === 'TAKEAWAY' &&
-                        !deliveryInfo.phone.trim()
                       )
                     }
                     className="w-full h-12 bg-green-600 hover:bg-green-700 disabled:bg-gray-400"
@@ -2282,30 +2181,10 @@ ${orderType === 'TAKEAWAY' ? `Телефон: ${deliveryInfo.phone || 'не ук
                         <div className="text-gray-600 dark:text-gray-400">{t.peopleCount}</div>
                         <div className="font-semibold">{additionalInfo.numberOfPeople}</div>
                       </div>
-                      {orderType === 'DINE_IN' && (
-                        <div>
-                          <div className="text-gray-600 dark:text-gray-400">{t.table}</div>
-                          <div className="font-semibold">{additionalInfo.tableNumber || '-'}</div>
-                        </div>
-                      )}
-                      {orderType === 'DELIVERY' && (
-                        <>
-                          <div>
-                            <div className="text-gray-600 dark:text-gray-400">{t.phoneNumber}</div>
-                            <div className="font-semibold">{deliveryInfo.phone || '-'}</div>
-                          </div>
-                          <div>
-                            <div className="text-gray-600 dark:text-gray-400">{t.deliveryAddress}</div>
-                            <div className="font-semibold text-xs">{deliveryInfo.address || '-'}</div>
-                          </div>
-                        </>
-                      )}
-                      {orderType === 'TAKEAWAY' && (
-                        <div>
-                          <div className="text-gray-600 dark:text-gray-400">{t.phoneNumber}</div>
-                          <div className="font-semibold">{deliveryInfo.phone || '-'}</div>
-                        </div>
-                      )}
+                      <div>
+                        <div className="text-gray-600 dark:text-gray-400">{t.table}</div>
+                        <div className="font-semibold">{additionalInfo.tableNumber || '-'}</div>
+                      </div>
                       <div>
                         <div className="text-gray-600 dark:text-gray-400">{t.type}</div>
                         <div className="font-semibold">{getOrderTypeText(orderType)}</div>
@@ -2388,21 +2267,8 @@ ${orderType === 'TAKEAWAY' ? `Телефон: ${deliveryInfo.phone || 'не ук
 
                   <Button
                     onClick={createOrder}
-                    disabled={isCreatingOrder ||
-                      (orderType === 'DINE_IN' &&
-                        (!additionalInfo.tableNumber.trim() ||
-                          !additionalInfo.numberOfPeople ||
-                          additionalInfo.numberOfPeople < 1)
-                      ) ||
-                      (orderType === 'DELIVERY' &&
-                        (!deliveryInfo.address.trim() ||
-                          !deliveryInfo.phone.trim())
-                      ) ||
-                      (orderType === 'TAKEAWAY' &&
-                        !deliveryInfo.phone.trim()
-                      )
-                    }
-                    className="w-full h-12 bg-green-600 hover:bg-green-700 disabled:bg-gray-400"
+                    disabled={isCreatingOrder}
+                    className="w-full h-12 bg-green-600 hover:bg-green-700"
                     size="lg"
                   >
                     {isCreatingOrder ? (
