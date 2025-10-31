@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { ProductService } from '@/lib/api/product.service';
 import { CategoryService } from '@/lib/api/category.service';
@@ -8,7 +8,7 @@ import { AdditiveService } from '@/lib/api/additive.service';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import { ProductFilters } from './ProductFilters';
-import { ProductTable } from './ProductTable';
+import { ProductTable, WorkshopIn } from './ProductTable';
 import { ProductModal } from './ProductModal';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDebounce } from '@/lib/hooks/useDebounce';
@@ -30,7 +30,7 @@ export const ProductList = () => {
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORIES_VALUE);
   const [selectedRestaurant, setSelectedRestaurant] = useState(ALL_RESTAURANTS_VALUE);
   const [restaurants, setRestaurants] = useState<any[]>([]);
-  
+
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   useEffect(() => {
@@ -47,7 +47,7 @@ export const ProductList = () => {
       ]);
       setProducts(productsData);
       setCategories(categoriesData);
-      
+
       // Загружаем Модификаторы только если они нужны для модального окна
       try {
         const additivesData = await AdditiveService.getAll();
@@ -65,7 +65,7 @@ export const ProductList = () => {
 
   const fetchRestaurants = async () => {
     try {
-      const restaurantsData = await RestaurantService.getAll(); 
+      const restaurantsData = await RestaurantService.getAll();
       setRestaurants(restaurantsData || []);
     } catch (error) {
       console.error('Error fetching restaurants:', error);
@@ -73,15 +73,38 @@ export const ProductList = () => {
     }
   };
 
-  const filteredProducts = products.filter(product => {
+
+const filteredProductIds = useMemo(() => {
+  const filtered = products.filter(product => {
     const matchesSearch = product.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === ALL_CATEGORIES_VALUE || 
-                          product.categoryId === selectedCategory;
-    const matchesRestaurant = selectedRestaurant === ALL_RESTAURANTS_VALUE || 
-                             (product.restaurants?.some((r: any) => r.id === selectedRestaurant));
-    
+    const matchesCategory = selectedCategory === ALL_CATEGORIES_VALUE ||
+      product.categoryId === selectedCategory;
+
+    // ИСПРАВЛЕНИЕ: Фильтруем по restaurantPrices.restaurantId вместо workshops
+    const matchesRestaurant = selectedRestaurant === ALL_RESTAURANTS_VALUE ||
+      (product.restaurantPrices?.some((restaurantPrice: any) =>
+        restaurantPrice.restaurantId === selectedRestaurant
+      ));
+
     return matchesSearch && matchesCategory && matchesRestaurant;
   });
+
+  return new Set(filtered.map(product => product.id));
+}, [products, debouncedSearchTerm, selectedCategory, selectedRestaurant]);
+
+const filteredProducts = products.filter(product => {
+  const matchesSearch = product.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
+  const matchesCategory = selectedCategory === ALL_CATEGORIES_VALUE ||
+    product.categoryId === selectedCategory;
+
+  // ИСПРАВЛЕНИЕ: Фильтруем по restaurantPrices.restaurantId вместо workshops
+  const matchesRestaurant = selectedRestaurant === ALL_RESTAURANTS_VALUE ||
+    (product.restaurantPrices?.some((restaurantPrice: any) =>
+      restaurantPrice.restaurantId === selectedRestaurant
+    ));
+
+  return matchesSearch && matchesCategory && matchesRestaurant;
+});
 
   const openAddModal = () => {
     setCurrentProductId(null);
@@ -145,13 +168,14 @@ export const ProductList = () => {
         language={language}
       />
 
-    <ProductTable
-      products={filteredProducts}
-      isLoading={isLoading && products.length > 0}
-      language={language}
-      onDelete={handleDelete}
-      fetchData={fetchData}
-    />  
+       <ProductTable
+        products={products}
+        filteredProductIds={filteredProductIds} 
+        isLoading={isLoading && products.length > 0}
+        language={language}
+        onDelete={handleDelete}
+        fetchData={fetchData}
+      />
 
       <ProductModal
         productId={currentProductId}

@@ -1,6 +1,7 @@
+// ProductTable.tsx
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Pencil, Trash2, Plus, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown, MoveUp, MoveDown } from 'lucide-react';
+import { Pencil, Trash2, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Language } from '@/lib/stores/language-store';
 import {
@@ -26,6 +27,16 @@ interface Restaurant {
   title: string;
 }
 
+interface RestaurantPrice {
+  id: string;
+  productId: string;
+  restaurantId: string;
+  price: number;
+  isStopList: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface Workshop {
   id: string;
   name: string;
@@ -38,6 +49,7 @@ export interface WorkshopIn {
 
 interface ProductTableProps {
   products: Product[];
+  filteredProductIds: Set<string>;
   isLoading: boolean;
   language: Language;
   onDelete: (id: string) => void;
@@ -149,10 +161,10 @@ const translations = {
 
 type SortDirection = 'asc' | 'desc' | null;
 type SortField = 'title' | 'price' | 'category' | 'order' | null;
-type ToggleMethods = 
-  | "togglePrintLabels" 
-  | "togglePublishedOnWebsite" 
-  | "togglePublishedInApp" 
+type ToggleMethods =
+  | "togglePrintLabels"
+  | "togglePublishedOnWebsite"
+  | "togglePublishedInApp"
   | "toggleStopList";
 
 interface CategoryNode {
@@ -163,9 +175,13 @@ interface CategoryNode {
   parentId: string | null;
 }
 
-const buildCategoryTree = (categories: Category[], products: Product[], language: Language): CategoryNode[] => {
+const buildCategoryTree = (
+  categories: Category[],
+  products: Product[],
+  language: Language
+): CategoryNode[] => {
   const categoryMap = new Map<string, CategoryNode>();
-  
+
   // Создаем узел для продуктов без категории
   const uncategorizedNode: CategoryNode = {
     id: 'uncategorized',
@@ -195,7 +211,6 @@ const buildCategoryTree = (categories: Category[], products: Product[], language
       if (parent) {
         parent.children.push(category);
       } else {
-        // Если родитель не найден, добавляем в корень
         rootNodes.push(category);
       }
     } else if (category.id !== 'uncategorized') {
@@ -210,7 +225,6 @@ const buildCategoryTree = (categories: Category[], products: Product[], language
       if (category) {
         category.products.push(product);
       } else {
-        // Если категория продукта не найдена в списке категорий, добавляем в безкатегорийные
         uncategorizedNode.products.push(product);
       }
     } else {
@@ -228,16 +242,34 @@ const buildCategoryTree = (categories: Category[], products: Product[], language
     rootNodes.push(uncategorizedNode);
   }
 
-  // Сортируем корневые узлы
-  return rootNodes.sort((a, b) => a.title.localeCompare(b.title));
+  // Функция для рекурсивного удаления пустых категорий
+  const removeEmptyCategories = (nodes: CategoryNode[]): CategoryNode[] => {
+    return nodes
+      .map(node => {
+        // Рекурсивно обрабатываем детей
+        const filteredChildren = removeEmptyCategories(node.children);
+
+        // Если у категории есть продукты ИЛИ есть непустые дочерние категории, оставляем её
+        if (node.products.length > 0 || filteredChildren.length > 0) {
+          return {
+            ...node,
+            children: filteredChildren
+          };
+        }
+        return null;
+      })
+      .filter((node): node is CategoryNode => node !== null);
+  };
+
+  // Удаляем пустые категории и сортируем
+  return removeEmptyCategories(rootNodes).sort((a, b) => a.title.localeCompare(b.title));
 };
 
-
-const ProductRow = ({ 
-  product, 
-  depth = 0, 
-  language, 
-  onDelete, 
+const ProductRow = ({
+  product,
+  depth = 0,
+  language,
+  onDelete,
   fetchData,
   router,
   categoryId,
@@ -328,8 +360,8 @@ const ProductRow = ({
           <div className="flex flex-wrap gap-1">
             {product.workshops?.length > 0 ? (
               product.workshops.map((workshop: WorkshopIn) => (
-                <Badge 
-                  key={workshop.workshop.id} 
+                <Badge
+                  key={workshop.workshop.id}
                   variant="outline"
                   className="whitespace-nowrap"
                 >
@@ -471,7 +503,7 @@ const CategoryRow = ({
   return (
     <>
       {(hasChildren || isUncategorized) && (
-        <TableRow 
+        <TableRow
           className={`${depth === 0 ? 'bg-gray-50' : ''} cursor-pointer`}
           onClick={() => hasChildren && toggleCategory(category.id)}
         >
@@ -567,39 +599,46 @@ const CategoryRow = ({
 export const ProductTable = ({
   products,
   isLoading,
+  filteredProductIds,
   language,
   onDelete,
   fetchData
 }: ProductTableProps) => {
+  console.log(products)
   const router = useRouter();
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-  console.log(products)
+
+  // ФИЛЬТРАЦИЯ: используем filteredProductIds для фильтрации продуктов
+  const filteredProducts = products.filter(product => 
+    filteredProductIds.has(product.id)
+  );
+
   const allCategories: Category[] = [];
   const categoryMap = new Map<string, Category>();
-  
- const collectAllCategories = (category: Category | null) => {
+
+  const collectAllCategories = (category: Category | null) => {
     if (!category) return;
-    
+
     if (!categoryMap.has(category.id)) {
       categoryMap.set(category.id, category);
       allCategories.push(category);
-      
-      // Рекурсивно добавляем родительские категории, если они есть
+
       if (category.parent) {
         collectAllCategories(category.parent);
       }
     }
   };
 
-  products.forEach(product => {
+  // Используем ОТФИЛЬТРОВАННЫЕ продукты для построения категорий
+  filteredProducts.forEach(product => {
     if (product.category) {
       collectAllCategories(product.category);
     }
   });
 
-  const categoryTree = buildCategoryTree(allCategories, products, language);
+  const categoryTree = buildCategoryTree(allCategories, filteredProducts, language);
 
   const handleMoveUp = async (productId: string, categoryId: string) => {
     try {
@@ -621,7 +660,7 @@ export const ProductTable = ({
 
   const sortedCategoryTree = [...categoryTree].sort((a, b) => {
     if (!sortField) return 0;
-    
+
     let comparison = 0;
     switch (sortField) {
       case 'title':
@@ -637,7 +676,7 @@ export const ProductTable = ({
   sortedCategoryTree.forEach(category => {
     category.products.sort((a, b) => {
       if (!sortField) return 0;
-      
+
       let comparison = 0;
       switch (sortField) {
         case 'title':
@@ -692,7 +731,7 @@ export const ProductTable = ({
         <TableHeader>
           <TableRow>
             <TableHead>
-              <button 
+              <button
                 className="flex items-center"
                 onClick={() => handleSort('title')}
               >
@@ -702,7 +741,7 @@ export const ProductTable = ({
             </TableHead>
             <TableHead>{translations.workshops[language]}</TableHead>
             <TableHead>
-              <button 
+              <button
                 className="flex items-center"
                 onClick={() => handleSort('price')}
               >
