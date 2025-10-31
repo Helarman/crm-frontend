@@ -43,7 +43,8 @@ import {
   Wine,
   Coffee,
   Dessert,
-  Pizza
+  Pizza,
+  MapPin
 } from 'lucide-react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { OrderService } from '@/lib/api/order.service'
@@ -52,6 +53,7 @@ import { CategoryService } from '@/lib/api/category.service'
 import { useLanguageStore } from '@/lib/stores/language-store'
 import { openAIService } from '@/lib/api/openai-proxy.service'
 import { Restaurant } from '@/lib/types/restaurant'
+import { DeliveryZoneService } from '@/lib/api/delivery-zone.service'
 
 interface Additive {
   id: string
@@ -92,11 +94,20 @@ interface ParsedOrderItem {
   totalPrice: number
 }
 
+interface DeliveryZone {
+  id: string
+  title: string
+  price: number
+  minOrder?: number
+}
+
 interface ParsedOrder {
   items: ParsedOrderItem[]
   comment?: string
   numberOfPeople?: number
   tableNumber?: string
+  deliveryAddress?: string
+  deliveryZone?: DeliveryZone
   confidence: number
   rawResponse?: any
   totalAmount: number
@@ -141,6 +152,8 @@ interface AIActionResponse {
     numberOfPeople?: number
     tableNumber?: string
     comment?: string
+    deliveryAddress?: string
+    phone?: string
   }
   response: string
   confidence: number
@@ -192,8 +205,13 @@ export function VoiceAssistantSheet({
   const [additionalInfo, setAdditionalInfo] = useState({
     numberOfPeople: 1,
     tableNumber: '',
-    comment: ''
+    comment: '',
+    deliveryAddress: '',
+    phone: ''
   })
+
+  const [deliveryZone, setDeliveryZone] = useState<DeliveryZone | null>(null)
+  const [isCheckingAddress, setIsCheckingAddress] = useState(false)
 
   const [aiConfig, setAiConfig] = useState<AIConfig>({
     model: 'gpt-4o',
@@ -239,6 +257,8 @@ export function VoiceAssistantSheet({
       numberOfPeople: "Количество персон",
       tableNumber: "Номер стола",
       comment: "Комментарий к заказу",
+      deliveryAddress: "Адрес доставки",
+      phone: "Телефон",
       orderType: "Тип заказа",
       dineIn: "В ресторане",
       takeaway: "С собой",
@@ -285,11 +305,13 @@ export function VoiceAssistantSheet({
       clearOrder: "Очистить заказ",
       setTable: "Установить стол",
       setPeople: "Установить количество персон",
+      setAddress: "Установить адрес",
       orderSummary: "Сводка заказа",
       itemsCount: "позиций",
       peopleCount: "персон",
       table: "Стол",
       type: "Тип",
+      address: "Адрес",
       emptyOrder: "Заказ пуст. Добавьте блюда голосом или из меню.",
       popularDishes: "Популярные блюда",
       recommended: "Рекомендуем попробовать",
@@ -304,8 +326,14 @@ export function VoiceAssistantSheet({
       forAdditives: "forAdditives",
       errorNoTableNumber: 'Укажите номер стола',
       errorNoPeopleCount: 'Укажите количество посетителей',
+      errorNoAddress: 'Укажите адрес доставки',
+      errorNoZone: 'Адрес не входит в зону доставки',
+      checkingAddress: 'Проверка адреса...',
+      deliveryZoneFound: 'Зона доставки найдена',
       tableNumberRequired: 'Номер стола обязателен для заказа в ресторане',
       peopleCountRequired: 'Количество посетителей обязательно для заказа в ресторане',
+      addressRequired: 'Адрес доставки обязателен',
+      zoneRequired: 'Адрес должен входить в зону доставки',
     },
     ka: {
       title: "მიმტანის ასისტენტი",
@@ -336,6 +364,8 @@ export function VoiceAssistantSheet({
       numberOfPeople: "პირების რაოდენობა",
       tableNumber: "სტოლის ნომერი",
       comment: "კომენტარი შეკვეთაზე",
+      deliveryAddress: "მიწოდების მისამართი",
+      phone: "ტელეფონი",
       orderType: "შეკვეთის ტიპი",
       dineIn: "რესტორნში",
       takeaway: "წინასწარ",
@@ -382,11 +412,13 @@ export function VoiceAssistantSheet({
       clearOrder: "შეკვეთის გასუფთავება",
       setTable: "სტოლის მითითება",
       setPeople: "პირების რაოდენობის მითითება",
+      setAddress: "მისამართის მითითება",
       orderSummary: "შეკვეთის მიმოხილვა",
       itemsCount: "პოზიცია",
       peopleCount: "პირი",
       table: "სტოლი",
       type: "ტიპი",
+      address: "მისამართი",
       emptyOrder: "შეკვეთა ცარიელია. დაამატეთ კერძები ხმოვნად ან მენიუდან.",
       popularDishes: "პოპულარული კერძები",
       recommended: "გირჩევთ სცადოთ",
@@ -398,8 +430,14 @@ export function VoiceAssistantSheet({
       modifyAdditives: "დანამატების შეცვლა",
       errorNoTableNumber: 'მიუთითეთ სტოლის ნომერი',
       errorNoPeopleCount: 'მიუთითეთ ვიზიტორების რაოдენობა',
+      errorNoAddress: 'მიუთითეთ მიწოდების მისამართი',
+      errorNoZone: 'მისამართი არ არის მიტანის ზონაში',
+      checkingAddress: 'მისამართის შემოწმება...',
+      deliveryZoneFound: 'მიტანის ზონა მოიძებნა',
       tableNumberRequired: 'სტოლის ნომერი სავალდებულოა რესტორნში შეკვეთისთვის',
       peopleCountRequired: 'ვიზიტორების რაოდენობა სავალდებულოა რესტორნში შეკვეთისთვის',
+      addressRequired: 'მიწოდების მისამართი სავალდებულოა',
+      zoneRequired: 'მისამართი უნდა შედიოდეს მიტანის ზონაში',
     }
   } as const
 
@@ -437,11 +475,105 @@ export function VoiceAssistantSheet({
   const handleRestaurantChange = (restaurantId: string) => {
     setSelectedRestaurantId(restaurantId)
     localStorage.setItem('selectedRestaurantId', restaurantId)
+    setDeliveryZone(null)
     loadRestaurantAndProducts()
   }
 
   const getRestaurantId = (): string => {
     return selectedRestaurantId || localStorage.getItem('selectedRestaurantId') || ''
+  }
+
+  // Функция для геокодирования адреса
+  const geocodeAddress = async (address: string): Promise<{ lat: number; lng: number } | null> => {
+    try {
+      const token = 'e7a8d3897b07bb4631312ee1e8b376424c6667ea'
+      const url = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address'
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Token ${token}`,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ 
+          query: address, 
+          count: 1,
+          locations: [{ country: "*" }]
+        })
+      })
+
+      if (!response.ok) throw new Error('Failed to geocode address')
+
+      const data = await response.json()
+      if (data.suggestions && data.suggestions.length > 0) {
+        const suggestion = data.suggestions[0]
+        if (suggestion.data.geo_lat && suggestion.data.geo_lon) {
+          return {
+            lat: parseFloat(suggestion.data.geo_lat),
+            lng: parseFloat(suggestion.data.geo_lon)
+          }
+        }
+      }
+      return null
+    } catch (error) {
+      console.error('Geocoding error:', error)
+      return null
+    }
+  }
+
+  // Функция для проверки зоны доставки
+  const checkDeliveryZone = async (address: string): Promise<{ success: boolean; zone?: DeliveryZone; error?: string }> => {
+    if (!address) {
+      return { 
+        success: false, 
+        error: t.errorNoAddress 
+      }
+    }
+
+    setIsCheckingAddress(true)
+
+    try {
+      const coordinates = await geocodeAddress(address)
+      if (!coordinates) {
+        return { 
+          success: false, 
+          error: t.errorNoZone 
+        }
+      }
+
+      const restaurantId = getRestaurantId()
+      const zone = await DeliveryZoneService.findZoneForPoint(
+        restaurantId,
+        coordinates.lat,
+        coordinates.lng
+      )
+
+      if (!zone) {
+        return { 
+          success: false, 
+          error: t.errorNoZone 
+        }
+      }
+
+      return {
+        success: true,
+        zone: {
+          id: zone.id,
+          title: zone.title,
+          price: zone.price,
+          minOrder: zone.minOrder
+        }
+      }
+    } catch (error) {
+      console.error('Delivery zone check error:', error)
+      return { 
+        success: false, 
+        error: t.errorNoZone 
+      }
+    } finally {
+      setIsCheckingAddress(false)
+    }
   }
 
   const initializeAudioAnalyzer = async (stream: MediaStream) => {
@@ -934,9 +1066,20 @@ export function VoiceAssistantSheet({
     }).join('\n') : 'пуст';
 
     return `Ты - AI ассистент для ресторана. Твоя задача - ОЧЕНЬ ТОЧНО и ПРЕДСКАЗУЕМО обрабатывать заказы.
+
+## ВАЖНЫЕ ПРАВИЛА ДЛЯ ДОСТАВКИ (DELIVERY):
+- Для заказа доставки ОБЯЗАТЕЛЬНО нужен адрес доставки
+- Адрес должен быть проверен на вхождение в зону доставки
+- Если адрес не указан или не входит в зону - заказ не может быть создан
+
 ## ДЛЯ ЗАКАЗА В РЕСТОРАНЕ (DINE_IN) ОБЯЗАТЕЛЬНО:
 - Номер стола (tableNumber)
 - Количество посетителей (numberOfPeople)
+
+## ДЛЯ ЗАКАЗА ДОСТАВКИ (DELIVERY) ОБЯЗАТЕЛЬНО:
+- Адрес доставки (deliveryAddress)
+- Телефон клиента (phone)
+- Проверенная зона доставки
 
 # РАБОТА С ДОБАВКАМИ:
 ## КОМАНДЫ ДЛЯ ДОБАВОК:
@@ -976,6 +1119,8 @@ export function VoiceAssistantSheet({
 Используй для:
 - Количества персон ("Нас 4 человека")
 - Номера стола ("Стол номер 5")
+- Адреса доставки ("Адрес: улица Ленина 10")
+- Телефона ("Мой телефон 89123456789")
 - Комментария ("Без лука")
 
 ## SHOW_ORDER - показать текущий заказ
@@ -1031,6 +1176,8 @@ export function VoiceAssistantSheet({
   "updatedDetails": {
     "numberOfPeople": number,
     "tableNumber": "string", 
+    "deliveryAddress": "string",
+    "phone": "string",
     "comment": "string"
   },
   
@@ -1039,11 +1186,10 @@ export function VoiceAssistantSheet({
   "suggestions": ["string"] (релевантные предложения)
 }
 
-# ПРИМЕРЫ:
-- "Борщ с хлебом" → ADD_ITEMS с additives: ["хлеб_id"]
-- "Кофе с молоком" → ADD_ITEMS с additives: ["молоко_id"]
-- "Убери лук из салата" → MODIFY_ADDITIVES с additives без лука
-- "Добавь сыр к пасте" → MODIFY_ADDITIVES с additives + сыр
+# ПРИМЕРЫ КОМАНД ДЛЯ ДОСТАВКИ:
+- "Доставка на улицу Ленина 10" → UPDATE_DETAILS с deliveryAddress
+- "Мой телефон 89123456789" → UPDATE_DETAILS с phone
+- "Закажи пиццу на адрес проспект Мира 25" → UPDATE_DETAILS + ADD_ITEMS
 
 # КОНТЕКСТ:
 Меню (${products.length} товаров):
@@ -1055,6 +1201,9 @@ ${currentOrderInfo}
 Тип заказа: ${getOrderTypeText(orderType, 'ru')}
 Количество персон: ${additionalInfo.numberOfPeople}
 Стол: ${additionalInfo.tableNumber || 'не указан'}
+Адрес доставки: ${additionalInfo.deliveryAddress || 'не указан'}
+Телефон: ${additionalInfo.phone || 'не указан'}
+Зона доставки: ${deliveryZone ? `${deliveryZone.title} (${deliveryZone.price}₽)` : 'не определена'}
 
 ВСЕГДА отвечай в формате JSON! Будь максимально точен и предсказуем! Действуй уверенно!`;
   };
@@ -1172,7 +1321,6 @@ ${currentOrderInfo}
           if (parsedData.itemsToAdd && parsedData.itemsToAdd.length > 0) {
             console.log('Adding items with additives:', parsedData.itemsToAdd);
             
-            
             let addedItems: string[] = [];
 
             for (const item of parsedData.itemsToAdd) {
@@ -1228,25 +1376,45 @@ ${currentOrderInfo}
               };
               setConversation(prev => [...prev, infoMessage]);
             }
-          if (orderType === 'DINE_IN' && 
-              (!additionalInfo.tableNumber || !additionalInfo.numberOfPeople)) {
-            
-            const missingFields = []
-            if (!additionalInfo.tableNumber) missingFields.push('номер стола')
-            if (!additionalInfo.numberOfPeople) missingFields.push('количество посетителей')
-            
-            const questionMessage: ConversationMessage = {
-              role: 'assistant',
-              content: language === 'ru' 
-                ? `Для завершения заказа в ресторане, пожалуйста, укажите: ${missingFields.join(' и ')}`
-                : `რესტორნში შეკვეთის დასასრულებლად, გთხოვთ, მიუთითოთ: ${missingFields.join(' და ')}`,
-              timestamp: new Date(),
-              type: 'info'
-            };
-            setConversation(prev => [...prev, questionMessage]);
+
+            // Проверяем обязательные поля после добавления товаров
+            if (orderType === 'DINE_IN' && 
+                (!additionalInfo.tableNumber || !additionalInfo.numberOfPeople)) {
+              
+              const missingFields = []
+              if (!additionalInfo.tableNumber) missingFields.push('номер стола')
+              if (!additionalInfo.numberOfPeople) missingFields.push('количество посетителей')
+              
+              const questionMessage: ConversationMessage = {
+                role: 'assistant',
+                content: language === 'ru' 
+                  ? `Для завершения заказа в ресторане, пожалуйста, укажите: ${missingFields.join(' и ')}`
+                  : `რესტორნში შეკვეთის დასასრულებლად, გთხოვთ, მიუთითოთ: ${missingFields.join(' და ')}`,
+                timestamp: new Date(),
+                type: 'info'
+              };
+              setConversation(prev => [...prev, questionMessage]);
+            }
+
+            if (orderType === 'DELIVERY' && 
+                (!additionalInfo.deliveryAddress || !deliveryZone)) {
+              
+              const missingFields = []
+              if (!additionalInfo.deliveryAddress) missingFields.push('адрес доставки')
+              if (!deliveryZone) missingFields.push('проверка зоны доставки')
+              
+              const questionMessage: ConversationMessage = {
+                role: 'assistant',
+                content: language === 'ru' 
+                  ? `Для завершения заказа доставки, пожалуйста, укажите: ${missingFields.join(' и ')}`
+                  : `მიწოდების შეკვეთის დასასრულებლად, გთხოვთ, მიუთითოთ: ${missingFields.join(' და ')}`,
+                timestamp: new Date(),
+                type: 'info'
+              };
+              setConversation(prev => [...prev, questionMessage]);
+            }
           }
-        }
-        break;
+          break;
 
         case 'MODIFY_ADDITIVES':
           if (parsedData.additivesToModify && parsedData.additivesToModify.length > 0) {
@@ -1334,6 +1502,11 @@ ${currentOrderInfo}
             console.log('Updating order type to:', parsedData.newOrderType)
             newOrderType = parsedData.newOrderType
             shouldUpdateOrderType = true
+            
+            // Сбрасываем зону доставки при смене типа заказа
+            if (parsedData.newOrderType !== 'DELIVERY') {
+              setDeliveryZone(null)
+            }
           }
           break
 
@@ -1341,11 +1514,40 @@ ${currentOrderInfo}
           if (parsedData.updatedDetails) {
             console.log('Updating details:', parsedData.updatedDetails)
             const details = parsedData.updatedDetails
+            
+            // Обновляем основную информацию
             setAdditionalInfo(prev => ({
               numberOfPeople: details.numberOfPeople !== undefined ? details.numberOfPeople : prev.numberOfPeople,
               tableNumber: details.tableNumber !== undefined ? details.tableNumber : prev.tableNumber,
+              deliveryAddress: details.deliveryAddress !== undefined ? details.deliveryAddress : prev.deliveryAddress,
+              phone: details.phone !== undefined ? details.phone : prev.phone,
               comment: details.comment !== undefined ? details.comment : prev.comment
             }))
+
+            // Если указан адрес доставки - проверяем зону
+            if (details.deliveryAddress && orderType === 'DELIVERY') {
+              const zoneCheck = await checkDeliveryZone(details.deliveryAddress)
+              if (zoneCheck.success && zoneCheck.zone) {
+                setDeliveryZone(zoneCheck.zone)
+                const zoneMessage: ConversationMessage = {
+                  role: 'assistant',
+                  content: language === 'ru'
+                    ? `✅ ${t.deliveryZoneFound}: ${zoneCheck.zone.title} (${zoneCheck.zone.price}₽)`
+                    : `✅ ${t.deliveryZoneFound}: ${zoneCheck.zone.title} (${zoneCheck.zone.price}₽)`,
+                  timestamp: new Date(),
+                  type: 'info'
+                }
+                setConversation(prev => [...prev, zoneMessage])
+              } else if (zoneCheck.error) {
+                const errorMessage: ConversationMessage = {
+                  role: 'assistant',
+                  content: `❌ ${zoneCheck.error}`,
+                  timestamp: new Date(),
+                  type: 'error'
+                }
+                setConversation(prev => [...prev, errorMessage])
+              }
+            }
           }
           break
 
@@ -1372,6 +1574,15 @@ ${currentOrderInfo}
       if (shouldUpdateOrderType) {
         console.log('Updating order type state:', newOrderType);
         setOrderType(newOrderType);
+        
+        // Обновляем заказ с новым типом
+        if (updatedOrder) {
+          setOrder({
+            ...updatedOrder,
+            deliveryAddress: newOrderType === 'DELIVERY' ? updatedOrder.deliveryAddress : undefined,
+            deliveryZone: newOrderType === 'DELIVERY' ? updatedOrder.deliveryZone : undefined
+          })
+        }
       }
 
     } catch (error) {
@@ -1647,12 +1858,32 @@ ${currentOrderInfo}
     // Проверка обязательных полей для заказа в ресторане
     if (orderType === 'DINE_IN') {
       if (!additionalInfo.tableNumber.trim()) {
-        toast.error(language === 'ru' ? 'Укажите номер стола' : 'მიუთითეთ სტოლის ნომერი')
+        toast.error(t.errorNoTableNumber)
         return
       }
 
       if (!additionalInfo.numberOfPeople || additionalInfo.numberOfPeople < 1) {
-        toast.error(language === 'ru' ? 'Укажите количество посетителей' : 'მიუთითეთ ვიზიტორების რაოდენობა')
+        toast.error(t.errorNoPeopleCount)
+        return
+      }
+    }
+
+    // Проверка обязательных полей для доставки
+    if (orderType === 'DELIVERY') {
+      if (!additionalInfo.deliveryAddress.trim()) {
+        toast.error(t.errorNoAddress)
+        return
+      }
+
+      if (!deliveryZone) {
+        toast.error(t.errorNoZone)
+        return
+      }
+
+      // Дополнительная проверка зоны доставки
+      const zoneCheck = await checkDeliveryZone(additionalInfo.deliveryAddress)
+      if (!zoneCheck.success || !zoneCheck.zone) {
+        toast.error(zoneCheck.error || t.errorNoZone)
         return
       }
     }
@@ -1664,6 +1895,9 @@ ${currentOrderInfo}
         type: orderType,
         numberOfPeople: additionalInfo.numberOfPeople,
         tableNumber: orderType === 'DINE_IN' ? additionalInfo.tableNumber : undefined,
+        deliveryAddress: orderType === 'DELIVERY' ? additionalInfo.deliveryAddress : undefined,
+        deliveryZone: orderType === 'DELIVERY' ? deliveryZone : undefined,
+        phone: additionalInfo.phone || undefined,
         comment: additionalInfo.comment,
         items: order.items.map(item => ({
           productId: item.product.id,
@@ -1704,8 +1938,11 @@ ${currentOrderInfo}
     setAdditionalInfo({
       numberOfPeople: 1,
       tableNumber: '',
-      comment: ''
+      comment: '',
+      deliveryAddress: '',
+      phone: ''
     })
+    setDeliveryZone(null)
     setOrderType('DINE_IN')
     initializeConversation()
   }
@@ -1732,6 +1969,8 @@ ${currentOrderInfo}
     "Очистить заказ",
     "Стол номер 5",
     "Нас 4 человека",
+    "Доставка на улицу Ленина 10",
+    "Мой телефон 89123456789",
     "Показать меню"
   ] : [
     "ბორში პურთან ერთად",
@@ -1745,6 +1984,8 @@ ${currentOrderInfo}
     "გაასუფთავე შეკვეთა",
     "სტოლი ნომერი 5",
     "ჩვენ 4 კაცი ვართ",
+    "მიწოდება ლენინის ქუჩაზე 10",
+    "ჩემი ტელეფონი 555123456",
     "აჩვენე მენიუ"
   ]
 
@@ -1768,6 +2009,11 @@ ${currentOrderInfo}
       label: t.setTable,
       command: "table 1",
       icon: User
+    },
+    {
+      label: t.setAddress,
+      command: "адрес доставки улица Ленина 10",
+      icon: MapPin
     }
   ]
 
@@ -1948,6 +2194,17 @@ ${currentOrderInfo}
                 </div>
               )}
 
+              {isCheckingAddress && (
+                <div className="flex justify-start">
+                  <div className="max-w-[80%] p-4 rounded-2xl bg-blue-100 border border-blue-200 rounded-bl-none">
+                    <div className="flex items-center gap-3">
+                      <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                      <span className="text-sm text-blue-800">{t.checkingAddress}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Быстрые команды */}
               {showSuggestions && conversation.length <= 2 && (
                 <div className="space-y-4">
@@ -2055,6 +2312,9 @@ ${currentOrderInfo}
                         (!additionalInfo.tableNumber.trim() ||
                           !additionalInfo.numberOfPeople ||
                           additionalInfo.numberOfPeople < 1)
+                      ) ||
+                      (orderType === 'DELIVERY' &&
+                        (!additionalInfo.deliveryAddress.trim() || !deliveryZone)
                       )
                     }
                     className="w-full h-12 bg-green-600 hover:bg-green-700 disabled:bg-gray-400"
@@ -2181,15 +2441,45 @@ ${currentOrderInfo}
                         <div className="text-gray-600 dark:text-gray-400">{t.peopleCount}</div>
                         <div className="font-semibold">{additionalInfo.numberOfPeople}</div>
                       </div>
-                      <div>
-                        <div className="text-gray-600 dark:text-gray-400">{t.table}</div>
-                        <div className="font-semibold">{additionalInfo.tableNumber || '-'}</div>
-                      </div>
+                      {orderType === 'DINE_IN' && (
+                        <div>
+                          <div className="text-gray-600 dark:text-gray-400">{t.table}</div>
+                          <div className="font-semibold">{additionalInfo.tableNumber || '-'}</div>
+                        </div>
+                      )}
+                      {orderType === 'DELIVERY' && (
+                        <div>
+                          <div className="text-gray-600 dark:text-gray-400">{t.address}</div>
+                          <div className="font-semibold text-xs">{additionalInfo.deliveryAddress || '-'}</div>
+                        </div>
+                      )}
                       <div>
                         <div className="text-gray-600 dark:text-gray-400">{t.type}</div>
                         <div className="font-semibold">{getOrderTypeText(orderType)}</div>
                       </div>
                     </div>
+
+                    {/* Информация о зоне доставки */}
+                    {orderType === 'DELIVERY' && deliveryZone && (
+                      <div className="mt-3 p-3 bg-green-50 rounded-lg">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-green-800 font-medium">
+                            {t.deliveryZoneFound}: {deliveryZone.title}
+                          </span>
+                          <span className="text-green-600 font-bold">
+                            {deliveryZone.price}₽
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {orderType === 'DELIVERY' && !deliveryZone && additionalInfo.deliveryAddress && (
+                      <div className="mt-3 p-3 bg-yellow-50 rounded-lg">
+                        <div className="text-sm text-yellow-800">
+                          {t.errorNoZone}
+                        </div>
+                      </div>
+                    )}
                   </Card>
 
                   {/* Позиции заказа */}
@@ -2261,8 +2551,21 @@ ${currentOrderInfo}
                       <span className="font-semibold text-lg">{t.total}:</span>
                       <span className="font-bold text-2xl text-green-600">
                         {order.totalAmount}₽
+                        {deliveryZone && (
+                          <span className="text-sm text-gray-500 ml-2">
+                            + {deliveryZone.price}₽ {t.delivery.toLowerCase()}
+                          </span>
+                        )}
                       </span>
                     </div>
+                    {deliveryZone && (
+                      <div className="flex justify-between items-center mt-2 pt-2 border-t border-gray-200">
+                        <span className="font-semibold">{t.total} {t.withAdditives.toLowerCase()}:</span>
+                        <span className="font-bold text-xl text-blue-600">
+                          {order.totalAmount + deliveryZone.price}₽
+                        </span>
+                      </div>
+                    )}
                   </Card>
 
                   <Button
