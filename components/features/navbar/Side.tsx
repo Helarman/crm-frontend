@@ -306,13 +306,13 @@ export default function Side() {
         href: "/warehouse", 
         icon: <Package className="w-5 h-5" />,
         roles: ['MANAGER', 'SUPERVISOR']
-      },
+      },/*
       { 
         name: t.dliveryZone, 
         href: "/delivery-zones", 
         icon: <Hexagon className="w-5 h-5" />,
         roles: ['MANAGER', 'SUPERVISOR']
-      },
+      },*/
       { 
         name: t.staff, 
         href: "/staff", 

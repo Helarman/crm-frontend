@@ -43,7 +43,8 @@ import {
   Wine,
   Coffee,
   Dessert,
-  Pizza
+  Pizza,
+  Truck
 } from 'lucide-react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { OrderService } from '@/lib/api/order.service'
@@ -443,6 +444,13 @@ export function VoiceAssistantSheet({
   const getRestaurantId = (): string => {
     return selectedRestaurantId || localStorage.getItem('selectedRestaurantId') || ''
   }
+  const updateAdditionalInfo = (field: keyof typeof additionalInfo, value: number | string) => {
+    setAdditionalInfo(prev => ({
+      ...prev,
+      [field]: value
+    }))
+  }
+
 
   const initializeAudioAnalyzer = async (stream: MediaStream) => {
     try {
@@ -1171,8 +1179,8 @@ ${currentOrderInfo}
         case 'ADD_ITEMS':
           if (parsedData.itemsToAdd && parsedData.itemsToAdd.length > 0) {
             console.log('Adding items with additives:', parsedData.itemsToAdd);
-            
-            
+
+
             let addedItems: string[] = [];
 
             for (const item of parsedData.itemsToAdd) {
@@ -1228,25 +1236,25 @@ ${currentOrderInfo}
               };
               setConversation(prev => [...prev, infoMessage]);
             }
-          if (orderType === 'DINE_IN' && 
+            if (orderType === 'DINE_IN' &&
               (!additionalInfo.tableNumber || !additionalInfo.numberOfPeople)) {
-            
-            const missingFields = []
-            if (!additionalInfo.tableNumber) missingFields.push('номер стола')
-            if (!additionalInfo.numberOfPeople) missingFields.push('количество посетителей')
-            
-            const questionMessage: ConversationMessage = {
-              role: 'assistant',
-              content: language === 'ru' 
-                ? `Для завершения заказа в ресторане, пожалуйста, укажите: ${missingFields.join(' и ')}`
-                : `რესტორნში შეკვეთის დასასრულებლად, გთხოვთ, მიუთითოთ: ${missingFields.join(' და ')}`,
-              timestamp: new Date(),
-              type: 'info'
-            };
-            setConversation(prev => [...prev, questionMessage]);
+
+              const missingFields = []
+              if (!additionalInfo.tableNumber) missingFields.push('номер стола')
+              if (!additionalInfo.numberOfPeople) missingFields.push('количество посетителей')
+
+              const questionMessage: ConversationMessage = {
+                role: 'assistant',
+                content: language === 'ru'
+                  ? `Для завершения заказа в ресторане, пожалуйста, укажите: ${missingFields.join(' и ')}`
+                  : `რესტორნში შეკვეთის დასასრულებლად, გთხოვთ, მიუთითოთ: ${missingFields.join(' და ')}`,
+                timestamp: new Date(),
+                type: 'info'
+              };
+              setConversation(prev => [...prev, questionMessage]);
+            }
           }
-        }
-        break;
+          break;
 
         case 'MODIFY_ADDITIVES':
           if (parsedData.additivesToModify && parsedData.additivesToModify.length > 0) {
@@ -2171,23 +2179,131 @@ ${currentOrderInfo}
               {order && order.items.length > 0 ? (
                 <div className="space-y-4">
                   {/* Сводка заказа */}
-                  <Card className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950 dark:to-purple-950">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <div className="text-gray-600 dark:text-gray-400">{t.itemsCount}</div>
-                        <div className="font-semibold">{order.items.length}</div>
+                  <Card className="p-4">
+                    <h3 className="font-semibold mb-3">{t.additionalInfo}</h3>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {/* Левая колонка - персоны и стол */}
+                      <div className="space-y-4">
+                        {/* Количество персон */}
+                        <div className="space-y-2">
+                          <Label htmlFor="numberOfPeople">{t.numberOfPeople}</Label>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-2/12"
+                              onClick={() => updateAdditionalInfo('numberOfPeople', Math.max(1, additionalInfo.numberOfPeople - 1))}
+                              disabled={additionalInfo.numberOfPeople <= 1}
+                            >
+                              <Minus className="h-3 w-3" />
+                            </Button>
+
+                            <Input
+                              id="numberOfPeople"
+                              type="number"
+                              min="1"
+                              max="20"
+                              value={additionalInfo.numberOfPeople}
+                              onChange={(e) => updateAdditionalInfo('numberOfPeople', parseInt(e.target.value) || 1)}
+                              className="text-center w-full"
+                            />
+
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-2/12"
+                              onClick={() => updateAdditionalInfo('numberOfPeople', additionalInfo.numberOfPeople + 1)}
+                              disabled={additionalInfo.numberOfPeople >= 20}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Номер стола */}
+                        <div className="space-y-2">
+                          <Label htmlFor="tableNumber">{t.tableNumber}</Label>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-2/12"
+                              onClick={() => updateAdditionalInfo('tableNumber', Math.max(1, (parseInt(additionalInfo.tableNumber) || 1) - 1).toString())}
+                              disabled={(parseInt(additionalInfo.tableNumber) || 1) <= 1}
+                            >
+                              <Minus className="h-3 w-3" />
+                            </Button>
+
+                            <Input
+                              id="tableNumber"
+                              type="number"
+                              min="1"
+                              max="50"
+                              value={additionalInfo.tableNumber}
+                              onChange={(e) => updateAdditionalInfo('tableNumber', e.target.value)}
+                              className="text-center w-full"
+                              placeholder="1"
+                            />
+
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-8 w-2/12"
+                              onClick={() => updateAdditionalInfo('tableNumber', ((parseInt(additionalInfo.tableNumber) || 1) + 1).toString())}
+                              disabled={(parseInt(additionalInfo.tableNumber) || 1) >= 50}
+                            >
+                              <Plus className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="text-gray-600 dark:text-gray-400">{t.peopleCount}</div>
-                        <div className="font-semibold">{additionalInfo.numberOfPeople}</div>
+
+                      {/* Правая колонка - комментарий */}
+                      <div className="space-y-2">
+                        <Label htmlFor="comment">{t.comment}</Label>
+                        <Textarea
+                          id="comment"
+                          value={additionalInfo.comment}
+                          onChange={(e) => updateAdditionalInfo('comment', e.target.value)}
+                          placeholder={language === 'ru' ? "Комментарий к заказу..." : "კომენტარი შეკვეთაზე..."}
+                          rows={5}
+                          className="min-h-[120px]"
+                        />
                       </div>
-                      <div>
-                        <div className="text-gray-600 dark:text-gray-400">{t.table}</div>
-                        <div className="font-semibold">{additionalInfo.tableNumber || '-'}</div>
-                      </div>
-                      <div>
-                        <div className="text-gray-600 dark:text-gray-400">{t.type}</div>
-                        <div className="font-semibold">{getOrderTypeText(orderType)}</div>
+                    </div>
+
+                    {/* Тип заказа - всегда на всю ширину */}
+                    <div className="space-y-2 mt-6">
+                      <Label>{t.orderType}</Label>
+                      <div className="flex gap-2 flex-wrap">
+                        <Button
+                          variant={orderType === 'DINE_IN' ? "default" : "outline"}
+                          size="lg"
+                          onClick={() => setOrderType('DINE_IN')}
+                          className="flex-1 min-w-[100px]"
+                        >
+                          <Utensils className="h-3 w-3 mr-1" />
+                          {t.dineIn}
+                        </Button>
+                        <Button
+                          variant={orderType === 'TAKEAWAY' ? "default" : "outline"}
+                          size="lg"
+                          onClick={() => setOrderType('TAKEAWAY')}
+                          className="flex-1 min-w-[100px]"
+                        >
+                          <ShoppingBag className="h-3 w-3 mr-1" />
+                          {t.takeaway}
+                        </Button>
+                        <Button
+                          variant={orderType === 'DELIVERY' ? "default" : "outline"}
+                          size="lg"
+                          onClick={() => setOrderType('DELIVERY')}
+                          className="flex-1 min-w-[100px]"
+                        >
+                          <Truck className="h-3 w-3 mr-1" />
+                          {t.delivery}
+                        </Button>
                       </div>
                     </div>
                   </Card>

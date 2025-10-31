@@ -25,19 +25,19 @@ const DictionariesPage = () => {
     },
     writeOffReasons: {
       title: {
-        ru: 'Причины списания',
+        ru: 'Списания',
         ka: 'ჩამოწერის მიზეზები',
       },
     },
     receiptReasons: {
       title: {
-        ru: 'Причины приходов',
+        ru: 'Приходы',
         ka: 'მიღების მიზეზები',
       },
     },
     movementReasons: {
       title: {
-        ru: 'Причины перемещений',
+        ru: 'Перемещения',
         ka: 'გადაადგილების მიზეზები',
       },
     },
