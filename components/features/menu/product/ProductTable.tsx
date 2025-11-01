@@ -22,6 +22,21 @@ import { useRouter } from 'next/navigation';
 import { Product } from '@/lib/types/product';
 import { Category } from '@/lib/types/order';
 
+interface CategoryRowProps {
+  category: CategoryNode;
+  depth?: number;
+  language: Language;
+  onDelete: (id: string) => void;
+  fetchData: () => void;
+  router: any;
+  expandedCategories: Set<string>;
+  toggleCategory: (id: string) => void;
+  onMoveUp: (productId: string, categoryId: string) => void;
+  onMoveDown: (productId: string, categoryId: string) => void;
+  onClientMoveUp: (productId: string, categoryId: string) => void;
+  onClientMoveDown: (productId: string, categoryId: string) => void;
+}
+
 interface Restaurant {
   id: string;
   title: string;
@@ -118,15 +133,15 @@ const translations = {
     ka: 'წაშლა',
   },
   printLabels: {
-    ru: 'Печать лейблов',
+    ru: 'Лейблы',
     ka: 'ლეიბლების დაბეჭდვა'
   },
   publishedOnWebsite: {
-    ru: 'На сайте',
+    ru: 'Сайт',
     ka: 'საიტზე'
   },
   publishedInApp: {
-    ru: 'В приложении',
+    ru: 'Приложение',
     ka: 'აპლიკაციაში'
   },
   isStopList: {
@@ -160,7 +175,7 @@ const translations = {
 };
 
 type SortDirection = 'asc' | 'desc' | null;
-type SortField = 'title' | 'price' | 'category' | 'order' | null;
+type SortField = 'title' | 'price' | 'category' | 'adminOrder' | 'clientOrder' | null;
 type ToggleMethods =
   | "togglePrintLabels"
   | "togglePublishedOnWebsite"
@@ -275,8 +290,12 @@ const ProductRow = ({
   categoryId,
   onMoveUp,
   onMoveDown,
+  onClientMoveUp,
+  onClientMoveDown,
   isFirst,
-  isLast
+  isLast,
+  isClientFirst,
+  isClientLast
 }: {
   product: Product;
   depth?: number;
@@ -287,13 +306,73 @@ const ProductRow = ({
   categoryId: string;
   onMoveUp: (productId: string) => void;
   onMoveDown: (productId: string) => void;
+  onClientMoveUp: (productId: string) => void;
+  onClientMoveDown: (productId: string) => void;
   isFirst: boolean;
   isLast: boolean;
+  isClientFirst: boolean;
+  isClientLast: boolean;
 }) => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [loadingToggles, setLoadingToggles] = useState<Record<string, boolean>>({});
-  const [loadingOrder, setLoadingOrder] = useState(false);
+  const [loadingAdminOrder, setLoadingAdminOrder] = useState(false);
+  const [loadingClientOrder, setLoadingClientOrder] = useState(false);
 
+  const handleMoveUp = async () => {
+    if (isFirst) return;
+    setLoadingAdminOrder(true);
+    try {
+      await onMoveUp(product.id);
+      fetchData();
+    } catch (error) {
+      console.error('Error moving product up:', error);
+      toast.error('Ошибка изменения порядка в админке');
+    } finally {
+      setLoadingAdminOrder(false);
+    }
+  };
+
+  const handleMoveDown = async () => {
+    if (isLast) return;
+    setLoadingAdminOrder(true);
+    try {
+      await onMoveDown(product.id);
+      fetchData();
+    } catch (error) {
+      console.error('Error moving product down:', error);
+      toast.error('Ошибка изменения порядка в админке');
+    } finally {
+      setLoadingAdminOrder(false);
+    }
+  };
+
+  const handleClientMoveUp = async () => {
+    if (isClientFirst) return;
+    setLoadingClientOrder(true);
+    try {
+      await onClientMoveUp(product.id);
+      fetchData();
+    } catch (error) {
+      console.error('Error moving product up on client:', error);
+      toast.error('Ошибка изменения порядка на сайте');
+    } finally {
+      setLoadingClientOrder(false);
+    }
+  };
+
+  const handleClientMoveDown = async () => {
+    if (isClientLast) return;
+    setLoadingClientOrder(true);
+    try {
+      await onClientMoveDown(product.id);
+      fetchData();
+    } catch (error) {
+      console.error('Error moving product down on client:', error);
+      toast.error('Ошибка изменения порядка на сайте');
+    } finally {
+      setLoadingClientOrder(false);
+    }
+  };
   const handleToggle = async (productId: string, serviceMethod: ToggleMethods) => {
     const toggleKey = `${productId}-${serviceMethod}`;
     setLoadingToggles(prev => ({ ...prev, [toggleKey]: true }));
@@ -310,50 +389,20 @@ const ProductRow = ({
     }
   };
 
-  const handleMoveUp = async () => {
-    if (isFirst) return;
-    setLoadingOrder(true);
-    try {
-      await onMoveUp(product.id);
-      toast.success(translations.orderUpdateSuccess[language]);
-      fetchData();
-    } catch (error) {
-      console.error('Error moving product up:', error);
-      toast.error(translations.orderUpdateError[language]);
-    } finally {
-      setLoadingOrder(false);
-    }
-  };
-
-  const handleMoveDown = async () => {
-    if (isLast) return;
-    setLoadingOrder(true);
-    try {
-      await onMoveDown(product.id);
-      toast.success(translations.orderUpdateSuccess[language]);
-      fetchData();
-    } catch (error) {
-      console.error('Error moving product down:', error);
-      toast.error(translations.orderUpdateError[language]);
-    } finally {
-      setLoadingOrder(false);
-    }
-  };
-
-  const printLabelsKey = `${product.id}-togglePrintLabels`;
-  const websiteKey = `${product.id}-togglePublishedOnWebsite`;
-  const appKey = `${product.id}-togglePublishedInApp`;
-  const stopListKey = `${product.id}-toggleStopList`;
-
   return (
     <>
       <TableRow>
         <TableCell className="font-medium" style={{ paddingLeft: `${depth * 20 + 12}px` }}>
           <div className="flex items-center gap-2">
             {product.title}
-            <Badge variant="outline" className="ml-2">
-              {product.sortOrder || 0}
-            </Badge>
+            <div className="flex gap-1 ml-2">
+              <Badge variant="outline" title="Панель">
+                A: {product.sortOrder || 0}
+              </Badge>
+              <Badge variant="outline" title="Клиент">
+                C: {product.clientSortOrder || 0}
+              </Badge>
+            </div>
           </div>
         </TableCell>
         <TableCell>
@@ -380,43 +429,14 @@ const ProductRow = ({
             {product.price} ₽
           </Badge>
         </TableCell>
-        <TableCell className="text-center">
-          <Switch
-            checked={product.printLabels}
-            onCheckedChange={() => handleToggle(product.id, 'togglePrintLabels')}
-            disabled={loadingToggles[printLabelsKey]}
-          />
-        </TableCell>
-        <TableCell className="text-center">
-          <Switch
-            checked={product.publishedOnWebsite}
-            onCheckedChange={() => handleToggle(product.id, 'togglePublishedOnWebsite')}
-            disabled={loadingToggles[websiteKey]}
-          />
-        </TableCell>
-        <TableCell className="text-center">
-          <Switch
-            checked={product.publishedInApp}
-            onCheckedChange={() => handleToggle(product.id, 'togglePublishedInApp')}
-            disabled={loadingToggles[appKey]}
-          />
-        </TableCell>
-        <TableCell className="text-center">
-          <Switch
-            checked={product.isStopList}
-            onCheckedChange={() => handleToggle(product.id, 'toggleStopList')}
-            disabled={loadingToggles[stopListKey]}
-          />
-        </TableCell>
-        <TableCell className="text-right">
+        <TableCell>
           <div className="flex items-center gap-1">
-            {/* Кнопки управления порядком */}
             <Button
               variant="ghost"
               size="sm"
               onClick={handleMoveUp}
-              disabled={isFirst || loadingOrder}
-              title={translations.moveUp[language]}
+              disabled={isFirst || loadingAdminOrder}
+              title="Поднять в админке"
             >
               <ArrowUp className="h-4 w-4" />
             </Button>
@@ -424,12 +444,65 @@ const ProductRow = ({
               variant="ghost"
               size="sm"
               onClick={handleMoveDown}
-              disabled={isLast || loadingOrder}
-              title={translations.moveDown[language]}
+              disabled={isLast || loadingAdminOrder}
+              title="Опустить в админке"
             >
               <ArrowDown className="h-4 w-4" />
             </Button>
-
+          </div>
+        </TableCell>
+        <TableCell>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClientMoveUp}
+              disabled={isClientFirst || loadingClientOrder}
+              title="Поднять на сайте"
+            >
+              <ArrowUp className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClientMoveDown}
+              disabled={isClientLast || loadingClientOrder}
+              title="Опустить на сайте"
+            >
+              <ArrowDown className="h-4 w-4" />
+            </Button>
+          </div>
+        </TableCell>
+        <TableCell className="text-center">
+          <Switch
+            checked={product.printLabels}
+            onCheckedChange={() => handleToggle(product.id, 'togglePrintLabels')}
+            disabled={loadingToggles[`${product.id}-togglePrintLabels`]}
+          />
+        </TableCell>
+        <TableCell className="text-center">
+          <Switch
+            checked={product.publishedOnWebsite}
+            onCheckedChange={() => handleToggle(product.id, 'togglePublishedOnWebsite')}
+            disabled={loadingToggles[`${product.id}-togglePublishedOnWebsite`]}
+          />
+        </TableCell>
+        <TableCell className="text-center">
+          <Switch
+            checked={product.publishedInApp}
+            onCheckedChange={() => handleToggle(product.id, 'togglePublishedInApp')}
+            disabled={loadingToggles[`${product.id}-togglePublishedInApp`]}
+          />
+        </TableCell>
+        <TableCell className="text-center">
+          <Switch
+            checked={product.isStopList}
+            onCheckedChange={() => handleToggle(product.id, 'toggleStopList')}
+            disabled={loadingToggles[`${product.id}-toggleStopList`]}
+          />
+        </TableCell>
+        <TableCell className="text-right">
+          <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="sm"
@@ -483,19 +556,10 @@ const CategoryRow = ({
   expandedCategories,
   toggleCategory,
   onMoveUp,
-  onMoveDown
-}: {
-  category: CategoryNode;
-  depth?: number;
-  language: Language;
-  onDelete: (id: string) => void;
-  fetchData: () => void;
-  router: any;
-  expandedCategories: Set<string>;
-  toggleCategory: (id: string) => void;
-  onMoveUp: (productId: string, categoryId: string) => void;
-  onMoveDown: (productId: string, categoryId: string) => void;
-}) => {
+  onMoveDown,
+  onClientMoveUp,
+  onClientMoveDown
+}: CategoryRowProps) => {
   const isExpanded = expandedCategories.has(category.id);
   const hasChildren = category.children.length > 0 || category.products.length > 0;
   const isUncategorized = category.id === 'uncategorized';
@@ -507,7 +571,7 @@ const CategoryRow = ({
           className={`${depth === 0 ? 'bg-gray-50' : ''} cursor-pointer`}
           onClick={() => hasChildren && toggleCategory(category.id)}
         >
-          <TableCell colSpan={8} className="font-medium" style={{ paddingLeft: `${depth * 20 + 12}px` }}>
+          <TableCell colSpan={10} className="font-medium" style={{ paddingLeft: `${depth * 20 + 12}px` }}>
             <div className="flex items-center">
               {hasChildren && !isUncategorized ? (
                 <Button
@@ -555,43 +619,73 @@ const CategoryRow = ({
               toggleCategory={toggleCategory}
               onMoveUp={onMoveUp}
               onMoveDown={onMoveDown}
+              onClientMoveUp={onClientMoveUp}
+              onClientMoveDown={onClientMoveDown}
             />
           ))}
-          {category.products.map((product, index) => (
-            <ProductRow
-              key={product.id}
-              product={product}
-              depth={depth + 1}
-              language={language}
-              onDelete={onDelete}
-              fetchData={fetchData}
-              router={router}
-              categoryId={category.id}
-              onMoveUp={() => onMoveUp(product.id, category.id)}
-              onMoveDown={() => onMoveDown(product.id, category.id)}
-              isFirst={index === 0}
-              isLast={index === category.products.length - 1}
-            />
-          ))}
+          {category.products.map((product, index) => {
+            // Определяем позиции для клиентской сортировки
+            const sortedByClientOrder = [...category.products].sort((a, b) =>
+              (a.clientSortOrder || 0) - (b.clientSortOrder || 0)
+            );
+            const clientIndex = sortedByClientOrder.findIndex(p => p.id === product.id);
+            const isClientFirst = clientIndex === 0;
+            const isClientLast = clientIndex === sortedByClientOrder.length - 1;
+
+            return (
+              <ProductRow
+                key={product.id}
+                product={product}
+                depth={depth + 1}
+                language={language}
+                onDelete={onDelete}
+                fetchData={fetchData}
+                router={router}
+                categoryId={category.id}
+                onMoveUp={() => onMoveUp(product.id, category.id)}
+                onMoveDown={() => onMoveDown(product.id, category.id)}
+                onClientMoveUp={() => onClientMoveUp(product.id, category.id)}
+                onClientMoveDown={() => onClientMoveDown(product.id, category.id)}
+                isFirst={index === 0}
+                isLast={index === category.products.length - 1}
+                isClientFirst={isClientFirst}
+                isClientLast={isClientLast}
+              />
+            );
+          })}
         </>
       )}
 
-      {isUncategorized && category.products.map((product, index) => (
-        <ProductRow
-          key={product.id}
-          product={product}
-          depth={depth + 1}
-          language={language}
-          onDelete={onDelete}
-          fetchData={fetchData}
-          router={router}
-          categoryId={category.id}
-          onMoveUp={() => onMoveUp(product.id, category.id)}
-          onMoveDown={() => onMoveDown(product.id, category.id)}
-          isFirst={index === 0}
-          isLast={index === category.products.length - 1}
-        />
-      ))}
+      {isUncategorized && category.products.map((product, index) => {
+        // Для uncategorized также определяем позиции клиентской сортировки
+        const sortedByClientOrder = [...category.products].sort((a, b) =>
+          (a.clientSortOrder || 0) - (b.clientSortOrder || 0)
+        );
+        const clientIndex = sortedByClientOrder.findIndex(p => p.id === product.id);
+        const isClientFirst = clientIndex === 0;
+        const isClientLast = clientIndex === sortedByClientOrder.length - 1;
+
+        return (
+          <ProductRow
+            key={product.id}
+            product={product}
+            depth={depth + 1}
+            language={language}
+            onDelete={onDelete}
+            fetchData={fetchData}
+            router={router}
+            categoryId={category.id}
+            onMoveUp={() => onMoveUp(product.id, category.id)}
+            onMoveDown={() => onMoveDown(product.id, category.id)}
+            onClientMoveUp={() => onClientMoveUp(product.id, category.id)}
+            onClientMoveDown={() => onClientMoveDown(product.id, category.id)}
+            isFirst={index === 0}
+            isLast={index === category.products.length - 1}
+            isClientFirst={isClientFirst}
+            isClientLast={isClientLast}
+          />
+        );
+      })}
     </>
   );
 };
@@ -611,7 +705,7 @@ export const ProductTable = ({
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
 
   // ФИЛЬТРАЦИЯ: используем filteredProductIds для фильтрации продуктов
-  const filteredProducts = products.filter(product => 
+  const filteredProducts = products.filter(product =>
     filteredProductIds.has(product.id)
   );
 
@@ -639,6 +733,24 @@ export const ProductTable = ({
   });
 
   const categoryTree = buildCategoryTree(allCategories, filteredProducts, language);
+
+  const handleClientMoveUp = async (productId: string, categoryId: string) => {
+    try {
+      await ProductService.moveProductUpOnClient(productId, categoryId);
+    } catch (error) {
+      console.error('Error moving product up on client:', error);
+      throw error;
+    }
+  };
+
+  const handleClientMoveDown = async (productId: string, categoryId: string) => {
+    try {
+      await ProductService.moveProductDownOnClient(productId, categoryId);
+    } catch (error) {
+      console.error('Error moving product down on client:', error);
+      throw error;
+    }
+  };
 
   const handleMoveUp = async (productId: string, categoryId: string) => {
     try {
@@ -669,6 +781,18 @@ export const ProductTable = ({
       case 'category':
         comparison = a.title.localeCompare(b.title);
         break;
+      case 'adminOrder':
+        // Сортировка по максимальному порядку в категории (для админки)
+        const aMaxOrder = Math.max(...a.products.map(p => p.sortOrder || 0));
+        const bMaxOrder = Math.max(...b.products.map(p => p.sortOrder || 0));
+        comparison = aMaxOrder - bMaxOrder;
+        break;
+      case 'clientOrder':
+        // Сортировка по порядку для клиентского сайта
+        const aClientOrder = Math.max(...a.products.map(p => p.clientSortOrder || 0));
+        const bClientOrder = Math.max(...b.products.map(p => p.clientSortOrder || 0));
+        comparison = aClientOrder - bClientOrder;
+        break;
     }
     return sortDirection === 'asc' ? comparison : -comparison;
   });
@@ -685,8 +809,11 @@ export const ProductTable = ({
         case 'price':
           comparison = a.price - b.price;
           break;
-        case 'order':
+        case 'adminOrder':
           comparison = (a.sortOrder || 0) - (b.sortOrder || 0);
+          break;
+        case 'clientOrder':
+          comparison = (a.clientSortOrder || 0) - (b.clientSortOrder || 0);
           break;
       }
       return sortDirection === 'asc' ? comparison : -comparison;
@@ -749,6 +876,24 @@ export const ProductTable = ({
                 {getSortIcon('price')}
               </button>
             </TableHead>
+            <TableHead>
+              <button
+                className="flex items-center"
+                onClick={() => handleSort('adminOrder')}
+              >
+                Панель
+                {getSortIcon('adminOrder')}
+              </button>
+            </TableHead>
+            <TableHead>
+              <button
+                className="flex items-center"
+                onClick={() => handleSort('clientOrder')}
+              >
+                Клиент
+                {getSortIcon('clientOrder')}
+              </button>
+            </TableHead>
             <TableHead className="text-center">{translations.printLabels[language]}</TableHead>
             <TableHead className="text-center">{translations.publishedOnWebsite[language]}</TableHead>
             <TableHead className="text-center">{translations.publishedInApp[language]}</TableHead>
@@ -759,7 +904,7 @@ export const ProductTable = ({
         <TableBody>
           {isLoading ? (
             <TableRow>
-              <TableCell colSpan={8} className="h-24 text-center">
+              <TableCell colSpan={10} className="h-24 text-center"> {/* Обновите colSpan на 10 */}
                 {translations.loading[language]}
               </TableCell>
             </TableRow>
@@ -776,11 +921,13 @@ export const ProductTable = ({
                 toggleCategory={toggleCategory}
                 onMoveUp={handleMoveUp}
                 onMoveDown={handleMoveDown}
+                onClientMoveUp={handleClientMoveUp}
+                onClientMoveDown={handleClientMoveDown}
               />
             ))
           ) : (
             <TableRow>
-              <TableCell colSpan={8} className="h-24 text-center">
+              <TableCell colSpan={10} className="h-24 text-center"> {/* Обновите colSpan на 10 */}
                 {translations.noProducts[language]}
               </TableCell>
             </TableRow>

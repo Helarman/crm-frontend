@@ -3,11 +3,11 @@
 import { useShift, useShiftUsers } from '@/lib/hooks/useShifts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ShoppingCart, RussianRuble, Users, User, Plus, Trash2, Edit, BanknoteArrowUp, BanknoteArrowDown, PlusCircle, MinusCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, RussianRuble, Users, User, Plus, Trash2, Edit, BanknoteArrowUp, BanknoteArrowDown, PlusCircle, MinusCircle, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { AccessCheck } from '@/components/AccessCheck';
 import { Input } from '@/components/ui/input';
@@ -20,89 +20,89 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 
 const EXPENSES = [
-                                      "Деньги",
-                                      "Георгий деньги",
-                                      "Александр Деньги",
-                                      "Малхаз Деньги",
-                                      "Алексей Деньги",
-                                      "Инкассация",
-                                      "Перерасход Безнал",
-                                      "Карен Деньги",
-                                      "Долги",
-                                      "Измайловский Лес",
-                                      "Шоссе Энтузиастов",
-                                      "Жулебино",
-                                      "Савеловская",
-                                      "Войковская",
-                                      "Горенский Бульвар",
-                                      "Долги Безнал",
-                                      "Закуп",
-                                      "Закуп Кухня",
-                                      "Закуп Бар",
-                                      "Закуп Сыр",
-                                      "Доставка Грузия",
-                                      "Упаковка и Посуда для доставки",
-                                      "ХозТовары",
-                                      "Аванс Закуп",
-                                      "Связь",
-                                      "Телефония",
-                                      "Интернет",
-                                      "СМС",
-                                      "Услуги и Оборудование",
-                                      "Посуда",
-                                      "Аквариум",
-                                      "Цветы",
-                                      "Ремонт Автомобиля",
-                                      "Вентиляция и Кондиционеры",
-                                      "Газель Перевозки",
-                                      "Сантехника",
-                                      "Холодильники",
-                                      "Печи",
-                                      "Тестораскатка",
-                                      "Тестомес",
-                                      "Плиты",
-                                      "Прочие работы и оборудование",
-                                      "IT (АЙТИ) ИТ",
-                                      "Размещение вакансий",
-                                      "Дезинсекция",
-                                      "Аренда",
-                                      "Электричество",
-                                      "Коммуналка",
-                                      "ФМС",
-                                      "Налоговая",
-                                      "Фирма",
-                                      "Пожарник",
-                                      "С.Э.С.",
-                                      "Охрана",
-                                      "Транспорт логистика",
-                                      "Такси персонал",
-                                      "Парковка",
-                                      "Такси рынок",
-                                      "Такси доставка заказов",
-                                      "Бензин Курьер",
-                                      "Бензин Закупщик",
-                                      "Каршаринг Аренда Авто",
-                                      "Реклама и Маркетинг",
-                                      "Меню и чекницы и т.д.",
-                                      "Интернет реклама",
-                                      "Реклама в оффлайне",
-                                      "Комиссии банка",
-                                      "Комиссия банка",
-                                      "2,8%",
-                                      "Безнал 2%"
-                                    ]
+  "Деньги",
+  "Георгий деньги",
+  "Александр Деньги",
+  "Малхаз Деньги",
+  "Алексей Деньги",
+  "Инкассация",
+  "Перерасход Безнал",
+  "Карен Деньги",
+  "Долги",
+  "Измайловский Лес",
+  "Шоссе Энтузиастов",
+  "Жулебино",
+  "Савеловская",
+  "Войковская",
+  "Горенский Бульвар",
+  "Долги Безнал",
+  "Закуп",
+  "Закуп Кухня",
+  "Закуп Бар",
+  "Закуп Сыр",
+  "Доставка Грузия",
+  "Упаковка и Посуда для доставки",
+  "ХозТовары",
+  "Аванс Закуп",
+  "Связь",
+  "Телефония",
+  "Интернет",
+  "СМС",
+  "Услуги и Оборудование",
+  "Посуда",
+  "Аквариум",
+  "Цветы",
+  "Ремонт Автомобиля",
+  "Вентиляция и Кондиционеры",
+  "Газель Перевозки",
+  "Сантехника",
+  "Холодильники",
+  "Печи",
+  "Тестораскатка",
+  "Тестомес",
+  "Плиты",
+  "Прочие работы и оборудование",
+  "IT (АЙТИ) ИТ",
+  "Размещение вакансий",
+  "Дезинсекция",
+  "Аренда",
+  "Электричество",
+  "Коммуналка",
+  "ФМС",
+  "Налоговая",
+  "Фирма",
+  "Пожарник",
+  "С.Э.С.",
+  "Охрана",
+  "Транспорт логистика",
+  "Такси персонал",
+  "Парковка",
+  "Такси рынок",
+  "Такси доставка заказов",
+  "Бензин Курьер",
+  "Бензин Закупщик",
+  "Каршаринг Аренда Авто",
+  "Реклама и Маркетинг",
+  "Меню и чекницы и т.д.",
+  "Интернет реклама",
+  "Реклама в оффлайне",
+  "Комиссии банка",
+  "Комиссия банка",
+  "2,8%",
+  "Безнал 2%"
+]
 
 const INCOMES = [
-                          "Возврат Долгов",
-                          "Предоплаты",
-                          "Закуп долг",
-                          "Онлайн Оплата",
-                          "Безнал",
-                          "Фирма",
-                          "Другое",
-                          "Из Инкассации",
-                          "Остаток с пр. месяца"
-                        ]
+  "Возврат Долгов",
+  "Предоплаты",
+  "Закуп долг",
+  "Онлайн Оплата",
+  "Безнал",
+  "Фирма",
+  "Другое",
+  "Из Инкассации",
+  "Остаток с пр. месяца"
+]
 
 const translations = {
   ru: {
@@ -256,7 +256,7 @@ const translations = {
     save: 'შენახვა',
     cancel: 'გაუქმება',
     revenue: 'შემოსავალი',
-    cashPayment:'ნაღდი ფულით გადახდა',
+    cashPayment: 'ნაღდი ფულით გადახდა',
     cardPayment: 'ბარათით გადახდა',
     onlinePayment: 'ონლაინ გადახდა',
     ბანკეტი: 'ბანკეტი',
@@ -354,6 +354,7 @@ interface ShiftIncome {
 }
 
 export default function ShiftStatsPage() {
+  const router = useRouter()
   const { id } = useParams();
   const { language } = useLanguageStore();
   const t = translations[language];
@@ -361,10 +362,10 @@ export default function ShiftStatsPage() {
   const { data: shift, isLoading: isLoadingShift, mutate: mutateShift } = useShift(id as string);
   const { data: staff, isLoading: isLoadingStaff, mutate: mutateStaff } = useShiftUsers(id as string);
   const { data: restaurantUsers } = useRestaurantUsers(shift?.restaurantId || '');
-  
+
   const [selectedRestaurantUser, setSelectedRestaurantUser] = useState<string | null>(null);
   const [selectedShiftUser, setSelectedShiftUser] = useState<string | null>(null);
-  
+
   const [expenses, setExpenses] = useState<ShiftExpense[]>([]);
   const [isLoadingExpenses, setIsLoadingExpenses] = useState(false);
   const [newExpense, setNewExpense] = useState({
@@ -374,7 +375,7 @@ export default function ShiftStatsPage() {
   });
   const [isAddingExpense, setIsAddingExpense] = useState(false);
   const [editingExpense, setEditingExpense] = useState<ShiftExpense | null>(null);
-  
+
   const [incomes, setIncomes] = useState<ShiftIncome[]>([]);
   const [isLoadingIncomes, setIsLoadingIncomes] = useState(false);
   const [newIncome, setNewIncome] = useState({
@@ -431,7 +432,7 @@ export default function ShiftStatsPage() {
     if (!selectedShiftUser) return;
     console.log(selectedShiftUser)
     try {
-      await ShiftService.removeUserFromShift(id as string,  selectedShiftUser );
+      await ShiftService.removeUserFromShift(id as string, selectedShiftUser);
       mutateShift();
       mutateStaff();
       setSelectedShiftUser(null);
@@ -518,7 +519,7 @@ export default function ShiftStatsPage() {
     setIsAddingIncome(true);
   };
 
-   // Основные расчеты
+  // Основные расчеты
   const totalAmount = shift?.orders?.reduce((sum, order) => sum + (order.totalAmount || 0), 0) || 0;
   const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
   const totalIncomes = incomes.reduce((sum, income) => sum + income.amount, 0);
@@ -572,7 +573,7 @@ export default function ShiftStatsPage() {
   }
 
   const isShiftCompleted = shift.status === 'COMPLETED';
-  const availableUsers = restaurantUsers?.filter((user : UserType) => 
+  const availableUsers = restaurantUsers?.filter((user: UserType) =>
     !staff?.some(s => s.userId === user.id)
   ) || [];
 
@@ -586,7 +587,7 @@ export default function ShiftStatsPage() {
             {t.back}
           </Button>
         </div>
- {isShiftCompleted && (
+        {isShiftCompleted && (
           <div className="mb-4 p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700">
             <p>{t.shiftCompleted}</p>
           </div>
@@ -741,49 +742,49 @@ export default function ShiftStatsPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                  <div className="mb-4">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="mb-4">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <Select
-                    value={newIncome.title}
-                    onValueChange={(value) => setNewIncome({...newIncome, title: value})}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={t.incomeTitle} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectLabel>Доходы</SelectLabel>
-                        {INCOMES.map((category) => (
-                          <SelectItem key={category} value={category}>
-                            {category}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                    
+                      value={newIncome.title}
+                      onValueChange={(value) => setNewIncome({ ...newIncome, title: value })}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder={t.incomeTitle} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectLabel>Доходы</SelectLabel>
+                          {INCOMES.map((category) => (
+                            <SelectItem key={category} value={category}>
+                              {category}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+
                     <Input
                       type="number"
                       placeholder={t.incomeAmount}
                       value={newIncome.amount}
-                      onChange={(e) => setNewIncome({...newIncome, amount: Number(e.target.value)})}
+                      onChange={(e) => setNewIncome({ ...newIncome, amount: Number(e.target.value) })}
                     />
-                    
+
                     <Input
                       placeholder={t.incomeDescription}
                       value={newIncome.description}
-                      onChange={(e) => setNewIncome({...newIncome, description: e.target.value})}
+                      onChange={(e) => setNewIncome({ ...newIncome, description: e.target.value })}
                     />
-                    
+
                     <Button
                       onClick={handleAddIncome}
                       disabled={!newIncome.title || newIncome.amount <= 0}
                     >
                       {editingIncome ? t.save : t.add}
                     </Button>
-                    </div>
                   </div>
-                
+                </div>
+
                 {isLoadingIncomes ? (
                   <div className="space-y-4">
                     {[...Array(3)].map((_, i) => (
@@ -806,14 +807,14 @@ export default function ShiftStatsPage() {
                           <TableCell>{income.amount.toFixed(2)}</TableCell>
                           <TableCell>{income.description || '-'}</TableCell>
                           <TableCell className='text-right'>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDeleteIncome(income.id)}
-                                disabled={isShiftCompleted}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteIncome(income.id)}
+                              disabled={isShiftCompleted}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -825,65 +826,65 @@ export default function ShiftStatsPage() {
               </CardContent>
             </Card>
 
-          <Card>
+            <Card>
               <CardHeader>
                 <div className="flex justify-between items-center">
                   <CardTitle>{t.expenses}</CardTitle>
                 </div>
               </CardHeader>
               <CardContent>
-                  <div className="mb-4">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                       <Select
-                          value={newExpense.title}
-                          onValueChange={(value) => setNewExpense({...newExpense, title: value})}
-                        >
-                          <SelectTrigger className='w-full'>
-                            <SelectValue placeholder={t.expenseTitle} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              <SelectLabel>Расходы</SelectLabel>
-                              <Command>
-                                <CommandInput placeholder="Поиск категории..." />
-                                <CommandEmpty>Категория не найдена</CommandEmpty>
-                                <CommandList>
-                                  <CommandGroup>
-                                    {EXPENSES.map((category) => (
-                                    <SelectItem key={category} value={category}>
-                                      {category}
-                                    </SelectItem>
-                                  ))}
-                                  </CommandGroup>
-                                </CommandList>
-                              </Command>
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                        
-                        <Input
-                          type="number"
-                          placeholder={t.expenseAmount}
-                          value={newExpense.amount}
-                          onChange={(e) => setNewExpense({...newExpense, amount: Number(e.target.value)})}
-                        />
-                        
-                        <Input
-                          placeholder={t.expenseDescription}
-                          value={newExpense.description}
-                          onChange={(e) => setNewExpense({...newExpense, description: e.target.value})}
-                        />
-                        
-                        <Button
-                          onClick={handleAddExpense}
-                          disabled={!newExpense.title || newExpense.amount <= 0}
-                        >
-                          {editingExpense ? t.save : t.add}
-                        </Button>
-                    </div>
-                  
+                <div className="mb-4">
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <Select
+                      value={newExpense.title}
+                      onValueChange={(value) => setNewExpense({ ...newExpense, title: value })}
+                    >
+                      <SelectTrigger className='w-full'>
+                        <SelectValue placeholder={t.expenseTitle} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectLabel>Расходы</SelectLabel>
+                          <Command>
+                            <CommandInput placeholder="Поиск категории..." />
+                            <CommandEmpty>Категория не найдена</CommandEmpty>
+                            <CommandList>
+                              <CommandGroup>
+                                {EXPENSES.map((category) => (
+                                  <SelectItem key={category} value={category}>
+                                    {category}
+                                  </SelectItem>
+                                ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+
+                    <Input
+                      type="number"
+                      placeholder={t.expenseAmount}
+                      value={newExpense.amount}
+                      onChange={(e) => setNewExpense({ ...newExpense, amount: Number(e.target.value) })}
+                    />
+
+                    <Input
+                      placeholder={t.expenseDescription}
+                      value={newExpense.description}
+                      onChange={(e) => setNewExpense({ ...newExpense, description: e.target.value })}
+                    />
+
+                    <Button
+                      onClick={handleAddExpense}
+                      disabled={!newExpense.title || newExpense.amount <= 0}
+                    >
+                      {editingExpense ? t.save : t.add}
+                    </Button>
                   </div>
-                
+
+                </div>
+
                 {isLoadingExpenses ? (
                   <div className="space-y-4">
                     {[...Array(3)].map((_, i) => (
@@ -906,14 +907,14 @@ export default function ShiftStatsPage() {
                           <TableCell>{expense.amount.toFixed(2)}</TableCell>
                           <TableCell>{expense.description || '-'}</TableCell>
                           <TableCell className='text-right'>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => handleDeleteExpense(expense.id)}
-                                disabled={isShiftCompleted}
-                              >
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleDeleteExpense(expense.id)}
+                              disabled={isShiftCompleted}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -925,7 +926,7 @@ export default function ShiftStatsPage() {
               </CardContent>
             </Card>
           </div>
-          
+
           <Card>
             <CardHeader>
               <CardTitle>{t.staff}</CardTitle>
@@ -943,14 +944,13 @@ export default function ShiftStatsPage() {
                   </div>
                   <div className="space-y-2 h-96 overflow-y-auto border rounded-lg p-2">
                     {availableUsers.length > 0 ? (
-                      availableUsers.map((user : UserType) => (
-                        <div 
-                          key={user.id} 
-                          className={`p-3 rounded-lg cursor-pointer flex items-center gap-3 ${
-                            selectedRestaurantUser === user.id
+                      availableUsers.map((user: UserType) => (
+                        <div
+                          key={user.id}
+                          className={`p-3 rounded-lg cursor-pointer flex items-center gap-3 ${selectedRestaurantUser === user.id
                               ? 'bg-primary/10 border-2 border-primary'
                               : 'hover:bg-accent'
-                          }`}
+                            }`}
                           onClick={() => setSelectedRestaurantUser(user.id)}
                         >
                           <User className="h-5 w-5 text-muted-foreground" />
@@ -966,7 +966,7 @@ export default function ShiftStatsPage() {
                       </p>
                     )}
                   </div>
-                  
+
                 </div>
                 <div className='flex flex-col justify-center items-center'>
                   <Button
@@ -999,13 +999,12 @@ export default function ShiftStatsPage() {
                   <div className="space-y-2 h-96 overflow-y-auto border rounded-lg p-2">
                     {staff && staff?.length > 0 ? (
                       staff.map(user => (
-                        <div 
-                          key={user.userId} 
-                          className={`p-3 rounded-lg cursor-pointer  flex items-center gap-3 ${
-                            selectedShiftUser === user.userId
+                        <div
+                          key={user.userId}
+                          className={`p-3 rounded-lg cursor-pointer  flex items-center gap-3 ${selectedShiftUser === user.userId
                               ? 'bg-destructive/10 border-2 border-destructive'
                               : 'hover:bg-accent'
-                          }`}
+                            }`}
                           onClick={() => setSelectedShiftUser(user.userId)}
                         >
                           <User className="h-5 w-5 text-muted-foreground" />
@@ -1025,7 +1024,7 @@ export default function ShiftStatsPage() {
               </div>
             </CardContent>
           </Card>
-          
+
 
           <Card>
             <CardHeader>
@@ -1053,6 +1052,15 @@ export default function ShiftStatsPage() {
                         <TableCell>
                           {new Date(order.createdAt).toLocaleString()}
                         </TableCell>
+                        <TableCell className='justify-end flex'>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => router.push(`/orders/${order.id}`)}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -1063,8 +1071,8 @@ export default function ShiftStatsPage() {
             </CardContent>
           </Card>
 
-          
-          
+
+
         </div>
       </div>
     </AccessCheck>

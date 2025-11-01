@@ -19,7 +19,7 @@ export interface CategoryDto {
   parentId?: string;
   order?: number;
   children?: CategoryDto[];
-  products?: any[]; 
+  products?: any[];
   parent?: CategoryDto | null;
 }
 
@@ -70,13 +70,13 @@ export const CategoryService = {
   // Получение категорий по уровню вложенности (опционально)
   getByLevel: async (level: number = 1): Promise<CategoryDto[]> => {
     const allCategories = await CategoryService.getTree();
-    
+
     const getCategoriesByLevel = (categories: CategoryDto[], currentLevel: number, targetLevel: number): CategoryDto[] => {
       if (currentLevel === targetLevel) {
         return categories;
       }
 
-      return categories.flatMap(category => 
+      return categories.flatMap(category =>
         getCategoriesByLevel(category.children || [], currentLevel + 1, targetLevel)
       );
     };
@@ -87,7 +87,7 @@ export const CategoryService = {
   // Получение всех категорий в плоском виде (опционально)
   getAllFlat: async (): Promise<CategoryDto[]> => {
     const tree = await CategoryService.getTree();
-    
+
     const flattenCategories = (categories: CategoryDto[]): CategoryDto[] => {
       return categories.flatMap(category => [
         { ...category, children: undefined },
@@ -96,5 +96,35 @@ export const CategoryService = {
     };
 
     return flattenCategories(tree);
+  },
+
+  updateOrder: async (id: string, order: number) => {
+    const { data } = await api.post(`/categories/${id}/order`, { order });
+    return data;
+  },
+
+  updateClientOrder: async (id: string, clientOrder: number) => {
+    const { data } = await api.post(`/categories/${id}/client-order`, { clientOrder });
+    return data;
+  },
+
+  moveUp: async (id: string) => {
+    const { data } = await api.post(`/categories/${id}/move-up`);
+    return data;
+  },
+
+  moveDown: async (id: string) => {
+    const { data } = await api.post(`/categories/${id}/move-down`);
+    return data;
+  },
+
+  moveUpOnClient: async (id: string) => {
+    const { data } = await api.post(`/categories/${id}/move-up-client`);
+    return data;
+  },
+
+  moveDownOnClient: async (id: string) => {
+    const { data } = await api.post(`/categories/${id}/move-down-client`);
+    return data;
   }
 };

@@ -8,7 +8,7 @@ import { CreateRestaurantForm } from '@/components/features/restaurant/CreateRes
 import Link from 'next/link';
 import { useAuth } from "@/lib/hooks/useAuth"
 import { useLanguageStore } from "@/lib/stores/language-store";
-import { Clock, MapPin, Phone, Globe, Store, ChevronDown, ChevronRight } from "lucide-react"
+import { Clock, MapPin, Phone, Globe, Store, ChevronDown, ChevronRight, Network, Settings } from "lucide-react"
 import {
   Card,
   CardHeader,
@@ -64,7 +64,9 @@ export function RestaurantList() {
       phone: "Телефон",
       network: "Сеть",
       noNetwork: "Не принадлежит сети",
-      noNetworkGroup: "Рестораны без сети"
+      noNetworkGroup: "Рестораны без сети",
+      manageNetworks: "Управление сетью",
+      allNetworks: "Все сети"
     },
     ka: {
       restaurants: "რესტორნები",
@@ -78,7 +80,9 @@ export function RestaurantList() {
       phone: "ტელეფონი",
       network: "ქსელი",
       noNetwork: "ქსელს არ ეკუთვნის",
-      noNetworkGroup: "ქსელის გარეშე რესტორნები"
+      noNetworkGroup: "ქსელის გარეშე რესტორნები",
+      manageNetworks: "ქსელების მართვა",
+      allNetworks: "ყველა ქსელი"
     }
   } as const;
 
@@ -184,9 +188,21 @@ export function RestaurantList() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">{t.restaurants}</h2>
-        <Button onClick={() => setIsCreating(true)}>
-          {t.addRestaurans}
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            asChild
+            className="flex items-center gap-2"
+          >
+            <Link href="/networks">
+              <Network className="w-4 h-4" />
+              {t.manageNetworks}
+            </Link>
+          </Button>
+          <Button onClick={() => setIsCreating(true)}>
+            {t.addRestaurans}
+          </Button>
+        </div>
       </div>
 
       {isCreating && (
@@ -200,6 +216,11 @@ export function RestaurantList() {
       )}
 
       <div className="space-y-6">
+        {/* Кнопка для всех сетей */}
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-semibold">{t.allNetworks}</h3>
+        </div>
+
         {sortedNetworks.map(({ network, restaurants: networkRestaurants }) => {
           const isExpanded = expandedNetworks.has(network.id);
           
@@ -251,6 +272,20 @@ export function RestaurantList() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {network.id !== 'no-network' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        asChild
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-2"
+                      >
+                        <Link href={`/networks/${network.id}`}>
+                          <Settings className="w-4 h-4" />
+                          {t.manageNetworks}
+                        </Link>
+                      </Button>
+                    )}
                     {isExpanded ? (
                       <ChevronDown className="w-5 h-5" />
                     ) : (

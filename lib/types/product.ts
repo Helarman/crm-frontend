@@ -11,6 +11,7 @@ export interface Product {
   id: string
   category: Category
   sortOrder: number
+  clientSortOrder: number
   publishedOnWebsite: boolean
   printLabels: boolean
   publishedInApp: boolean

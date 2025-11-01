@@ -288,13 +288,13 @@ export default function Side() {
         href: "/restaurants", 
         icon: <Store className="w-5 h-5" />,
         roles: ['MANAGER', 'SUPERVISOR']
-      },
+      },/*
          { 
         name: t.networks, 
         href: "/networks", 
         icon: <Network className="w-5 h-5" />,
         roles: ['MANAGER', 'SUPERVISOR']
-      },
+      },*/
       { 
         name: t.menu, 
         href: "/products", 

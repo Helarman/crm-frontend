@@ -60,8 +60,8 @@ export const CategoryList = () => {
   const fetchCategories = async () => {
     setIsLoading(true);
     try {
-      const data = viewMode === 'tree' 
-        ? await CategoryService.getTree() 
+      const data = viewMode === 'tree'
+        ? await CategoryService.getTree()
         : await CategoryService.getAllFlat();
       setCategories(data);
     } catch (error) {
@@ -78,8 +78,8 @@ export const CategoryList = () => {
     }
 
     const search = searchTerm.toLowerCase();
-    const filtered = categories.filter(cat => 
-      cat.title.toLowerCase().includes(search) || 
+    const filtered = categories.filter(cat =>
+      cat.title.toLowerCase().includes(search) ||
       cat.slug?.toLowerCase().includes(search) ||
       cat.description?.toLowerCase().includes(search)
     );
@@ -97,8 +97,8 @@ export const CategoryList = () => {
   };
 
   const openAddModal = (parentId?: string) => {
-    setFormData({ 
-      title: '', 
+    setFormData({
+      title: '',
       description: '',
       slug: '',
       parentId,
@@ -138,6 +138,43 @@ export const CategoryList = () => {
     }
   };
 
+
+  const handleMoveUp = async (id: string) => {
+    try {
+      await CategoryService.moveUp(id);
+      fetchCategories();
+    } catch (error) {
+      console.error('Error moving category up:', error);
+    }
+  };
+
+  const handleMoveDown = async (id: string) => {
+    try {
+      await CategoryService.moveDown(id);
+      fetchCategories();
+    } catch (error) {
+      console.error('Error moving category down:', error);
+    }
+  };
+
+  const handleMoveUpOnClient = async (id: string) => {
+    try {
+      await CategoryService.moveUpOnClient(id);
+      fetchCategories();
+    } catch (error) {
+      console.error('Error moving category up on client:', error);
+    }
+  };
+
+  const handleMoveDownOnClient = async (id: string) => {
+    try {
+      await CategoryService.moveDownOnClient(id);
+      fetchCategories();
+    } catch (error) {
+      console.error('Error moving category down on client:', error);
+    }
+  };
+
   return (
     <div className="p-4">
       <div className="flex justify-between items-center mb-4">
@@ -174,6 +211,10 @@ export const CategoryList = () => {
         onEdit={openEditModal}
         onDelete={handleDelete}
         onAddSubcategory={openAddModal}
+        onMoveUp={handleMoveUp}
+        onMoveDown={handleMoveDown}
+        onMoveUpOnClient={handleMoveUpOnClient}
+        onMoveDownOnClient={handleMoveDownOnClient}
         viewMode={viewMode}
       />
 
