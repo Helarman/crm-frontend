@@ -8,26 +8,17 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { useRestaurants } from '@/lib/hooks/useRestaurant';
 import { useState, useEffect } from 'react';
 import { ShiftService } from '@/lib/api/shift.service';
 import { useShifts } from '@/lib/hooks/useShifts';
 import { toast } from 'sonner';
 import { RestaurantService } from '@/lib/api/restaurant.service';
-import { Badge } from '@/components/ui/badge';
-import { X } from 'lucide-react';
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { Restaurant } from '../staff/StaffTable';
+import SearchableSelect from '../menu/product/SearchableSelect';
+import { RestaurantDto } from '@/lib/api/order.service';
 
 interface CreateShiftDialogProps {
   open: boolean;
@@ -47,37 +38,37 @@ const translations = {
     createTitle: 'Создать новую смену',
     restaurant: 'Ресторан',
     selectRestaurant: 'Выберите ресторан',
-    addStaff: 'Добавить',
-    loadingUsers: 'Загрузка пользователей...',
-    noUsers: 'Нет доступных пользователей',
+    searchRestaurant: 'Поиск ресторана...',
+    noRestaurants: 'Рестораны не найдены',
+    staff: 'Сотрудники',
     selectStaff: 'Выберите сотрудников',
-    selectedStaff: 'Выбранно',
-    startTime: 'Начало смены',
-    endTimeOptional: 'Конец смены',
-    description: 'Описание',
+    searchStaff: 'Поиск сотрудников...',
+    noStaff: 'Сотрудники не найдены',
     cancel: 'Отмена',
-    create: 'Создать',
-    shiftCreated: 'Смена успешно создана с выбранным персоналом',
+    create: 'Создать смену',
+    shiftCreated: 'Смена успешно создана',
     failedCreateShift: 'Ошибка при создании смены',
     failedLoadUsers: 'Ошибка загрузки пользователей ресторана',
+    shiftInfo: 'Смена будет создана с текущим временем начала и установленным временем закрытия',
+    selectedCount: 'выбрано',
   },
   ka: {
     createTitle: 'ახალი ცვლის შექმნა',
     restaurant: 'რესტორანი',
     selectRestaurant: 'აირჩიეთ რესტორანი',
-    addStaff: 'პერსონალის',
-    loadingUsers: 'მომხმარებლების ჩატვირთვა...',
-    noUsers: 'მომხმარებლები არ არის ხელმისაწვდომი',
+    searchRestaurant: 'რესტორანის ძიება...',
+    noRestaurants: 'რესტორანები ვერ მოიძებნა',
+    staff: 'თანამშრომლები',
     selectStaff: 'აირჩიეთ თანამშრომლები',
-    selectedStaff: 'არჩეული',
-    startTime: 'ცვლის დაწყება',
-    endTimeOptional: 'ცვლის დასრულება',
-    description: 'აღწერა',
+    searchStaff: 'თანამშრომლების ძიება...',
+    noStaff: 'თანამშრომლები ვერ მოიძებნა',
     cancel: 'გაუქმება',
-    create: 'შექმნა',
-    shiftCreated: 'ცვლა წარმატებით შეიქმნა არჩეული პერსონალით',
+    create: 'ცვლის შექმნა',
+    shiftCreated: 'ცვლა წარმატებით შეიქმნა',
     failedCreateShift: 'ცვლის შექმნის შეცდომა',
     failedLoadUsers: 'რესტორანის მომხმარებლების ჩატვირთვის შეცდომა',
+    shiftInfo: 'ცვლა შეიქმნება მიმდინარე დროში დაწყებით და დაყენებული დახურვის დროთი',
+    selectedCount: 'არჩეული',
   }
 };
 
@@ -88,23 +79,42 @@ export function CreateShiftDialog({ open, onOpenChange }: CreateShiftDialogProps
   const { data: restaurants } = useRestaurants();
   const { mutate } = useShifts();
   const [restaurantUsers, setRestaurantUsers] = useState<RestaurantUser[]>([]);
-  const [selectedUsers, setSelectedUsers] = useState<RestaurantUser[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>('');
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
-  
-  const [formData, setFormData] = useState({
-    restaurantId: '',
-    startTime: '',
-    endTime: '',
-    description: '',
-  });
 
+  // Преобразуем рестораны в формат для SearchableSelect
+  const restaurantOptions = restaurants?.map((restaurant : RestaurantDto) => ({
+    id: restaurant.id,
+    label: restaurant.title
+  })) || [];
+
+  // Преобразуем пользователей в формат для SearchableSelect
+  const userOptions = restaurantUsers.map(user => ({
+    id: user.id,
+    label: `${user.name} (${user.email})`
+  }));
+
+  // Сбрасываем состояние при закрытии диалога
+  useEffect(() => {
+    if (!open) {
+      setSelectedRestaurantId('');
+      setSelectedUsers([]);
+      setRestaurantUsers([]);
+    }
+  }, [open]);
+
+  // Загружаем пользователей при выборе ресторана
   useEffect(() => {
     const fetchUsers = async () => {
-      if (!formData.restaurantId) return;
+      if (!selectedRestaurantId) {
+        setRestaurantUsers([]);
+        return;
+      }
       
       setIsLoadingUsers(true);
       try {
-        const users = await RestaurantService.getUsers(formData.restaurantId);
+        const users = await RestaurantService.getUsers(selectedRestaurantId);
         setRestaurantUsers(users);
       } catch (error) {
         toast.error(t.failedLoadUsers);
@@ -115,25 +125,62 @@ export function CreateShiftDialog({ open, onOpenChange }: CreateShiftDialogProps
     };
 
     fetchUsers();
-  }, [formData.restaurantId]);
+  }, [selectedRestaurantId]);
 
   const handleSubmit = async () => {
     try {
+      const now = new Date(); // Текущее время начала
+      
+      // Получаем информацию о ресторане для времени закрытия
+      const restaurant = await RestaurantService.getById(selectedRestaurantId);
+      let endTime: Date;
+
+      if (restaurant.shiftCloseTime) {
+        const closeTime = new Date(restaurant.shiftCloseTime);
+        endTime = new Date(now);
+        endTime.setHours(closeTime.getHours());
+        endTime.setMinutes(closeTime.getMinutes());
+        endTime.setSeconds(0);
+        endTime.setMilliseconds(0);
+
+        // Если время закрытия уже прошло сегодня, ставим на завтра
+        if (endTime <= now) {
+          endTime.setDate(endTime.getDate() + 1);
+        }
+      } else {
+        // Значение по умолчанию - 23:59
+        endTime = new Date(now);
+        endTime.setHours(23);
+        endTime.setMinutes(59);
+        endTime.setSeconds(0);
+        endTime.setMilliseconds(0);
+
+        // Если уже позже 23:59, ставим на завтра
+        if (endTime <= now) {
+          endTime.setDate(endTime.getDate() + 1);
+        }
+      }
+
+      // Создаем смену с автоматическими параметрами
       const shift = await ShiftService.createShift({
-        restaurantId: formData.restaurantId,
-        startTime: new Date(formData.startTime),
-        endTime: formData.endTime ? new Date(formData.endTime) : undefined,
-        description: formData.description,
+        restaurantId: selectedRestaurantId,
+        startTime: now,
+        endTime: endTime,
+        description: 'Смена создана вручную', // Фиксированный комментарий
+        status: 'STARTED' // Сразу открываем смену
       });
 
-      await Promise.all(
-        selectedUsers.map(user => 
-          ShiftService.addUserToShift(shift.id, { userId: user.id })
-      ));
+      // Добавляем выбранных пользователей в смену
+      if (selectedUsers.length > 0) {
+        await Promise.all(
+          selectedUsers.map(userId => 
+            ShiftService.addUserToShift(shift.id, { userId })
+          )
+        );
+      }
       
       mutate();
       onOpenChange(false);
-      setSelectedUsers([]);
       toast.success(t.shiftCreated);
     } catch (error) {
       toast.error(t.failedCreateShift);
@@ -141,157 +188,64 @@ export function CreateShiftDialog({ open, onOpenChange }: CreateShiftDialogProps
     }
   };
 
-  const handleUserSelect = (userId: string) => {
-    const user = restaurantUsers.find(u => u.id === userId);
-    if (user && !selectedUsers.some(u => u.id === userId)) {
-      setSelectedUsers([...selectedUsers, user]);
-    }
-  };
-
-  const removeSelectedUser = (userId: string) => {
-    setSelectedUsers(selectedUsers.filter(user => user.id !== userId));
-  };
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{t.createTitle}</DialogTitle>
         </DialogHeader>
 
-        <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="restaurant" className="text-right">
-              {t.restaurant}
+        <div className="grid gap-6 py-4">
+
+          {/* Выбор ресторана */}
+          <div className="space-y-3">
+            <Label htmlFor="restaurant" className="text-sm font-medium">
+              {t.restaurant} *
             </Label>
-            <Select
-              value={formData.restaurantId}
-              onValueChange={(value) =>
-                setFormData({ ...formData, restaurantId: value })
-              }
-            >
-              <SelectTrigger className="col-span-3">
-                <SelectValue placeholder={t.selectRestaurant} />
-              </SelectTrigger>
-              <SelectContent>
-                {restaurants?.map((restaurant: Restaurant) => (
-                  <SelectItem key={restaurant.id} value={restaurant.id}>
-                    {restaurant.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableSelect
+              options={restaurantOptions}
+              value={selectedRestaurantId ? [selectedRestaurantId] : []}
+              onChange={(value) => setSelectedRestaurantId(value[0] || '')}
+              placeholder={t.selectRestaurant}
+              searchPlaceholder={t.searchRestaurant}
+              emptyText={t.noRestaurants}
+              multiple={false}
+              disabled={!restaurantOptions.length}
+            />
           </div>
 
-          {formData.restaurantId && (
-            <>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="staff" className="text-right">
-                  {t.addStaff}
-                </Label>
-                <Select
-                  onValueChange={handleUserSelect}
-                  disabled={isLoadingUsers || restaurantUsers.length === 0}
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder={
-                      isLoadingUsers ? t.loadingUsers : 
-                      restaurantUsers.length === 0 ? t.noUsers : t.selectStaff
-                    } />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {restaurantUsers
-                      .filter(user => !selectedUsers.some(u => u.id === user.id))
-                      .map((user) => (
-                        <SelectItem key={user.id} value={user.id}>
-                          {user.name} ({user.email})
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
+          {/* Выбор сотрудников */}
+          {selectedRestaurantId && (
+            <div className="space-y-3">
+              <Label htmlFor="staff" className="text-sm font-medium">
+                {t.staff}
+              </Label>
+              <SearchableSelect
+                options={userOptions}
+                value={selectedUsers}
+                onChange={setSelectedUsers}
+                placeholder={t.selectStaff}
+                searchPlaceholder={t.searchStaff}
+                emptyText={isLoadingUsers ? 'Загрузка...' : t.noStaff}
+                multiple={true}
+                disabled={isLoadingUsers || !userOptions.length}
+              />
               {selectedUsers.length > 0 && (
-                <div className="grid grid-cols-4 items-start gap-4">
-                  <Label className="text-right pt-2">{t.selectedStaff}</Label>
-                  <div className="col-span-3 flex flex-wrap gap-2">
-                    {selectedUsers.map((user) => (
-                      <Badge 
-                        key={user.id} 
-                        variant="secondary"
-                        className="flex items-center gap-1 py-1"
-                      >
-                        {user.name}
-                        <button 
-                          type="button"
-                          onClick={() => removeSelectedUser(user.id)}
-                          className="ml-1 rounded-full hover:bg-gray-200"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t.selectedCount}: {selectedUsers.length}
+                </p>
               )}
-            </>
+            </div>
           )}
-
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="startTime" className="text-right">
-              {t.startTime}
-            </Label>
-            <Input
-              id="startTime"
-              type="datetime-local"
-              className="col-span-3"
-              value={formData.startTime}
-              onChange={(e) =>
-                setFormData({ ...formData, startTime: e.target.value })
-              }
-            />
-          </div>
-
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="endTime" className="text-right">
-              {t.endTimeOptional}
-            </Label>
-            <Input
-              id="endTime"
-              type="datetime-local"
-              className="col-span-3"
-              value={formData.endTime}
-              onChange={(e) =>
-                setFormData({ ...formData, endTime: e.target.value })
-              }
-            />
-          </div>
-
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="description" className="text-right">
-              {t.description}
-            </Label>
-            <Textarea
-              id="description"
-              className="col-span-3"
-              value={formData.description}
-              onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
-              }
-            />
-          </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => {
-            onOpenChange(false);
-            setSelectedUsers([]);
-          }}>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             {t.cancel}
           </Button>
           <Button 
             onClick={handleSubmit}
-            disabled={!formData.restaurantId || !formData.startTime}
+            disabled={!selectedRestaurantId}
           >
             {t.create}
           </Button>

@@ -98,9 +98,61 @@ export interface CreateRestaurantDto {
   name: string;
   description?: string;
   address: string;
-  useWarehouse?: boolean
+  useWarehouse?: boolean;
+  shiftCloseTime?: string;
+  // Часы работы
+  mondayOpen?: string;
+  mondayClose?: string;
+  mondayIsWorking?: boolean;
+  tuesdayOpen?: string;
+  tuesdayClose?: string;
+  tuesdayIsWorking?: boolean;
+  wednesdayOpen?: string;
+  wednesdayClose?: string;
+  wednesdayIsWorking?: boolean;
+  thursdayOpen?: string;
+  thursdayClose?: string;
+  thursdayIsWorking?: boolean;
+  fridayOpen?: string;
+  fridayClose?: string;
+  fridayIsWorking?: boolean;
+  saturdayOpen?: string;
+  saturdayClose?: string;
+  saturdayIsWorking?: boolean;
+  sundayOpen?: string;
+  sundayClose?: string;
+  sundayIsWorking?: boolean;
 }
 
+export interface UpdateRestaurantDto {
+  name?: string;
+  description?: string;
+  address?: string;
+  useWarehouse?: boolean;
+  shiftCloseTime?: string;
+  // Часы работы
+  mondayOpen?: string;
+  mondayClose?: string;
+  mondayIsWorking?: boolean;
+  tuesdayOpen?: string;
+  tuesdayClose?: string;
+  tuesdayIsWorking?: boolean;
+  wednesdayOpen?: string;
+  wednesdayClose?: string;
+  wednesdayIsWorking?: boolean;
+  thursdayOpen?: string;
+  thursdayClose?: string;
+  thursdayIsWorking?: boolean;
+  fridayOpen?: string;
+  fridayClose?: string;
+  fridayIsWorking?: boolean;
+  saturdayOpen?: string;
+  saturdayClose?: string;
+  saturdayIsWorking?: boolean;
+  sundayOpen?: string;
+  sundayClose?: string;
+  sundayIsWorking?: boolean;
+}
 interface AddUserDto {
   userId: string;
 }

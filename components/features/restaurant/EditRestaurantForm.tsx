@@ -8,7 +8,7 @@ import dynamic from 'next/dynamic';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch'; // Добавляем импорт Switch
+import { Switch } from '@/components/ui/switch';
 import { NetworkService } from '@/lib/api/network.service';
 
 const MapWithNoSSR = dynamic(
@@ -25,7 +25,30 @@ interface RestaurantFormValues {
   longitude: string;
   networkId: string;
   images?: string[];
-  useWarehouse: boolean; // Добавляем новое поле
+  useWarehouse: boolean;
+  shiftCloseTime: string;
+  // Часы работы
+  mondayOpen: string;
+  mondayClose: string;
+  mondayIsWorking: boolean;
+  tuesdayOpen: string;
+  tuesdayClose: string;
+  tuesdayIsWorking: boolean;
+  wednesdayOpen: string;
+  wednesdayClose: string;
+  wednesdayIsWorking: boolean;
+  thursdayOpen: string;
+  thursdayClose: string;
+  thursdayIsWorking: boolean;
+  fridayOpen: string;
+  fridayClose: string;
+  fridayIsWorking: boolean;
+  saturdayOpen: string;
+  saturdayClose: string;
+  saturdayIsWorking: boolean;
+  sundayOpen: string;
+  sundayClose: string;
+  sundayIsWorking: boolean;
 }
 
 interface EditRestaurantFormProps {
@@ -48,7 +71,30 @@ export function EditRestaurantForm({
   const { register, handleSubmit, setValue, formState: { errors, isDirty }, watch } = useForm<RestaurantFormValues>({
     defaultValues: {
       ...initialValues,
-      useWarehouse: initialValues.useWarehouse || false // Устанавливаем значение по умолчанию
+      useWarehouse: initialValues.useWarehouse || false,
+      shiftCloseTime: initialValues.shiftCloseTime || '23:59',
+      // Часы работы по умолчанию
+      mondayOpen: initialValues.mondayOpen || '09:00',
+      mondayClose: initialValues.mondayClose || '18:00',
+      mondayIsWorking: initialValues.mondayIsWorking ?? true,
+      tuesdayOpen: initialValues.tuesdayOpen || '09:00',
+      tuesdayClose: initialValues.tuesdayClose || '18:00',
+      tuesdayIsWorking: initialValues.tuesdayIsWorking ?? true,
+      wednesdayOpen: initialValues.wednesdayOpen || '09:00',
+      wednesdayClose: initialValues.wednesdayClose || '18:00',
+      wednesdayIsWorking: initialValues.wednesdayIsWorking ?? true,
+      thursdayOpen: initialValues.thursdayOpen || '09:00',
+      thursdayClose: initialValues.thursdayClose || '18:00',
+      thursdayIsWorking: initialValues.thursdayIsWorking ?? true,
+      fridayOpen: initialValues.fridayOpen || '09:00',
+      fridayClose: initialValues.fridayClose || '18:00',
+      fridayIsWorking: initialValues.fridayIsWorking ?? true,
+      saturdayOpen: initialValues.saturdayOpen || '10:00',
+      saturdayClose: initialValues.saturdayClose || '16:00',
+      saturdayIsWorking: initialValues.saturdayIsWorking ?? false,
+      sundayOpen: initialValues.sundayOpen || '10:00',
+      sundayClose: initialValues.sundayClose || '16:00',
+      sundayIsWorking: initialValues.sundayIsWorking ?? false,
     }
   });
 
@@ -69,7 +115,26 @@ export function EditRestaurantForm({
       selectNetwork: 'Выберите сеть *',
       noNetworks: 'Нет доступных сетей',
       useWarehouse: 'Использовать складскую систему',
-      useWarehouseDescription: 'Включить управление складом и учет остатков'
+      useWarehouseDescription: 'Включить управление складом и учет остатков',
+      shiftCloseTime: 'Время закрытия смены *',
+      shiftCloseTimeDescription: 'Время по умолчанию для автоматического закрытия смен',
+      timeFormat: 'Формат: ЧЧ:ММ (24-часовой)',
+      invalidTime: 'Неверный формат времени. Используйте ЧЧ:ММ',
+      workingHours: 'Часы работы',
+      monday: 'Понедельник',
+      tuesday: 'Вторник',
+      wednesday: 'Среда',
+      thursday: 'Четверг',
+      friday: 'Пятница',
+      saturday: 'Суббота',
+      sunday: 'Воскресенье',
+      openTime: 'Время открытия',
+      closeTime: 'Время закрытия',
+      workingDay: 'Рабочий день',
+      dayOff: 'Выходной',
+      basicInfo: 'Основная информация',
+      settings: 'Настройки',
+      schedule: 'Расписание работы'
     },
     en: {
       title: 'Name *',
@@ -87,7 +152,26 @@ export function EditRestaurantForm({
       selectNetwork: 'Select network *',
       noNetworks: 'No networks available',
       useWarehouse: 'Use warehouse system',
-      useWarehouseDescription: 'Enable warehouse management and stock tracking'
+      useWarehouseDescription: 'Enable warehouse management and stock tracking',
+      shiftCloseTime: 'Shift Close Time *',
+      shiftCloseTimeDescription: 'Default time for automatic shift closing',
+      timeFormat: 'Format: HH:MM (24-hour)',
+      invalidTime: 'Invalid time format. Use HH:MM',
+      workingHours: 'Working Hours',
+      monday: 'Monday',
+      tuesday: 'Tuesday',
+      wednesday: 'Wednesday',
+      thursday: 'Thursday',
+      friday: 'Friday',
+      saturday: 'Saturday',
+      sunday: 'Sunday',
+      openTime: 'Open Time',
+      closeTime: 'Close Time',
+      workingDay: 'Working day',
+      dayOff: 'Day off',
+      basicInfo: 'Basic Information',
+      settings: 'Settings',
+      schedule: 'Working Schedule'
     },
     ka: {
       title: 'სახელი *',
@@ -105,14 +189,43 @@ export function EditRestaurantForm({
       selectNetwork: 'აირჩიეთ ქსელი *',
       noNetworks: 'ხელმისაწვდომი ქსელი არ არის',
       useWarehouse: 'საწყობის სისტემის გამოყენება',
-      useWarehouseDescription: 'ჩართეთ საწყობის მენეჯმენტი და მარაგების თვალყურის დევნება'
+      useWarehouseDescription: 'ჩართეთ საწყობის მენეჯმენტი და მარაგების თვალყურის დევნება',
+      shiftCloseTime: 'ცვლის დახურვის დრო *',
+      shiftCloseTimeDescription: 'ავტომატური ცვლის დახურვის ნაგულისხმევი დრო',
+      timeFormat: 'ფორმატი: სს:წწ (24-საათიანი)',
+      invalidTime: 'დროის არასწორი ფორმატი. გამოიყენეთ სს:წწ',
+      workingHours: 'სამუშაო საათები',
+      monday: 'ორშაბათი',
+      tuesday: 'სამშაბათი',
+      wednesday: 'ოთხშაბათი',
+      thursday: 'ხუთშაბათი',
+      friday: 'პარასკევი',
+      saturday: 'შაბათი',
+      sunday: 'კვირა',
+      openTime: 'გახსნის დრო',
+      closeTime: 'დახურვის დრო',
+      workingDay: 'სამუშაო დღე',
+      dayOff: 'დასვენების დღე',
+      basicInfo: 'ძირითადი ინფორმაცია',
+      settings: 'პარამეტრები',
+      schedule: 'სამუშაო გრაფიკი'
     }
   };
 
   const t = translations[language];
 
-  // Следим за значением useWarehouse
+  // Следим за значениями
   const useWarehouseValue = watch('useWarehouse');
+  const shiftCloseTimeValue = watch('shiftCloseTime');
+
+  // Следим за рабочими днями
+  const mondayIsWorking = watch('mondayIsWorking');
+  const tuesdayIsWorking = watch('tuesdayIsWorking');
+  const wednesdayIsWorking = watch('wednesdayIsWorking');
+  const thursdayIsWorking = watch('thursdayIsWorking');
+  const fridayIsWorking = watch('fridayIsWorking');
+  const saturdayIsWorking = watch('saturdayIsWorking');
+  const sundayIsWorking = watch('sundayIsWorking');
 
   useEffect(() => {
     const fetchNetworks = async () => {
@@ -146,15 +259,53 @@ export function EditRestaurantForm({
     setValue('useWarehouse', checked, { shouldDirty: true });
   };
 
+  const handleWorkingDayToggle = (day: string, checked: boolean) => {
+    setValue(`${day}IsWorking` as any, checked, { shouldDirty: true });
+  };
+
+  // Валидация времени
+  const validateTime = (time: string) => {
+    if (!time) return t.requiredField;
+    
+    const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    if (!timeRegex.test(time)) {
+      return t.invalidTime;
+    }
+    
+    return true;
+  };
+
   const onSubmitHandler = handleSubmit(async (data) => {
     setIsUploading(true);
     try {
+      // Преобразуем время в формат для API
+      const formatTimeForApi = (time: string) => {
+        const [hours, minutes] = time.split(':');
+        return new Date(`1970-01-01T${hours.padStart(2, '0')}:${minutes}:00.000Z`).toISOString();
+      };
+
       await onSubmit({
         ...data,
         latitude: coordinates?.lat.toString(),
         longitude: coordinates?.lng.toString(),
         networkId: data.networkId,
-        useWarehouse: data.useWarehouse
+        useWarehouse: data.useWarehouse,
+        shiftCloseTime: formatTimeForApi(data.shiftCloseTime),
+        // Преобразуем время работы
+        mondayOpen: data.mondayIsWorking ? formatTimeForApi(data.mondayOpen) : null,
+        mondayClose: data.mondayIsWorking ? formatTimeForApi(data.mondayClose) : null,
+        tuesdayOpen: data.tuesdayIsWorking ? formatTimeForApi(data.tuesdayOpen) : null,
+        tuesdayClose: data.tuesdayIsWorking ? formatTimeForApi(data.tuesdayClose) : null,
+        wednesdayOpen: data.wednesdayIsWorking ? formatTimeForApi(data.wednesdayOpen) : null,
+        wednesdayClose: data.wednesdayIsWorking ? formatTimeForApi(data.wednesdayClose) : null,
+        thursdayOpen: data.thursdayIsWorking ? formatTimeForApi(data.thursdayOpen) : null,
+        thursdayClose: data.thursdayIsWorking ? formatTimeForApi(data.thursdayClose) : null,
+        fridayOpen: data.fridayIsWorking ? formatTimeForApi(data.fridayOpen) : null,
+        fridayClose: data.fridayIsWorking ? formatTimeForApi(data.fridayClose) : null,
+        saturdayOpen: data.saturdayIsWorking ? formatTimeForApi(data.saturdayOpen) : null,
+        saturdayClose: data.saturdayIsWorking ? formatTimeForApi(data.saturdayClose) : null,
+        sundayOpen: data.sundayIsWorking ? formatTimeForApi(data.sundayOpen) : null,
+        sundayClose: data.sundayIsWorking ? formatTimeForApi(data.sundayClose) : null,
       });
     } catch (error) {
       console.error('Error updating restaurant:', error);
@@ -163,11 +314,61 @@ export function EditRestaurantForm({
     }
   });
 
+  // Компонент для дня недели
+  const DaySchedule = ({ 
+    day, 
+    label, 
+    isWorking, 
+    openTime, 
+    closeTime 
+  }: { 
+    day: string;
+    label: string;
+    isWorking: boolean;
+    openTime: string;
+    closeTime: string;
+  }) => (
+    <div className="flex items-center justify-between p-3 border rounded-lg">
+      <div className="flex items-center space-x-3">
+        <Switch
+          checked={isWorking}
+          onCheckedChange={(checked) => handleWorkingDayToggle(day, checked)}
+        />
+        <Label className={isWorking ? "font-medium" : "text-muted-foreground"}>
+          {label}
+        </Label>
+      </div>
+      {isWorking ? (
+        <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1">
+            <Input
+              type="time"
+              {...register(`${day}Open` as any)}
+              disabled={!isWorking}
+              className="w-24"
+            />
+          </div>
+          <span>-</span>
+          <div className="flex items-center space-x-1">
+            <Input
+              type="time"
+              {...register(`${day}Close` as any)}
+              disabled={!isWorking}
+              className="w-24"
+            />
+          </div>
+        </div>
+      ) : (
+        <span className="text-sm text-muted-foreground">{t.dayOff}</span>
+      )}
+    </div>
+  );
+
   return (
-    <form onSubmit={onSubmitHandler} className="space-y-4">
+    <form onSubmit={onSubmitHandler} className="space-y-6">
       {/* Network Selection */}
       <div>
-        <Label htmlFor="networkId" className="mb-4">{t.selectNetwork}</Label>
+        <Label htmlFor="networkId" className="mb-2">{t.selectNetwork}</Label>
         {isLoadingNetworks ? (
           <div className="h-10 w-full rounded-md border bg-muted animate-pulse" />
         ) : (
@@ -198,61 +399,148 @@ export function EditRestaurantForm({
         )}
       </div>
 
-      {/* Form Fields */}
-      <div>
-        <Label htmlFor="title" className="mb-4">{t.title}</Label>
-        <Input
-          id="title"
-          {...register('title', { required: t.requiredField })}
-        />
-        {errors.title && <p className="text-red-500 text-sm">{errors.title.message}</p>}
-      </div>
-
-      <div>
-        <Label htmlFor="address" className="mb-4">{t.address}</Label>
-        <Input
-          id="address"
-          {...register('address', { required: t.requiredField })}
-        />
-        {errors.address && <p className="text-red-500 text-sm">{errors.address.message}</p>}
-      </div>
-
-      <div>
-        <Label htmlFor="description" className="mb-4">{t.description}</Label>
-        <Textarea
-          id="description"
-          {...register('description')}
-          rows={4}
-        />
-      </div>
-
-      <div>
-        <Label htmlFor="legalInfo" className="mb-4">{t.legalInfo}</Label>
-        <Textarea
-          id="legalInfo"
-          {...register('legalInfo')}
-          rows={4}
-        />
-      </div>
-
-      {/* Warehouse Switch */}
-      <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
-        <div className="space-y-0.5">
-          <Label htmlFor="useWarehouse" className="text-base">
-            {t.useWarehouse}
-          </Label>
-          <p className="text-sm text-muted-foreground">
-            {t.useWarehouseDescription}
-          </p>
+      {/* Основная информация */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-medium">{t.basicInfo}</h3>
+        
+        <div>
+          <Label htmlFor="title">{t.title}</Label>
+          <Input
+            id="title"
+            {...register('title', { required: t.requiredField })}
+          />
+          {errors.title && <p className="text-red-500 text-sm">{errors.title.message}</p>}
         </div>
-        <Switch
-          id="useWarehouse"
-          checked={useWarehouseValue}
-          onCheckedChange={handleWarehouseToggle}
-        />
+
+        <div>
+          <Label htmlFor="address">{t.address}</Label>
+          <Input
+            id="address"
+            {...register('address', { required: t.requiredField })}
+          />
+          {errors.address && <p className="text-red-500 text-sm">{errors.address.message}</p>}
+        </div>
+
+        <div>
+          <Label htmlFor="description">{t.description}</Label>
+          <Textarea
+            id="description"
+            {...register('description')}
+            rows={3}
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="legalInfo">{t.legalInfo}</Label>
+          <Textarea
+            id="legalInfo"
+            {...register('legalInfo')}
+            rows={3}
+          />
+        </div>
       </div>
 
-      <div>
+      {/* Настройки */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-medium">{t.settings}</h3>
+        
+        <div className="flex items-center justify-between p-4 border rounded-lg">
+          <div className="space-y-0.5">
+            <Label htmlFor="useWarehouse" className="text-base">
+              {t.useWarehouse}
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              {t.useWarehouseDescription}
+            </p>
+          </div>
+          <Switch
+            id="useWarehouse"
+            checked={useWarehouseValue}
+            onCheckedChange={handleWarehouseToggle}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="shiftCloseTime">
+            {t.shiftCloseTime}
+          </Label>
+          <Input
+            id="shiftCloseTime"
+            type="time"
+            {...register('shiftCloseTime', { 
+              required: t.requiredField,
+              validate: validateTime
+            })}
+            className="w-full"
+          />
+          <p className="text-sm text-muted-foreground">
+            {t.timeFormat}
+          </p>
+          {errors.shiftCloseTime && (
+            <p className="text-red-500 text-sm">{errors.shiftCloseTime.message}</p>
+          )}
+        </div>
+      </div>
+
+      {/* Часы работы */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-medium">{t.schedule}</h3>
+        <div className="space-y-3">
+          <DaySchedule 
+            day="monday"
+            label={t.monday}
+            isWorking={mondayIsWorking}
+            openTime={watch('mondayOpen')}
+            closeTime={watch('mondayClose')}
+          />
+          <DaySchedule 
+            day="tuesday"
+            label={t.tuesday}
+            isWorking={tuesdayIsWorking}
+            openTime={watch('tuesdayOpen')}
+            closeTime={watch('tuesdayClose')}
+          />
+          <DaySchedule 
+            day="wednesday"
+            label={t.wednesday}
+            isWorking={wednesdayIsWorking}
+            openTime={watch('wednesdayOpen')}
+            closeTime={watch('wednesdayClose')}
+          />
+          <DaySchedule 
+            day="thursday"
+            label={t.thursday}
+            isWorking={thursdayIsWorking}
+            openTime={watch('thursdayOpen')}
+            closeTime={watch('thursdayClose')}
+          />
+          <DaySchedule 
+            day="friday"
+            label={t.friday}
+            isWorking={fridayIsWorking}
+            openTime={watch('fridayOpen')}
+            closeTime={watch('fridayClose')}
+          />
+          <DaySchedule 
+            day="saturday"
+            label={t.saturday}
+            isWorking={saturdayIsWorking}
+            openTime={watch('saturdayOpen')}
+            closeTime={watch('saturdayClose')}
+          />
+          <DaySchedule 
+            day="sunday"
+            label={t.sunday}
+            isWorking={sundayIsWorking}
+            openTime={watch('sundayOpen')}
+            closeTime={watch('sundayClose')}
+          />
+        </div>
+      </div>
+
+      {/* Карта */}
+      <div className="space-y-4">
+        <h3 className="text-lg font-medium">{t.location}</h3>
         <Accordion type="single" collapsible className="w-full">
           <AccordionItem value="map">
             <AccordionTrigger>
@@ -279,7 +567,7 @@ export function EditRestaurantForm({
         </Accordion>
       </div>
 
-      <div className="flex justify-end space-x-2 pt-2">
+      <div className="flex justify-end space-x-2 pt-4">
         <Button variant="outline" type="button" onClick={onCancel}>
           {t.cancel}
         </Button>

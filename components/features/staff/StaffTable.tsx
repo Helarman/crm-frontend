@@ -20,6 +20,7 @@ import { WorkshopService } from "@/lib/api/workshop.service"
 export interface Restaurant {
   id: string
   title: string
+  shiftCloseTime: any;
 }
 
 export interface StaffMember {
