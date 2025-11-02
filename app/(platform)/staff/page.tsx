@@ -158,7 +158,7 @@ export default function StaffManagementPage() {
         <StaffTable
           workshops={workshops} // Передаем цехи в таблицу
           staff={staff}
-          restaurants={restaurants}
+          restaurants={restaurants as any}
           searchTerm={searchTerm}
           selectedRestaurant={selectedRestaurant}
           selectedPosition={selectedPosition}
