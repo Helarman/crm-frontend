@@ -2098,27 +2098,12 @@ export default function WarehousePage() {
             )}
             <div>
               <Label className='mb-1'>{t('reason')}</Label>
-              {dictionariesLoading ? (
+              {true ? (
                 <div className="text-sm text-muted-foreground">{t('loadingReasons')}</div>
               ) : dictionariesError ? (
                 <div className="text-sm text-red-500">{t('loadReasonsError')}</div>
               ) : (
-                <SearchableSelect
-                  options={(transactionType === 'receipt' ? receiptReasons : writeOffReasons)
-                    .map(reason => ({ id: reason, label: reason }))
-                  }
-                  value={selectedReason ? [selectedReason] : []}
-                  onChange={(ids) => setSelectedReason(ids[0] || '')}
-                  placeholder={
-                    transactionType === 'receipt'
-                      ? t('selectReceiptReason')
-                      : t('selectWriteOffReason')
-                  }
-                  searchPlaceholder={t('searchReason')}
-                  emptyText={t('noReasonsFound')}
-                  multiple={false}
-                  className="w-full"
-                />
+                <></>
               )}
             </div>
 
