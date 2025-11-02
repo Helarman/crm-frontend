@@ -344,12 +344,6 @@ export default function Side() {
         roles: ['SUPERVISOR']
       },
       { 
-        name: t.dictionaries, 
-        href: "/dictionaries", 
-        icon: <BookText className="w-5 h-5" />,
-        roles: ['MANAGER', 'SUPERVISOR']
-      },
-      { 
         name: t.analytics, 
         href: "/analytics", 
         icon: <LineChart className="w-5 h-5" />,
