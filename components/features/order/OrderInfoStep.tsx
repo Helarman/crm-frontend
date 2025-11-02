@@ -37,6 +37,8 @@ interface OrderInfoStepProps {
   language: string
   onSubmit: () => void
   loading: boolean
+  onRestaurantChange: (restaurantId: string) => void
+  activeShiftId: string
 }
 
 export const OrderInfoStep = ({
@@ -45,7 +47,9 @@ export const OrderInfoStep = ({
   user,
   language,
   onSubmit,
-  loading
+  loading,
+  onRestaurantChange,
+  activeShiftId
 }: OrderInfoStepProps) => {
   const [isScheduled, setIsScheduled] = useState(false)
   const [scheduledTime, setScheduledTime] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"))
@@ -74,6 +78,10 @@ export const OrderInfoStep = ({
     const restaurant = user?.restaurant?.find((r: any) => r.id === value)
     if (!restaurant) return
 
+    // Вызываем функцию из родительского компонента для обновления ресторана и смены
+    onRestaurantChange(value)
+    
+    // Локально обновляем состояние заказа
     setOrder({
       ...order,
       restaurantId: restaurant.id,
@@ -84,6 +92,12 @@ export const OrderInfoStep = ({
   }
 
   const validateStep = () => {
+    // Проверяем наличие активной смены
+    if (!activeShiftId) {
+      toast.error(language === 'ka' ? 'არ არის აქტიური ცვლა' : 'Нет активной смены')
+      return false
+    }
+
     if ((order.type === 'DINE_IN' || order.type === 'BANQUET') && !order.tableNumber) {
       toast.error(language === 'ka' ? 'შეიყვანეთ სტოლის ნომერი' : 'Введите номер стола')
       return false
@@ -94,8 +108,8 @@ export const OrderInfoStep = ({
         toast.error(language === 'ka' ? 'შეიყვანეთ მისამართი' : 'Введите адрес доставки')
         return false
       }
-       if (!order.deliveryZone?.price) {
-        toast.error(language === 'ka' ? '' : 'Доставка не возможна')
+      if (!order.deliveryZone?.price) {
+        toast.error(language === 'ka' ? 'მიტანის ზონა არ მოიძებნა' : 'Зона доставки не найдена')
         return false
       }
     }
@@ -111,6 +125,7 @@ export const OrderInfoStep = ({
   }
 
   const handleScheduledChange = (checked: boolean) => {
+    setIsScheduled(checked)
     setOrder({
       ...order,
       isScheduled: checked,
@@ -119,6 +134,7 @@ export const OrderInfoStep = ({
   }
 
   const handleScheduledTimeChange = (time: string) => {
+    setScheduledTime(time)
     setOrder({
       ...order,
       scheduledAt: time
@@ -128,6 +144,53 @@ export const OrderInfoStep = ({
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">{language === 'ka' ? 'ახალი შეკვეთა' : 'Новый заказ'}</h1>
+      
+      {/* Информация о активной смене
+      {activeShiftId ? (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+          <p className="text-green-700 text-sm flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            {language === 'ka' 
+              ? `აქტიური ცვლა: ${activeShiftId}` 
+              : `Активная смена: ${activeShiftId}`}
+          </p>
+        </div>
+      ) : (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+          <p className="text-yellow-700 text-sm flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            {language === 'ka' 
+              ? 'ცვლა არ არის აქტიური' 
+              : 'Смена не активна'}
+          </p>
+        </div>
+      )} */}
+
+      {/* Селектор ресторана */}
+      {user?.restaurant && user.restaurant.length > 1 && (
+        <div className="space-y-2">
+          <Label className="flex items-center gap-2">
+            <Store className="h-4 w-4" />
+            {language === 'ka' ? 'რესტორანი' : 'Ресторан'}
+          </Label>
+          <Select
+            value={order.restaurantId}
+            onValueChange={handleRestaurantChange}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder={language === 'ka' ? 'აირჩიეთ რესტორანი' : 'Выберите ресторан'} />
+            </SelectTrigger>
+            <SelectContent>
+              {user.restaurant.map((restaurant: any) => (
+                <SelectItem key={restaurant.id} value={restaurant.id}>
+                  {restaurant.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       <div className="space-y-3">
         <Label className="flex items-center gap-2">
           <Utensils className="h-4 w-4" />
@@ -165,30 +228,6 @@ export const OrderInfoStep = ({
           />
         </div>
       }
-
-      {user?.restaurant && user.restaurant.length > 1 && (
-        <div className="mb-6 space-y-2">
-          <Label className="flex items-center gap-2">
-            <Store className="h-4 w-4" />
-            {language === 'ka' ? 'რესტორანი' : 'Ресторан'}
-          </Label>
-          <Select
-            value={order.restaurantId}
-            onValueChange={handleRestaurantChange}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder={language === 'ka' ? 'აირჩიეთ რესტორანი' : 'Выберите ресторан'} />
-            </SelectTrigger>
-            <SelectContent>
-              {user.restaurant.map((restaurant: any) => (
-                <SelectItem key={restaurant.id} value={restaurant.id}>
-                  {restaurant.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
 
       {order.type !== 'DINE_IN' &&
         <div className="space-y-3">
@@ -395,7 +434,7 @@ export const OrderInfoStep = ({
           }}
           size="lg"
           className="text-lg"
-          disabled={loading}
+          disabled={loading || !activeShiftId}
         >
           {loading
             ? language === 'ka' ? 'შექმნა...' : 'Создание...'

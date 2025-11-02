@@ -15,6 +15,8 @@ import { OrderInfoStep } from '@/components/features/order/OrderInfoStep'
 import { OrderState } from '@/lib/types/order'
 import { Restaurant } from '@/lib/types/restaurant'
 
+const RESTAURANT_STORAGE_KEY = 'selectedRestaurantId'
+
 export default function NewOrderPage() {
   const router = useRouter()
   const { user } = useAuth()
@@ -44,6 +46,30 @@ export default function NewOrderPage() {
   const [loading, setLoading] = useState(false)
   const [activeShiftId, setActiveShiftId] = useState('')
 
+  // Функция для проверки и создания смены
+  const checkAndCreateShift = async (restaurantId: string) => {
+    try {
+      const activeShift = await ShiftService.getActiveShiftsByRestaurant(restaurantId)
+      if (!activeShift) {
+        const newShift = await ShiftService.createShift({
+          restaurantId: restaurantId,
+          status: 'STARTED',
+          startTime: new Date(),
+        })
+        setActiveShiftId(newShift.id)
+        return newShift.id
+      } else {
+        setActiveShiftId(activeShift.id)
+        return activeShift.id
+      }
+    } catch (error) {
+      console.error('Shift check error:', error)
+      toast.error(language === 'ka' ? 'ცვლის შექმნის შეცდომა' : 'Ошибка создания смены')
+      return null
+    }
+  }
+
+  // Инициализация ресторана и смены
   useEffect(() => {
     if (!user) return
 
@@ -52,30 +78,50 @@ export default function NewOrderPage() {
       return
     }
 
-    const firstRestaurant = user.restaurant[0]
-    setSelectedRestaurant(firstRestaurant)
-    setOrder(prev => ({ ...prev, restaurantId: firstRestaurant.id }))
+    // Получаем сохраненный ресторан из localStorage или используем первый доступный
+    const savedRestaurantId = localStorage.getItem(RESTAURANT_STORAGE_KEY)
+    const defaultRestaurant = user.restaurant[0]
     
-    const checkActiveShift = async () => {
-      try {
-        const activeShift = await ShiftService.getActiveShiftsByRestaurant(firstRestaurant.id)
-        if (!activeShift) {
-          const newShift = await ShiftService.createShift({
-            restaurantId: firstRestaurant.id,
-            status: 'STARTED',
-            startTime: new Date(),
-          })
-          setActiveShiftId(newShift.id)
-        } else {
-          setActiveShiftId(activeShift.id)
-        }
-      } catch (error) {
-        console.error('Shift check error:', error)
-      }
-    }
+    const isValidSavedRestaurant = savedRestaurantId && 
+      user.restaurant.some((r: Restaurant) => r.id === savedRestaurantId)
+
+    const initialRestaurant = isValidSavedRestaurant 
+      ? user.restaurant.find((r: Restaurant) => r.id === savedRestaurantId)!
+      : defaultRestaurant
+
+    setSelectedRestaurant(initialRestaurant)
+    setOrder(prev => ({ ...prev, restaurantId: initialRestaurant.id }))
     
-    checkActiveShift()
+    // Проверяем и создаем смену для выбранного ресторана
+    checkAndCreateShift(initialRestaurant.id)
   }, [user, language])
+
+  // Обработчик изменения ресторана
+  const handleRestaurantChange = async (restaurantId: string) => {
+    if (!user) return
+
+    const restaurant = user.restaurant.find((r: Restaurant) => r.id === restaurantId)
+    if (!restaurant) return
+
+    // Сохраняем выбор в localStorage
+    localStorage.setItem(RESTAURANT_STORAGE_KEY, restaurantId)
+    
+    // Обновляем состояние
+    setSelectedRestaurant(restaurant)
+    setOrder(prev => ({ 
+      ...prev, 
+      restaurantId: restaurant.id,
+      items: [],
+      deliveryZone: null,
+      surcharges: []
+    }))
+
+    // Обновляем смену для нового ресторана
+    const shiftId = await checkAndCreateShift(restaurantId)
+    if (!shiftId) {
+      toast.error(language === 'ka' ? 'არ არის აქტიური ცვლა' : 'Нет активной смены')
+    }
+  }
 
   // Функция для проверки зоны доставки
   const checkDeliveryZone = async (address: string, restaurantId: string) => {
@@ -260,6 +306,8 @@ export default function NewOrderPage() {
           language={language}
           onSubmit={handleCreateOrder}
           loading={loading}
+          onRestaurantChange={handleRestaurantChange}
+          activeShiftId={activeShiftId}
         />
       </div>
     </AccessCheck>

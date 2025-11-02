@@ -23,6 +23,7 @@ import {
   Warehouse
 } from 'lucide-react';
 import { RestaurantDeliveryZones } from './RestaurantDeliveryZones';
+import { RestaurantDirectories } from './RestaurantDirectories';
 
 interface Restaurant {
   id: string;
@@ -203,10 +204,10 @@ export function RestaurantDetails({ restaurantId }: { restaurantId: string }) {
               <CardTitle>{translations.directories.title[language]}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-center py-8 text-muted-foreground">
-                <BookOpen className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>Справочники будут добавлены позже</p>
-              </div>
+              {/*<RestaurantDirectories
+                restaurantId={restaurantId}
+                restaurantName={restaurant.title}
+              />*/}
             </CardContent>
           </Card>
         </TabsContent>
