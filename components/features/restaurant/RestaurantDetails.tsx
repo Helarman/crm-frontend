@@ -204,10 +204,10 @@ export function RestaurantDetails({ restaurantId }: { restaurantId: string }) {
               <CardTitle>{translations.directories.title[language]}</CardTitle>
             </CardHeader>
             <CardContent>
-              {/*<RestaurantDirectories
+              <RestaurantDirectories
                 restaurantId={restaurantId}
                 restaurantName={restaurant.title}
-              />*/}
+              />
             </CardContent>
           </Card>
         </TabsContent>

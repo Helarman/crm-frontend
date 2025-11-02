@@ -6,13 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   DialogTrigger,
-  DialogFooter 
+  DialogFooter
 } from '@/components/ui/dialog';
 import {
   Select,
@@ -22,17 +22,22 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { 
-  BookOpen, 
-  Plus, 
-  Search, 
-  Copy, 
-  Edit, 
+import {
+  BookOpen,
+  Plus,
+  Search,
+  Copy,
+  Edit,
   Trash2,
   Filter,
   RotateCcw,
   CheckCircle2,
-  XCircle
+  XCircle,
+  BanknoteArrowDown,
+  BanknoteArrowUp,
+  ArchiveX,
+  ArchiveRestore,
+  Archive
 } from 'lucide-react';
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { toast } from 'sonner';
@@ -55,7 +60,6 @@ interface DictionaryTypeConfig {
     ru: string;
     ka: string;
   };
-  color: string;
   icon: React.ReactNode;
 }
 
@@ -81,68 +85,63 @@ export function RestaurantDirectories({ restaurantId, restaurantName }: Restaura
     refresh
   } = useDictionaries(restaurantId);
 
-  const { createItem, updateItem, deleteItem, loading: crudLoading } = useDictionaryCRUD(activeTab as any);
+  const { createItem, updateItem, deleteItem, loading: crudLoading } = useDictionaryCRUD(`${activeTab}Reasons` as any);
 
   const dictionaryTypes: Record<DictionaryType, DictionaryTypeConfig> = {
     writeOff: {
       title: {
-        ru: 'Причины списания',
-        ka: 'ჩამოწერის მიზეზები'
+        ru: 'Списания',
+        ka: 'ჩამოწერები'
       },
       description: {
         ru: 'Управление причинами списания товаров со склада',
         ka: 'საწყობიდან პროდუქტების ჩამოწერის მიზეზების მართვა'
       },
-      color: 'bg-red-50 text-red-700 border-red-200',
-      icon: <RotateCcw className="h-4 w-4" />
+      icon: <ArchiveX className="h-4 w-4" />
     },
     receipt: {
       title: {
-        ru: 'Причины прихода',
-        ka: 'მიღების მიზეზები'
+        ru: 'Приходы',
+        ka: 'მიღებები'
       },
       description: {
         ru: 'Управление причинами поступления товаров на склад',
         ka: 'საწყობში პროდუქტების მიღების მიზეზების მართვა'
       },
-      color: 'bg-green-50 text-green-700 border-green-200',
-      icon: <CheckCircle2 className="h-4 w-4" />
+      icon: <ArchiveRestore className="h-4 w-4" />
     },
     movement: {
       title: {
-        ru: 'Причины перемещения',
-        ka: 'გადაადგილების მიზეზები'
+        ru: 'Перемещения',
+        ka: 'გადაადგილებები'
       },
       description: {
         ru: 'Управление причинами перемещения товаров между складами',
         ka: 'საწყობებს შორის პროდუქტების გადაადგილების მიზეზების მართვა'
       },
-      color: 'bg-blue-50 text-blue-700 border-blue-200',
-      icon: <Copy className="h-4 w-4" />
+      icon: <Archive className="h-4 w-4" />
     },
     income: {
       title: {
-        ru: 'Причины доходов',
-        ka: 'შემოსავლების მიზეზები'
+        ru: 'Доходы',
+        ka: 'შემოსავლები'
       },
       description: {
         ru: 'Управление причинами доходов ресторана',
         ka: 'რესტორნის შემოსავლების მიზეზების მართვა'
       },
-      color: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-      icon: <CheckCircle2 className="h-4 w-4" />
+      icon: <BanknoteArrowUp className="h-4 w-4" />
     },
     expense: {
       title: {
-        ru: 'Причины расходов',
-        ka: 'ხარჯების მიზეზები'
+        ru: 'Расходы',
+        ka: 'ხარჯები'
       },
       description: {
         ru: 'Управление причинами расходов ресторана',
         ka: 'რესტორნის ხარჯების მიზეზების მართვა'
       },
-      color: 'bg-amber-50 text-amber-700 border-amber-200',
-      icon: <XCircle className="h-4 w-4" />
+      icon: <BanknoteArrowDown className="h-4 w-4" />
     }
   };
 
@@ -168,14 +167,13 @@ export function RestaurantDirectories({ restaurantId, restaurantName }: Restaura
       toast.error('Введите название');
       return;
     }
-
     try {
       await createItem({
         name: newItemName.trim(),
         restaurantId,
         isActive: true
       });
-      
+
       setNewItemName('');
       setIsCreateDialogOpen(false);
       toast.success('Запись успешно создана');
@@ -223,7 +221,7 @@ export function RestaurantDirectories({ restaurantId, restaurantName }: Restaura
         targetRestaurantId: restaurantId,
         overwrite: isOverwrite
       });
-      
+
       setIsCopyDialogOpen(false);
       setSelectedRestaurant('');
       setIsOverwrite(false);
@@ -310,209 +308,199 @@ export function RestaurantDirectories({ restaurantId, restaurantName }: Restaura
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BookOpen className="h-5 w-5" />
-            {translations.pageTitle[language]}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {/* Вкладки типов справочников */}
-          <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-            {(Object.entries(dictionaryTypes) as [DictionaryType, DictionaryTypeConfig][]).map(([type, config]) => (
-              <Button
-                key={type}
-                variant={activeTab === type ? "default" : "outline"}
-                className={`flex items-center gap-2 whitespace-nowrap ${
-                  activeTab === type ? config.color : ''
-                }`}
-                onClick={() => setActiveTab(type)}
-              >
-                {config.icon}
-                {config.title[language]}
+    <div>
+      {/* Адаптивные кнопки выбора справочника */}
+      <div className="flex flex-col sm:flex-row gap-2 mb-6">
+        <div className="grid grid-cols-2 sm:flex sm:flex-row gap-2">
+          {(Object.entries(dictionaryTypes) as [DictionaryType, DictionaryTypeConfig][]).map(([type, config]) => (
+            <Button
+              key={type}
+              variant={activeTab === type ? "default" : "outline"}
+              className="flex items-center gap-2 whitespace-nowrap flex-1 sm:flex-none"
+              onClick={() => setActiveTab(type)}
+            >
+              {config.icon}
+              {config.title[language]}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {/* Описание текущего типа */}
+      <div className="mb-6 p-4 bg-muted rounded-lg">
+        <h3 className="font-semibold mb-2">
+          {dictionaryTypes[activeTab].title[language]}
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          {dictionaryTypes[activeTab].description[language]}
+        </p>
+      </div>
+
+      {/* Панель управления */}
+      <div className="flex flex-col sm:flex-row gap-4 mb-6">
+        <div className="flex-1 flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder={translations.search[language]}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <div className="flex items-center space-x-2">
+            <Switch
+              checked={showOnlyActive}
+              onCheckedChange={setShowOnlyActive}
+            />
+            <Label className="text-sm whitespace-nowrap">
+              {translations.activeOnly[language]}
+            </Label>
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="flex items-center gap-2">
+                <Plus className="h-4 w-4" />
+                {translations.create[language]}
               </Button>
-            ))}
-          </div>
-
-          {/* Описание текущего типа */}
-          <div className="mb-6 p-4 bg-muted rounded-lg">
-            <h3 className="font-semibold mb-2">
-              {dictionaryTypes[activeTab].title[language]}
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              {dictionaryTypes[activeTab].description[language]}
-            </p>
-          </div>
-
-          {/* Панель управления */}
-          <div className="flex flex-col sm:flex-row gap-4 mb-6">
-            <div className="flex-1 flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder={translations.search[language]}
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              <div className="flex items-center space-x-2">
-                <Switch
-                  checked={showOnlyActive}
-                  onCheckedChange={setShowOnlyActive}
-                />
-                <Label className="text-sm whitespace-nowrap">
-                  {translations.activeOnly[language]}
-                </Label>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button className="flex items-center gap-2">
-                    <Plus className="h-4 w-4" />
-                    {translations.create[language]}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>{translations.createTitle[language]}</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="name">{translations.name[language]}</Label>
-                      <Input
-                        id="name"
-                        value={newItemName}
-                        onChange={(e) => setNewItemName(e.target.value)}
-                        placeholder={dictionaryTypes[activeTab].title[language]}
-                      />
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button
-                      variant="outline"
-                      onClick={() => setIsCreateDialogOpen(false)}
-                    >
-                      {translations.cancel[language]}
-                    </Button>
-                    <Button onClick={handleCreateItem} disabled={crudLoading}>
-                      {translations.create[language]}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-
-              <Dialog open={isCopyDialogOpen} onOpenChange={setIsCopyDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="flex items-center gap-2">
-                    <Copy className="h-4 w-4" />
-                    {translations.copy[language]}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>{translations.copyTitle[language]}</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div>
-                      <Label>{translations.sourceRestaurant[language]}</Label>
-                      <Select value={selectedRestaurant} onValueChange={setSelectedRestaurant}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Выберите ресторан" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {/* Здесь должен быть список ресторанов */}
-                          <SelectItem value="restaurant1">Ресторан 1</SelectItem>
-                          <SelectItem value="restaurant2">Ресторан 2</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Switch
-                        checked={isOverwrite}
-                        onCheckedChange={setIsOverwrite}
-                      />
-                      <Label className="text-sm">
-                        {translations.overwrite[language]}
-                      </Label>
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button
-                      variant="outline"
-                      onClick={() => setIsCopyDialogOpen(false)}
-                    >
-                      {translations.cancel[language]}
-                    </Button>
-                    <Button onClick={handleCopyReasons} disabled={!selectedRestaurant}>
-                      {translations.copyButton[language]}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </div>
-
-          {/* Список записей */}
-          <div className="border rounded-lg">
-            <div className="grid grid-cols-12 gap-4 p-4 border-b bg-muted/50 font-medium text-sm">
-              <div className="col-span-8">{dictionaryTypes[activeTab].title[language]}</div>
-              <div className="col-span-2 text-center">{translations.status[language]}</div>
-              <div className="col-span-2 text-center">{translations.actions[language]}</div>
-            </div>
-            
-            {loading ? (
-              <div className="p-8 text-center text-muted-foreground">
-                Загрузка...
-              </div>
-            ) : filteredItems.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground">
-                {translations.noItems[language]}
-              </div>
-            ) : (
-              filteredItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="grid grid-cols-12 gap-4 p-4 border-b items-center hover:bg-muted/50 transition-colors"
-                >
-                  <div className="col-span-8 font-medium">{item.name}</div>
-                  
-                  <div className="col-span-2 flex justify-center">
-                    <Badge
-                      variant={item.isActive ? "default" : "secondary"}
-                      className={item.isActive ? "bg-green-100 text-green-800" : ""}
-                    >
-                      {item.isActive ? 'Активна' : 'Неактивна'}
-                    </Badge>
-                  </div>
-                  
-                  <div className="col-span-2 flex justify-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleToggleActive(item)}
-                      title={item.isActive ? 'Деактивировать' : 'Активировать'}
-                    >
-                      {item.isActive ? <XCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDeleteItem(item)}
-                      title="Удалить"
-                    >
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
-                  </div>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{translations.createTitle[language]}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">{translations.name[language]}</Label>
+                  <Input
+                    id="name"
+                    value={newItemName}
+                    onChange={(e) => setNewItemName(e.target.value)}
+                    placeholder={dictionaryTypes[activeTab].title[language]}
+                  />
                 </div>
-              ))
-            )}
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsCreateDialogOpen(false)}
+                >
+                  {translations.cancel[language]}
+                </Button>
+                <Button onClick={handleCreateItem} disabled={crudLoading}>
+                  {translations.create[language]}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/*<Dialog open={isCopyDialogOpen} onOpenChange={setIsCopyDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="flex items-center gap-2">
+                <Copy className="h-4 w-4" />
+                {translations.copy[language]}
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{translations.copyTitle[language]}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>{translations.sourceRestaurant[language]}</Label>
+                  <Select value={selectedRestaurant} onValueChange={setSelectedRestaurant}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Выберите ресторан" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="restaurant1">Ресторан 1</SelectItem>
+                      <SelectItem value="restaurant2">Ресторан 2</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    checked={isOverwrite}
+                    onCheckedChange={setIsOverwrite}
+                  />
+                  <Label className="text-sm">
+                    {translations.overwrite[language]}
+                </Label>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setIsCopyDialogOpen(false)}
+                >
+                  {translations.cancel[language]}
+                </Button>
+                <Button onClick={handleCopyReasons} disabled={!selectedRestaurant}>
+                  {translations.copyButton[language]}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+*/}
+        </div>
+      </div>
+
+      {/* Список записей */}
+      <div className="border rounded-lg">
+        <div className="grid grid-cols-12 gap-4 p-4 border-b bg-muted/50 font-medium text-sm">
+          <div className="col-span-8">{dictionaryTypes[activeTab].title[language]}</div>
+          <div className="col-span-2 text-center">{translations.status[language]}</div>
+          <div className="col-span-2 text-center">{translations.actions[language]}</div>
+        </div>
+
+        {loading ? (
+          <div className="p-8 text-center text-muted-foreground">
+            Загрузка...
           </div>
-        </CardContent>
-      </Card>
+        ) : filteredItems.length === 0 ? (
+          <div className="p-8 text-center text-muted-foreground">
+            {translations.noItems[language]}
+          </div>
+        ) : (
+          filteredItems.map((item) => (
+            <div
+              key={item.id}
+              className="grid grid-cols-12 gap-4 p-4 border-b items-center hover:bg-muted/50 transition-colors"
+            >
+              <div className="col-span-8 font-medium">{item.name}</div>
+
+              <div className="col-span-2 flex justify-center">
+                <Badge
+                  variant={item.isActive ? "default" : "secondary"}
+                  className={item.isActive ? "bg-green-100 text-green-800" : ""}
+                >
+                  {item.isActive ? 'Активна' : 'Неактивна'}
+                </Badge>
+              </div>
+
+              <div className="col-span-2 flex justify-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleToggleActive(item)}
+                  title={item.isActive ? 'Деактивировать' : 'Активировать'}
+                >
+                  {item.isActive ? <XCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleDeleteItem(item)}
+                  title="Удалить"
+                >
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

@@ -148,8 +148,6 @@ export function RestaurantUsers() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-bold">{t.title}</h2>
-
       <div className="flex gap-2">
         <Input
           type="email"

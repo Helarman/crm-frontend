@@ -60,7 +60,8 @@ export const useDictionaries = (restaurantId?: string) => {
   };
 };
 
-export const useDictionaryCRUD = (type: keyof typeof DictionariesService) => {
+
+export const useDictionaryCRUD = (type: 'writeOffReasons' | 'receiptReasons' | 'movementReasons' | 'incomeReasons' | 'expenseReasons') => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,7 +69,7 @@ export const useDictionaryCRUD = (type: keyof typeof DictionariesService) => {
     setLoading(true);
     setError(null);
     try {
-      const service = DictionariesService[type] as any;
+      const service = DictionariesService[type];
       const result = await service.create(dto);
       setLoading(false);
       return result;
@@ -83,7 +84,7 @@ export const useDictionaryCRUD = (type: keyof typeof DictionariesService) => {
     setLoading(true);
     setError(null);
     try {
-      const service = DictionariesService[type] as any;
+      const service = DictionariesService[type];
       const result = await service.update(id, dto);
       setLoading(false);
       return result;
@@ -98,7 +99,7 @@ export const useDictionaryCRUD = (type: keyof typeof DictionariesService) => {
     setLoading(true);
     setError(null);
     try {
-      const service = DictionariesService[type] as any;
+      const service = DictionariesService[type];
       const result = await service.delete(id);
       setLoading(false);
       return result;

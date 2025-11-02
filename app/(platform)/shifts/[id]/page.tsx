@@ -16,93 +16,8 @@ import { ShiftService } from '@/lib/api/shift.service';
 import { toast } from 'sonner';
 import { useRestaurantUsers } from '@/lib/hooks/useRestaurant';
 import { User as UserType } from '@/lib/types/user';
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-
-const EXPENSES = [
-  "Деньги",
-  "Георгий деньги",
-  "Александр Деньги",
-  "Малхаз Деньги",
-  "Алексей Деньги",
-  "Инкассация",
-  "Перерасход Безнал",
-  "Карен Деньги",
-  "Долги",
-  "Измайловский Лес",
-  "Шоссе Энтузиастов",
-  "Жулебино",
-  "Савеловская",
-  "Войковская",
-  "Горенский Бульвар",
-  "Долги Безнал",
-  "Закуп",
-  "Закуп Кухня",
-  "Закуп Бар",
-  "Закуп Сыр",
-  "Доставка Грузия",
-  "Упаковка и Посуда для доставки",
-  "ХозТовары",
-  "Аванс Закуп",
-  "Связь",
-  "Телефония",
-  "Интернет",
-  "СМС",
-  "Услуги и Оборудование",
-  "Посуда",
-  "Аквариум",
-  "Цветы",
-  "Ремонт Автомобиля",
-  "Вентиляция и Кондиционеры",
-  "Газель Перевозки",
-  "Сантехника",
-  "Холодильники",
-  "Печи",
-  "Тестораскатка",
-  "Тестомес",
-  "Плиты",
-  "Прочие работы и оборудование",
-  "IT (АЙТИ) ИТ",
-  "Размещение вакансий",
-  "Дезинсекция",
-  "Аренда",
-  "Электричество",
-  "Коммуналка",
-  "ФМС",
-  "Налоговая",
-  "Фирма",
-  "Пожарник",
-  "С.Э.С.",
-  "Охрана",
-  "Транспорт логистика",
-  "Такси персонал",
-  "Парковка",
-  "Такси рынок",
-  "Такси доставка заказов",
-  "Бензин Курьер",
-  "Бензин Закупщик",
-  "Каршаринг Аренда Авто",
-  "Реклама и Маркетинг",
-  "Меню и чекницы и т.д.",
-  "Интернет реклама",
-  "Реклама в оффлайне",
-  "Комиссии банка",
-  "Комиссия банка",
-  "2,8%",
-  "Безнал 2%"
-]
-
-const INCOMES = [
-  "Возврат Долгов",
-  "Предоплаты",
-  "Закуп долг",
-  "Онлайн Оплата",
-  "Безнал",
-  "Фирма",
-  "Другое",
-  "Из Инкассации",
-  "Остаток с пр. месяца"
-]
+import SearchableSelect from '@/components/features/menu/product/SearchableSelect';
+import { useDictionaries } from '@/lib/hooks/useDictionaries';
 
 const translations = {
   ru: {
@@ -181,11 +96,16 @@ const translations = {
     delivery: 'Доставка',
     dineIn: 'Зал',
     takeaway: 'На вынос',
+    searchReason: 'Поиск причины...',
+    noReasonsFound: 'Причины не найдены',
     otherIncome: 'Иные поступления',
     beznal: 'Безнал',
     expensesTotal: 'Расход',
     cashBalance: 'Остаток',
     cashInSafe: 'Денег в кассе',
+    loadingReasons: 'Загрузка причин...',
+    noExpenseReasons: 'Нет доступных причин расходов',
+    noIncomeReasons: 'Нет доступных причин доходов',
   },
   ka: {
     shiftStats: 'ცვლის სტატისტიკა',
@@ -200,6 +120,8 @@ const translations = {
     user: 'მომხმარებელი',
     role: 'როლი',
     back: 'უკან',
+    searchReason: 'მიზეზის ძიება...',
+    noReasonsFound: 'მიზეზები ვერ მოიძებნა',
     loading: 'იტვირთება...',
     noOrders: 'შეკვეთები არ მოიძებნა',
     noStaff: 'პერსონალი არ არის დანიშნული',
@@ -269,9 +191,13 @@ const translations = {
     cashBalance: 'ბალანსი',
     cashInSafe: 'ნაღდი ფული სალაროში',
     delivery: 'მიწოდება',
-    banquet: 'ბანკეტი'
+    banquet: 'ბანკეტი',
+    loadingReasons: 'მიზეზების ჩატვირთვა...',
+    noExpenseReasons: 'ხარჯების მიზეზები არ არის ხელმისაწვდომი',
+    noIncomeReasons: 'შემოსავლების მიზეზები არ არის ხელმისაწვდომი',
   }
 };
+
 
 type OrderStatus = 'CREATED' | 'CONFIRMED' | 'PREPARING' | 'READY' | 'DELIVERING' | 'COMPLETED' | 'CANCELLED';
 
@@ -386,6 +312,26 @@ export default function ShiftStatsPage() {
   const [isAddingIncome, setIsAddingIncome] = useState(false);
   const [editingIncome, setEditingIncome] = useState<ShiftIncome | null>(null);
 
+  const {
+    expenseReasons,
+    incomeReasons,
+    loading: loadingReasons,
+    error: reasonsError
+  } = useDictionaries(shift?.restaurantId);
+  const expenseOptions = expenseReasons
+    .filter(reason => reason.isActive)
+    .map(reason => ({
+      id: reason.name,
+      label: reason.name
+    }));
+
+  const incomeOptions = incomeReasons
+    .filter(reason => reason.isActive)
+    .map(reason => ({
+      id: reason.name,
+      label: reason.name
+    }));
+
   const loadExpenses = async () => {
     setIsLoadingExpenses(true);
     try {
@@ -409,7 +355,6 @@ export default function ShiftStatsPage() {
       setIsLoadingIncomes(false);
     }
   };
-
   useEffect(() => {
     loadExpenses();
     loadIncomes();
@@ -734,7 +679,7 @@ export default function ShiftStatsPage() {
             </Card>
           </div>
 
-          <div className='grid grid-cols-1 md:grid-cols-2 space-x-4'>
+          <div className='grid grid-cols-1 space-y-4 space-x-4'>
             <Card>
               <CardHeader>
                 <div className="flex justify-between items-center">
@@ -744,24 +689,23 @@ export default function ShiftStatsPage() {
               <CardContent>
                 <div className="mb-4">
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <Select
-                      value={newIncome.title}
-                      onValueChange={(value) => setNewIncome({ ...newIncome, title: value })}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder={t.incomeTitle} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectLabel>Доходы</SelectLabel>
-                          {INCOMES.map((category) => (
-                            <SelectItem key={category} value={category}>
-                              {category}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                    {loadingReasons ? (
+                      <div className="flex items-center justify-center">
+                        <p>{t.loadingReasons}</p>
+                      </div>
+                    ) : (
+                      <SearchableSelect
+                        options={incomeOptions}
+                        value={newIncome.title ? [newIncome.title] : []}
+                        onChange={(ids) => setNewIncome({ ...newIncome, title: ids[0] || '' })}
+                        placeholder={incomeOptions.length === 0 ? t.noIncomeReasons : t.incomeTitle}
+                        searchPlaceholder={t.searchReason}
+                        emptyText={t.noReasonsFound}
+                        multiple={false}
+                        className="w-full"
+                        disabled={incomeOptions.length === 0}
+                      />
+                    )}
 
                     <Input
                       type="number"
@@ -778,7 +722,7 @@ export default function ShiftStatsPage() {
 
                     <Button
                       onClick={handleAddIncome}
-                      disabled={!newIncome.title || newIncome.amount <= 0}
+                      disabled={!newIncome.title || newIncome.amount <= 0 || incomeOptions.length === 0}
                     >
                       {editingIncome ? t.save : t.add}
                     </Button>
@@ -798,6 +742,7 @@ export default function ShiftStatsPage() {
                         <TableHead>{t.incomeTitle}</TableHead>
                         <TableHead>{t.incomeAmount}</TableHead>
                         <TableHead>{t.incomeDescription}</TableHead>
+                        <TableHead className="text-right">{t.actions}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -806,7 +751,7 @@ export default function ShiftStatsPage() {
                           <TableCell className="font-medium">{income.title}</TableCell>
                           <TableCell>{income.amount.toFixed(2)}</TableCell>
                           <TableCell>{income.description || '-'}</TableCell>
-                          <TableCell className='text-right'>
+                          <TableCell className="text-right">
                             <Button
                               variant="ghost"
                               size="icon"
@@ -835,32 +780,23 @@ export default function ShiftStatsPage() {
               <CardContent>
                 <div className="mb-4">
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <Select
-                      value={newExpense.title}
-                      onValueChange={(value) => setNewExpense({ ...newExpense, title: value })}
-                    >
-                      <SelectTrigger className='w-full'>
-                        <SelectValue placeholder={t.expenseTitle} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectLabel>Расходы</SelectLabel>
-                          <Command>
-                            <CommandInput placeholder="Поиск категории..." />
-                            <CommandEmpty>Категория не найдена</CommandEmpty>
-                            <CommandList>
-                              <CommandGroup>
-                                {EXPENSES.map((category) => (
-                                  <SelectItem key={category} value={category}>
-                                    {category}
-                                  </SelectItem>
-                                ))}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
+                    {loadingReasons ? (
+                      <div className="flex items-center justify-center">
+                        <p>{t.loadingReasons}</p>
+                      </div>
+                    ) : (
+                      <SearchableSelect
+                        options={expenseOptions}
+                        value={newExpense.title ? [newExpense.title] : []}
+                        onChange={(ids) => setNewExpense({ ...newExpense, title: ids[0] || '' })}
+                        placeholder={expenseOptions.length === 0 ? t.noExpenseReasons : t.expenseTitle}
+                        searchPlaceholder={t.searchReason}
+                        emptyText={t.noReasonsFound}
+                        multiple={false}
+                        className="w-full"
+                        disabled={expenseOptions.length === 0}
+                      />
+                    )}
 
                     <Input
                       type="number"
@@ -877,12 +813,11 @@ export default function ShiftStatsPage() {
 
                     <Button
                       onClick={handleAddExpense}
-                      disabled={!newExpense.title || newExpense.amount <= 0}
+                      disabled={!newExpense.title || newExpense.amount <= 0 || expenseOptions.length === 0}
                     >
                       {editingExpense ? t.save : t.add}
                     </Button>
                   </div>
-
                 </div>
 
                 {isLoadingExpenses ? (
@@ -898,6 +833,7 @@ export default function ShiftStatsPage() {
                         <TableHead>{t.expenseTitle}</TableHead>
                         <TableHead>{t.expenseAmount}</TableHead>
                         <TableHead>{t.expenseDescription}</TableHead>
+                        <TableHead className="text-right">{t.actions}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -906,7 +842,7 @@ export default function ShiftStatsPage() {
                           <TableCell className="font-medium">{expense.title}</TableCell>
                           <TableCell>{expense.amount.toFixed(2)}</TableCell>
                           <TableCell>{expense.description || '-'}</TableCell>
-                          <TableCell className='text-right'>
+                          <TableCell className="text-right">
                             <Button
                               variant="ghost"
                               size="icon"
@@ -926,6 +862,7 @@ export default function ShiftStatsPage() {
               </CardContent>
             </Card>
           </div>
+
 
           <Card>
             <CardHeader>
@@ -948,8 +885,8 @@ export default function ShiftStatsPage() {
                         <div
                           key={user.id}
                           className={`p-3 rounded-lg cursor-pointer flex items-center gap-3 ${selectedRestaurantUser === user.id
-                              ? 'bg-primary/10 border-2 border-primary'
-                              : 'hover:bg-accent'
+                            ? 'bg-primary/10 border-2 border-primary'
+                            : 'hover:bg-accent'
                             }`}
                           onClick={() => setSelectedRestaurantUser(user.id)}
                         >
@@ -1002,8 +939,8 @@ export default function ShiftStatsPage() {
                         <div
                           key={user.userId}
                           className={`p-3 rounded-lg cursor-pointer  flex items-center gap-3 ${selectedShiftUser === user.userId
-                              ? 'bg-destructive/10 border-2 border-destructive'
-                              : 'hover:bg-accent'
+                            ? 'bg-destructive/10 border-2 border-destructive'
+                            : 'hover:bg-accent'
                             }`}
                           onClick={() => setSelectedShiftUser(user.userId)}
                         >

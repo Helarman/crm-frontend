@@ -150,7 +150,7 @@ export default function WarehousePage() {
     parentId: 'none',
   });
 
-  const { writeOffReasons, receiptReasons, loading: dictionariesLoading, error: dictionariesError } = useDictionaries();
+  const { writeOffReasons, receiptReasons, loading: dictionariesLoading, error: dictionariesError } = useDictionaries(restaurantId);
   const [selectedReason, setSelectedReason] = useState('');
 
   const [costDialogOpen, setCostDialogOpen] = useState(false);
@@ -1101,33 +1101,33 @@ export default function WarehousePage() {
   };
 
   return (
-   <div className="p-4 space-y-6">
-  {/* Шапка с названием и кнопками */}
-  <div className="flex flex-col gap-4 lg:flex-row lg:justify-between lg:items-center">
-    <div className="flex items-center gap-2">
-      <h1 className="text-2xl font-bold">{warehouse.name}</h1>
-      {isAdmin && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            setWarehouseName(warehouse.name);
-            setEditWarehouseDialogOpen(true);
-          }}
-          className="h-8 w-8 p-0"
-          title={t('editWarehouseName')}
-        >
-          <Edit className="h-4 w-4" />
-        </Button>
-      )}
-    </div>
-    
-    {/* Контейнер для кнопок - адаптивный */}
-    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-      <Dialog>
+    <div className="p-4 space-y-6">
+      {/* Шапка с названием и кнопками */}
+      <div className="flex flex-col gap-4 lg:flex-row lg:justify-between lg:items-center">
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold">{warehouse.name}</h1>
+          {isAdmin && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setWarehouseName(warehouse.name);
+                setEditWarehouseDialogOpen(true);
+              }}
+              className="h-8 w-8 p-0"
+              title={t('editWarehouseName')}
+            >
+              <Edit className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+
+        {/* Контейнер для кнопок - адаптивный */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+          <Dialog>
 
             <DialogTrigger asChild>
-               <Button variant="outline" className="w-full sm:w-auto">{t('addLocation')}</Button>
+              <Button variant="outline" className="w-full sm:w-auto">{t('addLocation')}</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -1161,7 +1161,7 @@ export default function WarehousePage() {
 
           <Dialog>
             <DialogTrigger asChild>
-               <Button variant="outline" className="w-full sm:w-auto">{t('addCategory')}</Button>
+              <Button variant="outline" className="w-full sm:w-auto">{t('addCategory')}</Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
@@ -2084,6 +2084,7 @@ export default function WarehousePage() {
                 </p>
               )}
             </div>
+
             {transactionType === 'receipt' && (
               <div>
                 <Label className='mb-1'>{t('unitCost')} (₽)</Label>
@@ -2096,14 +2097,38 @@ export default function WarehousePage() {
                 />
               </div>
             )}
+
             <div>
               <Label className='mb-1'>{t('reason')}</Label>
-              {true ? (
+              {dictionariesLoading ? (
                 <div className="text-sm text-muted-foreground">{t('loadingReasons')}</div>
               ) : dictionariesError ? (
                 <div className="text-sm text-red-500">{t('loadReasonsError')}</div>
               ) : (
-                <></>
+                <SearchableSelect
+                  options={
+                    transactionType === 'receipt'
+                      ? receiptReasons
+                        .filter(reason => reason.isActive)
+                        .map(reason => ({
+                          id: reason.id,
+                          label: reason.name
+                        }))
+                      : writeOffReasons
+                        .filter(reason => reason.isActive)
+                        .map(reason => ({
+                          id: reason.id,
+                          label: reason.name
+                        }))
+                  }
+                  value={selectedReason ? [selectedReason] : []}
+                  onChange={(ids) => setSelectedReason(ids[0] || '')}
+                  placeholder={t('selectReason')}
+                  searchPlaceholder={t('searchReason')}
+                  emptyText={t('noReasonsFound')}
+                  multiple={false}
+                  className="w-full"
+                />
               )}
             </div>
 

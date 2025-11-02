@@ -698,7 +698,7 @@ export const warehouseTranslations = {
     en: 'All categories',
     ka: 'ყველა კატეგორია'
   },
-  
+
   color: {
     ru: 'Цвет',
     en: 'Color',
@@ -720,40 +720,40 @@ export const warehouseTranslations = {
     ka: 'ნივთების რაოდენობა'
   },
   deleteItem: {
-  ru: 'Удалить товар',
-  en: 'Delete item',
-  ka: 'ნივთის წაშლა'
-},
-itemUsedInProducts: {
-  ru: 'Товар используется в блюдах',
-  en: 'Item is used in products',
-  ka: 'ნივთი გამოიყენება პროდუქტებში'
-},
-deleteWarningUsedItem: {
-  ru: 'Удаление этого товара может повлиять на рецепты блюд',
-  en: 'Deleting this item may affect product recipes',
-  ka: 'ამ ნივთის წაშლამ შეიძლება გავლენა მოახდინოს პროდუქტების რეცეპტებზე'
-},
-deleteWarningWithStock: {
-  ru: 'На складе остались остатки этого товара',
-  en: 'There is remaining stock of this item',
-  ka: 'ამ ნივთის დარჩენილი მარაგია საწყობში'
-},
-deleteFinalConfirmation: {
-  ru: 'Вы уверены, что хотите удалить этот товар? Это действие нельзя отменить.',
-  en: 'Are you sure you want to delete this item? This action cannot be undone.',
-  ka: 'დარწმუნებული ხართ, რომ გსურთ ამ ნივთის წაშლა? ეს მოქმედება ვერ გაუქმდება.'
-},
-deleting: {
-  ru: 'Удаление...',
-  en: 'Deleting...',
-  ka: 'წაშლა...'
-},
-confirmDelete: {
-  ru: 'Удалить',
-  en: 'Delete',
-  ka: 'წაშლა'
-},
+    ru: 'Удалить товар',
+    en: 'Delete item',
+    ka: 'ნივთის წაშლა'
+  },
+  itemUsedInProducts: {
+    ru: 'Товар используется в блюдах',
+    en: 'Item is used in products',
+    ka: 'ნივთი გამოიყენება პროდუქტებში'
+  },
+  deleteWarningUsedItem: {
+    ru: 'Удаление этого товара может повлиять на рецепты блюд',
+    en: 'Deleting this item may affect product recipes',
+    ka: 'ამ ნივთის წაშლამ შეიძლება გავლენა მოახდინოს პროდუქტების რეცეპტებზე'
+  },
+  deleteWarningWithStock: {
+    ru: 'На складе остались остатки этого товара',
+    en: 'There is remaining stock of this item',
+    ka: 'ამ ნივთის დარჩენილი მარაგია საწყობში'
+  },
+  deleteFinalConfirmation: {
+    ru: 'Вы уверены, что хотите удалить этот товар? Это действие нельзя отменить.',
+    en: 'Are you sure you want to delete this item? This action cannot be undone.',
+    ka: 'დარწმუნებული ხართ, რომ გსურთ ამ ნივთის წაშლა? ეს მოქმედება ვერ გაუქმდება.'
+  },
+  deleting: {
+    ru: 'Удаление...',
+    en: 'Deleting...',
+    ka: 'წაშლა...'
+  },
+  confirmDelete: {
+    ru: 'Удалить',
+    en: 'Delete',
+    ka: 'წაშლა'
+  },
   bulkUpdate: {
     ru: 'Массовое обновление',
     en: 'Bulk update',
@@ -959,6 +959,10 @@ export const transactionsTranslations = {
     en: 'Categories',
     ru: 'Категории',
     ka: 'კატეგორიები'
+  },
+  selectReason: {
+    ru: 'Выберите причину',
+    ka: 'აირჩიეთ მიზეზი'
   },
   locations: {
     en: 'Locations',
