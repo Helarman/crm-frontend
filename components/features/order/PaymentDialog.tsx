@@ -126,7 +126,6 @@ export function PaymentDialog({
         updating: false
       }))
 
-      toast.success(language === 'ka' ? 'სტატუსი წარმატებით განახლდა' : 'Статус успешно обновлен')
       
       if (newStatus === 'PAID') {
         onPaymentComplete()

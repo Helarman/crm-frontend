@@ -84,6 +84,7 @@ import { ru, ka } from 'date-fns/locale'
 import PrecheckDialog from '../default/[id]/PrecheckDialog'
 import { CustomerService } from '@/lib/api/customer.service'
 import React from 'react'
+import { ShiftService } from '@/lib/api/shift.service'
 
 // Типы для навигации по категориям
 interface CategoryNavigation {
@@ -101,6 +102,8 @@ export default function WaiterOrderPage() {
   const translations = {
     ru: {
       back: "Назад к списку заказов",
+        calculate: "Рассчитать",
+      confirmCalculate: "Вы уверены, что хотите рассчитать заказ?",
       menu: "Меню",
       additives: "Модификаторы",
       comment: "Комментарий",
@@ -281,6 +284,8 @@ export default function WaiterOrderPage() {
     },
     ka: {
       back: "უკან შეკვეთების სიაში",
+      calculate: "გაანგარიშება",
+      confirmCalculate: "დარწმუნებული ხართ, რომ გსურთ შეკვეთის გაანგარიშება?",
       menu: "მენიუ",
       additives: "დანამატები",
       comment: "კომენტარი",
@@ -461,7 +466,7 @@ export default function WaiterOrderPage() {
     }
   } as const;
 
-  const t = translations[language];
+  const t = translations[language]; 
   const [order, setOrder] = useState<OrderResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -512,8 +517,9 @@ export default function WaiterOrderPage() {
   const [refundQuantity, setRefundQuantity] = useState(1);
   const [maxRefundQuantity, setMaxRefundQuantity] = useState(0);
   const [viewMode, setViewMode] = useState<'standard' | 'compact'>('standard');
+  const [activeShiftId, setActiveShiftId] = useState('')
+  const [shiftLoading, setShiftLoading] = useState(false)
 
-  // Состояние для навигации по категориям
   const [categoryNavigation, setCategoryNavigation] = useState<CategoryNavigation>({
     currentCategory: null,
     parentCategory: null,
@@ -521,6 +527,47 @@ export default function WaiterOrderPage() {
   });
 
   const isOrderEditable = order && !['DELIVERING', 'COMPLETED', 'CANCELLED'].includes(order.status);
+
+  const checkAndCreateShift = async (restaurantId: string): Promise<string | null> => {
+  try {
+    setShiftLoading(true);
+    const activeShift = await ShiftService.getActiveShiftsByRestaurant(restaurantId);
+    
+    let shiftId: string;
+    
+    if (!activeShift) {
+      const newShift = await ShiftService.createShift({
+        restaurantId: restaurantId,
+        status: 'STARTED',
+        startTime: new Date(),
+      });
+      shiftId = newShift.id;
+      setActiveShiftId(newShift.id);
+    } else {
+      shiftId = activeShift.id;
+      setActiveShiftId(activeShift.id);
+    }
+    
+    return shiftId;
+  } catch (error) {
+    console.error('Shift check error:', error);
+    return null;
+  } finally {
+    setShiftLoading(false);
+  }
+};
+
+
+
+  const assignOrderToShift = async (orderId: string, shiftId: string) => {
+    try {
+      await OrderService.assignOrderToShift(orderId, shiftId);
+      console.log('Order assigned to shift:', shiftId);
+    } catch (error) {
+      console.error('Failed to assign order to shift:', error); 
+    }
+  };
+
 
   // Функции для работы с категориями
   const handleCategoryClick = (category: Category) => {
@@ -868,26 +915,93 @@ export default function WaiterOrderPage() {
     setShowCompleteDialog(true);
   };
 
-  const confirmCompleteOrder = async () => {
-    if (!order) return;
-    try {
-      setIsUpdating(true);
-      const updatedOrder = await OrderService.updateStatus(order.id, { status: 'COMPLETED' });
-      setOrder(updatedOrder);
-
-      await createOrderLog(t.logs.orderCompleted);
-
-      toast.success(language === 'ru' ? 'Заказ завершен' : 'შეკვეთა დასრულებულია');
-      setShowCompleteDialog(false);
-      setShowPaymentDialog(false);
-    } catch (error) {
-      toast.error(language === 'ru'
-        ? 'Ошибка завершения заказа'
-        : 'შეკვეთის დასრულების შეცდომა');
-    } finally {
-      setIsUpdating(false);
+const confirmCompleteOrder = async () => {
+  if (!order) return;
+  
+  try {
+    setIsUpdating(true);
+    
+    /*
+    let currentShiftId = activeShiftId;
+    if (!currentShiftId) {
+      const shiftId = await checkAndCreateShift(order.restaurant.id);
+      if (!shiftId) {
+        toast.error(language === 'ka' ? 'არ არის აქტიური ცვლა' : 'Нет активной смены');
+        return;
+      }
+      currentShiftId = shiftId;
     }
-  };
+
+    // Привязываем заказ к смене
+    if (currentShiftId) {
+      await assignOrderToShift(order.id, currentShiftId);
+    }*/
+    
+    const updatedOrder = await OrderService.updateStatus(order.id, { status: 'COMPLETED' });
+    setOrder(updatedOrder);
+
+    await createOrderLog(t.logs.orderCompleted);
+
+    toast.success(language === 'ru' ? 'Заказ завершен' : 'შეკვეთა დასრულებულია');
+    setShowCompleteDialog(false);
+    setShowPaymentDialog(false);
+  } catch (error) {
+    toast.error(language === 'ru'
+      ? 'Ошибка завершения заказа'
+      : 'შეკვეთის დასრულების შეცდომა');
+  } finally {
+    setIsUpdating(false);
+  }
+};  
+
+ const handleCalculateOrder = async () => {
+  if (!order) return;
+
+  try {
+    setIsUpdating(true);
+    
+    // Проверяем и создаем смену перед расчетом
+    let currentShiftId = activeShiftId;
+    
+    if (!currentShiftId) {
+      const shiftId = await checkAndCreateShift(order.restaurant.id);
+      if (!shiftId) {
+        toast.error(language === 'ka' ? 'არ არის აქტიური ცვლა' : 'Нет активной смены');
+        setIsUpdating(false);
+        return;
+      }
+      currentShiftId = shiftId;
+    }
+
+    // Убеждаемся, что заказ привязан к смене
+    if (currentShiftId) {
+      await assignOrderToShift(order.id, currentShiftId);
+    }
+
+    // Проверяем оплату
+    if (order && order.payment && order.payment.status !== 'PAID' && calculateOrderTotal() > 0) {
+      setShowPaymentDialog(true);
+      setIsUpdating(false);
+      return;
+    }
+    
+    // Вызываем завершение заказа (расчет)
+    setShowCompleteDialog(true);
+  } catch (error) {
+    console.error('Error during calculate order:', error);
+    toast.error(language === 'ka' ? 'შეკვეთის გაანგარიშების შეცდომა' : 'Ошибка расчета заказа');
+  } finally {
+    setIsUpdating(false);
+  }
+};
+
+// Обновите useEffect для проверки смены
+useEffect(() => {
+  if (order?.restaurant?.id && order?.id) {
+    checkAndCreateShift(order.restaurant.id);
+  }
+}, [order?.restaurant?.id, order?.id]);
+
 
   const handleCancelOrder = () => {
     setShowCancelDialog(true);
@@ -2632,19 +2746,19 @@ export default function WaiterOrderPage() {
                         </>
                       )}
 
-                      {(order.status === 'READY' || order.status === 'DELIVERING') && (
-                        <Button
-                          disabled={isUpdating}
-                          onClick={handleCompleteOrder}
+                     {(order.status === 'READY' || order.status === 'DELIVERING') && (
+                      <Button
+                          disabled={isUpdating || shiftLoading}
+                          onClick={handleCalculateOrder}
                           variant="secondary"
                           className="bg-emerald-500 hover:bg-emerald-400 text-white gap-2 w-full text-lg h-14"
                         >
-                          {isUpdating ? (
+                          {isUpdating || shiftLoading ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
                             <CheckCircle className="h-4 w-4" />
                           )}
-                          {t.complete}
+                          {t.calculate}
                         </Button>
                       )}
                     </div>
@@ -2915,30 +3029,30 @@ export default function WaiterOrderPage() {
           </AlertDialogContent>
         </AlertDialog>
 
-        <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {t.confirmation}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {t.confirmComplete}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>
-                {t.cancel}
-              </AlertDialogCancel>
-              <AlertDialogAction
-                onClick={confirmCompleteOrder}
-                disabled={isUpdating}
-              >
-                {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {t.complete}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+       <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t.confirmation}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t.confirmCalculate} 
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>
+              {t.cancel}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmCompleteOrder} 
+              disabled={isUpdating}
+            >
+              {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {t.calculate} 
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
         <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
           <AlertDialogContent>

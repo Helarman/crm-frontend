@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { OrderService } from '@/lib/api/order.service'
-import { ShiftService } from '@/lib/api/shift.service'
 import { CustomerService } from '@/lib/api/customer.service'
 import { DeliveryZoneService } from '@/lib/api/delivery-zone.service'
 import { useAuth } from "@/lib/hooks/useAuth"
@@ -44,32 +43,8 @@ export default function NewOrderPage() {
     scheduledAt: undefined
   })
   const [loading, setLoading] = useState(false)
-  const [activeShiftId, setActiveShiftId] = useState('')
 
-  // Функция для проверки и создания смены
-  const checkAndCreateShift = async (restaurantId: string) => {
-    try {
-      const activeShift = await ShiftService.getActiveShiftsByRestaurant(restaurantId)
-      if (!activeShift) {
-        const newShift = await ShiftService.createShift({
-          restaurantId: restaurantId,
-          status: 'STARTED',
-          startTime: new Date(),
-        })
-        setActiveShiftId(newShift.id)
-        return newShift.id
-      } else {
-        setActiveShiftId(activeShift.id)
-        return activeShift.id
-      }
-    } catch (error) {
-      console.error('Shift check error:', error)
-      toast.error(language === 'ka' ? 'ცვლის შექმნის შეცდომა' : 'Ошибка создания смены')
-      return null
-    }
-  }
-
-  // Инициализация ресторана и смены
+  // Инициализация ресторана
   useEffect(() => {
     if (!user) return
 
@@ -91,9 +66,6 @@ export default function NewOrderPage() {
 
     setSelectedRestaurant(initialRestaurant)
     setOrder(prev => ({ ...prev, restaurantId: initialRestaurant.id }))
-    
-    // Проверяем и создаем смену для выбранного ресторана
-    checkAndCreateShift(initialRestaurant.id)
   }, [user, language])
 
   // Обработчик изменения ресторана
@@ -115,12 +87,6 @@ export default function NewOrderPage() {
       deliveryZone: null,
       surcharges: []
     }))
-
-    // Обновляем смену для нового ресторана
-    const shiftId = await checkAndCreateShift(restaurantId)
-    if (!shiftId) {
-      toast.error(language === 'ka' ? 'არ არის აქტიური ცვლა' : 'Нет активной смены')
-    }
   }
 
   // Функция для проверки зоны доставки
@@ -207,11 +173,6 @@ export default function NewOrderPage() {
   }
 
   const handleCreateOrder = async () => {
-    if (!activeShiftId) {
-      toast.error(language === 'ka' ? 'არ არის აქტიური ცვლა' : 'Нет активной смены')
-      return
-    }
-
     // Проверяем зону доставки для заказов типа DELIVERY
     if (order.type === 'DELIVERY' && order.deliveryAddress && !order.deliveryZone) {
       setLoading(true)
@@ -252,7 +213,6 @@ export default function NewOrderPage() {
       const orderData = {
         ...order,
         customerId,
-        shiftId: activeShiftId,
         items: [],
         scheduledAt: order.scheduledAt,
         deliveryNotes: order.type === 'DELIVERY' 
@@ -306,9 +266,7 @@ export default function NewOrderPage() {
           language={language}
           onSubmit={handleCreateOrder}
           loading={loading}
-          onRestaurantChange={handleRestaurantChange}
-          activeShiftId={activeShiftId}
-        />
+          onRestaurantChange={handleRestaurantChange}       />
       </div>
     </AccessCheck>
   )

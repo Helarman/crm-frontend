@@ -38,7 +38,6 @@ interface OrderInfoStepProps {
   onSubmit: () => void
   loading: boolean
   onRestaurantChange: (restaurantId: string) => void
-  activeShiftId: string
 }
 
 export const OrderInfoStep = ({
@@ -49,7 +48,6 @@ export const OrderInfoStep = ({
   onSubmit,
   loading,
   onRestaurantChange,
-  activeShiftId
 }: OrderInfoStepProps) => {
   const [isScheduled, setIsScheduled] = useState(false)
   const [scheduledTime, setScheduledTime] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"))
@@ -89,39 +87,6 @@ export const OrderInfoStep = ({
       deliveryZone: null,
       surcharges: []
     })
-  }
-
-  const validateStep = () => {
-    // Проверяем наличие активной смены
-    if (!activeShiftId) {
-      toast.error(language === 'ka' ? 'არ არის აქტიური ცვლა' : 'Нет активной смены')
-      return false
-    }
-
-    if ((order.type === 'DINE_IN' || order.type === 'BANQUET') && !order.tableNumber) {
-      toast.error(language === 'ka' ? 'შეიყვანეთ სტოლის ნომერი' : 'Введите номер стола')
-      return false
-    }
-    
-    if (order.type === 'DELIVERY') {
-      if (!order.deliveryAddress) {
-        toast.error(language === 'ka' ? 'შეიყვანეთ მისამართი' : 'Введите адрес доставки')
-        return false
-      }
-      if (!order.deliveryZone?.price) {
-        toast.error(language === 'ka' ? 'მიტანის ზონა არ მოიძებნა' : 'Зона доставки не найдена')
-        return false
-      }
-    }
-
-    if (isScheduled && !scheduledTime) {
-      toast.error(language === 'ka'
-        ? 'შეიყვანეთ დაგეგმილი დრო'
-        : 'Введите запланированное время')
-      return false
-    }
-
-    return true
   }
 
   const handleScheduledChange = (checked: boolean) => {
@@ -427,14 +392,10 @@ export const OrderInfoStep = ({
 
       <div className="flex justify-end">
         <Button
-          onClick={() => {
-            if (validateStep()) {
-              onSubmit()
-            }
-          }}
+          onClick={() =>  onSubmit()}
           size="lg"
           className="text-lg"
-          disabled={loading || !activeShiftId}
+          disabled={loading}
         >
           {loading
             ? language === 'ka' ? 'შექმნა...' : 'Создание...'

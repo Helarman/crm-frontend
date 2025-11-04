@@ -351,6 +351,7 @@ export interface UpdateOrderDto {
   deliveryTime?: string;
   deliveryNotes?: string;
   scheduledAt?: string;
+  shiftId?: string;
   payment?: {
     method: EnumPaymentMethod;
   };
@@ -428,6 +429,19 @@ export const OrderService = {
   getById: async (id: string): Promise<OrderResponse> => {
     const { data } = await api.get<OrderResponse>(`/orders/${id}`);
     return data;
+  },
+
+  assignOrderToShift: async (orderId: string, shiftId: string): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.patch<OrderResponse>(
+        `/orders/${orderId}/shift`,
+        { shiftId }
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to assign order to shift:', error);
+      throw error;
+    }
   },
 
   /**
