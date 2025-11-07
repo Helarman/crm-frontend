@@ -1279,7 +1279,7 @@ useEffect(() => {
           );
         } else {
           // Иначе создаем новый item
-          await OrderService.updateStatus(orderId as string, { status: 'CREATED' });
+          //await OrderService.updateStatus(orderId as string, { status: 'CREATED' });
 
           await OrderService.addItemToOrder(
             orderId as string,
@@ -2712,9 +2712,7 @@ useEffect(() => {
                           {order.attentionFlags.isPrecheck ? t.precheckFormed : t.formPrecheck}
                         </Button>
                       )}
-                      {order.status === 'CREATED' && (
-                        <>
-                          {order.items.some(item => item.status === OrderItemStatus.CREATED) && (
+                      {order.items.some(item => item.status === OrderItemStatus.CREATED) && (
                             <Button
                               disabled={isUpdating || order.items.length === 0}
                               onClick={handleConfirmOrder}
@@ -2729,6 +2727,9 @@ useEffect(() => {
                               {t.confirm} ({order.items.filter(item => item.status === OrderItemStatus.CREATED).length})
                             </Button>
                           )}
+                      {order.status === 'CREATED' && (
+                        <>
+                          
 
                           <Button
                             disabled={isUpdating}

@@ -11,7 +11,7 @@ import { Language, useLanguageStore } from '@/lib/stores/language-store'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { Button } from '@/components/ui/button'
-import { ChevronDown, Check, Clock, Package, AlertCircle, Tag, Gift, ArrowLeft } from 'lucide-react'
+import { ChevronDown, Check, Clock, Package, AlertCircle, Tag, Gift, ArrowLeft, Wifi, WifiOff } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/hooks/useAuth'
@@ -20,6 +20,7 @@ import { WarehouseService } from '@/lib/api/warehouse.service'
 import { motion, AnimatePresence } from 'framer-motion'
 import { OrderItem } from '@/lib/types/order'
 import { useRestaurant } from '@/lib/hooks/useRestaurant'
+import { useOrderWebSocket } from '@/lib/hooks/useOrderWebSocket'
 
 type OrderItemWithStatus = {
   id: string
@@ -145,7 +146,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
   variant?: 'default' | 'kitchen' | 'delivery'
   onStatusChange?: (updatedOrder: OrderResponse) => void
   className?: string
-  selectedRestaurantId?: string // Добавляем проп для ID ресторана
+  selectedRestaurantId?: string
 }) {
   const router = useRouter()
   const { user } = useAuth()
@@ -168,6 +169,42 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
   // Получаем данные ресторана
   const { data: restaurant } = useRestaurant(selectedRestaurantId as string)
 
+  const { isConnected } = useOrderWebSocket({
+    restaurantId: selectedRestaurantId,
+    orderId: order.id,
+    onOrderUpdated: (updatedOrder: OrderResponse) => {
+      console.log('Order updated via WebSocket:', updatedOrder)
+      if (onStatusChange) {
+        onStatusChange(updatedOrder)
+      }
+    },
+    onOrderStatusUpdated: (updatedOrder: OrderResponse) => {
+      console.log('Order status updated via WebSocket:', updatedOrder)
+      toast.info(`${translations[language as Language].orderUpdatet} #${updatedOrder.number}`)
+      if (onStatusChange) {
+        onStatusChange(updatedOrder)
+      }
+    },
+    onOrderItemUpdated: (updatedOrder: OrderResponse, itemId: string) => {
+      console.log('Order item updated via WebSocket:', updatedOrder, itemId)
+      if (onStatusChange) {
+        onStatusChange(updatedOrder)
+      }
+    },
+    onOrderModified: (updatedOrder: OrderResponse) => {
+      console.log('Order modified via WebSocket:', updatedOrder)
+      if (onStatusChange) {
+        onStatusChange(updatedOrder)
+      }
+    },
+    onOrderDetailsUpdated: (updatedOrder: OrderResponse) => {
+      console.log('Order details updated via WebSocket:', updatedOrder)
+      if (onStatusChange) {
+        onStatusChange(updatedOrder)
+      }
+    }
+  })
+
   // Get user's workshop IDs
   const userWorkshopIds = user?.workshops?.map((workshop: any) => workshop.workshopId) || [];
 
@@ -189,6 +226,7 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
     ru: {
       back: "Назад к списку заказов",
       orderComposition: "Состав заказа",
+      orderUpdatet: "updated",
       noDishes: "Нет блюд для приготовления",
       additives: "Модификаторы",
       comment: "Комментарий",
@@ -237,10 +275,14 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
       surcharges: "Надбавки",
       total: "Итого",
       itemsTotal: "Сумма блюд",
-      refundedItems: "Возвращенные блюда"
+      refundedItems: "Возвращенные блюда",
+      connected: "Онлайн",
+      connecting: "Подключение...",
+      disconnected: "Офлайн"
     },
     ka: {
       back: "უკან შეკვეთების სიაში",
+      orderUpdatet: "updated",
       orderComposition: "შეკვეთის შემადგენლობა",
       noDishes: "მომზადებისთვის კერძები არ არის",
       additives: "მოდიფიკატორები",
@@ -290,7 +332,10 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
       surcharges: "მოდიფიკატორები",
       total: "სულ",
       itemsTotal: "კერძების ჯამი",
-      refundedItems: "დაბრუნებული კერძები"
+      refundedItems: "დაბრუნებული კერძები",
+      connected: "ონლაინი",
+      connecting: "მიმდინარეობს კავშირი...",
+      disconnected: "ოფლაინი"
     }
   } as const;
 
@@ -598,6 +643,8 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
         )}
         onClick={handleCardClick}
       >
+        
+
         <div className="absolute top-0 left-0 w-full h-1" />
         <div className="flex flex-col flex-grow">
           <OrderHeader order={order} compact={variant === 'kitchen'} />
