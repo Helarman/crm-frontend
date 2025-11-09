@@ -1,6 +1,5 @@
 'use client'
 
-import { KitchenOrdersList } from '@/components/features/order/KitchenOrderList'
 import { useLanguageStore } from '@/lib/stores/language-store'
 import { AccessCheck } from '@/components/AccessCheck'
 import { DeliveryOrdersList } from '@/components/features/order/DeliveryOrderList'
