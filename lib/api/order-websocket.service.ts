@@ -121,10 +121,16 @@ export class OrderWebSocketService {
       this.emit('orderStatusUpdated', data)
     })
 
+      // В OrderWebSocketService классе исправьте:
     this.socket.on('order:item_updated', (data: { order: OrderResponse, itemId: string }) => {
-      console.log('🍽️ Order item updated via WebSocket:', data)
-      this.emit('orderItemUpdated', data.order, data.itemId)
-    })
+      console.log('🍽️ Order item updated via WebSocket:', data);
+      // БЫЛО: this.emit('orderItemUpdated', data.order, data.itemId)
+      // СТАЛО: передаем объект с order и itemId
+      this.emit('orderItemUpdated', {
+        order: data.order,
+        itemId: data.itemId
+      });
+    });
 
     this.socket.on('order:modified', (data: OrderResponse) => {
       console.log('✏️ Order modified via WebSocket:', data)

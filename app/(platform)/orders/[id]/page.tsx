@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { OrderHeader } from '@/components/features/order/OrderHeader'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -58,7 +58,9 @@ import {
   Sparkles,
   LayoutGrid,
   LayoutTemplate,
-  Mic
+  Mic,
+  Wifi,
+  WifiOff
 } from 'lucide-react'
 import { Category, OrderItem, OrderState } from '@/lib/types/order'
 import { Product } from '@/lib/types/product'
@@ -85,6 +87,7 @@ import PrecheckDialog from '../default/[id]/PrecheckDialog'
 import { CustomerService } from '@/lib/api/customer.service'
 import React from 'react'
 import { ShiftService } from '@/lib/api/shift.service'
+import { useOrderWebSocket } from '@/lib/hooks/useOrderWebSocket'
 
 // Типы для навигации по категориям
 interface CategoryNavigation {
@@ -102,7 +105,7 @@ export default function WaiterOrderPage() {
   const translations = {
     ru: {
       back: "Назад к списку заказов",
-        calculate: "Рассчитать",
+      calculate: "Рассчитать",
       confirmCalculate: "Вы уверены, что хотите рассчитать заказ?",
       menu: "Меню",
       additives: "Модификаторы",
@@ -280,6 +283,12 @@ export default function WaiterOrderPage() {
         ACTIVE: "Активна",
         INACTIVE: "Неактивна",
         EXPIRED: "Истекла"
+      },
+      connection: {
+        connected: "Соединение активно",
+        disconnected: "Соединение потеряно",
+        reconnecting: "Переподключение...",
+        error: "Ошибка соединения"
       }
     },
     ka: {
@@ -462,6 +471,12 @@ export default function WaiterOrderPage() {
         ACTIVE: "აქტიური",
         INACTIVE: "არააქტიური",
         EXPIRED: "ვადაგასული"
+      },
+      connection: {
+        connected: "კავშირი აქტიურია",
+        disconnected: "კავშირი დაკარგულია",
+        reconnecting: "ხელახლა დაკავშირება...",
+        error: "კავშირის შეცდომა"
       }
     }
   } as const;
@@ -526,38 +541,112 @@ export default function WaiterOrderPage() {
     breadcrumbs: []
   });
 
-  const isOrderEditable = order && !['DELIVERING', 'COMPLETED', 'CANCELLED'].includes(order.status);
-
-  const checkAndCreateShift = async (restaurantId: string): Promise<string | null> => {
-  try {
-    setShiftLoading(true);
-    const activeShift = await ShiftService.getActiveShiftsByRestaurant(restaurantId);
-    
-    let shiftId: string;
-    
-    if (!activeShift) {
-      const newShift = await ShiftService.createShift({
-        restaurantId: restaurantId,
-        status: 'STARTED',
-        startTime: new Date(),
-      });
-      shiftId = newShift.id;
-      setActiveShiftId(newShift.id);
-    } else {
-      shiftId = activeShift.id;
-      setActiveShiftId(activeShift.id);
+const {
+  isConnected: isWebSocketConnected,
+  connectionError: webSocketError
+} = useOrderWebSocket({
+  restaurantId: order?.restaurant?.id,
+  orderId: orderId as string,
+  onOrderUpdated: (updatedOrder: OrderResponse) => {
+    console.log('🔄 WebSocket: Order updated received', updatedOrder);
+    if (updatedOrder && updatedOrder.id === orderId) {
+      const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
+      setOrder(mergedOrder);
+      // Уберите toast чтобы не мешал при частых обновлениях
+      console.log('Order updated via WebSocket');
     }
-    
-    return shiftId;
-  } catch (error) {
-    console.error('Shift check error:', error);
-    return null;
-  } finally {
-    setShiftLoading(false);
+  },
+  onOrderStatusUpdated: (updatedOrder: OrderResponse) => {
+    console.log('📊 WebSocket: Order status updated received', updatedOrder);
+    if (updatedOrder && updatedOrder.id === orderId) {
+      const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
+      setOrder(mergedOrder);
+      console.log('Order status updated via WebSocket');
+    }
+  },
+  onOrderItemUpdated: (updatedOrder: OrderResponse, itemId: string) => {
+    console.log('🍽️ WebSocket: Order item updated received', updatedOrder, itemId);
+    if (updatedOrder && updatedOrder.id === orderId) {
+      const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
+      setOrder(mergedOrder);
+      console.log('Order item updated via WebSocket');
+    }
+  },
+  onOrderModified: (updatedOrder: OrderResponse) => {
+    console.log('✏️ WebSocket: Order modified received', updatedOrder);
+    const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
+    setOrder(mergedOrder);
+    console.log('Order modified via WebSocket');
+  },
+  onOrderDetailsUpdated: (updatedOrder: OrderResponse) => {
+    console.log('📝 WebSocket: Order details updated received', updatedOrder);
+    const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
+    setOrder(mergedOrder);
+    console.log('Order details updated via WebSocket');
+  },
+  onError: (error: any) => {
+    console.error('❌ WebSocket error:', error);
+  },
+  enabled: true
+});
+
+  const isOrderEditable = order && !['DELIVERING', 'COMPLETED', 'CANCELLED'].includes(order.status);
+const orderRef = useRef<OrderResponse | null>(null);
+
+  const mergeOrderStates = (serverOrder: OrderResponse, localOrder: OrderResponse | null): OrderResponse => {
+  if (!localOrder) {
+    return serverOrder;
   }
+
+  // Глубокое слияние items с сохранением порядка и локальных данных
+  const mergedItems = serverOrder.items?.map(serverItem => {
+    const localItem = localOrder.items?.find(item => item.id === serverItem.id);
+    return localItem ? { ...serverItem, ...localItem } : serverItem;
+  }) || serverOrder.items || [];
+
+  return {
+    ...serverOrder,
+    // Сохраняем важные локальные состояния
+    attentionFlags: {
+      ...serverOrder.attentionFlags,
+      ...localOrder.attentionFlags
+    },
+    // Сохраняем items из сервера, но с возможными локальными дополнениями
+    items: mergedItems,
+    // Сохраняем другие важные локальные поля
+    ...(localOrder.customer && { customer: localOrder.customer }),
+    ...(localOrder.discountAmount && { discountAmount: localOrder.discountAmount }),
+  };
 };
 
-
+  const checkAndCreateShift = async (restaurantId: string): Promise<string | null> => {
+    try {
+      setShiftLoading(true);
+      const activeShift = await ShiftService.getActiveShiftsByRestaurant(restaurantId);
+      
+      let shiftId: string;
+      
+      if (!activeShift) {
+        const newShift = await ShiftService.createShift({
+          restaurantId: restaurantId,
+          status: 'STARTED',
+          startTime: new Date(),
+        });
+        shiftId = newShift.id;
+        setActiveShiftId(newShift.id);
+      } else {
+        shiftId = activeShift.id;
+        setActiveShiftId(activeShift.id);
+      }
+      
+      return shiftId;
+    } catch (error) {
+      console.error('Shift check error:', error);
+      return null;
+    } finally {
+      setShiftLoading(false);
+    }
+  };
 
   const assignOrderToShift = async (orderId: string, shiftId: string) => {
     try {
@@ -567,7 +656,6 @@ export default function WaiterOrderPage() {
       console.error('Failed to assign order to shift:', error); 
     }
   };
-
 
   // Функции для работы с категориями
   const handleCategoryClick = (category: Category) => {
@@ -862,10 +950,13 @@ export default function WaiterOrderPage() {
 
       const updatedOrder = await OrderService.updateStatus(order.id, { status: 'PREPARING' });
 
+       const createdItems = getOrderItems().filter(item => item.status === OrderItemStatus.CREATED);
+    
       await Promise.all(
-        order.items.map(item =>
+        createdItems.map(item =>
           OrderService.updateItemStatus(order.id, item.id, { status: OrderItemStatus.IN_PROGRESS })
-        ));
+        )
+      );
 
       const refreshedOrder = await OrderService.getById(order.id);
       setOrder(refreshedOrder);
@@ -915,93 +1006,91 @@ export default function WaiterOrderPage() {
     setShowCompleteDialog(true);
   };
 
-const confirmCompleteOrder = async () => {
-  if (!order) return;
-  
-  try {
-    setIsUpdating(true);
+  const confirmCompleteOrder = async () => {
+    if (!order) return;
     
-    /*
-    let currentShiftId = activeShiftId;
-    if (!currentShiftId) {
-      const shiftId = await checkAndCreateShift(order.restaurant.id);
-      if (!shiftId) {
-        toast.error(language === 'ka' ? 'არ არის აქტიური ცვლა' : 'Нет активной смены');
-        return;
+    try {
+      setIsUpdating(true);
+      
+      let currentShiftId = activeShiftId;
+      if (!currentShiftId) {
+        const shiftId = await checkAndCreateShift(order.restaurant.id);
+        if (!shiftId) {
+          toast.error(language === 'ka' ? 'არ არის აქტიური ცვლა' : 'Нет активной смены');
+          return;
+        }
+        currentShiftId = shiftId;
       }
-      currentShiftId = shiftId;
+
+      // Привязываем заказ к смене
+      if (currentShiftId) {
+        await assignOrderToShift(order.id, currentShiftId);
+      }
+      
+      const updatedOrder = await OrderService.updateStatus(order.id, { status: 'COMPLETED' });
+      setOrder(updatedOrder);
+
+      await createOrderLog(t.logs.orderCompleted);
+
+      toast.success(language === 'ru' ? 'Заказ завершен' : 'შეკვეთა დასრულებულია');
+      setShowCompleteDialog(false);
+      setShowPaymentDialog(false);
+    } catch (error) {
+      toast.error(language === 'ru'
+        ? 'Ошибка завершения заказа'
+        : 'შეკვეთის დასრულების შეცდომა');
+    } finally {
+      setIsUpdating(false);
     }
+  };  
 
-    // Привязываем заказ к смене
-    if (currentShiftId) {
-      await assignOrderToShift(order.id, currentShiftId);
-    }*/
-    
-    const updatedOrder = await OrderService.updateStatus(order.id, { status: 'COMPLETED' });
-    setOrder(updatedOrder);
+  const handleCalculateOrder = async () => {
+    if (!order) return;
 
-    await createOrderLog(t.logs.orderCompleted);
+    try {
+      setIsUpdating(true);
+      
+      // Проверяем и создаем смену перед расчетом
+      let currentShiftId = activeShiftId;
+      
+      if (!currentShiftId) {
+        const shiftId = await checkAndCreateShift(order.restaurant.id);
+        if (!shiftId) {
+          toast.error(language === 'ka' ? 'არ არის აქტიური ცვლა' : 'Нет активной смены');
+          setIsUpdating(false);
+          return;
+        }
+        currentShiftId = shiftId;
+      }
 
-    toast.success(language === 'ru' ? 'Заказ завершен' : 'შეკვეთა დასრულებულია');
-    setShowCompleteDialog(false);
-    setShowPaymentDialog(false);
-  } catch (error) {
-    toast.error(language === 'ru'
-      ? 'Ошибка завершения заказа'
-      : 'შეკვეთის დასრულების შეცდომა');
-  } finally {
-    setIsUpdating(false);
-  }
-};  
+      // Убеждаемся, что заказ привязан к смене
+      if (currentShiftId) {
+        await assignOrderToShift(order.id, currentShiftId);
+      }
 
- const handleCalculateOrder = async () => {
-  if (!order) return;
-
-  try {
-    setIsUpdating(true);
-    
-    // Проверяем и создаем смену перед расчетом
-    let currentShiftId = activeShiftId;
-    
-    if (!currentShiftId) {
-      const shiftId = await checkAndCreateShift(order.restaurant.id);
-      if (!shiftId) {
-        toast.error(language === 'ka' ? 'არ არის აქტიური ცვლა' : 'Нет активной смены');
+      // Проверяем оплату
+      if (order && order.payment && order.payment.status !== 'PAID' && calculateOrderTotal() > 0) {
+        setShowPaymentDialog(true);
         setIsUpdating(false);
         return;
       }
-      currentShiftId = shiftId;
-    }
-
-    // Убеждаемся, что заказ привязан к смене
-    if (currentShiftId) {
-      await assignOrderToShift(order.id, currentShiftId);
-    }
-
-    // Проверяем оплату
-    if (order && order.payment && order.payment.status !== 'PAID' && calculateOrderTotal() > 0) {
-      setShowPaymentDialog(true);
+      
+      // Вызываем завершение заказа (расчет)
+      setShowCompleteDialog(true);
+    } catch (error) {
+      console.error('Error during calculate order:', error);
+      toast.error(language === 'ka' ? 'შეკვეთის გაანგარიშების შეცდომა' : 'Ошибка расчета заказа');
+    } finally {
       setIsUpdating(false);
-      return;
     }
-    
-    // Вызываем завершение заказа (расчет)
-    setShowCompleteDialog(true);
-  } catch (error) {
-    console.error('Error during calculate order:', error);
-    toast.error(language === 'ka' ? 'შეკვეთის გაანგარიშების შეცდომა' : 'Ошибка расчета заказа');
-  } finally {
-    setIsUpdating(false);
-  }
-};
+  };
 
-// Обновите useEffect для проверки смены
-useEffect(() => {
-  if (order?.restaurant?.id && order?.id) {
-    checkAndCreateShift(order.restaurant.id);
-  }
-}, [order?.restaurant?.id, order?.id]);
-
+  // Обновите useEffect для проверки смены
+  useEffect(() => {
+    if (order?.restaurant?.id && order?.id) {
+      checkAndCreateShift(order.restaurant.id);
+    }
+  }, [order?.restaurant?.id, order?.id]);
 
   const handleCancelOrder = () => {
     setShowCancelDialog(true);
@@ -1174,33 +1263,58 @@ useEffect(() => {
     return price;
   };
 
-  const calculateOrderTotal = () => {
-    if (!order) return 0;
+  const getOrderItems = () => {
+  return order?.items || [];
+};
 
-    const itemsTotal = order.items.reduce((sum, item) => {
-      return sum + calculateItemPrice(item);
-    }, 0);
+const getOriginalItems = () => {
+  return getOrderItems().filter(item => !item.isRefund);
+};
 
-    const surchargesTotal = order.surcharges?.reduce((sum, surcharge) => {
-      if (surcharge.type === 'FIXED') {
-        return sum + surcharge.amount;
-      } else {
-        return sum + (itemsTotal * surcharge.amount) / 100;
-      }
-    }, 0) || 0;
+const getRefundedItems = () => {
+  return getOrderItems().filter(item => item.isRefund);
+};
 
-    let total = itemsTotal + surchargesTotal;
+const getCreatedItemsCount = () => {
+  return getOrderItems().filter(item => item.status === OrderItemStatus.CREATED).length;
+};
 
-    if (order.discountAmount && order.discountAmount > 0) {
-      total = Math.max(0, total - order.discountAmount);
+const hasRefundedItems = () => {
+  return getOrderItems().some(item => item.isRefund);
+};
+
+const hasCreatedItems = () => {
+  return getOrderItems().some(item => item.status === OrderItemStatus.CREATED);
+};
+
+const calculateOrderTotal = () => {
+  if (!order || !getOrderItems()) return 0; 
+  const items = getOrderItems();
+  const itemsTotal = items.reduce((sum, item) => {
+    return sum + calculateItemPrice(item);
+  }, 0);
+
+  // Исправление: проверка на существование surcharges
+  const surchargesTotal = (order.surcharges || []).reduce((sum, surcharge) => {
+    if (surcharge.type === 'FIXED') {
+      return sum + surcharge.amount;
+    } else {
+      return sum + (itemsTotal * surcharge.amount) / 100;
     }
+  }, 0) || 0;
 
-    if (order.bonusPointsUsed && order.bonusPointsUsed > 0) {
-      total = Math.max(0, total - order.bonusPointsUsed);
-    }
+  let total = itemsTotal + surchargesTotal;
 
-    return total;
-  };
+  if (order.discountAmount && order.discountAmount > 0) {
+    total = Math.max(0, total - order.discountAmount);
+  }
+
+  if (order.bonusPointsUsed && order.bonusPointsUsed > 0) {
+    total = Math.max(0, total - order.bonusPointsUsed);
+  }
+
+  return total;
+};
 
   const handleReorderItem = async (item: OrderItem) => {
     if (!order) return;
@@ -1239,112 +1353,113 @@ useEffect(() => {
       setIsUpdating(false);
     }
   };
+const handleQuantityChange = useCallback(async (product: Product, newQuantity: number, additives: string[], comment: string) => {
+  if (!orderId || !isOrderEditable || !order || !getOrderItems()) return;
 
-  const handleQuantityChange = useCallback(async (product: Product, newQuantity: number, additives: string[], comment: string) => {
-    if (!orderId || !isOrderEditable || !order) return;
+  const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`;
 
-    const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`;
+  if (pendingAdditions[key]?.timer) {
+    clearTimeout(pendingAdditions[key].timer!);
+  }
 
-    // Проверяем существующие items
-    const existingItem = order.items.find(item =>
-      item.product.id === product.id &&
-      JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
-      item.comment === comment &&
-      item.status === OrderItemStatus.CREATED // Только для items со статусом CREATED
-    );
+  if (newQuantity === 0) {
+    setPendingAdditions(prev => {
+      const newState = { ...prev };
+      delete newState[key];
+      return newState;
+    });
+    return;
+  }
 
-    if (pendingAdditions[key]?.timer) {
-      clearTimeout(pendingAdditions[key].timer!);
-    }
+  const timer = setTimeout(async () => {
+    try {
+      setIsUpdating(true);
 
-    if (newQuantity === 0) {
+      const existingItem = getOrderItems().find(item =>
+        item.product.id === product.id &&
+        JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
+        item.comment === comment &&
+        item.status === OrderItemStatus.CREATED
+      );
+
+      if (existingItem) {
+        await OrderService.updateOrderItemQuantity(
+          orderId as string,
+          existingItem.id,
+          newQuantity
+        );
+      } else {
+        await OrderService.addItemToOrder(
+          orderId as string,
+          {
+            productId: product.id,
+            quantity: newQuantity,
+            additiveIds: additives,
+            comment,
+          }
+        );
+      }
+
+      const updatedOrder = await OrderService.getById(orderId as string);
+      const orderWithPreservedFlags = {
+        ...updatedOrder,
+        attentionFlags: updatedOrder.attentionFlags || {} // Добавьте fallback
+      };
+      
+      setOrder(orderWithPreservedFlags);
+
+      await applyAutoDiscounts(orderWithPreservedFlags);
+
+      await createOrderLog(
+        existingItem
+          ? `${language === 'ru' ? 'Обновлено количество' : 'რაოდენობა განახლდა'}: ${product.title} → ${newQuantity}`
+          : `${t.logs.itemAdded}: ${product.title} x ${newQuantity}`
+      );
+
       setPendingAdditions(prev => {
         const newState = { ...prev };
         delete newState[key];
         return newState;
       });
-      return;
+    } catch (err) {
+      toast.error(language === 'ru' ? 'Ошибка при обновлении заказа' : 'შეკვეთის განახლების შეცდომა');
+      console.error('Error:', err);
+    } finally {
+      setIsUpdating(false);
     }
+  }, 1000);
 
-    const timer = setTimeout(async () => {
-      try {
-        setIsUpdating(true);
+  setPendingAdditions(prev => ({
+    ...prev,
+    [key]: {
+      quantity: newQuantity,
+      additives,
+      comment,
+      timer,
+    },
+  }));
+}, [orderId, isOrderEditable, language, order]);
 
-        // Если есть существующий item со статусом CREATED - обновляем его количество
-        if (existingItem) {
-          await OrderService.updateOrderItemQuantity(
-            orderId as string,
-            existingItem.id,
-            newQuantity
-          );
-        } else {
-          // Иначе создаем новый item
-          //await OrderService.updateStatus(orderId as string, { status: 'CREATED' });
+const getDisplayQuantity = (product: Product, additives: string[], comment: string) => {
+  const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`
 
-          await OrderService.addItemToOrder(
-            orderId as string,
-            {
-              productId: product.id,
-              quantity: newQuantity,
-              additiveIds: additives,
-              comment,
-            }
-          );
-        }
-
-        const updatedOrder = await OrderService.getById(orderId as string);
-        setOrder(updatedOrder);
-
-        await applyAutoDiscounts(updatedOrder);
-
-        await createOrderLog(
-          existingItem
-            ? `${language === 'ru' ? 'Обновлено количество' : 'რაოდენობა განახლდა'}: ${product.title} → ${newQuantity}`
-            : `${t.logs.itemAdded}: ${product.title} x ${newQuantity}`
-        );
-
-        setPendingAdditions(prev => {
-          const newState = { ...prev };
-          delete newState[key];
-          return newState;
-        });
-      } catch (err) {
-        toast.error(language === 'ru' ? 'Ошибка при обновлении заказа' : 'შეკვეთის განახლების შეცდომა');
-        console.error('Error:', err);
-      } finally {
-        setIsUpdating(false);
-      }
-    }, 1000);
-
-    setPendingAdditions(prev => ({
-      ...prev,
-      [key]: {
-        quantity: newQuantity,
-        additives,
-        comment,
-        timer,
-      },
-    }));
-  }, [orderId, isOrderEditable, language, order]);
-
-  const getDisplayQuantity = (product: Product, additives: string[], comment: string) => {
-    const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`
-
-    // Сначала проверяем pending additions
-    if (pendingAdditions[key]) {
-      return pendingAdditions[key].quantity
-    }
-
-    // Затем проверяем существующие items только со статусом CREATED
-    const existingItem = order?.items.find(item =>
-      item.product.id === product.id &&
-      JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
-      item.comment === comment &&
-      item.status === OrderItemStatus.CREATED
-    );
-
-    return existingItem ? existingItem.quantity : 0;
+  // Сначала проверяем pending additions
+  if (pendingAdditions[key]) {
+    return pendingAdditions[key].quantity
   }
+
+  // Затем проверяем существующие items только со статусом CREATED
+  const existingItem = order?.items?.find(item =>
+    item.product.id === product.id &&
+    JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
+    item.comment === comment &&
+    item.status === OrderItemStatus.CREATED
+  );
+
+  return existingItem ? existingItem.quantity : 0;
+}
+
+
   const handleAdditivesChange = (productId: string, newAdditives: string[]) => {
     setProductAdditives(prev => ({
       ...prev,
@@ -1363,6 +1478,8 @@ useEffect(() => {
     try {
       setLoading(true);
       const data = await OrderService.getById(orderId as string);
+
+
       setOrder(data);
 
       setEditFormData(prev => ({
@@ -2322,7 +2439,7 @@ useEffect(() => {
                                 const newQuantity = Math.max(0, quantity - 1)
                                 handleQuantityChange(product, newQuantity, additives, comment)
                               }}
-                              disabled={quantity === 0 || !isOrderEditable || order?.attentionFlags.isPrecheck}
+                              disabled={quantity === 0 || !isOrderEditable || order?.attentionFlags?.isPrecheck}
                             >
                               <Minus className="h-4 w-4" />
                             </Button>
@@ -2410,6 +2527,30 @@ useEffect(() => {
   return (
     <AccessCheck allowedRoles={['WAITER', 'MANAGER', 'SUPERVISOR']}>
       <div className="space-y-6">
+        {/* WebSocket Connection Status 
+        <div className={`flex items-center justify-center p-2 rounded-lg text-sm font-medium ${
+          isWebSocketConnected 
+            ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' 
+            : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+        }`}>
+          <div className="flex items-center gap-2">
+            {isWebSocketConnected ? (
+              <>
+                <Wifi className="h-4 w-4" />
+                <span>{t.connection.connected}</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="h-4 w-4" />
+                <span>{t.connection.disconnected}</span>
+                {webSocketError && (
+                  <span className="text-xs opacity-75">({webSocketError})</span>
+                )}
+              </>
+            )}
+          </div>
+        </div>*/}
+
         <div className="flex items-center justify-between mb-6">
           <Button
             variant="outline"
@@ -2522,16 +2663,16 @@ useEffect(() => {
                         {/* Стандартный вид */}
                         {viewMode === 'standard' ? (
                           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                            {order.items.filter(item => !item.isRefund).map(renderItemCard)}
+                            {getOrderItems().filter(item => !item.isRefund).map(renderItemCard)}
                           </div>
                         ) : (
                           /* Компактный вид */
                           <div className="space-y-2">
-                            {order.items.filter(item => !item.isRefund).map(renderCompactItemCard)}
+                            {getOrderItems().filter(item => !item.isRefund).map(renderCompactItemCard)}
                           </div>
                         )}
 
-                        {order.items.some(item => item.isRefund) && (
+                        {getOrderItems().some(item => item.isRefund) && (
                           <div className="space-y-4 border-t pt-6">
                             <h3 className="text-lg font-semibold flex items-center gap-2">
                               <Ban className="h-5 w-5" />
@@ -2540,11 +2681,11 @@ useEffect(() => {
 
                             {viewMode === 'standard' ? (
                               <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                {order.items.filter(item => item.isRefund).map(renderItemCard)}
+                                {getOrderItems().filter(item => item.isRefund).map(renderItemCard)}
                               </div>
                             ) : (
                               <div className="space-y-2">
-                                {order.items.filter(item => item.isRefund).map(renderCompactItemCard)}
+                                {getOrderItems().filter(item => item.isRefund).map(renderCompactItemCard)}
                               </div>
                             )}
                           </div>
@@ -2556,51 +2697,51 @@ useEffect(() => {
                   <div className="space-y-6">
                     <div className="flex flex-wrap gap-4 justify-center">
                       <div
-                        className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags.isReordered ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-muted'}`}
-                        title={order.attentionFlags.isReordered ? t.reorder : ''}
+                        className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags?.isReordered ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-muted'}`}
+                        title={order.attentionFlags?.isReordered ? t.reorder : ''}
                       >
                         <ShoppingBag
-                          className={`h-5 w-5 ${order.attentionFlags.isReordered ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}`}
+                          className={`h-5 w-5 ${order.attentionFlags?.isReordered ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}`}
                         />
                         <span className="text-xs mt-1">{t.reorder}</span>
                       </div>
 
                       <div
-                        className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags.hasDiscount ? 'bg-green-50 dark:bg-green-900/30' : 'bg-muted'}`}
-                        title={order.attentionFlags.hasDiscount ? t.discount : ''}
+                        className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags?.hasDiscount ? 'bg-green-50 dark:bg-green-900/30' : 'bg-muted'}`}
+                        title={order.attentionFlags?.hasDiscount ? t.discount : ''}
                       >
                         <Tag
-                          className={`h-5 w-5 ${order.attentionFlags.hasDiscount ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}
+                          className={`h-5 w-5 ${order.attentionFlags?.hasDiscount ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}`}
                         />
                         <span className="text-xs mt-1">{t.discount}</span>
                       </div>
 
                       <div
-                        className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags.discountCanceled ? 'bg-red-50 dark:bg-red-900/30' : 'bg-muted'}`}
-                        title={order.attentionFlags.discountCanceled ? t.discountCanceled : ''}
+                        className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags?.discountCanceled ? 'bg-red-50 dark:bg-red-900/30' : 'bg-muted'}`}
+                        title={order.attentionFlags?.discountCanceled ? t.discountCanceled : ''}
                       >
                         <Ban
-                          className={`h-5 w-5 ${order.attentionFlags.discountCanceled ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}
+                          className={`h-5 w-5 ${order.attentionFlags?.discountCanceled ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'}`}
                         />
                         <span className="text-xs mt-1">{t.discountCanceled}</span>
                       </div>
 
                       <div
-                        className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags.isPrecheck ? 'bg-purple-50 dark:bg-purple-900/30' : 'bg-muted'}`}
-                        title={order.attentionFlags.isPrecheck ? t.precheck : ''}
+                        className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags?.isPrecheck ? 'bg-purple-50 dark:bg-purple-900/30' : 'bg-muted'}`}
+                        title={order.attentionFlags?.isPrecheck ? t.precheck : ''}
                       >
                         <Receipt
-                          className={`h-5 w-5 ${order.attentionFlags.isPrecheck ? 'text-purple-600 dark:text-purple-400' : 'text-muted-foreground'}`}
+                          className={`h-5 w-5 ${order.attentionFlags?.isPrecheck ? 'text-purple-600 dark:text-purple-400' : 'text-muted-foreground'}`}
                         />
                         <span className="text-xs mt-1">{t.precheck}</span>
                       </div>
 
                       <div
-                        className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags.isRefund ? 'bg-orange-50 dark:bg-orange-900/30' : 'bg-muted'}`}
-                        title={order.attentionFlags.isRefund ? t.refund : ''}
+                        className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags?.isRefund ? 'bg-orange-50 dark:bg-orange-900/30' : 'bg-muted'}`}
+                        title={order.attentionFlags?.isRefund ? t.refund : ''}
                       >
                         <RefreshCw
-                          className={`h-5 w-5 ${order.attentionFlags.isRefund ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}
+                          className={`h-5 w-5 ${order.attentionFlags?.isRefund ? 'text-orange-600 dark:text-orange-400' : 'text-muted-foreground'}`}
                         />
                         <span className="text-xs mt-1">{t.refund}</span>
                       </div>
@@ -2638,36 +2779,35 @@ useEffect(() => {
                               {t.total}: {calculateOrderTotal().toFixed(2)} ₽
                             </h3>
                           </div>
-                          {(order.surcharges!.length > 0 || order.discountAmount > 0) && (
-                            <Collapsible>
-                              <CollapsibleTrigger asChild>
-                                <Button variant="ghost" size="sm" className="h-8 px-2">
-                                  <ChevronDown className="h-4 w-4" />
-                                </Button>
-                              </CollapsibleTrigger>
-                            </Collapsible>
-                          )}
+                         {((order.surcharges && order.surcharges.length > 0) || order.discountAmount > 0) && (
+  <Collapsible>
+    <CollapsibleTrigger asChild>
+      <Button variant="ghost" size="sm" className="h-8 px-2">
+        <ChevronDown className="h-4 w-4" />
+      </Button>
+    </CollapsibleTrigger>
+  </Collapsible>
+)}
                         </div>
                       </div>
-
-                      {(order!.surcharges!.length > 0 || order.discountAmount > 0) && (
-                        <CollapsibleContent>
-                          <div className="p-4 border-t space-y-2">
-                            {order.surcharges!.length > 0 && (
-                              <div className="space-y-1">
-                                <div className="text-sm font-medium text-muted-foreground">{t.surcharges}:</div>
-                                {order!.surcharges!.map(surcharge => (
-                                  <div key={surcharge.id} className="flex justify-between text-sm">
-                                    <span>{surcharge.title}</span>
-                                    <span className="font-medium text-red-600">
-                                      {surcharge.type === 'FIXED'
-                                        ? `+${surcharge.amount.toFixed(2)} ₽`
-                                        : `+${surcharge.amount}%`}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                        {((order.surcharges && order.surcharges.length > 0) || order.discountAmount > 0) && (
+                          <CollapsibleContent>
+                            <div className="p-4 border-t space-y-2">
+                              {order.surcharges && order.surcharges.length > 0 && (
+                                <div className="space-y-1">
+                                  <div className="text-sm font-medium text-muted-foreground">{t.surcharges}:</div>
+                                  {order.surcharges.map(surcharge => (
+                                    <div key={surcharge.id} className="flex justify-between text-sm">
+                                      <span>{surcharge.title}</span>
+                                      <span className="font-medium text-red-600">
+                                        {surcharge.type === 'FIXED'
+                                          ? `+${surcharge.amount.toFixed(2)} ₽`
+                                          : `+${surcharge.amount}%`}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
 
                             {order.discountAmount > 0 && (
                               <div className="flex justify-between text-sm">
@@ -2696,25 +2836,25 @@ useEffect(() => {
                         <Button
                           disabled={isUpdating}
                           onClick={handlePrecheck}
-                          variant={order.attentionFlags.isPrecheck ? "default" : "outline"}
-                          className={`gap-2 w-full text-lg h-14 ${order.attentionFlags.isPrecheck
+                          variant={order.attentionFlags?.isPrecheck ? "default" : "outline"}
+                          className={`gap-2 w-full text-lg h-14 ${order.attentionFlags?.isPrecheck
                               ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 hover:bg-green-100 dark:hover:bg-green-900/30'
                               : ''
                             }`}
                         >
                           {isUpdating ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : order.attentionFlags.isPrecheck ? (
+                          ) : order.attentionFlags?.isPrecheck ? (
                             <CheckCircle className="h-4 w-4" />
                           ) : (
                             <Check className="h-4 w-4" />
                           )}
-                          {order.attentionFlags.isPrecheck ? t.precheckFormed : t.formPrecheck}
+                          {order.attentionFlags?.isPrecheck ? t.precheckFormed : t.formPrecheck}
                         </Button>
                       )}
-                      {order.items.some(item => item.status === OrderItemStatus.CREATED) && (
+                      {getOrderItems().some(item => item.status === OrderItemStatus.CREATED) && (
                             <Button
-                              disabled={isUpdating || order.items.length === 0}
+                              disabled={isUpdating || getOrderItems().length === 0}
                               onClick={handleConfirmOrder}
                               variant="secondary"
                               className="bg-emerald-500 hover:bg-emerald-400 text-white gap-2 w-full text-lg h-14"
@@ -2724,7 +2864,7 @@ useEffect(() => {
                               ) : (
                                 <Check className="h-4 w-4 mr-1" />
                               )}
-                              {t.confirm} ({order.items.filter(item => item.status === OrderItemStatus.CREATED).length})
+                              {t.confirm} ({getOrderItems().filter(item => item.status === OrderItemStatus.CREATED).length})
                             </Button>
                           )}
                       {order.status === 'CREATED' && (

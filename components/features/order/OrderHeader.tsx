@@ -58,7 +58,7 @@ function getOrderItemCounts(items: OrderItem[]) {
     completed: 0,
   };
 
-  items.forEach(item => {
+  items?.forEach(item => {
     counts.total += item.quantity;
     if (item.status === 'IN_PROGRESS') {
       counts.inProgress += item.quantity;
@@ -115,79 +115,108 @@ export function OrderHeader({ order, compact = false, variant }: { order: OrderR
     PANEL: ''
   }
 
+  // Безопасное получение номера заказа
+  const getOrderNumberDisplay = () => {
+    if (!order?.number) {
+      return (
+        <div className="flex items-end">
+          <span className="text-3xl opacity-70">—</span>
+        </div>
+      );
+    }
+
+    const numberString = order.number.toString();
+    
+    if (order.type === 'DINE_IN' || order.type === EnumOrderType.BANQUET) {
+      return `№${order.tableNumber || '—'}`;
+    } else {
+      return (
+        <div className='flex items-end'>
+          <span className='opacity-50'>{numberString.slice(0, -2)}</span>
+          <span className="text-3xl">{numberString.slice(-2)}</span>
+        </div>
+      );
+    }
+  };
+
+  // Безопасное получение количества элементов
+  const itemCounts = getOrderItemCounts(order?.items || []);
+
   return (
     <div className={cn("p-3", compact ? "space-y-1 pb-1" : "space-y-2")}>
       <div className="flex justify-between items-start gap-2">
         <div className="flex items-center gap-2">
           <span className={cn(
             "font-semibold",
-            (order.type === 'DINE_IN' || order.type === EnumOrderType.BANQUET) 
+            (order?.type === 'DINE_IN' || order?.type === EnumOrderType.BANQUET) 
               ? "text-3xl" 
               : "text-lg"
           )}>
-            {(order.type === 'DINE_IN' || order.type === EnumOrderType.BANQUET) ? (
-              `№${order.tableNumber}`
-            ) : (
-              <div className='flex items-end'>
-                <span className='opacity-50'>{order.number.toString().slice(0, -2)}</span>
-                <span className="text-3xl">{order.number.toString().slice(-2)}</span>
-              </div>
-            )}
+            {getOrderNumberDisplay()}
           </span>
         </div>
+        
         <span className={cn(
           "font-semibold",
           compact ? "text-sm" : "text-base"
         )}>
-          {`${getOrderItemCounts(order.items).total}/${getOrderItemCounts(order.items).inProgress}/${getOrderItemCounts(order.items).completed}`}
+          {`${itemCounts.total}/${itemCounts.inProgress}/${itemCounts.completed}`}
         </span>
         
-        {order.numberOfPeople && <span className={cn(
-          "font-semibold flex",
-          compact ? "text-sm" : "text-2xl"
-        )}>
-          {order.numberOfPeople}  
-          <User className={cn(
-            "text-gray-900 dark:text-white ml-1", 
-            compact ? "h-4 w-4" : "w-7 h-7"
-          )}/>
-        </span>}
-        
-        {sourceIcons[order.source as SourceKeys]}
-        {typeIcons[order.type]}
-      </div>
-      <div className="flex justify-between items-start gap-2">
-        <Badge 
-          className={cn(
-            "flex items-center gap-1 px-2 py-1 rounded-md border",
-            statusColors[order.status],
-            compact ? "text-xs" : "text-sm",
-            "font-medium"
-          )}
-        >
-          {statusTranslations[order.status][language]}
-        </Badge>
-        <div className="flex items-center gap-1 text-muted-foreground">
-          <Clock className={compact ? "h-3 w-3" : "h-4 w-4"} />
-          <span className={compact ? "text-xs" : "text-sm"}>
-            {format(new Date(order.createdAt), 'HH:mm')}
+        {order?.numberOfPeople && (
+          <span className={cn(
+            "font-semibold flex",
+            compact ? "text-sm" : "text-2xl"
+          )}>
+            {order.numberOfPeople}  
+            <User className={cn(
+              "text-gray-900 dark:text-white ml-1", 
+              compact ? "h-4 w-4" : "w-7 h-7"
+            )}/>
           </span>
-        </div>
+        )}
+        
+        {order?.source && sourceIcons[order.source as SourceKeys]}
+        {order?.type && typeIcons[order.type]}
+      </div>
+      
+      <div className="flex justify-between items-start gap-2">
+        {order?.status && (
+          <Badge 
+            className={cn(
+              "flex items-center gap-1 px-2 py-1 rounded-md border",
+              statusColors[order.status],
+              compact ? "text-xs" : "text-sm",
+              "font-medium"
+            )}
+          >
+            {statusTranslations[order.status]?.[language] || order.status}
+          </Badge>
+        )}
+        
+        {order?.createdAt && (
+          <div className="flex items-center gap-1 text-muted-foreground">
+            <Clock className={compact ? "h-3 w-3" : "h-4 w-4"} />
+            <span className={compact ? "text-xs" : "text-sm"}>
+              {format(new Date(order.createdAt), 'HH:mm')}
+            </span>
+          </div>
+        )}
       </div>
 
-      {order.type === 'DELIVERY' && (
+      {order?.type === 'DELIVERY' && order?.delivery?.address && (
         <button 
           disabled={variant !== 'delivery'}
           className='cursor-pointer'
           onClick={(e) => {
             e.stopPropagation();
-            const address = encodeURIComponent(order.delivery?.address as string);
+            const address = encodeURIComponent(order.delivery!.address);
             window.open(`https://yandex.ru/maps/?text=${address}`, '_blank');
           }}
         >
           <Badge variant="outline" className={cn("gap-1", compact ? "px-2 py-0.5 text-sm" : "text-sm")}>
             <MapPin className={compact ? "h-3 w-3" : "h-4 w-4"} />
-            {order.delivery?.address}
+            {order.delivery.address}
           </Badge>
         </button>
       )}

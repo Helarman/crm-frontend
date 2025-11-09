@@ -93,10 +93,10 @@ export default function KitchenOrdersList() {
     onOrderCreated: useCallback((newOrder: OrderResponse) => {
       console.log('📦 New order received via WebSocket:', newOrder)
       
-      // Показываем тост только для заказов в нужных статусах
+      /* Показываем тост только для заказов в нужных статусах
       if (['CONFIRMED', 'PREPARING'].includes(newOrder.status)) {
         toast.success(`${translations.newOrder.ru} #${newOrder.number}`)
-      }
+      }*/
       
       mutate((prevOrders: OrderResponse[] | undefined) => {
         const existingOrders = prevOrders || []
@@ -154,9 +154,9 @@ export default function KitchenOrdersList() {
         item.status === 'CREATED' || item.status === 'IN_PROGRESS'
       )
       
-      if (hasNewItems) {
+      /*if (hasNewItems) {
         toast.info(`${translations.newItem.ru} #${updatedOrder.number}`)
-      }
+      }*/ 
       
       mutate((prevOrders: OrderResponse[] | undefined) => 
         prevOrders?.map(order => 
@@ -194,7 +194,7 @@ export default function KitchenOrdersList() {
 
   // Фильтруем заказы по нужным статусам
   const filteredOrders = orders.filter((order: OrderResponse) => 
-    ['CONFIRMED', 'PREPARING'].includes(order.status)
+    ['CONFIRMED', 'PREPARING', ].includes(order.status)
   )
 
   type OrderStatus = 'PREPARING' | 'CONFIRMED' | 'READY'

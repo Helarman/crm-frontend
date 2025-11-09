@@ -464,26 +464,27 @@ export default function ShiftStatsPage() {
     setIsAddingIncome(true);
   };
 
-  // Основные расчеты
-  const totalAmount = shift?.orders?.reduce((sum, order) => sum + (order.totalAmount || 0), 0) || 0;
+  const completedOrders = shift?.orders?.filter(order => order.status === 'COMPLETED') || [];
+  const totalAmount = completedOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+
   const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
   const totalIncomes = incomes.reduce((sum, income) => sum + income.amount, 0);
   const balance = totalAmount + totalIncomes - totalExpenses;
 
   // Расчеты по типам оплаты
-  const cashOrders = shift?.orders?.filter(order => order.payment?.method === 'CASH') || [];
-  const cardOrders = shift?.orders?.filter(order => order.payment?.method === 'CARD') || [];
-  const onlineOrders = shift?.orders?.filter(order => order.payment?.method === 'ONLINE') || [];
+  const cashOrders = completedOrders.filter(order => order.payment?.method === 'CASH') || [];
+  const cardOrders = completedOrders.filter(order => order.payment?.method === 'CARD') || [];
+  const onlineOrders = completedOrders.filter(order => order.payment?.method === 'ONLINE') || [];
 
   const cashAmount = cashOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
   const cardAmount = cardOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
   const onlineAmount = onlineOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
 
   // Расчеты по типам заказов
-  const banquetOrders = shift?.orders?.filter(order => order.type === 'BANQUET') || [];
-  const deliveryOrders = shift?.orders?.filter(order => order.type === 'DELIVERY') || [];
-  const dineInOrders = shift?.orders?.filter(order => order.type === 'DINE_IN') || [];
-  const takeawayOrders = shift?.orders?.filter(order => order.type === 'TAKEAWAY') || [];
+  const banquetOrders = completedOrders.filter(order => order.type === 'BANQUET') || [];
+  const deliveryOrders = completedOrders.filter(order => order.type === 'DELIVERY') || [];
+  const dineInOrders = completedOrders.filter(order => order.type === 'DINE_IN') || [];
+  const takeawayOrders = completedOrders.filter(order => order.type === 'TAKEAWAY') || [];
 
   const banquetAmount = banquetOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
   const deliveryAmount = deliveryOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
@@ -964,49 +965,51 @@ export default function ShiftStatsPage() {
 
 
           <Card>
-            <CardHeader>
-              <CardTitle>{t.orders}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {shift.orders?.length ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t.orderId}</TableHead>
-                      <TableHead>{t.status}</TableHead>
-                      <TableHead>{t.amount}</TableHead>
-                      <TableHead>{t.createdAt}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {shift.orders.map((order) => (
-                      <TableRow key={order.id}>
-                        <TableCell className="font-medium">{order.number}</TableCell>
-                        <TableCell>
-                          <OrderStatusBadge status={order.status} lang={language} />
-                        </TableCell>
-                        <TableCell>{order.totalAmount?.toFixed(2)}</TableCell>
-                        <TableCell>
-                          {new Date(order.createdAt).toLocaleString()}
-                        </TableCell>
-                        <TableCell className='justify-end flex'>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => router.push(`/orders/${order.id}`)}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              ) : (
-                <p className="text-muted-foreground text-center py-8">{t.noOrders}</p>
-              )}
-            </CardContent>
-          </Card>
+  <CardHeader>
+    <CardTitle>{t.orders}</CardTitle>
+  </CardHeader>
+  <CardContent>
+    {shift.orders?.filter(order => order.status === 'COMPLETED').length ? (
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t.orderId}</TableHead>
+            <TableHead>{t.status}</TableHead>
+            <TableHead>{t.amount}</TableHead>
+            <TableHead>{t.createdAt}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {shift.orders
+            .filter(order => order.status === 'COMPLETED')
+            .map((order) => (
+              <TableRow key={order.id}>
+                <TableCell className="font-medium">{order.number}</TableCell>
+                <TableCell>
+                  <OrderStatusBadge status={order.status} lang={language} />
+                </TableCell>
+                <TableCell>{order.totalAmount?.toFixed(2)}</TableCell>
+                <TableCell>
+                  {new Date(order.createdAt).toLocaleString()}
+                </TableCell>
+                <TableCell className='justify-end flex'>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => router.push(`/orders/${order.id}`)}
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+        </TableBody>
+      </Table>
+    ) : (
+      <p className="text-muted-foreground text-center py-8">{t.noOrders}</p>
+    )}
+  </CardContent>
+</Card>
 
 
 

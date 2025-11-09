@@ -1,7 +1,7 @@
 'use client'
 
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { OrderCard } from '@/components/features/order/OrderCard'
 import type { OrderItemDto, OrderResponse } from '@/lib/api/order.service'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { DateRangePicker } from '@/components/ui/data-range-picker'
+import { useOrderWebSocket } from '@/lib/hooks/useOrderWebSocket'
 
 const ORDER_TYPES = [
   {
@@ -165,10 +166,36 @@ const translations = {
   refund: {
     ru: 'Возвраты',
     ka: 'დაბრუნებები'
+  },
+  newOrderWs: {
+    ru: 'Новый заказ',
+    ka: 'ახალი შეკვეთა'
+  },
+  orderUpdatedWs: {
+    ru: 'Заказ обновлен',
+    ka: 'შეკვეთა განახლდა'
+  },
+  newItemWs: {
+    ru: 'Новая позиция в заказе',
+    ka: 'ახალი პოზიცია შეკვეთაში'
   }
 }
 
 const RESTAURANT_STORAGE_KEY = 'selectedRestaurantId';
+
+// Функция для создания безопасной копии заказа
+const createSafeOrder = (order: OrderResponse) => {
+  return {
+    ...order,
+    id: order.id || `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    number: order.number || order.id?.slice(-6) || 'N/A',
+    status: order.status || 'UNKNOWN',
+    type: order.type || 'UNKNOWN',
+    items: order.items || [],
+    createdAt: order.createdAt || new Date().toISOString(),
+    updatedAt: order.updatedAt || new Date().toISOString(),
+  }
+}
 
 export function OrdersList() {
   const { language } = useLanguageStore()
@@ -216,6 +243,93 @@ export function OrdersList() {
     mutate: mutateArchive
   } = useRestaurantArchive(selectedRestaurantId, archiveFilters)
 
+  // WebSocket подключение с защитой от undefined полей
+  const { isConnected } = useOrderWebSocket({
+    restaurantId: selectedRestaurantId,
+    enabled: !!selectedRestaurantId && !showArchive,
+    onOrderCreated: useCallback((newOrder: OrderResponse) => {
+      console.log('📦 New order received via WebSocket:', newOrder)
+      
+      // Защита от undefined полей
+      const orderNumber = newOrder.number || newOrder.id?.slice(-6) || 'N/A'
+      
+      // Показываем тост только для активных заказов
+      if (!['COMPLETED', 'CANCELLED'].includes(newOrder.status || '')) {
+        toast.success(`${t('newOrderWs')}`)
+      }
+      
+      mutateActive((prevOrders: OrderResponse[] | undefined) => {
+        const existingOrders = prevOrders || []
+        
+        // Если заказ уже есть в списке, обновляем его
+        const existingIndex = existingOrders.findIndex(order => order.id === newOrder.id)
+        if (existingIndex !== -1) {
+          const updatedOrders = [...existingOrders]
+          updatedOrders[existingIndex] = newOrder
+          return updatedOrders
+        }
+        
+        // Если заказа нет в списке и он активный, добавляем его
+        if (!['COMPLETED', 'CANCELLED'].includes(newOrder.status || '')) {
+          return [newOrder, ...existingOrders]
+        }
+        
+        return existingOrders
+      }, false)
+    }, [mutateActive, t]),
+
+    onOrderUpdated: useCallback((updatedOrder: OrderResponse) => {
+      console.log('🔄 Order updated via WebSocket:', updatedOrder)
+      
+      mutateActive((prevOrders: OrderResponse[] | undefined) => 
+        prevOrders?.map(order => 
+          order.id === updatedOrder.id ? updatedOrder : order
+        ) || []
+      , false)
+    }, [mutateActive]),
+
+    onOrderStatusUpdated: useCallback((updatedOrder: OrderResponse) => {
+      console.log('📊 Order status updated via WebSocket:', updatedOrder)
+      
+      mutateActive((prevOrders: OrderResponse[] | undefined) => {
+        const existingOrders = prevOrders || []
+        
+        // Если статус изменился на неактивный, удаляем из списка
+        if (['COMPLETED', 'CANCELLED'].includes(updatedOrder.status || '')) {
+          return existingOrders.filter(order => order.id !== updatedOrder.id)
+        }
+        
+        // Иначе обновляем заказ
+        return existingOrders.map(order => 
+          order.id === updatedOrder.id ? updatedOrder : order
+        )
+      }, false)
+    }, [mutateActive]),
+
+    onOrderModified: useCallback((updatedOrder: OrderResponse) => {
+      console.log('✏️ Order modified via WebSocket:', updatedOrder)
+      
+      // Защита от undefined полей
+      const items = updatedOrder.items || []
+      const orderNumber = updatedOrder.number || updatedOrder.id?.slice(-6) || 'N/A'
+      
+      // Проверяем, есть ли новые позиции
+      const hasNewItems = items.some(item => 
+        item.status === 'CREATED' || item.status === 'IN_PROGRESS'
+      )
+      
+      if (hasNewItems) {
+        toast.info(`${t('newItemWs')} #${orderNumber}`)
+      }
+      
+      mutateActive((prevOrders: OrderResponse[] | undefined) => 
+        prevOrders?.map(order => 
+          order.id === updatedOrder.id ? updatedOrder : order
+        ) || []
+      , false)
+    }, [mutateActive, t])
+  })
+
   useEffect(() => {
     if (user?.restaurant?.length > 0) {
       const savedRestaurantId = localStorage.getItem(RESTAURANT_STORAGE_KEY);
@@ -251,18 +365,25 @@ export function OrdersList() {
 
   const filteredActiveOrders = selectedOrderType === 'ALL'
     ? activeOrders
-    : activeOrders.filter((order: OrderResponse) => order.type === selectedOrderType)
+    : activeOrders.filter((order: OrderResponse) => 
+        (order.type || 'UNKNOWN') === selectedOrderType
+      )
 
-  const sortedOrders = [...(showArchive ? currentData : filteredActiveOrders)].sort((a, b) => {
-    const isACompletedOrCancelled = a.status === 'COMPLETED' || a.status === 'CANCELLED'
-    const isBCompletedOrCancelled = b.status === 'COMPLETED' || b.status === 'CANCELLED'
+  const sortedOrders = [...(showArchive ? currentData : filteredActiveOrders)]
+    .filter(order => order?.id) // Фильтруем заказы без id
+    .map(order => createSafeOrder(order)) // Создаем безопасные копии
+    .sort((a, b) => {
+      const isACompletedOrCancelled = a.status === 'COMPLETED' || a.status === 'CANCELLED'
+      const isBCompletedOrCancelled = b.status === 'COMPLETED' || b.status === 'CANCELLED'
 
-    if (isACompletedOrCancelled === isBCompletedOrCancelled) {
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    }
+      if (isACompletedOrCancelled === isBCompletedOrCancelled) {
+        const dateA = new Date(a.createdAt).getTime()
+        const dateB = new Date(b.createdAt).getTime()
+        return dateB - dateA
+      }
 
-    return isACompletedOrCancelled ? 1 : -1
-  })
+      return isACompletedOrCancelled ? 1 : -1
+    })
 
   const { trigger: updateStatus } = useSWRMutation(
     ['update-order-status'],
@@ -396,9 +517,24 @@ export function OrdersList() {
         <div className="flex flex-col gap-4">
           {/* Первая строка: заголовок и кнопки архив/новый заказ */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <h2 className="text-2xl font-bold">
-              {showArchive ? t('ordersList') : t('recentOrders')}
-            </h2>
+            <div className="flex items-center gap-4">
+              <h2 className="text-2xl font-bold">
+                {showArchive ? t('ordersList') : t('recentOrders')}
+              </h2>
+              
+              {/* Индикатор подключения WebSocket (только для активных заказов) */}
+              {!showArchive && (
+                <div className={`flex items-center gap-2 ${isConnected ? 'text-green-500' : 'text-gray-500'}`}>
+                  <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+                  <span className="text-sm">
+                    {selectedRestaurantId 
+                      ? (isConnected ? 'Подключено' : 'Подключение...') 
+                      : 'Выберите ресторан'
+                    }
+                  </span>
+                </div>
+              )}
+            </div>
 
             <div className="flex flex-wrap gap-2 w-full sm:w-auto items-center justify-center">
               <div className="flex gap-2 flex-1 sm:flex-none">
@@ -429,7 +565,6 @@ export function OrdersList() {
                   <span className="hidden sm:inline">{t('showArchive')}</span>
                 </Button>
 
-                {/* Очень широкая кнопка создания заказа */}
                 <Button
                   onClick={() => router.push('/orders/new')}
                   className="flex-[2] sm:flex-none min-w-[140px] sm:min-w-[160px] lg:min-w-[180px] xl:min-w-[200px]"
@@ -568,7 +703,7 @@ export function OrdersList() {
                 className="cursor-pointer transition-transform hover:scale-[1.02]"
               >
                 <OrderCard
-                  order={order}
+                  order={order as any}
                   onStatusChange={handleStatusChange}
                 />
               </div>

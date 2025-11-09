@@ -47,7 +47,7 @@ import {
   Truck
 } from 'lucide-react'
 import { useAuth } from '@/lib/hooks/useAuth'
-import { OrderService } from '@/lib/api/order.service'
+import { EnumPaymentMethod, OrderService } from '@/lib/api/order.service'
 import { ProductService } from '@/lib/api/product.service'
 import { CategoryService } from '@/lib/api/category.service'
 import { useLanguageStore } from '@/lib/stores/language-store'
@@ -1673,6 +1673,10 @@ ${currentOrderInfo}
         numberOfPeople: additionalInfo.numberOfPeople,
         tableNumber: orderType === 'DINE_IN' ? additionalInfo.tableNumber : undefined,
         comment: additionalInfo.comment,
+        payment: {
+          method: EnumPaymentMethod.CASH,
+          status: 'PENDING'
+        },
         items: order.items.map(item => ({
           productId: item.product.id,
           quantity: item.quantity,
