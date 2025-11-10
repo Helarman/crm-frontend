@@ -28,7 +28,7 @@ export class OrderWebSocketService {
       try {
         const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:5000'
         
-        console.log('Connecting to WebSocket:', `${WS_URL}/orders`)
+        console.log('Connecting to WebSocket:', `${WS_URL}/ordersws`)
         
         // Отключаем предыдущее соединение
         if (this.socket) {
@@ -36,7 +36,7 @@ export class OrderWebSocketService {
           this.socket = null
         }
 
-        this.socket = io(`${WS_URL}/orders`, {
+        this.socket = io(`${WS_URL}/ordersws`, {
           auth: {
             token: token
           },
