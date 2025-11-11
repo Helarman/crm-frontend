@@ -996,7 +996,7 @@ export const transactionsTranslations = {
   },
   addPremix: {
     en: 'Add Premix',
-    ru: 'Добавить премікс',
+    ru: 'Добавить заготовку ',
     ka: 'დაამატეთ პრემიქსი'
   },
   name: {
@@ -1101,7 +1101,7 @@ export const transactionsTranslations = {
   },
   premixAdded: {
     en: 'Premix added successfully',
-    ru: 'Премікс добавлен успешно',
+    ru: 'заготовка  добавлен успешно',
     ka: 'პრემიქსი წარმატებით დაემატა'
   },
   addItemError: {
@@ -1121,7 +1121,7 @@ export const transactionsTranslations = {
   },
   addPremixError: {
     en: 'Failed to add premix',
-    ru: 'Не удалось добавить премікс',
+    ru: 'Не удалось добавить заготовку',
     ka: 'პრემიქსის დამატება ვერ მოხერხდა'
   },
   itemUpdated: {
@@ -1156,12 +1156,12 @@ export const transactionsTranslations = {
   },
   premixUpdated: {
     en: 'Premix updated successfully',
-    ru: 'Премікс обновлен успешно',
+    ru: 'заготовка  обновлен успешно',
     ka: 'პრემიქსი წარმატებით განახლდა'
   },
   updatePremixError: {
     en: 'Failed to update premix',
-    ru: 'Не удалось обновить премікс',
+    ru: 'Не удалось обновить заготовку',
     ka: 'პრემიქსის განახლება ვერ მოხერხდა'
   },
   filterByLocation: {
@@ -1251,7 +1251,7 @@ export const transactionsTranslations = {
   },
   preparePremix: {
     en: 'Prepare Premix',
-    ru: 'Приготовить премікс',
+    ru: 'Приготовить заготовку',
     ka: 'პრემიქსის მომზადება'
   },
   preparePremixDescription: {
@@ -1276,12 +1276,12 @@ export const transactionsTranslations = {
   },
   premixPrepared: {
     en: 'Premix prepared successfully',
-    ru: 'Премікс приготовлен успешно',
+    ru: 'заготовка  приготовлен успешно',
     ka: 'პრემიქსი წარმატებით მოამზადა'
   },
   preparePremixError: {
     en: 'Failed to prepare premix',
-    ru: 'Не удалось приготовить премікс',
+    ru: 'Не удалось приготовить заготовку',
     ka: 'პრემიქსის მომზადება ვერ მოხერხდა'
   },
   invalidQuantity: {
@@ -1356,7 +1356,7 @@ export const transactionsTranslations = {
   },
   editPremix: {
     en: 'Edit Premix',
-    ru: 'Редактировать премікс',
+    ru: 'Редактировать заготовку',
     ka: 'პრემიქსის რედაქტირება'
   },
   editItem: {

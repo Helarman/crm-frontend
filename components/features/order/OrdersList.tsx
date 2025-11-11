@@ -703,6 +703,7 @@ export function OrdersList() {
                 className="cursor-pointer transition-transform hover:scale-[1.02]"
               >
                 <OrderCard
+                  variant='default'
                   order={order as any}
                   onStatusChange={handleStatusChange}
                 />

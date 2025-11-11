@@ -16,7 +16,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { WarehouseService } from '@/lib/api/warehouse.service'
+import { InventoryTransactionType, WarehouseService } from '@/lib/api/warehouse.service'
 import { motion, AnimatePresence } from 'framer-motion'
 import { OrderItem } from '@/lib/types/order'
 import { useRestaurant } from '@/lib/hooks/useRestaurant'
@@ -141,7 +141,7 @@ type WarningMessage = {
   color: string;
 };
 
-export function OrderCard({ order, variant = 'default', onStatusChange, className, selectedRestaurantId }: {
+export function OrderCard({ order, variant, onStatusChange, className, selectedRestaurantId }: {
   order: OrderResponse
   variant?: 'default' | 'kitchen' | 'delivery'
   onStatusChange?: (updatedOrder: OrderResponse) => void
@@ -165,6 +165,9 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
   const commentRef = useRef<HTMLDivElement>(null)
   const [isCommentOverflowing, setIsCommentOverflowing] = useState(false)
   const orderId = order.id;
+  const [warehouse, setWarehouse] = useState<any>(null)
+
+
 
   // Получаем данные ресторана
   const { data: restaurant } = useRestaurant(selectedRestaurantId as string)
@@ -180,7 +183,6 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
     },
     onOrderStatusUpdated: (updatedOrder: OrderResponse) => {
       console.log('Order status updated via WebSocket:', updatedOrder)
-      toast.info(`${translations[language as Language].orderUpdatet} #${updatedOrder.number}`)
       if (onStatusChange) {
         onStatusChange(updatedOrder)
       }
@@ -507,66 +509,79 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
   };
 
   const handleItemClick = async (itemId: string) => {
-    try {
-      const item = order.items.find(i => i.id === itemId)
-      if (!item) return
+  try {
+    const item = order.items.find(i => i.id === itemId)
+    if (!item) return
 
-      if (!shouldUseWarehouse) {
-        await handleStatusChange(itemId, OrderItemStatus.COMPLETED)
-        return
-      }
+    // Если склад не используется, просто меняем статус
+    if (!shouldUseWarehouse) {
+      await handleStatusChange(itemId, OrderItemStatus.COMPLETED)
+      return
+    }
 
-      const ingredientsToWriteOff = await Promise.all(
-        item.product.ingredients.map(async (ingredient: Ingredient) => {
-          try {
-            return {
-              id: ingredient.inventoryItemId,
-              name: ingredient.inventoryItem?.name || t.unknownError,
-              quantity: ingredient.quantity * item.quantity,
-              unit: ingredient.inventoryItem?.unit || 'ც.'
-            }
-          } catch (error) {
-            console.error(`Error processing ingredient ${ingredient.inventoryItemId}:`, error)
-            return null
+    // Получаем ингредиенты для списания
+    const ingredientsToWriteOff = await Promise.all(
+      item.product.ingredients.map(async (ingredient: Ingredient) => {
+        try {
+          // Получаем полную информацию об ингредиенте
+          const inventoryItem = await WarehouseService.getInventoryItem(ingredient.inventoryItemId)
+          return {
+            id: ingredient.inventoryItemId,
+            name: inventoryItem.name,
+            quantity: ingredient.quantity * item.quantity,
+            unit: inventoryItem.unit
           }
-        })
-      )
+        } catch (error) {
+          console.error(`Error processing ingredient ${ingredient.inventoryItemId}:`, error)
+          return null
+        }
+      })
+    )
 
-      const validIngredients = ingredientsToWriteOff.filter(Boolean) as WriteOffItem[]
-      
-      if (validIngredients.length === 0) {
-        toast.warning(t.ingredientsError)
-        return
-      }
-
-      setWriteOffItems(validIngredients)
-      setCurrentItemId(itemId)
-      setWriteOffDialogOpen(true)
-    } catch (error) {
-      console.error('Error preparing write-off:', error)
-      toast.error(t.writeOffError)
+    const validIngredients = ingredientsToWriteOff.filter(Boolean) as WriteOffItem[]
+    
+    if (validIngredients.length === 0) {
+      toast.warning(t.ingredientsError)
+      return
     }
+
+    setWriteOffItems(validIngredients)
+    setCurrentItemId(itemId)
+    setWriteOffDialogOpen(true)
+  } catch (error) {
+    console.error('Error preparing write-off:', error)
+    toast.error(t.writeOffError)
   }
+}
 
-  const handleConfirmWriteOff = async () => {
-    if (!currentItemId) return
+const handleConfirmWriteOff = async () => {
+  if (!currentItemId || !warehouse?.id) return
 
-    setIsWritingOff(true)
-    try {
-      throw Error('later')
-
-      // После успешного списания меняем статус блюда
-      //await handleStatusChange(currentItemId, OrderItemStatus.IN_PROGRESS)
-      
-      toast.success(t.writeOffSuccess)
-      setWriteOffDialogOpen(false)
-    } catch (error) {
-      console.error('Error writing off inventory:', error)
-      toast.error(t.writeOffError)
-    } finally {
-      setIsWritingOff(false)
+  setIsWritingOff(true)
+  try {
+    // Списываем каждый ингредиент
+    for (const writeOffItem of writeOffItems) {
+      await WarehouseService.createTransaction({
+        inventoryItemId: writeOffItem.id,
+        type: InventoryTransactionType.WRITE_OFF,
+        warehouseId: warehouse.id,
+        quantity: writeOffItem.quantity,
+        reason: 'Приготовление блюда', // или выбранная причина из словаря
+        userId: user?.id
+      })
     }
+
+    // После успешного списания меняем статус блюда на COMPLETED
+    await handleStatusChange(currentItemId, OrderItemStatus.COMPLETED)
+    
+    setWriteOffDialogOpen(false)
+  } catch (error) {
+    console.error('Error writing off inventory:', error)
+    toast.error(t.writeOffError)
+  } finally {
+    setIsWritingOff(false)
   }
+}
 
   const handleStatusChange = async (itemId: string, newStatus: OrderItemStatus) => {
     if (!orderId || !user?.id || isUpdating) return;
@@ -618,7 +633,6 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
       }
 
       if (onStatusChange) onStatusChange(fullOrder);
-      toast.success(t.statusUpdated);
       return fullOrder;
 
     } catch (err) {
@@ -630,7 +644,20 @@ export function OrderCard({ order, variant = 'default', onStatusChange, classNam
       setIsUpdating(false);
     }
   }
+  useEffect(() => {
+  if (selectedRestaurantId && shouldUseWarehouse) {
+    loadWarehouseData()
+  }
+}, [selectedRestaurantId, shouldUseWarehouse])
 
+const loadWarehouseData = async () => {
+  try {
+    const warehouseData = await WarehouseService.getRestaurantWarehouse(selectedRestaurantId as string)
+    setWarehouse(warehouseData)
+  } catch (error) {
+    console.error('Failed to load warehouse data:', error)
+  }
+}
   return (
     <div>
       <Card 

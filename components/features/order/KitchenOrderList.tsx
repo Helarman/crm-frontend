@@ -307,7 +307,6 @@ export default function KitchenOrdersList() {
           {sortedOrders.map(order => (
             <div 
               key={order.id}
-              onClick={() => handleOrderClick(order.id)}
               className="cursor-pointer transition-transform hover:scale-[1.02]"
             >
               <OrderCard

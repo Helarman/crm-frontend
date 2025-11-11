@@ -28,7 +28,7 @@ export class OrderWebSocketService {
       try {
         const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:5000'
         
-        console.log('Connecting to WebSocket:', `${WS_URL}/ordersws`)
+        console.log('Connecting to WebSocket:', `${WS_URL}/ordersws`) 
         
         // Отключаем предыдущее соединение
         if (this.socket) {
