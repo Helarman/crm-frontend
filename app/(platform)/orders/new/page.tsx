@@ -13,6 +13,9 @@ import { format, isValid, parseISO } from 'date-fns'
 import { OrderInfoStep } from '@/components/features/order/OrderInfoStep'
 import { OrderState } from '@/lib/types/order'
 import { Restaurant } from '@/lib/types/restaurant'
+import { useRestaurantSchedule } from '@/lib/hooks/useRestaurantSchedule'
+import { useRestaurantById } from '@/lib/hooks/useRestaurantById'
+import { AlertTriangle, Clock } from 'lucide-react'
 
 const RESTAURANT_STORAGE_KEY = 'selectedRestaurantId'
 
@@ -43,6 +46,46 @@ export default function NewOrderPage() {
     scheduledAt: undefined
   })
   const [loading, setLoading] = useState(false)
+
+  // Добавляем хуки для проверки расписания
+  const { isRestaurantOpen } = useRestaurantSchedule();
+  const { restaurant: currentRestaurant, isLoading: restaurantLoading } = useRestaurantById(selectedRestaurant?.id || null);
+  
+  // Состояние для статуса ресторана с автообновлением
+  const [restaurantStatus, setRestaurantStatus] = useState<{ 
+    isOpen: boolean; 
+    message: string;
+    nextOpenTime?: string;
+  } | null>(null);
+
+  // Автоматическое обновление статуса ресторана
+  useEffect(() => {
+    if (!currentRestaurant) {
+      setRestaurantStatus(null);
+      return;
+    }
+
+    const checkRestaurantStatus = () => {
+      try {
+        const newStatus = isRestaurantOpen(currentRestaurant, language);
+        setRestaurantStatus(newStatus);
+      } catch (error) {
+        console.error('Error checking restaurant status:', error);
+        setRestaurantStatus({
+          isOpen: false,
+          message: language === 'ru' ? 'Ошибка проверки расписания' : 'განრიგის შემოწმების შეცდომა'
+        });
+      }
+    };
+
+    // Проверяем сразу
+    checkRestaurantStatus();
+
+    // Устанавливаем интервал для проверки каждые 30 секунд
+    const interval = setInterval(checkRestaurantStatus, 30000);
+
+    return () => clearInterval(interval);
+  }, [currentRestaurant, isRestaurantOpen, language]);
 
   // Инициализация ресторана
   useEffect(() => {
@@ -173,6 +216,14 @@ export default function NewOrderPage() {
   }
 
   const handleCreateOrder = async () => {
+    // Проверяем, открыт ли ресторан (кроме запланированных заказов)
+    if (!order.isScheduled && restaurantStatus && !restaurantStatus.isOpen) {
+      toast.error(language === 'ka' 
+        ? `შეუძლებელია შეკვეთის შექმნა: ${restaurantStatus.message}` 
+        : `Невозможно создать заказ: ${restaurantStatus.message}`)
+      return;
+    }
+
     // Проверяем зону доставки для заказов типа DELIVERY
     if (order.type === 'DELIVERY' && order.deliveryAddress && !order.deliveryZone) {
       setLoading(true)
@@ -259,6 +310,42 @@ export default function NewOrderPage() {
   return (
     <AccessCheck allowedRoles={['WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR']}>
       <div className="py-6">
+        {/* Большая желтая плашка когда ресторан закрыт (только для незапланированных заказов) */}
+        {!order.isScheduled && selectedRestaurant && restaurantStatus && !restaurantStatus.isOpen && (
+          <div className="w-full bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-6 h-6 text-amber-600" />
+              <div>
+                <h3 className="text-amber-800 font-semibold text-lg">
+                  {language === 'ru' ? 'Ресторан закрыт' : 'რესტორანი დახურულია'}
+                </h3>
+                <p className="text-amber-700 text-sm">
+                  {restaurantStatus.message}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Плашка для запланированных заказов */}
+        {order.isScheduled && selectedRestaurant && restaurantStatus && !restaurantStatus.isOpen && (
+          <div className="w-full bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <div className="flex items-center gap-3">
+              <Clock className="w-6 h-6 text-blue-600" />
+              <div>
+                <h3 className="text-blue-800 font-semibold text-lg">
+                  {language === 'ru' ? 'Заказ запланирован' : 'შეკვეთა დაგეგმილია'}
+                </h3>
+                <p className="text-blue-700 text-sm">
+                  {language === 'ru' 
+                    ? 'Заказ будет создан в рабочее время ресторана' 
+                    : 'შეკვეთა შეიქმნება რესტორანის სამუშაო საათებში'}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <OrderInfoStep
           order={order}
           setOrder={setOrder}
@@ -266,7 +353,9 @@ export default function NewOrderPage() {
           language={language}
           onSubmit={handleCreateOrder}
           loading={loading}
-          onRestaurantChange={handleRestaurantChange}       />
+          onRestaurantChange={handleRestaurantChange}
+          restaurantStatus={restaurantStatus}
+        />
       </div>
     </AccessCheck>
   )

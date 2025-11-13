@@ -38,6 +38,11 @@ interface OrderInfoStepProps {
   onSubmit: () => void
   loading: boolean
   onRestaurantChange: (restaurantId: string) => void
+  restaurantStatus?: { 
+    isOpen: boolean; 
+    message: string;
+    nextOpenTime?: string;
+  } | null
 }
 
 export const OrderInfoStep = ({
@@ -48,6 +53,7 @@ export const OrderInfoStep = ({
   onSubmit,
   loading,
   onRestaurantChange,
+  restaurantStatus
 }: OrderInfoStepProps) => {
   const [isScheduled, setIsScheduled] = useState(false)
   const [scheduledTime, setScheduledTime] = useState(format(new Date(), "yyyy-MM-dd'T'HH:mm"))
@@ -395,7 +401,7 @@ export const OrderInfoStep = ({
           onClick={() =>  onSubmit()}
           size="lg"
           className="text-lg"
-          disabled={loading}
+          disabled={loading || (!order!.isScheduled && restaurantStatus! && !restaurantStatus!.isOpen)}
         >
           {loading
             ? language === 'ka' ? 'შექმნა...' : 'Создание...'
