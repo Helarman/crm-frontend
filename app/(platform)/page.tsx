@@ -47,7 +47,8 @@ export default function HomePage() {
       actions: "Действия",
       phone: "Телефон",
       status: "Статус",
-      quickAccess: "Быстрый доступ"
+      quickAccess: "Быстрый доступ",
+      delivery: "Доставка"
     },
     ka: {
       hello: "მოგესალმებით",
@@ -60,7 +61,8 @@ export default function HomePage() {
       actions: "მოქმედებები",
       phone: "ტელეფონი",
       status: "სტატუსი",
-      quickAccess: "სწრაფი წვდომა"
+      quickAccess: "სწრაფი წვდომა",
+      delivery: "მიწოდება"
     }
   } as const;
 
@@ -72,6 +74,33 @@ export default function HomePage() {
       .map((n) => n[0])
       .join('')
       .toUpperCase()
+  }
+
+  // Проверка прав доступа для кнопок
+  const canAccessOrders = () => {
+    if (!user?.role) return false;
+    const orderAccessRoles = ['WAITER', 'CASHIER', 'COURIER', 'MANAGER', 'SUPERVISOR'];
+    return orderAccessRoles.includes(user.role);
+  }
+
+  const canAccessKitchen = () => {
+    if (!user?.role) return false;
+    const kitchenAccessRoles = ['COOK', 'CHEF', 'MANAGER', 'SUPERVISOR'];
+    return kitchenAccessRoles.includes(user.role);
+  }
+
+  const canAccessWarehouse = () => {
+    if (!user?.role) return false;
+    const warehouseAccessRoles = ['STOREMAN', 'MANAGER', 'SUPERVISOR'];
+    return warehouseAccessRoles.includes(user.role);
+  }
+
+  // Получение пути в зависимости от роли
+  const getOrdersPath = (restaurantId: string) => {
+    if (user?.role === 'COURIER') {
+      return '/delivery';
+    }
+    return '/orders';
   }
 
   // Сохранение выбранного ресторана в localStorage
@@ -107,8 +136,6 @@ export default function HomePage() {
     }, 100);
   }
 
-
-
   if (!user) {
     return <UnauthorizedPage/>
   }
@@ -139,6 +166,7 @@ export default function HomePage() {
           </CardContent>
         </Card>
 
+
             {user.restaurant && user.restaurant.length > 0 ? (
               <div className="rounded-md border">
                 <Table>
@@ -146,6 +174,7 @@ export default function HomePage() {
                     <TableRow>
                       <TableHead className="font-semibold">Название</TableHead>
                       <TableHead className="font-semibold">{t.address}</TableHead>
+                      <TableHead className="font-semibold text-right">{t.actions}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -166,42 +195,54 @@ export default function HomePage() {
                        
                         <TableCell>
                           <div className="flex justify-end gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRestaurantAction(restaurant.id, '/orders');
-                              }}
-                              className="flex items-center gap-2"
-                            >
-                              <ShoppingCart className="h-4 w-4" />
-                              {t.orders}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRestaurantAction(restaurant.id, '/kitchen');
-                              }}
-                              className="flex items-center gap-2"
-                            >
-                              <ChefHat className="h-4 w-4" />
-                              {t.kitchen}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRestaurantAction(restaurant.id, `/restaurants/${restaurant.id}/warehouse`);
-                              }}
-                              className="flex items-center gap-2"
-                            >
-                              <Warehouse className="h-4 w-4" />
-                              {t.warehouse}
-                            </Button>
+                            {/* Кнопка Заказы */}
+                            {canAccessOrders() && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const ordersPath = getOrdersPath(restaurant.id);
+                                  handleRestaurantAction(restaurant.id, ordersPath);
+                                }}
+                                className="flex items-center gap-2"
+                              >
+                                <ShoppingCart className="h-4 w-4" />
+                                {user?.role === 'COURIER' ? t.delivery : t.orders}
+                              </Button>
+                            )}
+
+                            {/* Кнопка Кухня */}
+                            {canAccessKitchen() && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRestaurantAction(restaurant.id, '/kitchen');
+                                }}
+                                className="flex items-center gap-2"
+                              >
+                                <ChefHat className="h-4 w-4" />
+                                {t.kitchen}
+                              </Button>
+                            )}
+
+                            {/* Кнопка Склад */}
+                            {canAccessWarehouse() && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRestaurantAction(restaurant.id, `/restaurants/${restaurant.id}/warehouse`);
+                                }}
+                                className="flex items-center gap-2"
+                              >
+                                <Warehouse className="h-4 w-4" />
+                                {t.warehouse}
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

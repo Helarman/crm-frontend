@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { Product } from '@/lib/types/product';
 import { Category } from '@/lib/types/order';
+import { useAuth } from '@/lib/hooks/useAuth';
 
 interface CategoryRowProps {
   category: CategoryNode;
@@ -317,7 +318,7 @@ const ProductRow = ({
   const [loadingToggles, setLoadingToggles] = useState<Record<string, boolean>>({});
   const [loadingAdminOrder, setLoadingAdminOrder] = useState(false);
   const [loadingClientOrder, setLoadingClientOrder] = useState(false);
-
+  const { user } =useAuth()
   const handleMoveUp = async () => {
     if (isFirst) return;
     setLoadingAdminOrder(true);
@@ -405,6 +406,8 @@ const ProductRow = ({
             </div>
           </div>
         </TableCell>
+        { user.role === 'COOK' ? '' :
+            (<>
         <TableCell>
           <div className="flex flex-wrap gap-1">
             {product.workshops?.length > 0 ? (
@@ -493,7 +496,7 @@ const ProductRow = ({
             onCheckedChange={() => handleToggle(product.id, 'togglePublishedInApp')}
             disabled={loadingToggles[`${product.id}-togglePublishedInApp`]}
           />
-        </TableCell>
+        </TableCell></>)}
         <TableCell className="text-center">
           <Switch
             checked={product.isStopList}
@@ -501,6 +504,7 @@ const ProductRow = ({
             disabled={loadingToggles[`${product.id}-toggleStopList`]}
           />
         </TableCell>
+        { user.role === 'COOK' ? '' :
         <TableCell className="text-right">
           <div className="flex items-center gap-1">
             <Button
@@ -521,6 +525,7 @@ const ProductRow = ({
             </Button>
           </div>
         </TableCell>
+        }
       </TableRow>
 
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
@@ -703,7 +708,7 @@ export const ProductTable = ({
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-
+  const { user } = useAuth()
   // ФИЛЬТРАЦИЯ: используем filteredProductIds для фильтрации продуктов
   const filteredProducts = products.filter(product =>
     filteredProductIds.has(product.id)
@@ -866,6 +871,8 @@ export const ProductTable = ({
                 {getSortIcon('title')}
               </button>
             </TableHead>
+            { user.role === 'COOK' ? '' :
+            (<>
             <TableHead>{translations.workshops[language]}</TableHead>
             <TableHead>
               <button
@@ -896,9 +903,10 @@ export const ProductTable = ({
             </TableHead>
             <TableHead className="text-center">{translations.printLabels[language]}</TableHead>
             <TableHead className="text-center">{translations.publishedOnWebsite[language]}</TableHead>
-            <TableHead className="text-center">{translations.publishedInApp[language]}</TableHead>
+            <TableHead className="text-center">{translations.publishedInApp[language]}</TableHead></>)}
             <TableHead className="text-center">{translations.isStopList[language]}</TableHead>
-            <TableHead className="text-right">{translations.actions[language]}</TableHead>
+             { user.role === 'COOK' ? '' :
+            (<TableHead className="text-right">{translations.actions[language]}</TableHead>)}
           </TableRow>
         </TableHeader>
         <TableBody>

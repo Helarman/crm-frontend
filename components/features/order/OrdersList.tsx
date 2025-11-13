@@ -21,7 +21,7 @@ import { useRouter } from 'next/navigation'
 import useSWRMutation from 'swr/mutation'
 import { Restaurant } from '../staff/StaffTable'
 import { Button } from '@/components/ui/button'
-import { Utensils, ShoppingBag, Truck, GlassWater, Archive, Calendar, Filter, X } from 'lucide-react'
+import { Utensils, ShoppingBag, Truck, GlassWater, Archive, Calendar, Filter, X, Clock, AlertTriangle } from 'lucide-react'
 import { useLanguageStore } from '@/lib/stores/language-store'
 import Loading from '../Loading'
 import { DateRange } from 'react-day-picker'
@@ -33,6 +33,9 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { DateRangePicker } from '@/components/ui/data-range-picker'
 import { useOrderWebSocket } from '@/lib/hooks/useOrderWebSocket'
+import { useRestaurantSchedule } from '@/lib/hooks/useRestaurantSchedule'
+import { useRestaurants } from '@/lib/hooks/useRestaurant';
+import { useRestaurantById } from '@/lib/hooks/useRestaurantById'
 
 const ORDER_TYPES = [
   {
@@ -208,6 +211,13 @@ export function OrdersList() {
   const [showArchive, setShowArchive] = useState<boolean>(false)
   const [page, setPage] = useState(1)
   const limit = 12
+  const { isRestaurantOpen } = useRestaurantSchedule();
+  const { restaurant: selectedRestaurant, isLoading: restaurantLoading } = useRestaurantById(selectedRestaurantId);
+  const [restaurantStatus, setRestaurantStatus] = useState<{ 
+    isOpen: boolean; 
+    message: string;
+    nextOpenTime?: string;
+  } | null>(null);
 
   // Фильтры архива
   const [dateRange, setDateRange] = useState<DateRange | undefined>()
@@ -215,6 +225,12 @@ export function OrdersList() {
   const [hasDiscount, setHasDiscount] = useState<boolean | undefined>()
   const [discountCanceled, setDiscountCanceled] = useState<boolean | undefined>()
   const [isRefund, setIsRefund] = useState<boolean | undefined>()
+  
+  useEffect(() => {
+      if (!selectedRestaurantId || !selectedRestaurant) {
+        setRestaurantStatus(null);
+        return;
+    }})
 
   const archiveFilters = {
     page,
@@ -228,7 +244,55 @@ export function OrdersList() {
     isRefund
   }
 
-  // Хуки для данных
+   const handleNewOrder = () => {
+    if (!selectedRestaurantId) {
+      toast.error('Выберите ресторан');
+      return;
+    }
+
+    if (restaurantStatus && !restaurantStatus.isOpen) {
+      toast.error(`Невозможно создать заказ: ${restaurantStatus.message}`);
+      return;
+    }
+
+    router.push('/orders/new');
+  };
+
+  
+useEffect(() => {
+    if (!selectedRestaurantId || !selectedRestaurant) {
+      setRestaurantStatus(null);
+      return;
+    }
+
+    // Функция для проверки статуса
+    const checkRestaurantStatus = () => {
+      try {
+        const newStatus = isRestaurantOpen(selectedRestaurant, language);
+        console.log('🕒 Restaurant status check:', newStatus);
+        setRestaurantStatus(newStatus);
+      } catch (error) {
+        console.error('Error checking restaurant status:', error);
+        setRestaurantStatus({
+          isOpen: false,
+          message: language === 'ru' ? 'Ошибка проверки расписания' : 'განრიგის შემოწმების შეცდომა'
+        });
+      }
+    };
+
+    checkRestaurantStatus();
+
+    const interval = setInterval(checkRestaurantStatus, 30000);
+
+    return () => clearInterval(interval);
+  }, [selectedRestaurantId, selectedRestaurant, isRestaurantOpen, language]);
+
+    useEffect(() => {
+      if (selectedRestaurantId && selectedRestaurant) {
+        const newStatus = isRestaurantOpen(selectedRestaurant, language);
+        setRestaurantStatus(newStatus);
+      }
+    }, [selectedRestaurantId, selectedRestaurant]);
   const {
     data: activeOrders = [],
     isLoading: activeLoading,
@@ -348,11 +412,7 @@ export function OrdersList() {
     }
   }, [user])
 
-  useEffect(() => {
-    if (selectedRestaurantId) {
-      localStorage.setItem(RESTAURANT_STORAGE_KEY, selectedRestaurantId);
-    }
-  }, [selectedRestaurantId])
+
 
   useEffect(() => {
     setPage(1)
@@ -511,7 +571,27 @@ export function OrdersList() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6">{/* Большая желтая плашка когда ресторан закрыт */}
+      {selectedRestaurantId && restaurantStatus && !restaurantStatus.isOpen && (
+        <div className="w-full bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0">
+              <AlertTriangle className="w-6 h-6 text-amber-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-amber-800 font-semibold text-lg mb-1">
+                {language === 'ru' ? 'Ресторан закрыт' : 'რესტორანი დახურულია'}
+              </h3>
+              <p className="text-amber-700 text-sm">
+                {restaurantStatus.message}
+              </p>
+            </div>
+            <div className="flex-shrink-0">
+              <Clock className="w-5 h-5 text-amber-600" />
+            </div>
+          </div>
+        </div>
+      )}
       <div className="flex flex-col gap-4">
         {/* Заголовок и основные кнопки */}
         <div className="flex flex-col gap-4">
@@ -566,12 +646,14 @@ export function OrdersList() {
                 </Button>
 
                 <Button
-                  onClick={() => router.push('/orders/new')}
+                  onClick={handleNewOrder}
                   className="flex-[2] sm:flex-none min-w-[140px] sm:min-w-[160px] lg:min-w-[180px] xl:min-w-[200px]"
                   size="lg"
+                  disabled={!restaurantStatus?.isOpen}
                 >
                   <span className="font-semibold">{t('newOrder')}</span>
                 </Button>
+                
               </div>
             </div>
           </div>

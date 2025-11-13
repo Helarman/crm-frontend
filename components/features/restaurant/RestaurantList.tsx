@@ -550,7 +550,7 @@ export function RestaurantList() {
                               </div>
                             </div>
 
-                            {/* Today's Hours 
+                            {/* Today's Hours */}
                             <div className="flex items-start gap-3">
                               <div 
                                 className="p-2 rounded-full mt-0.5 flex-shrink-0"
@@ -576,10 +576,10 @@ export function RestaurantList() {
                                   {todayStatus.text}
                                 </p>
                               </div>
-                            </div>*/}
+                            </div>
                           </div>
 
-                          {/* Week Schedule 
+                          {/* Week Schedule */}
                           <div className="border-t pt-4">
                             <div className="flex items-center gap-2 mb-3">
                               <Calendar className="w-4 h-4 text-muted-foreground" />
@@ -613,7 +613,7 @@ export function RestaurantList() {
                                 </div>
                               ))}
                             </div>
-                          </div>*/}
+                          </div>
                         </div>
                       </div>
                     </Card>

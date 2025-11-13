@@ -299,7 +299,7 @@ export default function Side() {
         name: t.menu, 
         href: "/products", 
         icon: <BookOpen className="w-5 h-5" />,
-        roles: ['MANAGER', 'SUPERVISOR']
+        roles: ['MANAGER', 'SUPERVISOR', 'COOK', 'CHEF']
       },
        { 
         name: t.warehouse, 

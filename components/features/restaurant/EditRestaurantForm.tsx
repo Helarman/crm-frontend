@@ -1,19 +1,36 @@
+'use client';
+
 import { useForm } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { NetworkService } from '@/lib/api/network.service';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Loader2, MapPin, Search } from 'lucide-react';
 
-const MapWithNoSSR = dynamic(
-  () => import('@/components/ui/map').then((mod) => mod.Map),
-  { ssr: false }
+// Динамически загружаем Yandex карту без SSR
+const YandexMap = dynamic(
+  () => import('@/components/ui/yandex-map').then((mod) => mod.YandexMap),
+  { 
+    ssr: false,
+    loading: () => (
+      <div className="h-[400px] w-full flex items-center justify-center bg-muted">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
 );
 
 interface RestaurantFormValues {
@@ -27,7 +44,6 @@ interface RestaurantFormValues {
   images?: string[];
   useWarehouse: boolean;
   shiftCloseTime: string;
-  // Часы работы
   mondayOpen: string;
   mondayClose: string;
   mondayIsWorking: boolean;
@@ -57,45 +73,152 @@ interface EditRestaurantFormProps {
   onCancel: () => void;
 }
 
+// Сервис для работы с DADATA
+class DadataService {
+  private static readonly API_URL = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs';
+  private static readonly TOKEN = process.env.NEXT_PUBLIC_DADATA_API_KEY;
+
+  static async geocodeAddress(query: string): Promise<any> {
+    if (!this.TOKEN) {
+      console.warn('DADATA API key not found');
+      return null;
+    }
+
+    try {
+      const response = await fetch(`${this.API_URL}/suggest/address`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Token ${this.TOKEN}`
+        },
+        body: JSON.stringify({
+          query: query,
+          count: 1,
+          locations: [{ country: '*' }]
+        })
+      });
+
+      if (!response.ok) throw new Error('Geocoding failed');
+      
+      const data = await response.json();
+      return data.suggestions[0] || null;
+    } catch (error) {
+      console.error('DADATA geocoding error:', error);
+      return null;
+    }
+  }
+
+  static async reverseGeocode(lat: number, lng: number): Promise<string | null> {
+    if (!this.TOKEN) {
+      console.warn('DADATA API key not found');
+      return null;
+    }
+
+    try {
+      const response = await fetch(`${this.API_URL}/geolocate/address`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Token ${this.TOKEN}`
+        },
+        body: JSON.stringify({
+          lat: lat,
+          lon: lng,
+          count: 1,
+          radius_meters: 50
+        })
+      });
+
+      if (!response.ok) throw new Error('Reverse geocoding failed');
+      
+      const data = await response.json();
+      return data.suggestions[0]?.value || null;
+    } catch (error) {
+      console.error('DADATA reverse geocoding error:', error);
+      return null;
+    }
+  }
+}
+
 export function EditRestaurantForm({ 
   initialValues, 
   onSubmit, 
   onCancel 
 }: EditRestaurantFormProps) {
-  const [coordinates, setCoordinates] = useState<{ lat: number; lng: number }>({ lat: 55.751244, lng: 37.618423 });
+  const [coordinates, setCoordinates] = useState<{ lat: number; lng: number }>({ 
+    lat: initialValues.latitude ? parseFloat(initialValues.latitude) : 55.751244, 
+    lng: initialValues.longitude ? parseFloat(initialValues.longitude) : 37.618423 
+  });
   const [isUploading, setIsUploading] = useState(false);
   const [networks, setNetworks] = useState<any[]>([]);
   const [isLoadingNetworks, setIsLoadingNetworks] = useState(true);
+  const [isGeocoding, setIsGeocoding] = useState(false);
+  const [mapDialogOpen, setMapDialogOpen] = useState(false);
+  const [manualAddressEdit, setManualAddressEdit] = useState(false);
   const { language } = useLanguageStore();
 
-  const { register, handleSubmit, setValue, formState: { errors, isDirty }, watch } = useForm<RestaurantFormValues>({
-    defaultValues: {
+  // Исправленная функция форматирования времени
+  const formatTimeForInput = (timeValue: string | Date | null): string => {
+    if (!timeValue) return '00:00';
+    
+    try {
+      // Если это уже строка в формате HH:mm
+      if (typeof timeValue === 'string' && /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(timeValue)) {
+        return timeValue;
+      }
+      
+      // Если это Date объект
+      const date = new Date(timeValue);
+      
+      if (isNaN(date.getTime())) {
+        console.warn('Invalid date:', timeValue);
+        return '00:00';
+      }
+      
+      const hours = date.getHours().toString().padStart(2, '0');
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+      
+      return `${hours}:${minutes}`;
+    } catch (error) {
+      console.error('Error formatting time:', error);
+      return '00:00';
+    }
+  };
+
+  // Исправленные начальные значения
+  const getDefaultValues = () => {
+    return {
       ...initialValues,
       useWarehouse: initialValues.useWarehouse || false,
-      shiftCloseTime: initialValues.shiftCloseTime || '23:59',
-      // Часы работы по умолчанию
-      mondayOpen: initialValues.mondayOpen || '09:00',
-      mondayClose: initialValues.mondayClose || '18:00',
+      shiftCloseTime: formatTimeForInput(initialValues.shiftCloseTime),
+      mondayOpen: formatTimeForInput(initialValues.mondayOpen),
+      mondayClose: formatTimeForInput(initialValues.mondayClose),
       mondayIsWorking: initialValues.mondayIsWorking ?? true,
-      tuesdayOpen: initialValues.tuesdayOpen || '09:00',
-      tuesdayClose: initialValues.tuesdayClose || '18:00',
+      tuesdayOpen: formatTimeForInput(initialValues.tuesdayOpen),
+      tuesdayClose: formatTimeForInput(initialValues.tuesdayClose),
       tuesdayIsWorking: initialValues.tuesdayIsWorking ?? true,
-      wednesdayOpen: initialValues.wednesdayOpen || '09:00',
-      wednesdayClose: initialValues.wednesdayClose || '18:00',
+      wednesdayOpen: formatTimeForInput(initialValues.wednesdayOpen),
+      wednesdayClose: formatTimeForInput(initialValues.wednesdayClose),
       wednesdayIsWorking: initialValues.wednesdayIsWorking ?? true,
-      thursdayOpen: initialValues.thursdayOpen || '09:00',
-      thursdayClose: initialValues.thursdayClose || '18:00',
+      thursdayOpen: formatTimeForInput(initialValues.thursdayOpen),
+      thursdayClose: formatTimeForInput(initialValues.thursdayClose),
       thursdayIsWorking: initialValues.thursdayIsWorking ?? true,
-      fridayOpen: initialValues.fridayOpen || '09:00',
-      fridayClose: initialValues.fridayClose || '18:00',
+      fridayOpen: formatTimeForInput(initialValues.fridayOpen),
+      fridayClose: formatTimeForInput(initialValues.fridayClose),
       fridayIsWorking: initialValues.fridayIsWorking ?? true,
-      saturdayOpen: initialValues.saturdayOpen || '10:00',
-      saturdayClose: initialValues.saturdayClose || '16:00',
+      saturdayOpen: formatTimeForInput(initialValues.saturdayOpen),
+      saturdayClose: formatTimeForInput(initialValues.saturdayClose),
       saturdayIsWorking: initialValues.saturdayIsWorking ?? false,
-      sundayOpen: initialValues.sundayOpen || '10:00',
-      sundayClose: initialValues.sundayClose || '16:00',
+      sundayOpen: formatTimeForInput(initialValues.sundayOpen),
+      sundayClose: formatTimeForInput(initialValues.sundayClose),
       sundayIsWorking: initialValues.sundayIsWorking ?? false,
-    }
+    };
+  };
+
+  const { register, handleSubmit, setValue, formState: { errors, isDirty }, watch } = useForm<RestaurantFormValues>({
+    defaultValues: getDefaultValues()
   });
 
   const translations = {
@@ -134,7 +257,15 @@ export function EditRestaurantForm({
       dayOff: 'Выходной',
       basicInfo: 'Основная информация',
       settings: 'Настройки',
-      schedule: 'Расписание работы'
+      schedule: 'Расписание работы',
+      selectOnMap: 'Выбрать на карте',
+      searchAddress: 'Найти адрес',
+      map: 'Карта',
+      geocoding: 'Поиск координат...',
+      selectPointOnMap: 'Выберите точку на карте',
+      updateAddress: 'Обновить адрес по карте',
+      searchByAddress: 'Найти по адресу',
+      searching: 'Поиск...'
     },
     en: {
       title: 'Name *',
@@ -171,7 +302,15 @@ export function EditRestaurantForm({
       dayOff: 'Day off',
       basicInfo: 'Basic Information',
       settings: 'Settings',
-      schedule: 'Working Schedule'
+      schedule: 'Working Schedule',
+      selectOnMap: 'Select on map',
+      searchAddress: 'Search address',
+      map: 'Map',
+      geocoding: 'Searching coordinates...',
+      selectPointOnMap: 'Select point on map',
+      updateAddress: 'Update address from map',
+      searchByAddress: 'Search by address',
+      searching: 'Searching...'
     },
     ka: {
       title: 'სახელი *',
@@ -208,17 +347,22 @@ export function EditRestaurantForm({
       dayOff: 'დასვენების დღე',
       basicInfo: 'ძირითადი ინფორმაცია',
       settings: 'პარამეტრები',
-      schedule: 'სამუშაო გრაფიკი'
+      schedule: 'სამუშაო გრაფიკი',
+      selectOnMap: 'აირჩიეთ რუკაზე',
+      searchAddress: 'მისამართის ძიება',
+      map: 'რუკა',
+      geocoding: 'კოორდინატების ძიება...',
+      selectPointOnMap: 'აირჩიეთ წერტილი რუკაზე',
+      updateAddress: 'განაახლეთ მისამართი რუკიდან',
+      searchByAddress: 'ძიება მისამართით',
+      searching: 'ძიება...'
     }
   };
 
   const t = translations[language];
 
-  // Следим за значениями
   const useWarehouseValue = watch('useWarehouse');
-  const shiftCloseTimeValue = watch('shiftCloseTime');
-
-  // Следим за рабочими днями
+  const addressValue = watch('address');
   const mondayIsWorking = watch('mondayIsWorking');
   const tuesdayIsWorking = watch('tuesdayIsWorking');
   const wednesdayIsWorking = watch('wednesdayIsWorking');
@@ -226,6 +370,38 @@ export function EditRestaurantForm({
   const fridayIsWorking = watch('fridayIsWorking');
   const saturdayIsWorking = watch('saturdayIsWorking');
   const sundayIsWorking = watch('sundayIsWorking');
+
+  const geocodeAddress = useCallback(async (address: string) => {
+    if (!address || address.trim().length < 3) return;
+    
+    setIsGeocoding(true);
+    try {
+      const result = await DadataService.geocodeAddress(address);
+      if (result && result.data?.geo_lat && result.data?.geo_lon) {
+        const lat = parseFloat(result.data.geo_lat);
+        const lng = parseFloat(result.data.geo_lon);
+        
+        setCoordinates({ lat, lng });
+        setValue('latitude', lat.toString(), { shouldDirty: true });
+        setValue('longitude', lng.toString(), { shouldDirty: true });
+        
+        if (result.value && !manualAddressEdit) {
+          setValue('address', result.value, { shouldDirty: true });
+        }
+      }
+    } catch (error) {
+      console.error('Error geocoding address:', error);
+    } finally {
+      setIsGeocoding(false);
+    }
+  }, [setValue, manualAddressEdit]);
+
+  const handleSearchAddress = async () => {
+    const address = watch('address');
+    if (address && address.trim().length > 2) {
+      await geocodeAddress(address);
+    }
+  };
 
   useEffect(() => {
     const fetchNetworks = async () => {
@@ -249,10 +425,37 @@ export function EditRestaurantForm({
     }
   }, [initialValues.latitude, initialValues.longitude]);
 
-  const handleMapClick = (lat: number, lng: number) => {
+  useEffect(() => {
+    if (manualAddressEdit) return;
+
+    const timeoutId = setTimeout(() => {
+      if (addressValue && addressValue !== initialValues.address) {
+        geocodeAddress(addressValue);
+      }
+    }, 1500);
+
+    return () => clearTimeout(timeoutId);
+  }, [addressValue, initialValues.address, geocodeAddress, manualAddressEdit]);
+
+  const handleMapClick = async (lat: number, lng: number) => {
     setCoordinates({ lat, lng });
     setValue('latitude', lat.toString(), { shouldDirty: true });
     setValue('longitude', lng.toString(), { shouldDirty: true });
+
+    try {
+      const address = await DadataService.reverseGeocode(lat, lng);
+      if (address) {
+        setValue('address', address, { shouldDirty: true });
+        setManualAddressEdit(false);
+      }
+    } catch (error) {
+      console.error('Error reverse geocoding:', error);
+    }
+  };
+
+  const handleAddressInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setManualAddressEdit(true);
+    setValue('address', e.target.value, { shouldDirty: true });
   };
 
   const handleWarehouseToggle = (checked: boolean) => {
@@ -263,7 +466,6 @@ export function EditRestaurantForm({
     setValue(`${day}IsWorking` as any, checked, { shouldDirty: true });
   };
 
-  // Валидация времени
   const validateTime = (time: string) => {
     if (!time) return t.requiredField;
     
@@ -278,20 +480,23 @@ export function EditRestaurantForm({
   const onSubmitHandler = handleSubmit(async (data) => {
     setIsUploading(true);
     try {
-      // Преобразуем время в формат для API
       const formatTimeForApi = (time: string) => {
+        if (!time) return null;
+        
         const [hours, minutes] = time.split(':');
-        return new Date(`1970-01-01T${hours.padStart(2, '0')}:${minutes}:00.000Z`).toISOString();
+        const date = new Date();
+        date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+        
+        return date.toISOString();
       };
 
       await onSubmit({
         ...data,
-        latitude: coordinates?.lat.toString(),
-        longitude: coordinates?.lng.toString(),
+        latitude: coordinates.lat.toString(),
+        longitude: coordinates.lng.toString(),
         networkId: data.networkId,
         useWarehouse: data.useWarehouse,
         shiftCloseTime: formatTimeForApi(data.shiftCloseTime),
-        // Преобразуем время работы
         mondayOpen: data.mondayIsWorking ? formatTimeForApi(data.mondayOpen) : null,
         mondayClose: data.mondayIsWorking ? formatTimeForApi(data.mondayClose) : null,
         tuesdayOpen: data.tuesdayIsWorking ? formatTimeForApi(data.tuesdayOpen) : null,
@@ -314,19 +519,15 @@ export function EditRestaurantForm({
     }
   });
 
-  // Компонент для дня недели
+  // Исправленный компонент DaySchedule
   const DaySchedule = ({ 
     day, 
     label, 
-    isWorking, 
-    openTime, 
-    closeTime 
+    isWorking
   }: { 
     day: string;
     label: string;
     isWorking: boolean;
-    openTime: string;
-    closeTime: string;
   }) => (
     <div className="flex items-center justify-between p-3 border rounded-lg">
       <div className="flex items-center space-x-3">
@@ -343,7 +544,9 @@ export function EditRestaurantForm({
           <div className="flex items-center space-x-1">
             <Input
               type="time"
-              {...register(`${day}Open` as any)}
+              {...register(`${day}Open` as any, {
+                validate: isWorking ? validateTime : undefined
+              })}
               disabled={!isWorking}
               className="w-24"
             />
@@ -352,7 +555,9 @@ export function EditRestaurantForm({
           <div className="flex items-center space-x-1">
             <Input
               type="time"
-              {...register(`${day}Close` as any)}
+              {...register(`${day}Close` as any, {
+                validate: isWorking ? validateTime : undefined
+              })}
               disabled={!isWorking}
               className="w-24"
             />
@@ -365,8 +570,9 @@ export function EditRestaurantForm({
   );
 
   return (
+    
     <form onSubmit={onSubmitHandler} className="space-y-6">
-      {/* Network Selection */}
+      {/* Сетевой выбор - вынесен отдельно */}
       <div>
         <Label htmlFor="networkId" className="mb-2">{t.selectNetwork}</Label>
         {isLoadingNetworks ? (
@@ -395,12 +601,12 @@ export function EditRestaurantForm({
           </Select>
         )}
         {errors.networkId && (
-          <p className="text-red-500 text-sm">{errors.networkId.message}</p>
+          <p className="text-red-500 text-sm mt-1">{errors.networkId.message}</p>
         )}
       </div>
 
       {/* Основная информация */}
-      <div className="space-y-4">
+      <div className="border rounded-lg p-4 space-y-4">
         <h3 className="text-lg font-medium">{t.basicInfo}</h3>
         
         <div>
@@ -408,17 +614,73 @@ export function EditRestaurantForm({
           <Input
             id="title"
             {...register('title', { required: t.requiredField })}
+            className="mt-1"
           />
-          {errors.title && <p className="text-red-500 text-sm">{errors.title.message}</p>}
+          {errors.title && <p className="text-red-500 text-sm mt-1">{errors.title.message}</p>}
         </div>
 
-        <div>
+        <div className="space-y-2">
           <Label htmlFor="address">{t.address}</Label>
-          <Input
-            id="address"
-            {...register('address', { required: t.requiredField })}
-          />
-          {errors.address && <p className="text-red-500 text-sm">{errors.address.message}</p>}
+          <div className="flex space-x-2">
+            <Input
+              id="address"
+              {...register('address', { required: t.requiredField })}
+              onChange={handleAddressInput}
+              className="flex-1"
+              placeholder="Введите адрес для поиска"
+            />
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={handleSearchAddress}
+              disabled={isGeocoding || !addressValue}
+              size="icon"
+            >
+              {isGeocoding ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="h-4 w-4" />
+              )}
+            </Button>
+            <Dialog open={mapDialogOpen} onOpenChange={setMapDialogOpen}>
+              <DialogTrigger asChild>
+                <Button type="button" variant="outline" className="whitespace-nowrap">
+                  <MapPin className="h-4 w-4 mr-2" />
+                  {t.selectOnMap}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
+                <DialogHeader>
+                  <DialogTitle>{t.selectPointOnMap}</DialogTitle>
+                </DialogHeader>
+                <div className="flex-1 min-h-0 mt-4">
+                  <YandexMap
+                    onMapClick={handleMapClick}
+                    initialCenter={coordinates}
+                    markerPosition={coordinates}
+                  />
+                </div>
+                <div className="flex justify-between items-center pt-4 border-t">
+                  <div className="text-sm text-muted-foreground">
+                    {t.currentLocation}: {coordinates.lat.toFixed(6)}, {coordinates.lng.toFixed(6)}
+                  </div>
+                  <Button 
+                    type="button" 
+                    onClick={() => setMapDialogOpen(false)}
+                  >
+                    {t.updateAddress}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+          {isGeocoding && (
+            <div className="flex items-center space-x-2 text-sm text-muted-foreground mt-1">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span>{t.geocoding}</span>
+            </div>
+          )}
+          {errors.address && <p className="text-red-500 text-sm mt-1">{errors.address.message}</p>}
         </div>
 
         <div>
@@ -427,6 +689,7 @@ export function EditRestaurantForm({
             id="description"
             {...register('description')}
             rows={3}
+            className="mt-1"
           />
         </div>
 
@@ -436,12 +699,13 @@ export function EditRestaurantForm({
             id="legalInfo"
             {...register('legalInfo')}
             rows={3}
+            className="mt-1"
           />
         </div>
       </div>
 
       {/* Настройки */}
-      <div className="space-y-4">
+      <div className="border rounded-lg p-4 space-y-4">
         <h3 className="text-lg font-medium">{t.settings}</h3>
         
         <div className="flex items-center justify-between p-4 border rounded-lg">
@@ -477,97 +741,58 @@ export function EditRestaurantForm({
             {t.timeFormat}
           </p>
           {errors.shiftCloseTime && (
-            <p className="text-red-500 text-sm">{errors.shiftCloseTime.message}</p>
+            <p className="text-red-500 text-sm mt-1">{errors.shiftCloseTime.message}</p>
           )}
         </div>
       </div>
 
-      {/* Часы работы */}
-      <div className="space-y-4">
+      {/* Расписание */}
+      <div className="border rounded-lg p-4 space-y-4">
         <h3 className="text-lg font-medium">{t.schedule}</h3>
         <div className="space-y-3">
           <DaySchedule 
             day="monday"
             label={t.monday}
             isWorking={mondayIsWorking}
-            openTime={watch('mondayOpen')}
-            closeTime={watch('mondayClose')}
           />
           <DaySchedule 
             day="tuesday"
             label={t.tuesday}
             isWorking={tuesdayIsWorking}
-            openTime={watch('tuesdayOpen')}
-            closeTime={watch('tuesdayClose')}
           />
           <DaySchedule 
             day="wednesday"
             label={t.wednesday}
             isWorking={wednesdayIsWorking}
-            openTime={watch('wednesdayOpen')}
-            closeTime={watch('wednesdayClose')}
           />
           <DaySchedule 
             day="thursday"
             label={t.thursday}
             isWorking={thursdayIsWorking}
-            openTime={watch('thursdayOpen')}
-            closeTime={watch('thursdayClose')}
           />
           <DaySchedule 
             day="friday"
             label={t.friday}
             isWorking={fridayIsWorking}
-            openTime={watch('fridayOpen')}
-            closeTime={watch('fridayClose')}
           />
           <DaySchedule 
             day="saturday"
             label={t.saturday}
             isWorking={saturdayIsWorking}
-            openTime={watch('saturdayOpen')}
-            closeTime={watch('saturdayClose')}
           />
           <DaySchedule 
             day="sunday"
             label={t.sunday}
             isWorking={sundayIsWorking}
-            openTime={watch('sundayOpen')}
-            closeTime={watch('sundayClose')}
           />
         </div>
       </div>
 
-      {/* Карта */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium">{t.location}</h3>
-        <Accordion type="single" collapsible className="w-full">
-          <AccordionItem value="map">
-            <AccordionTrigger>
-              <Label>{t.location}</Label>
-            </AccordionTrigger>
-            <AccordionContent>
-              <div className="h-[400px] w-full rounded-md overflow-hidden border mt-2">
-                <MapWithNoSSR 
-                  onMapClick={handleMapClick} 
-                  initialCenter={coordinates}
-                />
-              </div>
-              {coordinates ? (
-                <p className="text-sm mt-2">
-                  {t.currentLocation}: {coordinates.lat.toFixed(6)}, {coordinates.lng.toFixed(6)}
-                </p>
-              ) : (
-                <p className="text-sm text-red-500 mt-2">{t.selectLocation}</p>
-              )}
-              <input type="hidden" {...register('latitude', { required: true })} />
-              <input type="hidden" {...register('longitude', { required: true })} />
-            </AccordionContent>
-          </AccordionItem>
-        </Accordion>
-      </div>
+      <input type="hidden" {...register('latitude', { required: true })} />
+      <input type="hidden" {...register('longitude', { required: true })} />
 
-      <div className="flex justify-end space-x-2 pt-4">
+      {/* Кнопки действий */}
+      <div className="flex justify-end space-x-2 pt-4 border-t">
         <Button variant="outline" type="button" onClick={onCancel}>
           {t.cancel}
         </Button>
@@ -575,7 +800,14 @@ export function EditRestaurantForm({
           type="submit" 
           disabled={isUploading || !isDirty}
         >
-          {isUploading ? t.saving : t.save}
+          {isUploading ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              {t.saving}
+            </>
+          ) : (
+            t.save
+          )}
         </Button>
       </div>
     </form>

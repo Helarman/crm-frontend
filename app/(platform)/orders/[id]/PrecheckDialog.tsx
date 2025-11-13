@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { useReactToPrint } from 'react-to-print';
 import { OrderResponse } from '@/lib/api/order.service';
@@ -19,6 +19,7 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
   const { user } = useAuth();
   const [isPrinting, setIsPrinting] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const hasPrintedRef = useRef(false); // Чтобы предотвратить множественную печать
 
   const translations = {
     ru: {
@@ -198,6 +199,9 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
   };
 
   const safeHandlePrint = async () => {
+    if (isPrinting) return;
+    
+    setIsPrinting(true);
     try {
       await handlePrint();
     } catch (error) {
@@ -205,6 +209,19 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
       fallbackPrint();
     }
   };
+
+  // Автоматическая печать при открытии диалога
+  useEffect(() => {
+    if (!hasPrintedRef.current) {
+      hasPrintedRef.current = true;
+      // Небольшая задержка для гарантии что DOM полностью отрендерен
+      const timer = setTimeout(() => {
+        safeHandlePrint();
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   const getDomain = () => {
     return order.restaurant?.network?.tenant?.domain;

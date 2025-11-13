@@ -15,10 +15,11 @@ import {
   ListTree, 
   Factory 
 } from 'lucide-react';
+import { useAuth } from '@/lib/hooks/useAuth';
 
 const MenuPage = () => {
   const { language } = useLanguageStore();
-
+  const { user } = useAuth()
   // Переводы
   const translations = {
     menu: {
@@ -52,14 +53,14 @@ const MenuPage = () => {
   };
 
   return (
-    <AccessCheck allowedRoles={['MANAGER', 'SUPERVISOR']}>
+    <AccessCheck allowedRoles={['MANAGER', 'SUPERVISOR', 'COOK', 'SHEF']}>
       <div className="space-y-6">
         <h1 className="text-2xl font-bold">
           {translations.pageTitle[language]}
         </h1>
-
         <Tabs defaultValue="menu">
-          <TabsList className="flex w-full flex-col gap-2 sm:flex-row sm:grid sm:grid-cols-4">
+        { user.role === 'COOK' ? '' :
+        ( <TabsList className="w-full gap-2 sm:flex-row sm:grid sm:grid-cols-4">
             <TabsTrigger value="menu" className="flex-1">
               <div className="flex items-center gap-2 justify-center sm:justify-start">
                 <Utensils className="h-4 w-4 flex-shrink-0" />
@@ -84,7 +85,8 @@ const MenuPage = () => {
                 <span className="truncate">{translations.workshops.title[language]}</span>
               </div>
             </TabsTrigger>
-          </TabsList>
+          </TabsList>)
+        }
 
           <TabsContent value="menu">
             <Card>
