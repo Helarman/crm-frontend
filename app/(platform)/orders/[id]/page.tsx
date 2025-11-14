@@ -60,7 +60,8 @@ import {
   LayoutTemplate,
   Mic,
   Wifi,
-  WifiOff
+  WifiOff,
+  Search
 } from 'lucide-react'
 import { Category, OrderItem, OrderState } from '@/lib/types/order'
 import { Product } from '@/lib/types/product'
@@ -534,61 +535,63 @@ export default function WaiterOrderPage() {
   const [viewMode, setViewMode] = useState<'standard' | 'compact'>('standard');
   const [activeShiftId, setActiveShiftId] = useState('')
   const [shiftLoading, setShiftLoading] = useState(false)
-
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState<Product[]>([])
+  const [isSearching, setIsSearching] = useState(false)
   const [categoryNavigation, setCategoryNavigation] = useState<CategoryNavigation>({
     currentCategory: null,
     parentCategory: null,
     breadcrumbs: []
   });
 
-const {
-  isConnected: isWebSocketConnected,
-  connectionError: webSocketError
-} = useOrderWebSocket({
-  restaurantId: order?.restaurant?.id,
-  orderId: orderId as string,
-  onOrderUpdated: (updatedOrder: OrderResponse) => {
-    console.log('🔄 WebSocket: Order updated received', updatedOrder);
-    if (updatedOrder && updatedOrder.id === orderId) {
+  const {
+    isConnected: isWebSocketConnected,
+    connectionError: webSocketError
+  } = useOrderWebSocket({
+    restaurantId: order?.restaurant?.id,
+    orderId: orderId as string,
+    onOrderUpdated: (updatedOrder: OrderResponse) => {
+      console.log('🔄 WebSocket: Order updated received', updatedOrder);
+      if (updatedOrder && updatedOrder.id === orderId) {
+        const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
+        setOrder(mergedOrder);
+        // Уберите toast чтобы не мешал при частых обновлениях
+        console.log('Order updated via WebSocket');
+      }
+    },
+    onOrderStatusUpdated: (updatedOrder: OrderResponse) => {
+      console.log('📊 WebSocket: Order status updated received', updatedOrder);
+      if (updatedOrder && updatedOrder.id === orderId) {
+        const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
+        setOrder(mergedOrder);
+        console.log('Order status updated via WebSocket');
+      }
+    },
+    onOrderItemUpdated: (updatedOrder: OrderResponse, itemId: string) => {
+      console.log('🍽️ WebSocket: Order item updated received', updatedOrder, itemId);
+      if (updatedOrder && updatedOrder.id === orderId) {
+        const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
+        setOrder(mergedOrder);
+        console.log('Order item updated via WebSocket');
+      }
+    },
+    onOrderModified: (updatedOrder: OrderResponse) => {
+      console.log('✏️ WebSocket: Order modified received', updatedOrder);
       const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
       setOrder(mergedOrder);
-      // Уберите toast чтобы не мешал при частых обновлениях
-      console.log('Order updated via WebSocket');
-    }
-  },
-  onOrderStatusUpdated: (updatedOrder: OrderResponse) => {
-    console.log('📊 WebSocket: Order status updated received', updatedOrder);
-    if (updatedOrder && updatedOrder.id === orderId) {
+      console.log('Order modified via WebSocket');
+    },
+    onOrderDetailsUpdated: (updatedOrder: OrderResponse) => {
+      console.log('📝 WebSocket: Order details updated received', updatedOrder);
       const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
       setOrder(mergedOrder);
-      console.log('Order status updated via WebSocket');
-    }
-  },
-  onOrderItemUpdated: (updatedOrder: OrderResponse, itemId: string) => {
-    console.log('🍽️ WebSocket: Order item updated received', updatedOrder, itemId);
-    if (updatedOrder && updatedOrder.id === orderId) {
-      const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
-      setOrder(mergedOrder);
-      console.log('Order item updated via WebSocket');
-    }
-  },
-  onOrderModified: (updatedOrder: OrderResponse) => {
-    console.log('✏️ WebSocket: Order modified received', updatedOrder);
-    const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
-    setOrder(mergedOrder);
-    console.log('Order modified via WebSocket');
-  },
-  onOrderDetailsUpdated: (updatedOrder: OrderResponse) => {
-    console.log('📝 WebSocket: Order details updated received', updatedOrder);
-    const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
-    setOrder(mergedOrder);
-    console.log('Order details updated via WebSocket');
-  },
-  onError: (error: any) => {
-    console.error('❌ WebSocket error:', error);
-  },
-  enabled: true
-});
+      console.log('Order details updated via WebSocket');
+    },
+    onError: (error: any) => {
+      console.error('❌ WebSocket error:', error);
+    },
+    enabled: true
+  });
 
   const isOrderEditable = order && !['DELIVERING', 'COMPLETED', 'CANCELLED'].includes(order.status);
 const orderRef = useRef<OrderResponse | null>(null);
@@ -606,18 +609,26 @@ const orderRef = useRef<OrderResponse | null>(null);
 
   return {
     ...serverOrder,
-    // Сохраняем важные локальные состояния
     attentionFlags: {
       ...serverOrder.attentionFlags,
       ...localOrder.attentionFlags
     },
-    // Сохраняем items из сервера, но с возможными локальными дополнениями
     items: mergedItems,
-    // Сохраняем другие важные локальные поля
     ...(localOrder.customer && { customer: localOrder.customer }),
     ...(localOrder.discountAmount && { discountAmount: localOrder.discountAmount }),
   };
 };
+const searchInputRef = useRef<HTMLInputElement>(null);
+
+const focusSearchInput = useCallback(() => {
+  setTimeout(() => {
+    if (searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, 50);
+}, []);
+
+
 
   const checkAndCreateShift = async (restaurantId: string): Promise<string | null> => {
     try {
@@ -658,25 +669,98 @@ const orderRef = useRef<OrderResponse | null>(null);
   };
 
   // Функции для работы с категориями
-  const handleCategoryClick = (category: Category) => {
-    const subcategories = categories.filter(cat => cat.parentId === category.id);
+ const handleCategoryClick = (category: Category) => {
+  const subcategories = categories.filter(cat => 
+    cat.parentId === category.id && 
+    hasProductsInCategory(cat.id) // Проверяем, есть ли товары в категории
+  );
 
-    if (subcategories.length > 0) {
-      // Если есть подкатегории, переходим к ним
-      setCategoryNavigation(prev => ({
-        currentCategory: null,
-        parentCategory: category,
-        breadcrumbs: [...prev.breadcrumbs, category]
-      }));
-    } else {
-      // Если нет подкатегорий, показываем товары этой категории
-      setCategoryNavigation(prev => ({
-        currentCategory: category,
-        parentCategory: prev.parentCategory,
-        breadcrumbs: prev.breadcrumbs
-      }));
+  if (subcategories.length > 0) {
+    // Если есть подкатегории с товарами, переходим к ним
+    setCategoryNavigation(prev => ({
+      currentCategory: null,
+      parentCategory: category,
+      breadcrumbs: [...prev.breadcrumbs, category]
+    }));
+  } else {
+    // Если нет подкатегорий, показываем товары этой категории
+    setCategoryNavigation(prev => ({
+      currentCategory: category,
+      parentCategory: prev.parentCategory,
+      breadcrumbs: prev.breadcrumbs
+    }));
+  }
+};
+
+// Функция проверки наличия товаров в категории (включая подкатегории)
+const hasProductsInCategory = (categoryId: string): boolean => {
+  // Проверяем товары непосредственно в категории
+  const directProducts = products.filter(product => product.categoryId === categoryId);
+  if (directProducts.length > 0) return true;
+
+  // Проверяем подкатегории
+  const subcategories = categories.filter(cat => cat.parentId === categoryId);
+  
+  // Рекурсивно проверяем каждую подкатегорию
+  for (const subcategory of subcategories) {
+    if (hasProductsInCategory(subcategory.id)) {
+      return true;
     }
-  };
+  }
+
+  return false;
+};
+
+// Получаем категории для отображения (только те, в которых есть товары)
+const getDisplayCategories = () => {
+  let categoriesToDisplay: Category[] = [];
+
+  if (categoryNavigation.parentCategory) {
+    // Показываем подкатегории выбранной категории, в которых есть товары
+    categoriesToDisplay = categories.filter(cat => 
+      cat.parentId === categoryNavigation.parentCategory?.id && 
+      hasProductsInCategory(cat.id)
+    );
+  } else {
+    // Показываем корневые категории, в которых есть товары
+    categoriesToDisplay = categories.filter(cat => 
+      !cat.parentId && 
+      hasProductsInCategory(cat.id)
+    );
+  }
+
+  return categoriesToDisplay;
+};
+
+// Получаем товары для отображения
+const getDisplayProducts = () => {
+  if (categoryNavigation.currentCategory) {
+    // Показываем товары выбранной категории
+    return products.filter(product => product.categoryId === categoryNavigation.currentCategory?.id);
+  } else if (categoryNavigation.parentCategory) {
+    // Показываем все товары из всех подкатегорий родительской категории
+    const getAllSubcategoryIds = (categoryId: string): string[] => {
+      const subcategoryIds = categories
+        .filter(cat => cat.parentId === categoryId)
+        .map(cat => cat.id);
+      
+      let allIds = [categoryId]; // Включаем саму категорию
+      
+      // Рекурсивно получаем IDs всех вложенных подкатегорий
+      for (const subId of subcategoryIds) {
+        allIds = [...allIds, ...getAllSubcategoryIds(subId)];
+      }
+      
+      return allIds;
+    };
+
+    const allCategoryIds = getAllSubcategoryIds(categoryNavigation.parentCategory.id);
+    return products.filter(product => allCategoryIds.includes(product.categoryId));
+  } else {
+    // Показываем все товары
+    return products;
+  }
+};
 
   const handleBackToCategories = () => {
     if (categoryNavigation.breadcrumbs.length > 0) {
@@ -705,38 +789,6 @@ const orderRef = useRef<OrderResponse | null>(null);
       parentCategory: null,
       breadcrumbs: []
     });
-  };
-
-  // Получаем категории для отображения
-  const getDisplayCategories = () => {
-    if (categoryNavigation.parentCategory) {
-      // Показываем подкатегории выбранной категории
-      return categories.filter(cat => cat.parentId === categoryNavigation.parentCategory?.id);
-    } else {
-      // Показываем корневые категории
-      return categories.filter(cat => !cat.parentId);
-    }
-  };
-
-  // Получаем товары для отображения
-  const getDisplayProducts = () => {
-    if (categoryNavigation.currentCategory) {
-      // Показываем товары выбранной категории
-      return products.filter(product => product.categoryId === categoryNavigation.currentCategory?.id);
-    } else if (categoryNavigation.parentCategory) {
-      // Показываем все товары из всех подкатегорий родительской категории
-      const subcategoryIds = categories
-        .filter(cat => cat.parentId === categoryNavigation.parentCategory?.id)
-        .map(cat => cat.id);
-
-      return products.filter(product =>
-        subcategoryIds.includes(product.categoryId) ||
-        product.categoryId === categoryNavigation.parentCategory?.id
-      );
-    } else {
-      // Показываем все товары
-      return products;
-    }
   };
 
   const fetchDiscounts = async () => {
@@ -1678,7 +1730,20 @@ const getDisplayQuantity = (product: Product, additives: string[], comment: stri
       setIsUpdating(false);
     }
   };
+useEffect(() => {
+  if (searchQuery && !isSearching) {
+    focusSearchInput();
+  }
+}, [searchQuery, isSearching]);
 
+useEffect(() => {
+  if (showMenu) {
+    const timer = setTimeout(() => {
+      focusSearchInput();
+    }, 400);
+    return () => clearTimeout(timer);
+  }
+}, [showMenu]);
   useEffect(() => {
     if (!orderId) {
       setError('Order ID is missing');
@@ -1721,6 +1786,187 @@ const getDisplayQuantity = (product: Product, additives: string[], comment: stri
 
     return <Badge variant={variant} className="text-xs">{text}</Badge>;
   };
+
+const SearchInput = () => {
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsSearching(false);
+    focusSearchInput();
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+    
+    if (!query.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    
+    // Используем debounce для поиска
+    const timeoutId = setTimeout(() => {
+      const filtered = products.filter(product =>
+        product.title.toLowerCase().includes(query.toLowerCase())
+      );
+      
+      setSearchResults(filtered);
+      setIsSearching(false);
+    }, 300);
+
+    return () => clearTimeout(timeoutId);
+  };
+
+  return (
+    <div className="mb-6">
+      <div className="relative">
+        <Input
+          ref={searchInputRef}
+          type="text"
+          placeholder={language === 'ru' ? "Поиск продуктов..." : "პროდუქტების ძებნა..."}
+          value={searchQuery}
+          onChange={handleInputChange}
+          className="pl-10 pr-4 py-2 text-base"
+        />
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        {searchQuery && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+            onClick={handleClearSearch}
+            type="button"
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        )}
+      </div>
+      
+      {isSearching && (
+        <div className="flex justify-center py-4">
+          <Loader2 className="h-5 w-5 animate-spin" />
+        </div>
+      )}
+    </div>
+  );
+};
+
+  interface ProductCardProps {
+  product: Product;
+  additives: string[];
+  comment: string;
+  quantity: number;
+  onAdditivesChange: (additives: string[]) => void;
+  onQuantityChange: (quantity: number) => void;
+  isOrderEditable: boolean;
+  getProductPrice: (product: Product) => number;
+  t: any;
+  language: 'ru' | 'ka';
+}
+
+const ProductCard: React.FC<ProductCardProps> = ({
+  product,
+  additives,
+  comment,
+  quantity,
+  onAdditivesChange,
+  onQuantityChange,
+  isOrderEditable,
+  getProductPrice,
+  t,
+  language
+}) => {
+  return (
+    <div className="bg-card rounded-xl shadow-sm overflow-hidden border hover:shadow-md transition-shadow flex flex-col h-full">
+      <div className="relative aspect-square">
+        {product.images?.[0] ? (
+          <Image
+            src={product.images[0]}
+            alt={product.title}
+            width={300}
+            height={300}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full bg-muted flex items-center justify-center">
+            <Utensils className="h-12 w-12 text-muted-foreground" />
+          </div>
+        )}
+      </div>
+      <div className="p-4 flex flex-col flex-grow">
+        <div className="flex-grow">
+          <div className="mb-2">
+            <h3 className="font-semibold text-lg">
+              {product.title}
+            </h3>
+            <p className="text-lg font-bold text-green-600 dark:text-green-400">
+              {getProductPrice(product)} ₽
+            </p>
+          </div>
+
+          {product.additives && product.additives.length > 0 && (
+            <div className="mb-3">
+              <div className="text-sm font-medium text-muted-foreground mb-1">
+                {t.additives}
+              </div>
+              <SearchableSelect
+                options={product.additives.map(additive => ({
+                  id: additive.id,
+                  label: `${additive.title} (+${additive.price} ₽)`
+                }))}
+                value={additives}
+                onChange={onAdditivesChange}
+                placeholder={t.selectAdditives}
+                searchPlaceholder={t.searchAdditives}
+                emptyText={t.noAdditivesFound}
+                multiple={true}
+                disabled={!isOrderEditable}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="mt-auto">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => {
+                  const newQuantity = Math.max(0, quantity - 1)
+                  onQuantityChange(newQuantity)
+                }}
+                disabled={quantity === 0 || !isOrderEditable}
+              >
+                <Minus className="h-4 w-4" />
+              </Button>
+              <span className="font-medium w-8 text-center">{quantity}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => {
+                  const newQuantity = quantity + 1
+                  onQuantityChange(newQuantity)
+                }}
+                disabled={!isOrderEditable}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            <span className="text-lg font-bold">
+              {getProductPrice(product) * quantity} ₽
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
   const renderItemActions = (item: OrderItem) => {
     if (!order) return null;
@@ -2285,200 +2531,197 @@ const getDisplayQuantity = (product: Product, additives: string[], comment: stri
   };
 
   // Рендер карточек категорий с горизонтальной прокруткой
-  const renderCategoryCards = () => {
-    const displayCategories = getDisplayCategories();
+const renderCategoryCards = () => {
+  const displayCategories = getDisplayCategories();
+  const displayProducts = searchQuery ? searchResults : getDisplayProducts();
 
-    return (
-      <div className="space-y-4">
-        {/* Заголовок раздела */}
-        <div className="mb-4 text-center">
-          <h3 className="text-lg font-semibold">
-            {categoryNavigation.parentCategory
-              ? categoryNavigation.parentCategory.title
-              : categoryNavigation.currentCategory
-                ? categoryNavigation.currentCategory.title
-                : t.allCategories
-            }
-          </h3>
-        </div>
+  return (
+    <div className="space-y-4">
+      {/* Поиск */}
+      <SearchInput />
 
-        {/* Горизонтальная прокрутка категорий с кнопкой назад */}
-        {(displayCategories.length > 0 || categoryNavigation.parentCategory) && (
-          <div className="relative">
-            <div className="flex overflow-x-auto pb-4 scrollbar-hide gap-4 px-2">
-              {/* Кнопка назад - только если есть родительская категория */}
-              {(categoryNavigation.parentCategory || categoryNavigation.breadcrumbs.length > 0) && (
-                <Card
-                  className="flex-shrink-0 w-64 h-32 cursor-pointer hover:shadow-lg transition-shadow duration-200 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30"
-                  onClick={handleBackToCategories}
-                >
-                  <div className="p-4 h-full flex flex-col justify-between">
-                    <div className="text-center">
-                      <h4 className="font-semibold text-lg text-blue-600 dark:text-blue-400">
-                        {t.backToCategories}
-                      </h4>
-                    </div>
-                    <div className="flex justify-center">
-                      <ChevronLeft className="h-4 w-4 text-blue-400" />
-                    </div>
-                  </div>
-                </Card>
-              )}
+      {/* Показываем результаты поиска */}
+      {searchQuery && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">
+              {language === 'ru' ? 'Результаты поиска' : 'ძებნის შედეგები'} 
+              {searchResults.length > 0 && ` (${searchResults.length})`}
+            </h3>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSearchQuery('');
+                setSearchResults([]);
+              }}
+            >
+              {language === 'ru' ? 'Очистить поиск' : 'ძებნის გასუფთავება'}
+            </Button>
+          </div>
 
-              {/* Карточки категорий */}
-              {displayCategories.map((category) => {
-                return (
-                  <Card
-                    key={category.id}
-                    className="flex-shrink-0 w-64 h-32 cursor-pointer hover:shadow-lg transition-shadow duration-200"
-                    onClick={() => handleCategoryClick(category)}
-                  >
-                    <div className="p-4 h-full flex flex-col justify-between">
-                      <div className="text-center">
-                        <h4 className="font-semibold text-lg mb-2">{category.title}</h4>
-                      </div>
-                      <div className="flex justify-center">
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })}
+          {searchResults.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              {language === 'ru' ? 'Продукты не найдены' : 'პროდუქტები ვერ მოიძებნა'}
             </div>
-          </div>
-        )}
-
-        {/* Сообщение когда нет категорий */}
-        {displayCategories.length === 0 && !categoryNavigation.parentCategory && (
-          <div className="text-center py-8 text-muted-foreground">
-            {t.noSubcategories}
-          </div>
-        )}
-
-        {/* Товары отображаются ТОЛЬКО когда выбрана конкретная категория */}
-        {categoryNavigation.currentCategory && getDisplayProducts().length > 0 && (
-          <div className="mt-8">
-            <h4 className="text-lg font-semibold mb-4 text-center">
-              {categoryNavigation.currentCategory.title}
-            </h4>
-
+          ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {getDisplayProducts().map((product) => {
+              {searchResults.map((product) => {
                 const additives = productAdditives[product.id] || []
                 const comment = productComments[product.id] || ''
                 const quantity = getDisplayQuantity(product, additives, comment)
 
                 return (
-                  <div key={product.id} className="bg-card rounded-xl shadow-sm overflow-hidden border hover:shadow-md transition-shadow flex flex-col h-full">
-                    <div className="relative aspect-square">
-                      {product.images?.[0] ? (
-                        <Image
-                          src={product.images[0]}
-                          alt={product.title}
-                          width={300}
-                          height={300}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-muted flex items-center justify-center">
-                          <Utensils className="h-12 w-12 text-muted-foreground" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-4 flex flex-col flex-grow">
-                      <div className="flex-grow">
-                        <div className="mb-2">
-                          <h3 className="font-semibold text-lg">
-                            {product.title}
-                          </h3>
-                          <p className="text-lg font-bold text-green-600 dark:text-green-400">
-                            {getProductPrice(product)} ₽
-                          </p>
-                        </div>
-
-                        {product.additives && product.additives.length > 0 && (
-                          <div className="mb-3">
-                            <div className="text-sm font-medium text-muted-foreground mb-1">
-                              {t.additives}
-                            </div>
-                            <SearchableSelect
-                              options={product.additives.map(additive => ({
-                                id: additive.id,
-                                label: `${additive.title} (+${additive.price} ₽)`
-                              }))}
-                              value={additives}
-                              onChange={(newAdditives) => {
-                                handleAdditivesChange(product.id, newAdditives)
-                                if (quantity > 0) {
-                                  handleQuantityChange(
-                                    product,
-                                    quantity,
-                                    newAdditives,
-                                    comment
-                                  )
-                                }
-                              }}
-                              placeholder={t.selectAdditives}
-                              searchPlaceholder={t.searchAdditives}
-                              emptyText={t.noAdditivesFound}
-                              multiple={true}
-                              disabled={!isOrderEditable}
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="mt-auto">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              onClick={() => {
-                                const newQuantity = Math.max(0, quantity - 1)
-                                handleQuantityChange(product, newQuantity, additives, comment)
-                              }}
-                              disabled={quantity === 0 || !isOrderEditable || order?.attentionFlags?.isPrecheck}
-                            >
-                              <Minus className="h-4 w-4" />
-                            </Button>
-                            <span className="font-medium w-8 text-center">{quantity}</span>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 w-8 p-0"
-                              onClick={() => {
-                                const newQuantity = quantity + 1
-                                handleQuantityChange(product, newQuantity, additives, comment)
-                              }}
-                              disabled={!isOrderEditable}
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          <span className="text-lg font-bold">
-                            {getProductPrice(product) * quantity} ₽
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    additives={additives}
+                    comment={comment}
+                    quantity={quantity}
+                    onAdditivesChange={(newAdditives) => {
+                      handleAdditivesChange(product.id, newAdditives)
+                      if (quantity > 0) {
+                        handleQuantityChange(product, quantity, newAdditives, comment)
+                      }
+                    }}
+                    onQuantityChange={(newQuantity) => 
+                      handleQuantityChange(product, newQuantity, additives, comment)
+                    }
+                    isOrderEditable={isOrderEditable!}
+                    getProductPrice={getProductPrice}
+                    t={t}
+                    language={language}
+                  />
                 );
               })}
             </div>
-          </div>
-        )}
+          )}
+        </div>
+      )}
 
-        {/* Сообщение когда выбрана категория но нет товаров */}
-        {categoryNavigation.currentCategory && getDisplayProducts().length === 0 && (
-          <div className="text-center py-8 text-muted-foreground">
-            {t.noProductsFound}
+      {/* Обычное отображение категорий (только если нет поиска) */}
+      {!searchQuery && (
+        <>
+          {/* Заголовок раздела */}
+          <div className="mb-4 text-center">
+            <h3 className="text-lg font-semibold">
+              {categoryNavigation.parentCategory
+                ? categoryNavigation.parentCategory.title
+                : categoryNavigation.currentCategory
+                  ? categoryNavigation.currentCategory.title
+                  : t.allCategories
+              }
+            </h3>
           </div>
-        )}
-      </div>
-    );
-  };
+
+          {/* Горизонтальная прокрутка категорий */}
+          {(displayCategories.length > 0 || categoryNavigation.parentCategory) && (
+            <div className="relative">
+              <div className="flex overflow-x-auto pb-4 scrollbar-hide gap-4 px-2">
+                {/* Кнопка назад */}
+                {(categoryNavigation.parentCategory || categoryNavigation.breadcrumbs.length > 0) && (
+                  <Card
+                    className="flex-shrink-0 w-64 h-32 cursor-pointer hover:shadow-lg transition-shadow duration-200 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30"
+                    onClick={handleBackToCategories}
+                  >
+                    <div className="p-4 h-full flex flex-col justify-between">
+                      <div className="text-center">
+                        <h4 className="font-semibold text-lg text-blue-600 dark:text-blue-400">
+                          {t.backToCategories}
+                        </h4>
+                      </div>
+                      <div className="flex justify-center">
+                        <ChevronLeft className="h-4 w-4 text-blue-400" />
+                      </div>
+                    </div>
+                  </Card>
+                )}
+
+                {/* Карточки категорий */}
+                {displayCategories.map((category) => {
+                  const productsInCategory = getDisplayProducts().filter(
+                    product => product.categoryId === category.id
+                  );
+                  
+                  return (
+                    <Card
+                      key={category.id}
+                      className="flex-shrink-0 w-64 h-32 cursor-pointer hover:shadow-lg transition-shadow duration-200"
+                      onClick={() => handleCategoryClick(category)}
+                    >
+                      <div className="p-4 h-full flex flex-col justify-between">
+                        <div className="text-center">
+                          <h4 className="font-semibold text-lg mb-2">{category.title}</h4>
+                        </div>
+                        <div className="flex justify-center">
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Сообщение когда нет категорий с товарами */}
+          {displayCategories.length === 0 && !categoryNavigation.parentCategory && (
+            <div className="text-center py-8 text-muted-foreground">
+              {t.noProductsFound}
+            </div>
+          )}
+
+          {/* Товары отображаются ТОЛЬКО когда выбрана конкретная категория */}
+          {categoryNavigation.currentCategory && displayProducts.length > 0 && (
+            <div className="mt-8">
+              <h4 className="text-lg font-semibold mb-4 text-center">
+                {categoryNavigation.currentCategory.title}
+              </h4>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {displayProducts.map((product) => {
+                  const additives = productAdditives[product.id] || []
+                  const comment = productComments[product.id] || ''
+                  const quantity = getDisplayQuantity(product, additives, comment)
+
+                  return (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      additives={additives}
+                      comment={comment}
+                      quantity={quantity}
+                      onAdditivesChange={(newAdditives) => {
+                        handleAdditivesChange(product.id, newAdditives)
+                        if (quantity > 0) {
+                          handleQuantityChange(product, quantity, newAdditives, comment)
+                        }
+                      }}
+                      onQuantityChange={(newQuantity) => 
+                        handleQuantityChange(product, newQuantity, additives, comment)
+                      }
+                      isOrderEditable={isOrderEditable!}
+                      getProductPrice={getProductPrice}
+                      t={t}
+                      language={language}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Сообщение когда выбрана категория но нет товаров */}
+          {categoryNavigation.currentCategory && displayProducts.length === 0 && (
+            <div className="text-center py-8 text-muted-foreground">
+              {t.noProductsFound}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
 
   if (loading) {
     return (
@@ -2506,7 +2749,8 @@ const getDisplayQuantity = (product: Product, additives: string[], comment: stri
         <Button onClick={() => router.push('/orders')}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           {t.back}
-        </Button>
+        </Button>\
+        
       </div>
     );
   }
@@ -2559,7 +2803,14 @@ const getDisplayQuantity = (product: Product, additives: string[], comment: stri
           >
             <ArrowLeft className="h-4 w-4" />
             {t.back}
-          </Button>
+          </Button><Button
+      variant="outline"
+      size="sm"
+      onClick={focusSearchInput}
+      className="text-xs"
+    >
+      🔍 Фокус
+    </Button>
 
           <div className="flex items-center gap-3">
 
@@ -2600,7 +2851,20 @@ const getDisplayQuantity = (product: Product, additives: string[], comment: stri
         <OrderHeader order={order} />
 
         <Card className="p-0">
-          <Collapsible open={showMenu} onOpenChange={setShowMenu}>
+          <Collapsible 
+            open={showMenu} 
+            onOpenChange={(open) => {
+              setShowMenu(open);
+              if (open) {
+                // Автофокус при открытии меню
+                setTimeout(() => {
+                  if (searchInputRef.current) {
+                    searchInputRef.current.focus();
+                  }
+                }, 100);
+              }
+            }}
+          >
             <CollapsibleTrigger asChild>
               <div className="p-4 hover:bg-muted/50 cursor-pointer">
                 <div className="flex items-center justify-between">
@@ -3250,3 +3514,5 @@ const getDisplayQuantity = (product: Product, additives: string[], comment: stri
     </AccessCheck>
   );
 }
+
+

@@ -287,6 +287,13 @@ useEffect(() => {
     return () => clearInterval(interval);
   }, [selectedRestaurantId, selectedRestaurant, isRestaurantOpen, language]);
 
+
+   useEffect(() => {
+      if (selectedRestaurantId) {
+        localStorage.setItem(RESTAURANT_STORAGE_KEY, selectedRestaurantId)
+      }
+    }, [selectedRestaurantId])
+    
     useEffect(() => {
       if (selectedRestaurantId && selectedRestaurant) {
         const newStatus = isRestaurantOpen(selectedRestaurant, language);
