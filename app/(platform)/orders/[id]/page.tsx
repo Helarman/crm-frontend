@@ -143,8 +143,8 @@ export default function WaiterOrderPage() {
       exitConfirmTitle: "Подтверждение выхода",
       exitConfirmMessage: "Заказ еще не подтвержден. Вы уверены, что хотите уйти? Неподтвержденные заказы могут быть потеряны.",
       exitConfirmLeave: "Уйти",
-      precheckFormed: "Пречек сформирован",
-      formPrecheck: "Сформировать пречек",
+      precheckFormed: "Пречек",
+      formPrecheck: "Пречек",
       refundItem: "Вернуть блюдо",
       refundReason: "Причина возврата",
       confirmRefund: "Подтвердить возврат",
@@ -936,42 +936,48 @@ const getDisplayProducts = () => {
     }
   };
 
-  const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => {
-    if (!order || newQuantity < 0) return;
+const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => {
+  if (!order || newQuantity < 0 || !isOrderEditable) return;
+  
+  // Явная проверка что можно редактировать только CREATED items
+  if (item.status !== OrderItemStatus.CREATED) {
+    toast.error(language === 'ru' 
+      ? 'Можно изменять только неподтвержденные позиции' 
+      : 'მხოლოდ დაუდასტურებელი პოზიციების შეცვლა შეიძლება');
+    return;
+  }
 
-    try {
-      setIsUpdating(true);
+  try {
+    setIsUpdating(true);
 
-      if (newQuantity === 0) {
-        await OrderService.removeItemFromOrder(order.id, item.id);
-      } else {
-        await OrderService.updateOrderItemQuantity(
-          order.id,
-          item.id,
-          newQuantity,
-          user?.id
-        );
-      }
-
-      const updatedOrder = await OrderService.getById(order.id);
-      setOrder(updatedOrder);
-
+    if (newQuantity === 0) {
+      await OrderService.removeItemFromOrder(order.id, item.id);
+      await createOrderLog(`${t.logs.itemRemoved}: ${item.product.title}`);
+    } else {
+      await OrderService.updateOrderItemQuantity(
+        order.id,
+        item.id,
+        newQuantity,
+        user?.id
+      );
       await createOrderLog(
-        newQuantity === 0
-          ? `${t.logs.itemRemoved}: ${item.product.title}`
-          : `${language === 'ru' ? 'Изменено количество' : 'რაოდენობა შეიცვალა'}: ${item.product.title} → ${newQuantity}`
+        `${language === 'ru' ? 'Изменено количество' : 'რაოდენობა შეიცვალა'}: ${item.product.title} → ${newQuantity}`
       );
-
-    } catch (error) {
-      toast.error(
-        language === 'ru'
-          ? 'Ошибка изменения количества'
-          : 'რაოდენობის შეცვლის შეცდომა'
-      );
-    } finally {
-      setIsUpdating(false);
     }
-  };
+
+    const updatedOrder = await OrderService.getById(order.id);
+    setOrder(updatedOrder);
+
+  } catch (error) {
+    toast.error(
+      language === 'ru'
+        ? 'Ошибка изменения количества'
+        : 'რაოდენობის შეცვლის შეცდომა'
+    );
+  } finally {
+    setIsUpdating(false);
+  }
+};
 
   const handleRouteChange = (path: string) => {
     if (order?.status === 'CREATED') {
@@ -1060,7 +1066,7 @@ const getDisplayProducts = () => {
 
   const confirmCompleteOrder = async () => {
     if (!order) return;
-    
+    if (!order.attentionFlags.isPrecheck) return;
     try {
       setIsUpdating(true);
       
@@ -1073,7 +1079,7 @@ const getDisplayProducts = () => {
         }
         currentShiftId = shiftId;
       }
-
+  
       // Привязываем заказ к смене
       if (currentShiftId) {
         await assignOrderToShift(order.id, currentShiftId);
@@ -1146,6 +1152,7 @@ const getDisplayProducts = () => {
 
   const handleCancelOrder = () => {
     setShowCancelDialog(true);
+    
   };
 
   const confirmCancelOrder = async () => {
@@ -1159,6 +1166,7 @@ const getDisplayProducts = () => {
 
       toast.success(language === 'ru' ? 'Заказ отменен' : 'შეკვეთა გაუქმებულია');
       setShowCancelDialog(false);
+      router.push('/orders')
     } catch (error) {
       toast.error(language === 'ru'
         ? 'Ошибка отмены заказа'
@@ -1998,7 +2006,6 @@ const ProductCard: React.FC<ProductCardProps> = ({
                 size="sm"
                 className="h-6 w-6 p-0"
                 onClick={() => handleQuantitItemChange(item, item.quantity - 1)}
-                disabled={item.quantity <= 1}
               >
                 <Minus className="h-3 w-3" />
               </Button>
@@ -3153,7 +3160,7 @@ const renderCategoryCards = () => {
 
                      {(order.status === 'READY' || order.status === 'DELIVERING') && (
                       <Button
-                          disabled={isUpdating || shiftLoading}
+                          disabled={isUpdating || shiftLoading || !order.attentionFlags.isPrecheck}
                           onClick={handleCalculateOrder}
                           variant="secondary"
                           className="bg-emerald-500 hover:bg-emerald-400 text-white gap-2 w-full text-lg h-14"
