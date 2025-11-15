@@ -8,12 +8,13 @@ import { toast } from 'sonner';
 interface ShiftActionsProps {
   shiftId: string;
   currentStatus: 'PLANNED' | 'STARTED' | 'COMPLETED';
+  onShiftUpdate?: () => void;
 }
 
-export function ShiftActions({ shiftId, currentStatus }: ShiftActionsProps) {
+export function ShiftActions({ shiftId, currentStatus, onShiftUpdate  }: ShiftActionsProps) {
   const router = useRouter();
 
-  const handleStatusChange = async (newStatus: 'STARTED' | 'COMPLETED') => {
+ const handleStatusChange = async (newStatus: 'STARTED' | 'COMPLETED') => {
     try {
       await ShiftService.updateShiftStatus(shiftId, { status: newStatus });
       toast.success(
@@ -21,6 +22,10 @@ export function ShiftActions({ shiftId, currentStatus }: ShiftActionsProps) {
           ? 'Смена успешно начата' 
           : 'Смена успешно завершена'
       );
+      
+      // Вызываем callback для обновления данных
+      onShiftUpdate?.();
+      
     } catch (error) {
       toast.error(
         newStatus === 'STARTED' 
@@ -28,9 +33,7 @@ export function ShiftActions({ shiftId, currentStatus }: ShiftActionsProps) {
           : 'Ошибка при завершении смены'
       );
     }
-    router.push(`/shifts/${shiftId}`);
   };
-
   return (
     <div className="flex gap-2 justify-end">
       {currentStatus === 'PLANNED' && (

@@ -8,15 +8,23 @@ export const useShifts = (params?: {
   page?: number;
   limit?: number;
 }) => {
-  return useSWR(
+  const { data, error, isLoading, mutate } = useSWR(
     ['shifts', params],
     ([, params]) => ShiftService.getAllShifts(params || {}),
     {
       revalidateOnFocus: false,
       shouldRetryOnError: false,
+      revalidateOnMount: true,
       onError: (err) => console.error('Error in useShifts:', err)
     }
   );
+
+  return {
+    data,
+    error,
+    isLoading,
+    mutate
+  };
 };
 
 export const useShift = (id: string) => {

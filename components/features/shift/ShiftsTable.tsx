@@ -14,12 +14,15 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { ShiftActions } from './ShiftActions';
 import { useLanguageStore } from '@/lib/stores/language-store';
+import { useEffect, useRef } from 'react';
+
 type ShiftStatus = 'PLANNED' | 'STARTED' | 'COMPLETED'
 
 interface Shift {
   id: string
   status: ShiftStatus
   startTime: string
+  endTime?: string
 }
 
 const statusOrder = {
@@ -56,12 +59,84 @@ interface ShiftsTableProps {
   shifts: any[];
   isLoading: boolean;
   error?: Error;
+  onShiftUpdate?: () => void;
 }
 
-export function ShiftsTable({ shifts, isLoading, error }: ShiftsTableProps) {
+export function ShiftsTable({ shifts, isLoading, error, onShiftUpdate }: ShiftsTableProps) {
   const { language } = useLanguageStore();
   const t = translations[language];
   const locale = language === 'ka' ? ka : ru;
+  
+  // Ref для хранения предыдущего состояния смен
+  const previousShiftsRef = useRef<Shift[]>([]);
+  const checkIntervalRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  
+  // Функция для проверки совпадения endTime с текущим временем
+  const checkForEndTimeMatch = (currentShifts: Shift[]) => {
+    const now = new Date();
+    const currentTime = now.getTime();
+    
+    // Проверяем каждую смену
+    const hasEndTimeMatch = currentShifts.some(shift => {
+      if (!shift.endTime || shift.status === 'COMPLETED') return false;
+      
+      try {
+        const endTime = new Date(shift.endTime).getTime();
+        // Проверяем совпадение в пределах 1 минуты (60000 мс)
+        const timeDiff = Math.abs(endTime - currentTime);
+        return timeDiff <= 60000;
+      } catch (error) {
+        console.error('Error parsing endTime:', error);
+        return false;
+      }
+    });
+
+    return hasEndTimeMatch;
+  };
+
+  // Эффект для отслеживания изменений в сменах и автоматического обновления
+  useEffect(() => {
+    if (!onShiftUpdate || shifts.length === 0) return;
+
+    const currentShifts = shifts as Shift[];
+    const previousShifts = previousShiftsRef.current;
+
+    // Проверяем, есть ли новые совпадения по endTime
+    const hasNewEndTimeMatch = checkForEndTimeMatch(currentShifts);
+    
+    // Если нашли совпадение и смены изменились, вызываем обновление
+    if (hasNewEndTimeMatch && JSON.stringify(currentShifts) !== JSON.stringify(previousShifts)) {
+      console.log('Auto-updating shifts due to endTime match');
+      onShiftUpdate();
+    }
+
+    // Обновляем предыдущее состояние
+    previousShiftsRef.current = currentShifts;
+  }, [shifts, onShiftUpdate]);
+
+  // Эффект для периодической проверки endTime
+  useEffect(() => {
+    if (!onShiftUpdate) return;
+
+    // Запускаем проверку каждые 30 секунд
+    checkIntervalRef.current = setInterval(() => {
+      const currentShifts = shifts as Shift[];
+      if (currentShifts.length === 0) return;
+
+      const hasEndTimeMatch = checkForEndTimeMatch(currentShifts);
+      if (hasEndTimeMatch) {
+        console.log('Periodic check: endTime match found, updating shifts');
+        onShiftUpdate();
+      }
+    }, 30000); // Проверка каждые 30 секунд
+
+    // Очистка интервала при размонтировании
+    return () => {
+      if (checkIntervalRef.current) {
+        clearInterval(checkIntervalRef.current);
+      }
+    };
+  }, [shifts, onShiftUpdate]);
 
   if (error) {
     return <div className="text-red-500">{t.loadingError} {error.message}</div>;
@@ -121,7 +196,11 @@ export function ShiftsTable({ shifts, isLoading, error }: ShiftsTableProps) {
                 <TableCell>{shift.users?.length || 0}</TableCell>
                 <TableCell>{shift.orders.length}</TableCell>
                 <TableCell>
-                  <ShiftActions shiftId={shift.id} currentStatus={shift.status} />
+                  <ShiftActions 
+                    shiftId={shift.id} 
+                    currentStatus={shift.status}
+                    onShiftUpdate={onShiftUpdate}
+                  />
                 </TableCell>
               </TableRow>
             ))

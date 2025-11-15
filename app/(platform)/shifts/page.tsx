@@ -1,3 +1,4 @@
+// components/features/shift/ShiftsPage (ваш текущий файл)
 'use client';
 
 import { ShiftsTable } from '@/components/features/shift/ShiftsTable';
@@ -9,20 +10,25 @@ import { AccessCheck } from '@/components/AccessCheck';
 
 export default function ShiftsPage() {
   const [filters, setFilters] = useState({});
-  const { data, error, isLoading } = useShifts(filters);
+  const { data, error, isLoading, mutate } = useShifts(filters);
+
+  const refreshShifts = () => {
+    mutate();
+  };
 
   return (
     <AccessCheck allowedRoles={['MANAGER', 'SUPERVISOR']}>
-      <div >
+      <div>
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">Управление сменами</h1>
-          <CreateShiftButton />
+          <CreateShiftButton onShiftCreated={refreshShifts} />
         </div>
         <ShiftsFilters onFilterChange={setFilters} />
         <ShiftsTable
           shifts={data?.data || []}
           isLoading={isLoading}
           error={error}
+          onShiftUpdate={refreshShifts} 
         />
       </div>
     </AccessCheck>

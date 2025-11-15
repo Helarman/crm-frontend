@@ -23,6 +23,7 @@ import { RestaurantDto } from '@/lib/api/order.service';
 interface CreateShiftDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onShiftCreated?: () => void;
 }
 
 interface RestaurantUser {
@@ -72,7 +73,7 @@ const translations = {
   }
 };
 
-export function CreateShiftDialog({ open, onOpenChange }: CreateShiftDialogProps) {
+export function CreateShiftDialog({ open, onOpenChange, onShiftCreated }: CreateShiftDialogProps) {
   const { language } = useLanguageStore();
   const t = translations[language]
 
@@ -179,7 +180,7 @@ export function CreateShiftDialog({ open, onOpenChange }: CreateShiftDialogProps
         );
       }
       
-      mutate();
+       onShiftCreated?.();
       onOpenChange(false);
       toast.success(t.shiftCreated);
     } catch (error) {

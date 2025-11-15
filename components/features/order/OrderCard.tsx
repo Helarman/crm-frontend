@@ -11,7 +11,7 @@ import { Language, useLanguageStore } from '@/lib/stores/language-store'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { Button } from '@/components/ui/button'
-import { ChevronDown, Check, Clock, Package, AlertCircle, Tag, Gift, ArrowLeft, Wifi, WifiOff } from 'lucide-react'
+import { ChevronDown, Check, Clock, Package, AlertCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/hooks/useAuth'
@@ -143,7 +143,7 @@ type WarningMessage = {
 
 export function OrderCard({ order, variant, onStatusChange, className, selectedRestaurantId }: {
   order: OrderResponse
-  variant?: 'default' | 'kitchen' | 'delivery'
+  variant?: 'default' | 'kitchen' | 'delivery' | 'compact'
   onStatusChange?: (updatedOrder: OrderResponse) => void
   className?: string
   selectedRestaurantId?: string
@@ -660,18 +660,19 @@ const loadWarehouseData = async () => {
 }
   return (
     <div>
-      <Card 
-        className={cn(
-          "flex flex-col h-full relative overflow-hidden min-h-[280px]",
+        <Card 
+          className={cn(
+          "flex flex-col h-full relative overflow-hidden",
           "border-l-4 cursor-pointer transition-all hover:shadow-md",
           currentStatusStyle.border,
           currentStatusStyle.bg,
+          variant === 'compact' ? "min-h-[180px]" : "min-h-[280px]",
           className
         )}
         onClick={handleCardClick}
       >
         
-
+        
         <div className="absolute top-0 left-0 w-full h-1" />
         <div className="flex flex-col flex-grow">
           <OrderHeader order={order} compact={variant === 'kitchen'} />

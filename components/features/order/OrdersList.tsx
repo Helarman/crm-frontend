@@ -21,7 +21,7 @@ import { useRouter } from 'next/navigation'
 import useSWRMutation from 'swr/mutation'
 import { Restaurant } from '../staff/StaffTable'
 import { Button } from '@/components/ui/button'
-import { Utensils, ShoppingBag, Truck, GlassWater, Archive, Calendar, Filter, X, Clock, AlertTriangle } from 'lucide-react'
+import { Utensils, ShoppingBag, Truck, GlassWater, Archive, Calendar, Filter, X, Clock, AlertTriangle, List, Grid2X2, Grid3X3, Square } from 'lucide-react'
 import { useLanguageStore } from '@/lib/stores/language-store'
 import Loading from '../Loading'
 import { DateRange } from 'react-day-picker'
@@ -184,7 +184,41 @@ const translations = {
   }
 }
 
+const DISPLAY_MODES = [
+  {
+    value: 'comfortable',
+    label: {
+      ru: 'Комфортный',
+      ka: 'კომფორტული'
+    },
+    icon: Square,
+    gridClass: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+    cardVariant: 'default' as const
+  },
+  {
+    value: 'compact',
+    label: {
+      ru: 'Компактный',
+      ka: 'კომპაქტური'
+    },
+    icon: Grid2X2,
+    gridClass: 'grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+    cardVariant: 'compact' as const
+  },
+  {
+    value: 'dense',
+    label: {
+      ru: 'Плотный',
+      ka: 'მჭიდრო'
+    },
+    icon: List,
+    gridClass: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+    cardVariant: 'compact' as const
+  }
+]
+
 const RESTAURANT_STORAGE_KEY = 'selectedRestaurantId';
+const DISPLAY_MODE_STORAGE_KEY = 'ordersDisplayMode';
 
 // Функция для создания безопасной копии заказа
 const createSafeOrder = (order: OrderResponse) => {
@@ -225,7 +259,22 @@ export function OrdersList() {
   const [hasDiscount, setHasDiscount] = useState<boolean | undefined>()
   const [discountCanceled, setDiscountCanceled] = useState<boolean | undefined>()
   const [isRefund, setIsRefund] = useState<boolean | undefined>()
-  
+  const [displayMode, setDisplayMode] = useState<string>('comfortable')
+
+  useEffect(() => {
+    const savedDisplayMode = localStorage.getItem(DISPLAY_MODE_STORAGE_KEY)
+    if (savedDisplayMode && DISPLAY_MODES.some(mode => mode.value === savedDisplayMode)) {
+      setDisplayMode(savedDisplayMode)
+    }
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem(DISPLAY_MODE_STORAGE_KEY, displayMode)
+  }, [displayMode])
+
+  const currentDisplayMode = DISPLAY_MODES.find(mode => mode.value === displayMode) || DISPLAY_MODES[0]
+
+
   useEffect(() => {
       if (!selectedRestaurantId || !selectedRestaurant) {
         setRestaurantStatus(null);
@@ -603,24 +652,51 @@ useEffect(() => {
         {/* Заголовок и основные кнопки */}
         <div className="flex flex-col gap-4">
           {/* Первая строка: заголовок и кнопки архив/новый заказ */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div className="flex items-center gap-4">
-              <h2 className="text-2xl font-bold">
-                {showArchive ? t('ordersList') : t('recentOrders')}
-              </h2>
-              
-              {/* Индикатор подключения WebSocket (только для активных заказов) */}
-              {!showArchive && (
-                <div className={`flex items-center gap-2 ${isConnected ? 'text-green-500' : 'text-gray-500'}`}>
-                  <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
-                  <span className="text-sm">
-                    {selectedRestaurantId 
-                      ? (isConnected ? 'Подключено' : 'Подключение...') 
-                      : 'Выберите ресторан'
-                    }
-                  </span>
+          <div className="flex flex-col sm:flex-row  items-start sm:items-center gap-4">
+            <div className="flex items-center justify-between gap-4 w-full">
+              <div className='flex gap-4 '>
+                <h2 className="text-2xl font-bold">
+                  {showArchive ? t('ordersList') : t('recentOrders')}
+                </h2>
+                
+                
+                  {/* Индикатор подключения WebSocket (только для активных заказов) */}
+                  {!showArchive && (
+                    <div className={`flex items-center gap-2 ${isConnected ? 'text-green-500' : 'text-gray-500'}`}>
+                      <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+                      <span className="text-sm">
+                        {selectedRestaurantId 
+                          ? (isConnected ? 'Подключено' : 'Подключение...') 
+                          : 'Выберите ресторан'
+                        }
+                      </span>
+                    </div>
+                  )}
                 </div>
-              )}
+                <div className=" sm:hidden flex gap-2 justify-center">
+                  <div className="flex border rounded-lg p-1 bg-muted/50">
+                  {DISPLAY_MODES.map((mode) => {
+                    const Icon = mode.icon
+                    const isActive = displayMode === mode.value
+                    
+                    return (
+                      <Button
+                        key={mode.value}
+                        variant={isActive ? "default" : "ghost"}
+                        size="sm"
+                        className={cn(
+                          "flex items-center gap-2 px-3",
+                          isActive && "shadow-sm"
+                        )}
+                        onClick={() => setDisplayMode(mode.value)}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </Button>
+                    )
+                  })}
+                </div>
+            </div>
+
             </div>
 
             <div className="flex flex-wrap gap-2 w-full sm:w-auto items-center justify-center">
@@ -705,7 +781,7 @@ useEffect(() => {
             </div>
           </div>
         </div>
-
+              
         {/* Фильтры архива */}
         {showArchive && (
           <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 p-4 bg-muted/50 rounded-lg">
@@ -785,16 +861,17 @@ useEffect(() => {
         </Card>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+           <div className={`grid ${currentDisplayMode.gridClass} gap-4`}>
             {sortedOrders.map(order => (
               <div
                 key={order.id}
                 className="cursor-pointer transition-transform hover:scale-[1.02]"
               >
                 <OrderCard
-                  variant='default'
+                  variant={currentDisplayMode.cardVariant}
                   order={order as any}
                   onStatusChange={handleStatusChange}
+                  selectedRestaurantId={selectedRestaurantId}
                 />
               </div>
             ))}
