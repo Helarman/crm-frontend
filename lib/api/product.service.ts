@@ -233,65 +233,63 @@ export const ProductService = {
     const { data } = await api.get(`/products/category/${categoryId}/order-stats`);
     return data;
   },
-
-  // Вспомогательные методы для работы с порядком
-  moveProductUp: async (productId: string, currentCategoryId: string) => {
-    const stats = await ProductService.getCategoryOrderStats(currentCategoryId);
-    const product = await ProductService.getById(productId);
-
-    if (product.sortOrder < stats.maxOrder) {
-      return ProductService.updateSortOrder(productId, product.sortOrder + 1);
-    }
-    return product;
+  async updateProductOrder(productId: string, newOrder: number, categoryId: string) {
+    const response = await api.patch(`/products/order/admin/${productId}`, {
+      newOrder,
+      categoryId
+    });
+    return response.data;
   },
 
-  moveProductDown: async (productId: string, currentCategoryId: string) => {
-    const stats = await ProductService.getCategoryOrderStats(currentCategoryId);
-    const product = await ProductService.getById(productId);
-
-    if (product.sortOrder > stats.minOrder) {
-      return ProductService.updateSortOrder(productId, product.sortOrder - 1);
-    }
-    return product;
+  async updateClientProductOrder(productId: string, newOrder: number, categoryId: string) {
+    const response = await api.patch(`/products/order/client/${productId}`, {
+      newOrder,
+      categoryId
+    });
+    return response.data;
   },
 
-  moveProductToTop: async (productId: string, currentCategoryId: string) => {
-    const stats = await ProductService.getCategoryOrderStats(currentCategoryId);
-    return ProductService.updateSortOrder(productId, stats.maxOrder + 1);
+  async moveProductUp(productId: string, categoryId: string) {
+    const response = await api.post(`/products/order/admin/${productId}/move-up`, {
+      categoryId
+    });
+    return response.data;
   },
 
-  moveProductToBottom: async (productId: string, currentCategoryId: string) => {
-    const stats = await ProductService.getCategoryOrderStats(currentCategoryId);
-    return ProductService.updateSortOrder(productId, stats.minOrder - 1);
+  async moveProductDown(productId: string, categoryId: string) {
+    const response = await api.post(`/products/order/admin/${productId}/move-down`, {
+      categoryId
+    });
+    return response.data;
   },
 
-  updateClientSortOrder: async (id: string, clientSortOrder: number) => {
-    const { data } = await api.post(`/products/${id}/client-sort-order`, { clientSortOrder });
-    return data;
+  async moveProductUpOnClient(productId: string, categoryId: string) {
+    const response = await api.post(`/products/order/client/${productId}/move-up`, {
+      categoryId
+    });
+    return response.data;
   },
 
-  getCategoryClientOrderStats: async (categoryId: string) => {
-    const { data } = await api.get(`/products/category/${categoryId}/client-order-stats`);
-    return data;
+  async moveProductDownOnClient(productId: string, categoryId: string) {
+    const response = await api.post(`/products/order/client/${productId}/move-down`, {
+      categoryId
+    });
+    return response.data;
   },
 
-  moveProductUpOnClient: async (productId: string, currentCategoryId: string) => {
-    const stats = await ProductService.getCategoryClientOrderStats(currentCategoryId);
-    const product = await ProductService.getById(productId);
-
-    if (product.clientSortOrder < stats.maxOrder) {
-      return ProductService.updateClientSortOrder(productId, product.clientSortOrder + 1);
-    }
-    return product;
+  async getCategoryProducts(categoryId: string) {
+    const response = await api.get(`/products/order/category/${categoryId}`);
+    return response.data;
   },
 
-  moveProductDownOnClient: async (productId: string, currentCategoryId: string) => {
-    const stats = await ProductService.getCategoryClientOrderStats(currentCategoryId);
-    const product = await ProductService.getById(productId);
+  async normalizeAdminOrder(categoryId: string) {
+    const response = await api.post(`/products/order/admin/normalize/${categoryId}`);
+    return response.data;
+  },
 
-    if (product.clientSortOrder > stats.minOrder) {
-      return ProductService.updateClientSortOrder(productId, product.clientSortOrder - 1);
-    }
-    return product;
+  async normalizeClientOrder(categoryId: string) {
+    const response = await api.post(`/products/order/client/normalize/${categoryId}`);
+    return response.data;
   }
+
 };

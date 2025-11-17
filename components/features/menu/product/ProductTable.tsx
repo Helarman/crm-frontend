@@ -1,7 +1,7 @@
 // ProductTable.tsx
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Pencil, Trash2, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Pencil, Trash2, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Language } from '@/lib/stores/language-store';
 import {
@@ -22,6 +22,34 @@ import { useRouter } from 'next/navigation';
 import { Product } from '@/lib/types/product';
 import { Category } from '@/lib/types/order';
 import { useAuth } from '@/lib/hooks/useAuth';
+
+// Добавляем импорты для drag-and-drop
+import {
+  Dialog,
+  DialogContent,
+  DialogContentWide,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface CategoryRowProps {
   category: CategoryNode;
@@ -172,6 +200,34 @@ const translations = {
   uncategorized: {
     ru: 'Без категории',
     ka: 'კატეგორიის გარეშე'
+  },
+  manageAdminOrder: {
+    ru: 'Порядок',
+    ka: 'პანელის რიგი'
+  },
+  manageClientOrder: {
+    ru: 'Порядок',
+    ka: 'საიტის რიგი'
+  },
+  clientOrderUpdateError: {
+    ru: 'Ошибка изменения порядка на сайте',
+    ka: 'საიტის რიგის შეცვლის შეცდომა'
+  },
+  orderSaved: {
+    ru: 'Порядок сохранен',
+    ka: 'რიგი შენახულია'
+  },
+  dragAndDropHint: {
+    ru: 'Перетаскивайте элементы или используйте кнопки для изменения порядка',
+    ka: 'გადაათრიეთ ელემენტები ან გამოიყენეთ ღილაკები რიგის შესაცვლელად'
+  },
+  saveOrder: {
+    ru: 'Сохранить порядок',
+    ka: 'რიგის შენახვა'
+  },
+  saving: {
+    ru: 'Сохранение...',
+    ka: 'ინახება...'
   }
 };
 
@@ -190,6 +246,197 @@ interface CategoryNode {
   products: Product[];
   parentId: string | null;
 }
+
+// Sortable Item Component
+const SortableProductItem = ({ 
+  product, 
+  language, 
+  onMoveUp, 
+  onMoveDown, 
+  isFirst, 
+  isLast,
+  type
+}: { 
+  product: Product;
+  language: Language;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  isFirst: boolean;
+  isLast: boolean;
+  type: 'admin' | 'client';
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: product.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  const currentOrder = type === 'admin' ? product.sortOrder || 0 : product.clientSortOrder || 0;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-3 p-3 border rounded-lg bg-white mb-2"
+    >
+      <div {...attributes} {...listeners} className="cursor-grab flex items-center">
+        <GripVertical className="h-4 w-4 text-gray-400" />
+      </div>
+      <div className="flex-1">
+        <div className="font-medium">{product.title}</div>
+        <div className="text-sm text-gray-500">
+          Текущая позиция: {currentOrder}
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onMoveUp}
+          disabled={isFirst}
+        >
+          <ArrowUp className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onMoveDown}
+          disabled={isLast}
+        >
+          <ArrowDown className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+// Order Management Dialog Component
+const OrderManagementDialog = ({
+  isOpen,
+  onClose,
+  products,
+  language,
+  categoryTitle,
+  onSaveOrder,
+  type
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  products: Product[];
+  language: Language;
+  categoryTitle: string;
+  onSaveOrder: (reorderedProducts: Product[]) => Promise<void>;
+  type: 'admin' | 'client';
+}) => {
+  const [items, setItems] = useState<Product[]>(products);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (active.id !== over?.id && over) {
+      setItems((items) => {
+        const oldIndex = items.findIndex(item => item.id === active.id);
+        const newIndex = items.findIndex(item => item.id === over.id);
+
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
+
+  const handleMoveUp = (index: number) => {
+    if (index === 0) return;
+    setItems(items => {
+      const newItems = [...items];
+      [newItems[index - 1], newItems[index]] = [newItems[index], newItems[index - 1]];
+      return newItems;
+    });
+  };
+
+  const handleMoveDown = (index: number) => {
+    if (index === items.length - 1) return;
+    setItems(items => {
+      const newItems = [...items];
+      [newItems[index], newItems[index + 1]] = [newItems[index + 1], newItems[index]];
+      return newItems;
+    });
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await onSaveOrder(items);
+      toast.success(translations.orderSaved[language]);
+      onClose();
+    } catch (error) {
+      console.error('Error saving order:', error);
+      toast.error(type === 'admin' ? translations.orderUpdateError[language] : translations.clientOrderUpdateError[language]);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContentWide className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>
+            {type === 'admin' ? 'Управление порядком в панели' : 'Управление порядком на сайте'} - {categoryTitle}
+          </DialogTitle>
+          <DialogDescription>
+            {translations.dragAndDropHint[language]}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-96 overflow-y-auto">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext items={items.map(p => p.id)} strategy={verticalListSortingStrategy}>
+              {items.map((product, index) => (
+                <SortableProductItem
+                  key={product.id}
+                  product={product}
+                  language={language}
+                  onMoveUp={() => handleMoveUp(index)}
+                  onMoveDown={() => handleMoveDown(index)}
+                  isFirst={index === 0}
+                  isLast={index === items.length - 1}
+                  type={type}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            {translations.cancel[language]}
+          </Button>
+          <Button onClick={handleSave} disabled={isSaving}>
+            {isSaving ? translations.saving[language] : translations.saveOrder[language]}
+          </Button>
+        </DialogFooter>
+      </DialogContentWide>
+    </Dialog>
+  );
+};
 
 const buildCategoryTree = (
   categories: Category[],
@@ -318,7 +565,7 @@ const ProductRow = ({
   const [loadingToggles, setLoadingToggles] = useState<Record<string, boolean>>({});
   const [loadingAdminOrder, setLoadingAdminOrder] = useState(false);
   const [loadingClientOrder, setLoadingClientOrder] = useState(false);
-  const { user } =useAuth()
+  const { user } = useAuth()
   const handleMoveUp = async () => {
     if (isFirst) return;
     setLoadingAdminOrder(true);
@@ -396,14 +643,6 @@ const ProductRow = ({
         <TableCell className="font-medium" style={{ paddingLeft: `${depth * 20 + 12}px` }}>
           <div className="flex items-center gap-2">
             {product.title}
-            <div className="flex gap-1 ml-2">
-              <Badge variant="outline" title="Панель">
-                A: {product.sortOrder || 0}
-              </Badge>
-              <Badge variant="outline" title="Клиент">
-                C: {product.clientSortOrder || 0}
-              </Badge>
-            </div>
           </div>
         </TableCell>
         { user.role === 'COOK' ? '' :
@@ -433,48 +672,14 @@ const ProductRow = ({
           </Badge>
         </TableCell>
         <TableCell>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleMoveUp}
-              disabled={isFirst || loadingAdminOrder}
-              title="Поднять в админке"
-            >
-              <ArrowUp className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleMoveDown}
-              disabled={isLast || loadingAdminOrder}
-              title="Опустить в админке"
-            >
-              <ArrowDown className="h-4 w-4" />
-            </Button>
-          </div>
+          <Badge variant="outline">
+            {product.sortOrder}
+          </Badge>
         </TableCell>
         <TableCell>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleClientMoveUp}
-              disabled={isClientFirst || loadingClientOrder}
-              title="Поднять на сайте"
-            >
-              <ArrowUp className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleClientMoveDown}
-              disabled={isClientLast || loadingClientOrder}
-              title="Опустить на сайте"
-            >
-              <ArrowDown className="h-4 w-4" />
-            </Button>
-          </div>
+          <Badge variant="outline">
+            {product.clientSortOrder}
+          </Badge>
         </TableCell>
         <TableCell className="text-center">
           <Switch
@@ -568,45 +773,121 @@ const CategoryRow = ({
   const isExpanded = expandedCategories.has(category.id);
   const hasChildren = category.children.length > 0 || category.products.length > 0;
   const isUncategorized = category.id === 'uncategorized';
+  
+  // Состояния для диалогов
+  const [adminOrderDialogOpen, setAdminOrderDialogOpen] = useState(false);
+  const [clientOrderDialogOpen, setClientOrderDialogOpen] = useState(false);
+
+  const handleSaveAdminOrder = async (reorderedProducts: Product[]) => {
+    try {
+       for (let i = 0; i < reorderedProducts.length; i++) {
+        await ProductService.updateProductOrder(reorderedProducts[i].id, i + 1, category.id);
+      }
+      fetchData(); 
+    } catch (error) {
+      console.error('Error updating admin order:', error);
+      throw error;
+    }
+  };
+
+  const handleSaveClientOrder = async (reorderedProducts: Product[]) => {
+    try {
+      for (let i = 0; i < reorderedProducts.length; i++) {
+        await ProductService.updateClientProductOrder(reorderedProducts[i].id, i + 1, category.id);
+      }
+      fetchData(); // Обновляем данные
+    } catch (error) {
+      console.error('Error updating client order:', error);
+      throw error;
+    }
+  };
 
   return (
     <>
       {(hasChildren || isUncategorized) && (
-        <TableRow
-          className={`${depth === 0 ? 'bg-gray-50' : ''} cursor-pointer`}
-          onClick={() => hasChildren && toggleCategory(category.id)}
-        >
+        <TableRow className={`${depth === 0 ? 'bg-gray-50' : ''}`}>
           <TableCell colSpan={10} className="font-medium" style={{ paddingLeft: `${depth * 20 + 12}px` }}>
-            <div className="flex items-center">
-              {hasChildren && !isUncategorized ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-8 p-0 -ml-2 mr-1"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleCategory(category.id);
-                  }}
-                >
-                  {isExpanded ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
-                  <span className="sr-only">Toggle</span>
-                </Button>
-              ) : (
-                <span className="inline-block w-8" />
-              )}
-              {category.title}
-              {!isUncategorized && (
-                <Badge variant="secondary" className="ml-2">
-                  {category.products.length}
-                </Badge>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                {hasChildren && !isUncategorized ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-8 p-0 -ml-2 mr-1"
+                    onClick={() => toggleCategory(category.id)}
+                  >
+                    {isExpanded ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                    <span className="sr-only">Toggle</span>
+                  </Button>
+                ) : (
+                  <span className="inline-block w-8" />
+                )}
+                {category.title}
+                {!isUncategorized && (
+                  <Badge variant="secondary" className="ml-2">
+                    {category.products.length}
+                  </Badge>
+                )}
+              </div>
+              
+              {/* Кнопки управления порядком для категории */}
+              {isExpanded && category.products.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAdminOrderDialogOpen(true);
+                    }}
+                  >
+                    <Badge variant="outline" className="mr-1">A</Badge>
+                    {translations.manageAdminOrder[language]}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setClientOrderDialogOpen(true);
+                    }}
+                  >
+                    <Badge variant="outline" className="mr-1">C</Badge>
+                    {translations.manageClientOrder[language]}
+                  </Button>
+                </div>
               )}
             </div>
           </TableCell>
         </TableRow>
+      )}
+
+      {/* Диалоги управления порядком */}
+      {category.products.length > 0 && (
+        <>
+          <OrderManagementDialog
+            isOpen={adminOrderDialogOpen}
+            onClose={() => setAdminOrderDialogOpen(false)}
+            products={category.products}
+            language={language}
+            categoryTitle={category.title}
+            onSaveOrder={handleSaveAdminOrder}
+            type="admin"
+          />
+          <OrderManagementDialog
+            isOpen={clientOrderDialogOpen}
+            onClose={() => setClientOrderDialogOpen(false)}
+            products={category.products}
+            language={language}
+            categoryTitle={category.title}
+            onSaveOrder={handleSaveClientOrder}
+            type="client"
+          />
+        </>
       )}
 
       {isExpanded && !isUncategorized && (
@@ -703,7 +984,6 @@ export const ProductTable = ({
   onDelete,
   fetchData
 }: ProductTableProps) => {
-  console.log(products)
   const router = useRouter();
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
@@ -912,7 +1192,7 @@ export const ProductTable = ({
         <TableBody>
           {isLoading ? (
             <TableRow>
-              <TableCell colSpan={10} className="h-24 text-center"> {/* Обновите colSpan на 10 */}
+              <TableCell colSpan={10} className="h-24 text-center">
                 {translations.loading[language]}
               </TableCell>
             </TableRow>
@@ -935,7 +1215,7 @@ export const ProductTable = ({
             ))
           ) : (
             <TableRow>
-              <TableCell colSpan={10} className="h-24 text-center"> {/* Обновите colSpan на 10 */}
+              <TableCell colSpan={10} className="h-24 text-center">
                 {translations.noProducts[language]}
               </TableCell>
             </TableRow>

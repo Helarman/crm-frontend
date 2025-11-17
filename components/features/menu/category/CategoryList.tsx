@@ -49,6 +49,10 @@ export const CategoryList = () => {
     }
   };
 
+  const handleRefreshData = () => {
+    fetchCategories();
+  };
+
   useEffect(() => {
     fetchCategories();
   }, [viewMode]);
@@ -216,6 +220,7 @@ export const CategoryList = () => {
         onMoveUpOnClient={handleMoveUpOnClient}
         onMoveDownOnClient={handleMoveDownOnClient}
         viewMode={viewMode}
+        onRefreshData={handleRefreshData}
       />
 
       <CategoryModal
