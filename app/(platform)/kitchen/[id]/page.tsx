@@ -229,6 +229,7 @@ export default function KitchenOrderPage() {
     const statusMap = {
       [OrderItemStatus.CREATED]: t.created,
       [OrderItemStatus.IN_PROGRESS]: t.inProgress,
+      [OrderItemStatus.CONFIRMED]: t.inProgress,
       [OrderItemStatus.PARTIALLY_DONE]: t.partiallyDoneStatus,
       [OrderItemStatus.PAUSED]: t.paused,
       [OrderItemStatus.COMPLETED]: t.completed,
