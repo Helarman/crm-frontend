@@ -36,7 +36,8 @@ import {
   PersonStanding,
   Hexagon,
   Network,
-  BookText
+  BookText,
+  ClockFading
 } from 'lucide-react'
 
 const ROLE_COLORS = {
@@ -276,6 +277,12 @@ export default function Side() {
         href: "/kitchen", 
         icon: <Utensils className="w-5 h-5" />,
         roles: ['COOK', 'CHEF', 'MANAGER', 'SUPERVISOR']
+      },
+        { 
+        name: t.preorders, 
+        href: "/preorders", 
+        icon: <ClockFading className="w-5 h-5" />,
+        roles: ['COOK', 'CHEF','WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR']
       },
        { 
         name: t.delivery, 

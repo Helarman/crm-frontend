@@ -479,15 +479,16 @@ useEffect(() => {
   const error = showArchive ? archiveError : activeError
   const totalPages = archiveData?.meta?.totalPages || 1
 
-  const filteredActiveOrders = selectedOrderType === 'ALL'
-    ? activeOrders
-    : activeOrders.filter((order: OrderResponse) => 
-        (order.type || 'UNKNOWN') === selectedOrderType
-      )
+const filteredActiveOrders = selectedOrderType === 'ALL'
+  ? activeOrders.filter((order: OrderResponse) => order.status !== 'CONFIRMED')
+  : activeOrders.filter((order: OrderResponse) => 
+      (order.type || 'UNKNOWN') === selectedOrderType && order.status !== 'CONFIRMED'
+    )
+
 
   const sortedOrders = [...(showArchive ? currentData : filteredActiveOrders)]
-    .filter(order => order?.id) // Фильтруем заказы без id
-    .map(order => createSafeOrder(order)) // Создаем безопасные копии
+    .filter(order => order?.id)
+    .map(order => createSafeOrder(order))
     .sort((a, b) => {
       const isACompletedOrCancelled = a.status === 'COMPLETED' || a.status === 'CANCELLED'
       const isBCompletedOrCancelled = b.status === 'COMPLETED' || b.status === 'CANCELLED'

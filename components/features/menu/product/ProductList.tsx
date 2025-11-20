@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useMemo } from 'react';
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { ProductService } from '@/lib/api/product.service';
@@ -14,8 +13,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+
 const ALL_CATEGORIES_VALUE = "all-categories";
-const ALL_RESTAURANTS_VALUE = "all-restaurants";
 
 export const ProductList = () => {
   const router = useRouter()
@@ -28,7 +27,7 @@ export const ProductList = () => {
   const [currentProductId, setCurrentProductId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORIES_VALUE);
-  const [selectedRestaurant, setSelectedRestaurant] = useState(ALL_RESTAURANTS_VALUE);
+  const [selectedRestaurants, setSelectedRestaurants] = useState<string[]>([]);
   const [restaurants, setRestaurants] = useState<any[]>([]);
 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
@@ -37,6 +36,13 @@ export const ProductList = () => {
     fetchData();
     fetchRestaurants();
   }, []);
+
+  // Инициализируем выбранные рестораны после загрузки
+  useEffect(() => {
+    if (restaurants.length > 0 && selectedRestaurants.length === 0) {
+      setSelectedRestaurants(restaurants.map(r => r.id));
+    }
+  }, [restaurants]);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -48,7 +54,6 @@ export const ProductList = () => {
       setProducts(productsData);
       setCategories(categoriesData);
 
-      // Загружаем Модификаторы только если они нужны для модального окна
       try {
         const additivesData = await AdditiveService.getAll();
         setAdditives(additivesData || []);
@@ -73,44 +78,44 @@ export const ProductList = () => {
     }
   };
 
+  const filteredProductIds = useMemo(() => {
+    const filtered = products.filter(product => {
+      const matchesSearch = product.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
+      const matchesCategory = selectedCategory === ALL_CATEGORIES_VALUE ||
+        product.categoryId === selectedCategory;
 
-const filteredProductIds = useMemo(() => {
-  const filtered = products.filter(product => {
+      // Фильтрация по множественным ресторанам
+      const matchesRestaurants = selectedRestaurants.length === 0 || 
+        selectedRestaurants.length === restaurants.length ||
+        (product.restaurantPrices?.some((restaurantPrice: any) =>
+          selectedRestaurants.includes(restaurantPrice.restaurantId)
+        ));
+
+      return matchesSearch && matchesCategory && matchesRestaurants;
+    });
+
+    return new Set(filtered.map(product => product.id));
+  }, [products, debouncedSearchTerm, selectedCategory, selectedRestaurants, restaurants]);
+
+  const filteredProducts = products.filter(product => {
     const matchesSearch = product.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
     const matchesCategory = selectedCategory === ALL_CATEGORIES_VALUE ||
       product.categoryId === selectedCategory;
 
-    // ИСПРАВЛЕНИЕ: Фильтруем по restaurantPrices.restaurantId вместо workshops
-    const matchesRestaurant = selectedRestaurant === ALL_RESTAURANTS_VALUE ||
+    // Фильтрация по множественным ресторанам
+    const matchesRestaurants = selectedRestaurants.length === 0 || 
+      selectedRestaurants.length === restaurants.length ||
       (product.restaurantPrices?.some((restaurantPrice: any) =>
-        restaurantPrice.restaurantId === selectedRestaurant
+        selectedRestaurants.includes(restaurantPrice.restaurantId)
       ));
 
-    return matchesSearch && matchesCategory && matchesRestaurant;
+    return matchesSearch && matchesCategory && matchesRestaurants;
   });
-
-  return new Set(filtered.map(product => product.id));
-}, [products, debouncedSearchTerm, selectedCategory, selectedRestaurant]);
-
-const filteredProducts = products.filter(product => {
-  const matchesSearch = product.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
-  const matchesCategory = selectedCategory === ALL_CATEGORIES_VALUE ||
-    product.categoryId === selectedCategory;
-
-  // ИСПРАВЛЕНИЕ: Фильтруем по restaurantPrices.restaurantId вместо workshops
-  const matchesRestaurant = selectedRestaurant === ALL_RESTAURANTS_VALUE ||
-    (product.restaurantPrices?.some((restaurantPrice: any) =>
-      restaurantPrice.restaurantId === selectedRestaurant
-    ));
-
-  return matchesSearch && matchesCategory && matchesRestaurant;
-});
 
   const openAddModal = () => {
     setCurrentProductId(null);
     setIsModalOpen(true);
   };
-
 
   const handleDelete = async (id: string) => {
     try {
@@ -161,14 +166,14 @@ const filteredProducts = products.filter(product => {
         onSearchChange={setSearchTerm}
         selectedCategory={selectedCategory}
         onCategoryChange={setSelectedCategory}
-        selectedRestaurant={selectedRestaurant}
-        onRestaurantChange={setSelectedRestaurant}
+        selectedRestaurant={selectedRestaurants}
+        onRestaurantChange={setSelectedRestaurants}
         categories={categories}
         restaurants={restaurants}
         language={language}
       />
 
-       <ProductTable
+      <ProductTable
         products={products}
         filteredProductIds={filteredProductIds} 
         isLoading={isLoading && products.length > 0}

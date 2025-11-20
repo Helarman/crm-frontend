@@ -5,7 +5,7 @@ import { OrderHeader } from './OrderHeader'
 import { OrderCustomerInfo } from './OrderCustomerInfo'
 import { OrderPaymentStatus } from './OrderPaymentStatus'
 import { Card } from '@/components/ui/card'
-import { OrderResponse, OrderItemStatus, OrderService } from '@/lib/api/order.service'
+import { OrderResponse, OrderItemStatus, OrderService, EnumOrderStatus } from '@/lib/api/order.service'
 import { cn } from '@/lib/utils'
 import { Language, useLanguageStore } from '@/lib/stores/language-store'
 import { Badge } from '@/components/ui/badge'
@@ -117,6 +117,7 @@ const getStatusText = (status: OrderItemStatus, language: string): string => {
       [OrderItemStatus.IN_PROGRESS]: 'В процессе',
       [OrderItemStatus.PARTIALLY_DONE]: 'Частично готов',
       [OrderItemStatus.PAUSED]: 'На паузе',
+      [OrderItemStatus.CONFIRMED]: '',
       [OrderItemStatus.COMPLETED]: 'Готов',
       [OrderItemStatus.CANCELLED]: 'Отменен',
       [OrderItemStatus.REFUNDED]: 'Возвращен'
@@ -128,6 +129,7 @@ const getStatusText = (status: OrderItemStatus, language: string): string => {
       [OrderItemStatus.PAUSED]: 'პაუზაზეა',
       [OrderItemStatus.COMPLETED]: 'მზადაა',
       [OrderItemStatus.CANCELLED]: 'გაუქმებული',
+       [OrderItemStatus.CONFIRMED]: '',
       [OrderItemStatus.REFUNDED]: 'დაბრუნებული'
     }
   }
@@ -140,13 +142,24 @@ type WarningMessage = {
   icon: React.ReactNode;
   color: string;
 };
+function formatUTC(dateString : any) {
+  const date = new Date(dateString);
+  const day = date.getUTCDate().toString().padStart(2, '0');
+  const month = (date.getUTCMonth() + 1).toString().padStart(2, '0');
+  const year = date.getUTCFullYear();
+  const hours = date.getUTCHours().toString().padStart(2, '0');
+  const minutes = date.getUTCMinutes().toString().padStart(2, '0');
+  
+  return `${day}.${month}.${year} ${hours}:${minutes}`;
+}
 
-export function OrderCard({ order, variant, onStatusChange, className, selectedRestaurantId }: {
+export function OrderCard({ order, variant, onStatusChange, className, selectedRestaurantId, kitchenArchive }: {
   order: OrderResponse
-  variant?: 'default' | 'kitchen' | 'delivery' | 'compact'
+  variant?: 'default' | 'kitchen' | 'delivery' | 'compact' | 'preorder'
   onStatusChange?: (updatedOrder: OrderResponse) => void
   className?: string
   selectedRestaurantId?: string
+  kitchenArchive?: boolean
 }) {
   const router = useRouter()
   const { user } = useAuth()
@@ -280,7 +293,11 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
       refundedItems: "Возвращенные блюда",
       connected: "Онлайн",
       connecting: "Подключение...",
-      disconnected: "Офлайн"
+      disconnected: "Офлайн",
+      confirmCompletion: "Подтвердить выполнение",
+      completionText: "Вы уверены, что хотите отметить блюдо как готовое?",
+      completing: "Выполнение...",
+      itemCompleted: "Блюдо отмечено как готовое",
     },
     ka: {
       back: "უკან შეკვეთების სიაში",
@@ -337,7 +354,11 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
       refundedItems: "დაბრუნებული კერძები",
       connected: "ონლაინი",
       connecting: "მიმდინარეობს კავშირი...",
-      disconnected: "ოფლაინი"
+      disconnected: "ოფლაინი",
+      confirmCompletion: "დასრულების დადასტურება",
+      completionText: "დარწმუნებული ხართ, რომ გსურთ კერძის მზად ყოფნის მონიშვნა?",
+      completing: "მიმდინარეობს...",
+      itemCompleted: "კერძი მონიშნულია როგორც მზად",
     }
   } as const;
 
@@ -512,18 +533,17 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
   try {
     const item = order.items.find(i => i.id === itemId)
     if (!item) return
-
-    // Если склад не используется, просто меняем статус
+    
     if (!shouldUseWarehouse) {
-      await handleStatusChange(itemId, OrderItemStatus.COMPLETED)
+      setCurrentItemId(itemId)
+      setWriteOffDialogOpen(true)
+      setWriteOffItems([]) 
       return
     }
 
-    // Получаем ингредиенты для списания
     const ingredientsToWriteOff = await Promise.all(
       item.product.ingredients.map(async (ingredient: Ingredient) => {
         try {
-          // Получаем полную информацию об ингредиенте
           const inventoryItem = await WarehouseService.getInventoryItem(ingredient.inventoryItemId)
           return {
             id: ingredient.inventoryItemId,
@@ -555,29 +575,36 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
 }
 
 const handleConfirmWriteOff = async () => {
-  if (!currentItemId || !warehouse?.id) return
+  if (!currentItemId) return
 
   setIsWritingOff(true)
   try {
-    // Списываем каждый ингредиент
-    for (const writeOffItem of writeOffItems) {
-      await WarehouseService.createTransaction({
-        inventoryItemId: writeOffItem.id,
-        type: InventoryTransactionType.WRITE_OFF,
-        warehouseId: warehouse.id,
-        quantity: writeOffItem.quantity,
-        reason: 'Приготовление блюда', // или выбранная причина из словаря
-        userId: user?.id
-      })
+    if (shouldUseWarehouse && warehouse?.id) {
+      for (const writeOffItem of writeOffItems) {
+        await WarehouseService.createTransaction({
+          inventoryItemId: writeOffItem.id,
+          type: InventoryTransactionType.WRITE_OFF,
+          warehouseId: warehouse.id,
+          quantity: writeOffItem.quantity,
+          reason: 'Приготовление блюда',
+          userId: user?.id
+        })
+      }
     }
 
-    // После успешного списания меняем статус блюда на COMPLETED
     await handleStatusChange(currentItemId, OrderItemStatus.COMPLETED)
     
     setWriteOffDialogOpen(false)
+    
+    // Показываем соответствующее сообщение
+    if (shouldUseWarehouse) {
+      toast.success(t.writeOffSuccess)
+    } else {
+      toast.success(t.statusUpdated)
+    }
   } catch (error) {
     console.error('Error writing off inventory:', error)
-    toast.error(t.writeOffError)
+    toast.error(shouldUseWarehouse ? t.writeOffError : t.statusUpdateError)
   } finally {
     setIsWritingOff(false)
   }
@@ -672,7 +699,6 @@ const loadWarehouseData = async () => {
         onClick={handleCardClick}
       >
         
-        
         <div className="absolute top-0 left-0 w-full h-1" />
         <div className="flex flex-col flex-grow">
           <OrderHeader order={order} compact={variant === 'kitchen'} />
@@ -745,7 +771,7 @@ const loadWarehouseData = async () => {
                 {t.loading}
               </div>
             ) : (
-              variant === 'kitchen' ? (
+              variant === 'kitchen' || variant === 'preorder' ? (
                 <div className="flex-grow">
                   {filteredItems.length > 0 ? (
                     filteredItems.map(item => (
@@ -758,7 +784,7 @@ const loadWarehouseData = async () => {
                         )}
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (item.status !== OrderItemStatus.COMPLETED) {
+                          if (item.status !== OrderItemStatus.COMPLETED && order.status === EnumOrderStatus.PREPARING) {
                             handleItemClick(item.id);
                           }
                         }}
@@ -779,23 +805,55 @@ const loadWarehouseData = async () => {
                               </div>
                             )}
                           </div>
-                          <Badge 
+                          {order.status === EnumOrderStatus.PREPARING ? <Badge 
                             variant="outline" 
                             className="text-xs"
                           >
                             {getStatusText(item.status, language)}
-                          </Badge>
+                          </Badge> : ''}
                         </div>
                       </div>
                     ))
                   ) : (
-                    <div className="text-center text-muted-foreground py-4 flex-grow flex items-center justify-center">
+                    (kitchenArchive || variant === 'preorder') ? "" : (<div className="text-center text-muted-foreground py-4 flex-grow flex items-center justify-center">
                       {t.noDishes}
-                    </div>
+                    </div>)
                   )}
-
+                  
                   {otherItems.length > 0 && (
                     <div className="mt-4">
+                      {kitchenArchive || variant === 'preorder' ? 
+                      <div className="mt-2 space-y-2">
+                          {otherItems.map(item => (
+                            <div 
+                              key={item.id} 
+                              className={cn(
+                                "p-2 rounded-lg border border-dashed border-gray-300 py-4 ",
+                              
+                              )}
+                            >
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <div className="font-medium flex items-center gap-1">
+                                    {item.product.title} × {item.quantity}
+                                  </div>
+                                  {item.additives.length > 0 && (
+                                    <div className="text-xs text-muted-foreground">
+                                      {language === 'ru' ? 'Модификаторы:' : 'მოდიფიკატორები:'} {item.additives.map(a => a.title).join(', ')}
+                                    </div>
+                                  )}
+                                </div>
+                                <Badge variant="outline" className="text-xs">
+                                  {getStatusText(item.status, language)}
+                                </Badge>
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {t.responsibleWorkshop}: {item.product.workshops?.[0]?.workshop.name || (language === 'ru' ? 'Не указан' : 'არ არის მითითებული')}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        : 
                       <details className="group">
                         <summary className="flex items-center justify-between cursor-pointer list-none text-sm text-muted-foreground">
                           <span>
@@ -834,14 +892,14 @@ const loadWarehouseData = async () => {
                           ))}
                         </div>
                       </details>
+                      }
                     </div>
                   )}
                 </div>
               ) : ( <></>
               )
             )}
-            
-            {variant === 'default' && (order.scheduledAt || order.customer) ? (
+            {variant === 'default' || variant === 'preorder' && (order.scheduledAt || order.customer) ? (
               <div className='border-t pt-2 mt-auto'>
                 {(user?.role === 'SUPERVISOR' || user?.role === 'MANAGER') && order.customer && variant === 'default' && (
                   <OrderCustomerInfo customer={order.customer} compact />
@@ -853,7 +911,7 @@ const loadWarehouseData = async () => {
                   >
                     {language === 'ru' ? 'Отложено до' : 'გადაიდო'}
                     <span className="text-sm">
-                      {new Date(order.scheduledAt).toISOString().slice(11, 16)}
+                     {formatUTC(order.scheduledAt)}
                     </span>
                   </Badge>
                 }
@@ -874,25 +932,17 @@ const loadWarehouseData = async () => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Package className="h-5 w-5" />
-              {t.writeOffTitle}
+              { t.confirmCompletion}
             </DialogTitle>
           </DialogHeader>
           
           <div className="space-y-4">
             <p className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-yellow-500" />
-              {t.writeOffText}
+              {t.completionText}
             </p>
-            <ul className="space-y-2">
-              {writeOffItems.map((item, index) => (
-                <li key={index} className="flex justify-between items-center p-2 bg-muted/50 rounded">
-                  <span>{item.name}</span>
-                  <span className="font-medium">
-                    {item.quantity} {item.unit}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            
+            
           </div>
           
           <DialogFooter>
@@ -910,12 +960,12 @@ const loadWarehouseData = async () => {
               {isWritingOff ? (
                 <>
                   <Clock className="mr-2 h-4 w-4 animate-spin" />
-                  {t.writingOff}
+                  {t.completing}
                 </>
               ) : (
                 <>
                   <Check className="mr-2 h-4 w-4" />
-                  {t.confirmWriteOff}
+                  {t.confirmCompletion}
                 </>
               )}
             </Button>

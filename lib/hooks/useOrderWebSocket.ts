@@ -87,7 +87,6 @@ export function useOrderWebSocket({
 
     const connectWebSocket = async () => {
       if (isConnecting) {
-        console.log('🔄 WebSocket: Already connecting, skipping...')
         return
       }
 
@@ -108,19 +107,12 @@ export function useOrderWebSocket({
 
       // Если уже подключены к тому же ресторану, не переподключаемся
       if (orderWebSocketService.connected && orderWebSocketService['currentRestaurantId'] === restaurantId) {
-        console.log('✅ WebSocket: Already connected to this restaurant')
         if (isMounted) {
           setIsConnected(true)
           setConnectionError(null)
         }
         return
       }
-
-      console.log('✅ WebSocket: Connecting with params:', {
-        restaurantId,
-        hasToken: !!token,
-        orderId
-      })
       
       isConnecting = true
       
@@ -131,7 +123,6 @@ export function useOrderWebSocket({
           setConnectionError(null)
         }
       } catch (error) {
-        console.error('WebSocket connection failed:', error)
         if (isMounted) {
           setIsConnected(false)
           setConnectionError(error instanceof Error ? error.message : 'Connection failed')
@@ -155,15 +146,12 @@ export function useOrderWebSocket({
       }
       
       if (order && order.id) {
-        console.log('📦 WebSocket: Order created extracted', order)
         callbacksRef.current.onOrderCreated?.(order)
       } else {
-        console.warn('❌ Could not extract order from orderCreated message:', message)
       }
     }
 
     const handleOrderUpdated = (message: any) => {
-      console.log('🔄 WebSocket: Order updated message', message)
       
       let order: OrderResponse | null = null
       
@@ -174,15 +162,12 @@ export function useOrderWebSocket({
       }
       
       if (order && order.id) {
-        console.log('🔄 WebSocket: Order updated extracted', order)
         callbacksRef.current.onOrderUpdated?.(order)
       } else {
-        console.warn('❌ Could not extract order from orderUpdated message:', message)
       }
     }
 
     const handleOrderStatusUpdated = (message: any) => {
-      console.log('📊 WebSocket: Order status updated message', message)
       
       let order: OrderResponse | null = null
       
@@ -193,44 +178,35 @@ export function useOrderWebSocket({
       }
       
       if (order && order.id) {
-        console.log('📊 WebSocket: Order status updated extracted', order)
         callbacksRef.current.onOrderStatusUpdated?.(order)
       } else {
-        console.warn('❌ Could not extract order from orderStatusUpdated message:', message)
       }
     }
 
     const handleOrderItemUpdated = (message: any) => {
-      console.log('🍽️ WebSocket: Order item updated message', message);
       
       let order: OrderResponse | null = null;
       let itemId: string = '';
       
-      // Теперь message должен быть объектом { order: OrderResponse, itemId: string }
       if (message?.order && message.itemId) {
         order = message.order;
         itemId = message.itemId;
       } 
-      // Структура: { data: { order: OrderResponse, itemId: string } }
       else if (message?.data?.order && message.data.itemId) {
         order = message.data.order;
         itemId = message.data.itemId;
       }
-      // Структура: OrderResponse (прямой заказ) - fallback
       else if (message?.id) {
         order = message;
       }
       
       if (order && order.id) {
-        console.log('🍽️ WebSocket: Order item updated extracted', { order, itemId });
         callbacksRef.current.onOrderItemUpdated?.(order, itemId);
       } else {
-        console.warn('❌ Could not extract order from orderItemUpdated message:', message);
       }
     };
 
     const handleOrderModified = (message: any) => {
-      console.log('✏️ WebSocket: Order modified message', message)
       
       let order: OrderResponse | null = null
       
@@ -241,15 +217,12 @@ export function useOrderWebSocket({
       }
       
       if (order && order.id) {
-        console.log('✏️ WebSocket: Order modified extracted', order)
         callbacksRef.current.onOrderModified?.(order)
       } else {
-        console.warn('❌ Could not extract order from orderModified message:', message)
       }
     }
 
     const handleOrderDetailsUpdated = (message: any) => {
-      console.log('📝 WebSocket: Order details updated message', message)
       
       let order: OrderResponse | null = null
       
@@ -260,10 +233,8 @@ export function useOrderWebSocket({
       }
       
       if (order && order.id) {
-        console.log('📝 WebSocket: Order details updated extracted', order)
         callbacksRef.current.onOrderDetailsUpdated?.(order)
       } else {
-        console.warn('❌ Could not extract order from orderDetailsUpdated message:', message)
       }
     }
 
@@ -274,21 +245,18 @@ export function useOrderWebSocket({
         setConnectionError(null)
       }
       
-      // Подписываемся на конкретный заказ если указан orderId
       if (orderId) {
         orderWebSocketService.subscribeToOrder(orderId)
       }
     }
 
     const handleDisconnected = () => {
-      console.log('❌ WebSocket: Disconnected')
       if (isMounted) {
         setIsConnected(false)
       }
     }
 
     const handleError = (error: any) => {
-      console.error('❌ WebSocket error:', error)
       if (isMounted) {
         setConnectionError(error instanceof Error ? error.message : 'WebSocket error')
       }
@@ -311,9 +279,7 @@ export function useOrderWebSocket({
 
     return () => {
       isMounted = false
-      console.log('🧹 WebSocket: Cleaning up connection')
       
-      // Отписываемся от событий
       orderWebSocketService.off('orderCreated', handleOrderCreated)
       orderWebSocketService.off('orderUpdated', handleOrderUpdated)
       orderWebSocketService.off('orderStatusUpdated', handleOrderStatusUpdated)
@@ -324,15 +290,11 @@ export function useOrderWebSocket({
       orderWebSocketService.off('disconnected', handleDisconnected)
       orderWebSocketService.off('error', handleError)
 
-      // НЕ отписываемся от заказа и НЕ отключаем WebSocket полностью
-      // чтобы соединение могло использоваться другими компонентами
     }
   }, [restaurantId, orderId, enabled])
 
-  // Эффект для подписки на заказ при изменении orderId
   useEffect(() => {
     if (orderId && isConnected) {
-      console.log('🔔 Subscribing to order after connection:', orderId)
       orderWebSocketService.subscribeToOrder(orderId)
     }
   }, [orderId, isConnected])

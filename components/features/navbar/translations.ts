@@ -51,7 +51,9 @@ export const navTranslations = {
       warehouse: "Склад",
       customers: "Клиенты",
       networks: "Сети",
-      dictionaries: "Справочники"
+      dictionaries: "Справочники",
+      
+      preorders:"Предзаказы"
     },
     ka: {
       dictionaries: 'საცნობაროები',
@@ -75,6 +77,8 @@ export const navTranslations = {
       version: "ვერსია",
       warehouse: "საწყობი",
       customers: "კლიენტებს",
-      networks: ""
+      networks: "",
+      
+      preorders:"Предзаказы"
     }
   } as const;

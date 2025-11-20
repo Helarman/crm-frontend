@@ -551,49 +551,37 @@ export default function WaiterOrderPage() {
     restaurantId: order?.restaurant?.id,
     orderId: orderId as string,
     onOrderUpdated: (updatedOrder: OrderResponse) => {
-      console.log('🔄 WebSocket: Order updated received', updatedOrder);
       if (updatedOrder && updatedOrder.id === orderId) {
         const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
         setOrder(mergedOrder);
-        // Уберите toast чтобы не мешал при частых обновлениях
-        console.log('Order updated via WebSocket');
       }
     },
     onOrderStatusUpdated: (updatedOrder: OrderResponse) => {
-      console.log('📊 WebSocket: Order status updated received', updatedOrder);
       if (updatedOrder && updatedOrder.id === orderId) {
         const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
         setOrder(mergedOrder);
-        console.log('Order status updated via WebSocket');
       }
     },
     onOrderItemUpdated: (updatedOrder: OrderResponse, itemId: string) => {
-      console.log('🍽️ WebSocket: Order item updated received', updatedOrder, itemId);
       if (updatedOrder && updatedOrder.id === orderId) {
         const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
         setOrder(mergedOrder);
-        console.log('Order item updated via WebSocket');
       }
     },
     onOrderModified: (updatedOrder: OrderResponse) => {
-      console.log('✏️ WebSocket: Order modified received', updatedOrder);
       const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
       setOrder(mergedOrder);
-      console.log('Order modified via WebSocket');
     },
     onOrderDetailsUpdated: (updatedOrder: OrderResponse) => {
-      console.log('📝 WebSocket: Order details updated received', updatedOrder);
       const mergedOrder = mergeOrderStates(updatedOrder, orderRef.current);
       setOrder(mergedOrder);
-      console.log('Order details updated via WebSocket');
     },
     onError: (error: any) => {
-      console.error('❌ WebSocket error:', error);
     },
     enabled: true
   });
 
-  const isOrderEditable = order && !['DELIVERING', 'COMPLETED', 'CANCELLED'].includes(order.status);
+  const isOrderEditable = order && !['DELIVERING', 'COMPLETED', 'CANCELLED','CONFIRMED'].includes(order.status);
 const orderRef = useRef<OrderResponse | null>(null);
 
   const mergeOrderStates = (serverOrder: OrderResponse, localOrder: OrderResponse | null): OrderResponse => {
@@ -1006,26 +994,40 @@ const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => 
     try {
       setIsUpdating(true);
 
-      const updatedOrder = await OrderService.updateStatus(order.id, { status: 'PREPARING' });
+       const targetStatus = order.scheduledAt ? 'CONFIRMED' : 'PREPARING';
+    
+    const updatedOrder = await OrderService.updateStatus(order.id, { status: targetStatus });
 
        const createdItems = getOrderItems().filter(item => item.status === OrderItemStatus.CREATED);
     
-      await Promise.all(
+      if(!order.scheduledAt ){
+        await Promise.all(
         createdItems.map(item =>
           OrderService.updateItemStatus(order.id, item.id, { status: OrderItemStatus.IN_PROGRESS })
         )
+        
       );
-
+    }
       const refreshedOrder = await OrderService.getById(order.id);
       setOrder(refreshedOrder);
 
-      await createOrderLog(t.logs.orderConfirmed);
+      await createOrderLog(
+        !order.scheduledAt 
+          ? `${language === 'ru' ? 'Заказ рассчитан' : 'შეკვეთა გათვლილია'}` 
+          : t.logs.orderConfirmed
+      );
 
-      toast.success(language === 'ru' ? 'Заказ подтвержден' : 'შეკვეთა დადასტურებულია');
+      toast.success(
+        !order.scheduledAt
+          ? (language === 'ru' ? 'Заказ рассчитан' : 'შეკვეთა გათვლილია')
+          : (language === 'ru' ? 'Заказ подтвержден' : 'შეკვეთა დადასტურებულია')
+      );
     } catch (error) {
-      toast.error(language === 'ru'
-        ? 'Ошибка подтверждения заказа'
-        : 'შეკვეთის დადასტურების შეცდომა');
+      toast.error(
+        !order.scheduledAt
+          ? (language === 'ru' ? 'Ошибка расчета заказа' : 'შეკვეთის გაანგარიშების შეცდომა')
+          : (language === 'ru' ? 'Ошибка подтверждения заказа' : 'შეკვეთის დადასტურების შეცდომა')
+      );
     } finally {
       setIsUpdating(false);
     }
@@ -1771,6 +1773,10 @@ useEffect(() => {
         variant = 'secondary';
         text = t.statusCreated;
         break;
+         case OrderItemStatus.CONFIRMED: 
+      variant = 'default';
+      text = language === 'ru' ? 'Подтвержден' : 'გათვლილია';
+      break;
       case OrderItemStatus.IN_PROGRESS:
         variant = 'default';
         text = t.statusPreparing;
@@ -1986,7 +1992,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
       OrderItemStatus.CREATED,
     ].includes(item.status) && isOrderEditable && !item.isRefund;
 
-    const canRefund = ['COMPLETED', 'DELIVERING', 'PREPARING'].includes(order.status) && !item.isRefund;
+    const canRefund = ['COMPLETED', 'DELIVERING', 'PREPARING', 'READY'].includes(order.status) && !item.isRefund;
 
     const canRefundItem = [
       OrderItemStatus.COMPLETED,
@@ -1998,7 +2004,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
         <div className="text-sm">
           {getStatusBadge(item.status)}
         </div>
-        <div className="flex items-center flex-col gap-2">
+        <div className="flex items-center flex-col gap-2 justify-between">
           {canEditQuantity && (
             <div className="flex items-center gap-1">
               <Button
@@ -2023,34 +2029,61 @@ const ProductCard: React.FC<ProductCardProps> = ({
             </div>
           )}
           {canReorder && (
+            <div className='flex justify-end text-right'>
             <Button
               variant="ghost"
               size="sm"
-              className="text-blue-500 hover:text-blue-600"
+              className="text-blue-500 hover:text-blue-600 hidden 2xl:flex"
               onClick={() => handleReorderItem(item)}
               disabled={isUpdating}
             >
               <RefreshCw className="h-4 w-4 mr-1" />
               {language === 'ru' ? 'Дозаказ' : 'დამატებითი შეკვეთა'}
             </Button>
+              <Button
+              variant="outline"
+              size="sm"
+              className="text-blue-500 hover:text-blue-600 2xl:hidden flex"
+              onClick={() => handleReorderItem(item)}
+              disabled={isUpdating}
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+            </div>
           )}
 
           {canRefund && canRefundItem && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-red-500 hover:text-red-600"
-              onClick={() => {
-                setSelectedItemForRefund(item);
-                setMaxRefundQuantity(item.quantity);
-                setRefundQuantity(1);
-                setShowRefundDialog(true);
-              }}
-              disabled={isUpdating}
-            >
-              <RefreshCw className="h-4 w-4 mr-1" />
-              {language === 'ru' ? 'Вернуть' : 'დაბრუნება'}
-            </Button>
+            <div className='flex justify-end text-right'>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-red-500 hover:text-red-600 2xl:flex hidden"
+                onClick={() => {
+                  setSelectedItemForRefund(item);
+                  setMaxRefundQuantity(item.quantity);
+                  setRefundQuantity(1);
+                  setShowRefundDialog(true);
+                }}
+                disabled={isUpdating}
+              >
+                <Undo className="h-4 w-4 mr-1" />
+                {language === 'ru' ? 'Вернуть' : 'დაბრუნება'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-red-500 hover:text-red-600 flex 2xl:hidden"
+                onClick={() => {
+                  setSelectedItemForRefund(item);
+                  setMaxRefundQuantity(item.quantity);
+                  setRefundQuantity(1);
+                  setShowRefundDialog(true);
+                }}
+                disabled={isUpdating}
+              >
+                <Undo className="h-4 w-4" />
+              </Button>
+            </div>
           )}
         </div>
       </div>
@@ -2810,14 +2843,7 @@ const renderCategoryCards = () => {
           >
             <ArrowLeft className="h-4 w-4" />
             {t.back}
-          </Button><Button
-      variant="outline"
-      size="sm"
-      onClick={focusSearchInput}
-      className="text-xs"
-    >
-      🔍 Фокус
-    </Button>
+          </Button>
 
           <div className="flex items-center gap-3">
 
@@ -2933,7 +2959,7 @@ const renderCategoryCards = () => {
 
                         {/* Стандартный вид */}
                         {viewMode === 'standard' ? (
-                          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 2xl:grid-cols-4 gap-4">
                             {getOrderItems().filter(item => !item.isRefund).map(renderItemCard)}
                           </div>
                         ) : (
@@ -2951,7 +2977,7 @@ const renderCategoryCards = () => {
                             </h3>
 
                             {viewMode === 'standard' ? (
-                              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                              <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-4">
                                 {getOrderItems().filter(item => item.isRefund).map(renderItemCard)}
                               </div>
                             ) : (
@@ -3135,13 +3161,13 @@ const renderCategoryCards = () => {
                               ) : (
                                 <Check className="h-4 w-4 mr-1" />
                               )}
-                              {t.confirm} ({getOrderItems().filter(item => item.status === OrderItemStatus.CREATED).length})
+                                {order.scheduledAt ?  'Подтвердить'  : t.confirm } 
+                                ({getOrderItems().filter(item => item.status === OrderItemStatus.CREATED).length})
                             </Button>
                           )}
                       {order.status === 'CREATED' && (
                         <>
                           
-
                           <Button
                             disabled={isUpdating}
                             onClick={handleCancelOrder}

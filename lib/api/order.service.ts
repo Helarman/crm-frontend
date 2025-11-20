@@ -131,6 +131,7 @@
   export enum OrderItemStatus {
     CREATED = 'CREATED',
     IN_PROGRESS = 'IN_PROGRESS',
+    CONFIRMED='CONFIRMED',
     PARTIALLY_DONE = 'PARTIALLY_DONE',
     PAUSED = 'PAUSED',
     COMPLETED = 'COMPLETED',
@@ -288,7 +289,7 @@
     updatedAt: Date;
     scheduledAt?: Date;
     comment?: string;
-    
+    isScheduled?: boolean
     customer?: Customer;
     restaurant: RestaurantDto;
     items: OrderItem[];

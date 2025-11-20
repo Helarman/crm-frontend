@@ -371,13 +371,14 @@ export const OrderInfoStep = ({
         />
       </div>
 
-      <div className="mb-6 p-4 rounded-lg">
+     <div className="mb-6 p-4 rounded-lg border">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Checkbox
               id="scheduled-order"
-              checked={order.isScheduled || false}
+              checked={order.type === 'BANQUET' ? true : (order.isScheduled || false)}
               onCheckedChange={handleScheduledChange}
+              disabled={order.type === 'BANQUET'} 
             />
             <Label htmlFor="scheduled-order" className="flex items-center gap-2">
               <Clock className="h-4 w-4" />
@@ -387,7 +388,7 @@ export const OrderInfoStep = ({
           <div className="w-64">
             <Input
               type="datetime-local"
-              disabled={!order.isScheduled}
+              disabled={order.type === 'BANQUET' ? false : !order.isScheduled} 
               value={order.scheduledAt || format(new Date(), "yyyy-MM-dd'T'HH:mm")}
               onChange={(e) => handleScheduledTimeChange(e.target.value)}
               min={format(new Date(), "yyyy-MM-dd'T'HH:mm")}

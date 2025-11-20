@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { OrderCard } from '@/components/features/order/OrderCard'
 import { OrderResponse } from '@/lib/api/order.service'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/hooks/useAuth'
-import { useRestaurantOrders } from '@/lib/hooks/useOrders'
+import { useRestaurantArchive, useRestaurantOrders } from '@/lib/hooks/useOrders'
 import { useOrderWebSocket } from '@/lib/hooks/useOrderWebSocket'
 import {
   Select,
@@ -18,22 +18,46 @@ import { Card } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Restaurant } from '../staff/StaffTable'
+import { DateRange } from 'react-day-picker'
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination'
+import { Archive, Volume2, VolumeX, X, AlertTriangle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { DateRangePicker } from '@/components/ui/data-range-picker'
+import { Badge } from '@/components/ui/badge'
 
 const RESTAURANT_STORAGE_KEY = 'selectedRestaurantId'
+const KITCHEN_SOUNDS_ENABLED_KEY = 'kitchenSoundsEnabled'
 
-// Функция для получения токена из куки
-function getTokenFromCookie(): string | null {
-  if (typeof document === 'undefined') return null
-  
-  const cookies = document.cookie.split(';')
-  for (const cookie of cookies) {
-    const [name, value] = cookie.trim().split('=')
-    if (name === 'accessToken') {
-      return decodeURIComponent(value)
+const createSound = (frequency: number, duration: number, type: OscillatorType = 'sine') => {
+  return () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+      
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+      
+      oscillator.frequency.value = frequency
+      oscillator.type = type
+      
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration)
+      
+      oscillator.start(audioContext.currentTime)
+      oscillator.stop(audioContext.currentTime + duration)
+      
+      return audioContext
+    } catch (error) {
+      console.warn('Web Audio API not supported:', error)
+      return null
     }
   }
-  return null
 }
+
+const newOrderSound = createSound(800, 1, 'sine')
+const itemInProgressSound = createSound(600, 0.3, 'sine')
+const itemRefundedSound = createSound(400, 0.5, 'square') // Низкий частотный звук для REFUNDED
 
 const translations = {
   authRequired: {
@@ -43,6 +67,26 @@ const translations = {
   noRestaurants: {
     ru: 'У вас нет доступных ресторанов',
     ka: 'თქვენ არ გაქვთ ხელმისაწვდომი რესტორანები'
+  },
+  showArchive: {
+    ru: 'Архив заказов',
+    ka: 'შეკვეთების არქივი'
+  },
+  showActive: {
+    ru: 'Активные заказы',
+    ka: 'აქტიური შეკვეთები'
+  },
+  sounds: {
+    ru: 'Звуки уведомлений',
+    ka: 'შეტყობინებების ხმები'
+  },
+  dateRange: {
+    ru: 'Диапазон дат',
+    ka: 'თარიღების დიაპაზონი'
+  },
+  clearFilters: {
+    ru: 'Очистить фильтры',
+    ka: 'ფილტრების გასუფთავება'
   },
   selectRestaurant: {
     ru: 'Выберите ресторан',
@@ -60,6 +104,14 @@ const translations = {
     ru: 'Ошибка загрузки заказов',
     ka: 'შეკვეთების ჩატვირთვის შეცდომა'
   },
+  archiveOrders: {
+    ru: 'Архив заказов кухни',
+    ka: 'სამზარეულოს შეკვეთების არქივი'
+  },
+  noArchiveOrders: {
+    ru: 'Нет заказов в архиве',
+    ka: 'არქივში შეკვეთები არ არის'
+  },
   newOrder: {
     ru: 'Новый заказ',
     ka: 'ახალი შეკვეთა'
@@ -71,102 +123,157 @@ const translations = {
   newItem: {
     ru: 'Новая позиция в заказе',
     ka: 'ახალი პოზიცია შეკვეთაში'
+  },
+  refundedItems: {
+    ru: 'Возвращенные позиции',
+    ka: 'დაბრუნებული პოზიციები'
   }
 }
+
+const createSafeOrder = (order: OrderResponse) => {
+  return {
+    ...order,
+    id: order.id || `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    number: order.number || order.id?.slice(-6) || 'N/A',
+    status: order.status || 'UNKNOWN',
+    type: order.type || 'UNKNOWN',
+    items: order.items || [],
+    createdAt: order.createdAt || new Date().toISOString(),
+    updatedAt: order.updatedAt || new Date().toISOString(),
+  }
+}
+
+const hasOrderBecomePreparing = (newOrder: OrderResponse, previousOrder?: OrderResponse): boolean => {
+  return newOrder.status === 'PREPARING' && previousOrder?.status !== 'PREPARING'
+}
+
+const hasItemsBecomeInProgress = (newOrder: OrderResponse, previousOrder?: OrderResponse): boolean => {
+  if (!previousOrder) return false
+  
+  const newInProgressItems = newOrder.items?.filter(item => item.status === 'IN_PROGRESS') || []
+  const previousInProgressItems = previousOrder.items?.filter(item => item.status === 'IN_PROGRESS') || []
+  
+  // Находим items которые стали IN_PROGRESS (были в другом статусе, теперь IN_PROGRESS)
+  const becameInProgress = newInProgressItems.filter(newItem => {
+    const previousItem = previousInProgressItems.find(prevItem => prevItem.id === newItem.id)
+    // Item стал IN_PROGRESS если его не было в предыдущих IN_PROGRESS
+    return !previousItem
+  })
+  
+  return becameInProgress.length > 0
+}
+
+const hasNewItemsRefunded = (newOrder: OrderResponse, previousOrder?: OrderResponse): boolean => {
+  if (!previousOrder) return false
+  
+  const newRefundedItems = newOrder.items?.filter(item => 
+    item.status === 'REFUNDED'
+  ) || []
+  
+  const previousRefundedItems = previousOrder.items?.filter(item => 
+    item.status === 'REFUNDED'
+  ) || []
+  
+  return newRefundedItems.length > previousRefundedItems.length
+}
+
+
+
 
 export default function KitchenOrdersList() {
   const router = useRouter()
   const { user } = useAuth()
   const [selectedRestaurantId, setSelectedRestaurantId] = useState<string>('')
+  const [showArchive, setShowArchive] = useState<boolean>(false)
+  const [soundsEnabled, setSoundsEnabled] = useState<boolean>(true)
+  const [page, setPage] = useState(1)
+  const limit = 12
   
-  const { 
-    data: orders = [], 
-    isLoading: ordersLoading, 
-    error: ordersError,
-    mutate 
-  } = useRestaurantOrders(selectedRestaurantId)
+  const [dateRange, setDateRange] = useState<DateRange | undefined>()
+  
+  const previousOrdersRef = useRef<Map<string, OrderResponse>>(new Map())
+  const soundsEnabledRef = useRef(soundsEnabled)
+  const [ordersWithRefunded, setOrdersWithRefunded] = useState<Set<string>>(new Set())
+  const highlightTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
 
-  // WebSocket подключение с улучшенными колбэками
-  const { isConnected } = useOrderWebSocket({
-    restaurantId: selectedRestaurantId,
-    enabled: !!selectedRestaurantId,
-    onOrderCreated: useCallback((newOrder: OrderResponse) => {
-      console.log('📦 New order received via WebSocket:', newOrder)
-      
-      /* Показываем тост только для заказов в нужных статусах
-      if (['CONFIRMED', 'PREPARING'].includes(newOrder.status)) {
-        toast.success(`${translations.newOrder.ru} #${newOrder.number}`)
-      }*/
-      
-      mutate((prevOrders: OrderResponse[] | undefined) => {
-        const existingOrders = prevOrders || []
-        
-        // Если заказ уже есть в списке, обновляем его
-        const existingIndex = existingOrders.findIndex(order => order.id === newOrder.id)
-        if (existingIndex !== -1) {
-          const updatedOrders = [...existingOrders]
-          updatedOrders[existingIndex] = newOrder
-          return updatedOrders
-        }
-        
-        // Если заказа нет в списке и он в нужном статусе, добавляем его
-        if (['CONFIRMED', 'PREPARING'].includes(newOrder.status)) {
-          return [newOrder, ...existingOrders]
-        }
-        
-        return existingOrders
-      }, false)
-    }, [mutate]),
+  useEffect(() => {
+    soundsEnabledRef.current = soundsEnabled
+  }, [soundsEnabled])
 
-    onOrderUpdated: useCallback((updatedOrder: OrderResponse) => {
-      console.log('🔄 Order updated via WebSocket:', updatedOrder)
-      
-      mutate((prevOrders: OrderResponse[] | undefined) => 
-        prevOrders?.map(order => 
-          order.id === updatedOrder.id ? updatedOrder : order
-        ) || []
-      , false)
-    }, [mutate]),
+  useEffect(() => {
+    const savedSoundsSetting = localStorage.getItem(KITCHEN_SOUNDS_ENABLED_KEY)
+    if (savedSoundsSetting !== null) {
+      const enabled = JSON.parse(savedSoundsSetting)
+      setSoundsEnabled(enabled)
+      soundsEnabledRef.current = enabled
+    }
+  }, [])
 
-    onOrderStatusUpdated: useCallback((updatedOrder: OrderResponse) => {
-      console.log('📊 Order status updated via WebSocket:', updatedOrder)
-      
-      mutate((prevOrders: OrderResponse[] | undefined) => {
-        const existingOrders = prevOrders || []
-        
-        // Если статус изменился на неактивный (COMPLETED, CANCELLED), удаляем из списка
-        if (['COMPLETED', 'CANCELLED'].includes(updatedOrder.status)) {
-          return existingOrders.filter(order => order.id !== updatedOrder.id)
-        }
-        
-        // Иначе обновляем заказ
-        return existingOrders.map(order => 
-          order.id === updatedOrder.id ? updatedOrder : order
-        )
-      }, false)
-    }, [mutate]),
+  useEffect(() => {
+    localStorage.setItem(KITCHEN_SOUNDS_ENABLED_KEY, JSON.stringify(soundsEnabled))
+  }, [soundsEnabled])
 
-    onOrderModified: useCallback((updatedOrder: OrderResponse) => {
-      console.log('✏️ Order modified via WebSocket:', updatedOrder)
-      
-      // Проверяем, есть ли новые позиции
-      const hasNewItems = updatedOrder.items.some(item => 
-        item.status === 'CREATED' || item.status === 'IN_PROGRESS'
-      )
-      
-      /*if (hasNewItems) {
-        toast.info(`${translations.newItem.ru} #${updatedOrder.number}`)
-      }*/ 
-      
-      mutate((prevOrders: OrderResponse[] | undefined) => 
-        prevOrders?.map(order => 
-          order.id === updatedOrder.id ? updatedOrder : order
-        ) || []
-      , false)
-    }, [mutate])
-  })
+  const playNewOrderSound = useCallback(() => {
+    if (soundsEnabledRef.current) {
+      try {
+        newOrderSound()
+      } catch (error) {
+        console.warn('Failed to play new order sound:', error)
+      }
+    }
+  }, [])
 
-  // Установка выбранного ресторана с сохранением в localStorage
+  const playItemInProgressSound = useCallback(() => {
+    if (soundsEnabledRef.current) {
+      try {
+        itemInProgressSound()
+      } catch (error) {
+        console.warn('Failed to play item in progress sound:', error)
+      }
+    }
+  }, [])
+
+  const playItemRefundedSound = useCallback(() => {
+    if (soundsEnabledRef.current) {
+      try {
+        itemRefundedSound()
+      } catch (error) {
+        console.warn('Failed to play item refunded sound:', error)
+      }
+    }
+  }, [])
+
+  const highlightOrderWithRefunded = useCallback((orderId: string) => {
+    const existingTimeout = highlightTimeoutsRef.current.get(orderId)
+    if (existingTimeout) {
+      clearTimeout(existingTimeout)
+    }
+    
+    setOrdersWithRefunded(prev => new Set(prev).add(orderId))
+    
+    const timeoutId = setTimeout(() => {
+      setOrdersWithRefunded(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(orderId)
+        return newSet
+      })
+      highlightTimeoutsRef.current.delete(orderId)
+    }, 30000) // 30 секунд
+    
+    // Сохраняем ID таймаута
+    highlightTimeoutsRef.current.set(orderId, timeoutId)
+  }, [])
+
+  // Очистка таймаутов при размонтировании компонента
+  useEffect(() => {
+    return () => {
+      highlightTimeoutsRef.current.forEach(timeout => {
+        clearTimeout(timeout)
+      })
+      highlightTimeoutsRef.current.clear()
+    }
+  }, [])
+
   useEffect(() => {
     if (user?.restaurant?.length > 0) {
       const savedRestaurantId = localStorage.getItem(RESTAURANT_STORAGE_KEY)
@@ -184,22 +291,133 @@ export default function KitchenOrdersList() {
       }
     }
   }, [user])
-
-  // Сохраняем выбор ресторана при изменении
+  
   useEffect(() => {
     if (selectedRestaurantId) {
       localStorage.setItem(RESTAURANT_STORAGE_KEY, selectedRestaurantId)
     }
   }, [selectedRestaurantId])
 
-  // Фильтруем заказы по нужным статусам
-  const filteredOrders = orders.filter((order: OrderResponse) => 
-    ['CONFIRMED', 'PREPARING', ].includes(order.status)
-  )
+  
+  const archiveFilters = {
+    page,
+    limit,
+    status: ['CONFIRMED', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED'] as any,
+    startDate: dateRange?.from?.toISOString(),
+    endDate: dateRange?.to?.toISOString(),
+  }
+
+  const { 
+    data: activeOrders = [], 
+    isLoading: activeLoading, 
+    error: activeError,
+    mutate: mutateActive 
+  } = useRestaurantOrders(selectedRestaurantId)
+
+  const {
+    data: archiveData,
+    isLoading: archiveLoading,
+    error: archiveError,
+    mutate: mutateArchive
+  } = useRestaurantArchive(selectedRestaurantId, archiveFilters)
+
+  const updatePreviousOrders = useCallback((orders: OrderResponse[]) => {
+    const newMap = new Map<string, OrderResponse>()
+    orders.forEach(order => {
+      newMap.set(order.id, order)
+    })
+    previousOrdersRef.current = newMap
+  }, [])
+
+  useEffect(() => {
+    if (activeOrders.length > 0) {
+      updatePreviousOrders(activeOrders)
+    }
+  }, [activeOrders, updatePreviousOrders])
+
+  
+  const handleOrdersUpdate = useCallback((
+    updatedOrder: OrderResponse, 
+    mutateFunction: any,
+    source: string
+  ) => {
+    const previousOrder = previousOrdersRef.current.get(updatedOrder.id)
+    
+    if (hasOrderBecomePreparing(updatedOrder, previousOrder)) {
+      playNewOrderSound()
+    }
+     if (hasItemsBecomeInProgress(updatedOrder, previousOrder)) {
+      playItemInProgressSound()
+    }
+
+    if (hasNewItemsRefunded(updatedOrder, previousOrder)) {
+      playItemRefundedSound()
+      highlightOrderWithRefunded(updatedOrder.id)
+      
+    }
+    
+    mutateFunction((prevOrders: OrderResponse[] | undefined) => {
+      const existingOrders = prevOrders || []
+      
+      let newOrders: OrderResponse[]
+      
+      if (['COMPLETED', 'CANCELLED'].includes(updatedOrder.status)) {
+        newOrders = existingOrders.filter(order => order.id !== updatedOrder.id)
+      } else {
+        const existingIndex = existingOrders.findIndex(order => order.id === updatedOrder.id)
+        if (existingIndex !== -1) {
+          newOrders = [...existingOrders]
+          newOrders[existingIndex] = updatedOrder
+        } else {
+          newOrders = [updatedOrder, ...existingOrders]
+        }
+      }
+         
+      setTimeout(() => {
+        updatePreviousOrders(newOrders)
+      }, 0)
+      
+      return newOrders
+    }, false)
+  }, [playNewOrderSound, playItemInProgressSound, playItemRefundedSound, highlightOrderWithRefunded, updatePreviousOrders])
+
+  const { isConnected } = useOrderWebSocket({
+    restaurantId: selectedRestaurantId,
+    enabled: !!selectedRestaurantId,
+    onOrderCreated: useCallback((newOrder: OrderResponse) => {
+      
+      if (newOrder.status === 'PREPARING') {
+        playNewOrderSound()
+      }
+
+      handleOrdersUpdate(newOrder, mutateActive, 'onOrderCreated')
+    }, [mutateActive, playNewOrderSound, handleOrdersUpdate]),
+
+    onOrderUpdated: useCallback((updatedOrder: OrderResponse) => {
+      handleOrdersUpdate(updatedOrder, mutateActive, 'onOrderUpdated')
+    }, [mutateActive, handleOrdersUpdate]),
+
+    onOrderStatusUpdated: useCallback((updatedOrder: OrderResponse) => {
+      handleOrdersUpdate(updatedOrder, mutateActive, 'onOrderStatusUpdated')
+    }, [mutateActive, handleOrdersUpdate]),
+
+    onOrderModified: useCallback((updatedOrder: OrderResponse) => {
+      handleOrdersUpdate(updatedOrder, mutateActive, 'onOrderModified')
+    }, [mutateActive, handleOrdersUpdate])
+  })
 
   type OrderStatus = 'PREPARING' | 'CONFIRMED' | 'READY'
-  
-  const sortedOrders = [...filteredOrders].sort((a, b) => {
+
+  const filteredActiveOrders = activeOrders.filter((order: OrderResponse) => 
+    [ 'PREPARING', 'READY'].includes(order.status)
+  )
+
+  const currentData = showArchive ? archiveData?.data || [] : activeOrders
+  const isLoading = showArchive ? archiveLoading : activeLoading
+  const error = showArchive ? archiveError : activeError
+  const totalPages = archiveData?.meta?.totalPages || 1
+
+  const sortedActiveOrders = [...filteredActiveOrders].sort((a, b) => {
     const statusPriority: Record<OrderStatus, number> = {
       'PREPARING': 2,
       'CONFIRMED': 1,
@@ -215,16 +433,73 @@ export default function KitchenOrdersList() {
     return statusPriority[aStatus] - statusPriority[bStatus]
   })
 
+  const sortedOrders = showArchive 
+    ? [...currentData]
+        .filter(order => order?.id)
+        .map(order => createSafeOrder(order))
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    : sortedActiveOrders
+
   const handleStatusChange = (updatedOrder: OrderResponse) => {
-    mutate((prevOrders: OrderResponse[] | undefined) => 
+    mutateActive((prevOrders: OrderResponse[] | undefined) => 
       prevOrders?.map(o => o.id === updatedOrder.id ? updatedOrder : o) || []
     )
   }
 
-  const handleOrderClick = (orderId: string) => {
-    router.push(`/kitchen/orders/${orderId}`)
+  const clearFilters = () => {
+    setDateRange(undefined)
   }
 
+  const hasActiveFilters = () => {
+    return dateRange?.from || dateRange?.to
+  }
+  
+  const renderPagination = () => {
+    if (!showArchive || totalPages <= 1) return null
+
+    return (
+      <Pagination className="mt-6">
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+            />
+          </PaginationItem>
+
+          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+            let pageNum
+            if (totalPages <= 5) {
+              pageNum = i + 1
+            } else if (page <= 3) {
+              pageNum = i + 1
+            } else if (page >= totalPages - 2) {
+              pageNum = totalPages - 4 + i
+            } else {
+              pageNum = page - 2 + i
+            }
+
+            return (
+              <PaginationItem key={pageNum}>
+                <PaginationLink
+                  isActive={pageNum === page}
+                  onClick={() => setPage(pageNum)}
+                >
+                  {pageNum}
+                </PaginationLink>
+              </PaginationItem>
+            )
+          })}
+
+          <PaginationItem>
+            <PaginationNext
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            />
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
+    )
+  }
+  
   if (!user) {
     return (
       <Card className="p-6 text-center">
@@ -245,11 +520,11 @@ export default function KitchenOrdersList() {
     )
   }
 
-  if (ordersError) {
+  if (activeError) {
     return (
       <Card className="p-6 text-center">
         <p className="text-destructive">
-          {translations.orderError.ru}: {ordersError.message}
+          {translations.orderError.ru}: {activeError.message}
         </p>
       </Card>
     )
@@ -259,38 +534,91 @@ export default function KitchenOrdersList() {
     <div className="space-y-6">
       <div className="flex justify-between items-center gap-4 flex-col lg:flex-row">
         <div className="flex items-center gap-4">
-          <h2 className="text-2xl font-bold">{translations.kitchenOrders.ru}</h2>
-          <div className={`flex items-center gap-2 ${isConnected ? 'text-green-500' : 'text-gray-500'}`}>
-            <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
-            <span className="text-sm">
-              {selectedRestaurantId 
-                ? (isConnected ? 'Подключено' : 'Подключение...') 
-                : 'Выберите ресторан'
-              }
-            </span>
-          </div>
+         <h2 className="text-2xl font-bold">
+            {showArchive ? translations.archiveOrders.ru : translations.kitchenOrders.ru}
+          </h2>
+          {!showArchive && (
+            <div className={`flex items-center gap-2 ${isConnected ? 'text-green-500' : 'text-gray-500'}`}>
+              <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+              <span className="text-sm">
+                {selectedRestaurantId 
+                  ? (isConnected ? 'Подключено' : 'Подключение...') 
+                  : 'Выберите ресторан'
+                }
+              </span>
+            </div>
+          )}
         </div>
         
-        {user.restaurant.length > 1 && (
-          <Select
-            value={selectedRestaurantId}
-            onValueChange={setSelectedRestaurantId}
+        <div className="flex flex-wrap gap-3 items-center">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSoundsEnabled(!soundsEnabled)}
+            className="flex items-center gap-2"
           >
-            <SelectTrigger className="w-[280px]">
-              <SelectValue placeholder={translations.selectRestaurant.ru} />
-            </SelectTrigger>
-            <SelectContent>
-              {user.restaurant.map((restaurant: Restaurant) => (
-                <SelectItem key={restaurant.id} value={restaurant.id}>
-                  {restaurant.title}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
+            {soundsEnabled ? (
+              <Volume2 className="h-4 w-4" />
+            ) : (
+              <VolumeX className="h-4 w-4" />
+            )}
+            <span className="hidden sm:inline">{translations.sounds.ru}</span>
+          </Button>
+
+          <Button
+            variant={showArchive ? 'default' : 'outline'}
+            onClick={() => setShowArchive(!showArchive)}
+            className="flex items-center gap-2"
+          >
+            <Archive className="h-4 w-4" />
+            <span className="hidden sm:inline">
+              {showArchive ? translations.showActive.ru : translations.showArchive.ru}
+            </span>
+          </Button>
+           {showArchive && (
+        <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 p-4 bg-muted/50 rounded-lg">
+          <DateRangePicker
+            dateRange={dateRange}
+            onDateRangeChange={setDateRange}
+            className="w-full sm:w-[280px]"
+          />
+
+          {hasActiveFilters() && (
+            <Button
+              variant="ghost"
+              onClick={clearFilters}
+              className="text-destructive h-8 px-3"
+              size="sm"
+            >
+              <X className="h-3 w-3 mr-2" />
+              {translations.clearFilters.ru}
+            </Button>
+          )}
+        </div>
+      )}
+      
+          {/* Выбор ресторана */}
+          {user.restaurant.length > 1 && (
+            <Select
+              value={selectedRestaurantId}
+              onValueChange={setSelectedRestaurantId}
+            >
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder={translations.selectRestaurant.ru} />
+              </SelectTrigger>
+              <SelectContent>
+                {user.restaurant.map((restaurant: Restaurant) => (
+                  <SelectItem key={restaurant.id} value={restaurant.id}>
+                    {restaurant.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
       </div>
 
-      {ordersLoading || !selectedRestaurantId ? (
+      {isLoading || !selectedRestaurantId ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {[...Array(6)].map((_, i) => (
             <Skeleton key={i} className="h-[300px] w-full rounded-lg" />
@@ -299,26 +627,36 @@ export default function KitchenOrdersList() {
       ) : sortedOrders.length === 0 ? (
         <Card className="p-6 text-center">
           <p className="text-muted-foreground">
-            {translations.noOrders.ru}
+            {showArchive ? translations.noArchiveOrders.ru : translations.noOrders.ru}
           </p>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sortedOrders.map(order => (
-            <div 
-              key={order.id}
-              className="cursor-pointer transition-transform hover:scale-[1.02]"
-            >
-              <OrderCard
-                selectedRestaurantId={selectedRestaurantId}
-                className="min-h-[300px] w-full"
-                order={order}
-                variant="kitchen"
-                onStatusChange={handleStatusChange}
-              />
-            </div>
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {sortedOrders.map(order => {
+              const hasRefundedItems = order.items?.some(item => item.status === 'REFUNDED')
+              const isHighlighted = ordersWithRefunded.has(order.id)
+              
+              return (
+                <div 
+                  key={order.id}
+                  className={`cursor-pointer relative transition-all duration-300`}
+                >
+
+                  <OrderCard
+                    kitchenArchive={showArchive}
+                    selectedRestaurantId={selectedRestaurantId}
+                    className={`min-h-[300px] w-full transition-all duration-300 ${isHighlighted ? 'bg-red-100 border-2 border-red-400' : ''}`}
+                    order={order as any}
+                    variant="kitchen"
+                    onStatusChange={handleStatusChange}
+                  />
+                </div>
+              )
+            })}
+          </div>
+          {renderPagination()}
+        </>
       )}
     </div>
   )

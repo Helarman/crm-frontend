@@ -1887,16 +1887,28 @@ export default function WarehousePage() {
                 </TableHeader>
                 <TableBody>
                   {premixes.map((premix) => {
-                    const premixItem = items.find(item => item.premixId === premix.id);
-                    const ingredientsCount = premix.ingredients?.length || 0;
+                    const premixInventoryItem = items.find(item => 
+                      item.inventoryItem?.premixId === premix.id
+                    );
+                    
+                    const premixWarehouseItem = items.find(item => 
+                      item.premixId === premix.id
+                    );
+
+                    const premixItem = premixInventoryItem || premixWarehouseItem;
+                    
+                    const ingredientsCount = premix.ingredients?.length;
                     const totalCost = calculatePremixCost(premix);
                     const costPerUnit = calculatePremixCostPerUnit(premix);
+
                     return (
                       <TableRow key={premix.id}>
                         <TableCell className="font-medium">{premix.name}</TableCell>
+                        
                         <TableCell>
-                          {premixItem?.quantity || 0}
+                          {Math.max(premixItem?.quantity)}
                         </TableCell>
+                        
                         <TableCell>{premix.unit}</TableCell>
                         <TableCell>{premix.yield}</TableCell>
                         <TableCell>
@@ -1904,6 +1916,7 @@ export default function WarehousePage() {
                             <span className="font-medium">{costPerUnit.toFixed(2)}₽/{premix.unit}</span>
                           </div>
                         </TableCell>
+                        <TableCell>{ingredientsCount}</TableCell>
                         <TableCell>{ingredientsCount}</TableCell>
                         <TableCell>
                           <div className="flex justify-end gap-2">

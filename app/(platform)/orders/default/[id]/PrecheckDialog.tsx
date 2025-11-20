@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { useReactToPrint } from 'react-to-print';
 import { OrderResponse } from '@/lib/api/order.service';
@@ -19,6 +19,7 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
   const { user } = useAuth();
   const [isPrinting, setIsPrinting] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+  const hasPrintedRef = useRef(false);
 
   const translations = {
     ru: {
@@ -74,6 +75,9 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
   };
 
   const t = translations[language];
+  useEffect(() => {
+    safeHandlePrint()
+  }, []);
 
   const calculateItemPrice = (item: OrderResponse['items'][0]) => {
     if (item.isRefund) return 0;
@@ -87,10 +91,8 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
   };
 
   const calculateTotal = () => {
-    // Calculate items total
     const itemsTotal = order.items.reduce((sum, item) => sum + calculateItemPrice(item), 0);
 
-    // Add surcharges
     const surchargesTotal = order.surcharges?.reduce((sum, surcharge) => {
       if (surcharge.type === 'FIXED') {
         return sum + surcharge.amount;
@@ -101,12 +103,10 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
 
     let total = itemsTotal + surchargesTotal;
 
-    // Apply discount if exists
     if (order.discountAmount && order.discountAmount > 0) {
       total = Math.max(0, total - order.discountAmount);
     }
 
-    // Deduct bonus points if used
     if (order.bonusPointsUsed && order.bonusPointsUsed > 0) {
       total = Math.max(0, total - order.bonusPointsUsed);
     }
@@ -142,8 +142,9 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
     pageStyle: `
       @page { size: auto; margin: 5mm; }
       @media print {
-        body { -webkit-print-color-adjust: exact; width: 50% }
+        body { -webkit-print-color-adjust: exact; }
         .no-print { display: none !important; }
+        .print-content { margin: 0 !important; padding: 0 !important; }
       }
     `
   });
@@ -165,11 +166,11 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>'Хинкальная City'}</title>
+          <title>Хинкальная City</title>
           <style>
             @page { size: auto; margin: 5mm; }
-            body { width: 50%; font-family: Arial, sans-serif; line-height: 1.5; }
-            table { width: 50%; border-collapse: collapse; }
+            body { font-family: Arial, sans-serif; line-height: 1.5; margin: 0; padding: 0; }
+            table { width: 100%; border-collapse: collapse; }
             th, td { padding: 4px 0; }
             .text-center { text-align: center; }
             .text-right { text-align: right; }
@@ -198,6 +199,9 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
   };
 
   const safeHandlePrint = async () => {
+    if (isPrinting) return;
+    
+    setIsPrinting(true);
     try {
       await handlePrint();
     } catch (error) {
@@ -205,6 +209,17 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
       fallbackPrint();
     }
   };
+
+  useEffect(() => {
+    if (!hasPrintedRef.current) {
+      hasPrintedRef.current = true;
+      const timer = setTimeout(() => {
+        safeHandlePrint();
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   const getDomain = () => {
     return order.restaurant?.network?.tenant?.domain;
@@ -214,96 +229,82 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
   const firstName = nameParts[0];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white dark:bg-gray-900 rounded-lg p-6 w-full max-w-md">
-        <div ref={contentRef} className="p-4 bg-white text-black print:p-0 print:bg-white">
-          <div className="text-center mb-4">
-            <h2 className="text-xl font-bold">Хинкальная CITY</h2>
-            <p className="text-xs">{order.restaurant?.legalInfo}</p>
-          </div>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      {/* Основной контейнер с фиксированной высотой */}
+      <div className="bg-white dark:bg-gray-900 rounded-lg w-full max-w-md flex flex-col max-h-[95vh]">
+        {/* Заголовок диалога */}
+        <div className="p-6 border-b dark:border-gray-700 no-print flex-shrink-0">
+          <h2 className="text-xl font-semibold text-center">
+            {t.orderNumber}{order.number}
+          </h2>
+        </div>
 
-          <div className="border-b border-dashed border-gray-400 pb-2 mb-4">
-            <div className="flex justify-between">
-              <span className="font-medium">{t.orderNumber}{order.number}</span>
-              <span>{`${t.waiter}. ${firstName}`}</span>
+        {/* Прокручиваемая область - ОСНОВНОЙ КОНТЕНТ */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <div ref={contentRef} className="print-content bg-white text-black">
+            <div className="text-center mb-6">
+              <h2 className="text-xl font-bold">Хинкальная CITY</h2>
+              <p className="text-xs text-gray-600 mt-1">{order.restaurant?.legalInfo}</p>
             </div>
-            <div className="flex justify-between text-sm">
-              <span>{t.orderType}: {t.orderTypes[order.type]}</span>
-              <span>{formatDate(order.createdAt)}</span>
-            </div>
-          </div>
 
-          <div className="mb-4">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-300">
-                  <th className="text-left pb-1">{t.product}</th>
-                  <th className="text-center pb-1">{t.quantity}</th>
-                  <th className="text-right pb-1">{t.price}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {order.items.map(item => (
-                  <tr key={item.id} className="border-b border-gray-200">
-                    <td className="py-1">
-                      {item.product.title}
-                      {item.additives.length > 0 && (
-                        <div className="text-xs text-gray-500">
-                          {item.additives.map(a => a.title).join(', ')}
-                        </div>
-                      )}
-                      {item.comment && (
-                        <div className="text-xs text-gray-500">{item.comment}</div>
-                      )}
-                    </td>
-                    <td className="text-center py-1">{item.quantity}</td>
-                    <td className="text-right py-1">{calculateItemPrice(item).toFixed(2)} ₽</td>
+            {/* Информация о заказе */}
+            <div className="border-b border-dashed border-gray-400 pb-3 mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="font-medium text-sm">{t.orderNumber}{order.number}</span>
+                <span className="text-sm bg-gray-100 px-2 py-1 rounded">{`${t.waiter}. ${firstName}`}</span>
+              </div>
+              <div className="flex justify-between text-xs text-gray-600">
+                <span>{t.orderType}: {t.orderTypes[order.type]}</span>
+                <span>{formatDate(order.createdAt)}</span>
+              </div>
+            </div>
+
+            {/* Список товаров */}
+            <div className="mb-6">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-300">
+                    <th className="text-left pb-2 text-sm font-medium">{t.product}</th>
+                    <th className="text-center pb-2 text-sm font-medium">{t.quantity}</th>
+                    <th className="text-right pb-2 text-sm font-medium">{t.price}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Surcharges */}
-          {order.surcharges && order.surcharges.length > 0 && (
-            <div className="border-t border-gray-300 pt-2 mb-2">
-              <div className="text-sm font-medium mb-1">{t.surcharges}:</div>
-              {order.surcharges.map(surcharge => (
-                <div key={surcharge.id} className="flex justify-between text-sm">
-                  <span>{surcharge.title}</span>
-                  <span>
-                    {surcharge.type === 'FIXED' 
-                      ? `+${surcharge.amount.toFixed(2)} ₽` 
-                      : `+${surcharge.amount}%`}
-                  </span>
-                </div>
-              ))}
+                </thead>
+                <tbody>
+                  {order.items.map((item, index) => (
+                    <tr key={item.id} className={index < order.items.length - 1 ? 'border-b border-gray-200' : ''}>
+                      <td className="py-3">
+                        <div className="font-medium text-sm">{item.product.title}</div>
+                        {item.additives.length > 0 && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            {item.additives.map(a => a.title).join(', ')}
+                          </div>
+                        )}
+                        {item.comment && (
+                          <div className="text-xs text-gray-500 mt-1 italic">"{item.comment}"</div>
+                        )}
+                      </td>
+                      <td className="text-center py-3 text-sm">
+                        <span className="bg-gray-100 px-2 py-1 rounded-full">
+                          {item.quantity}
+                        </span>
+                      </td>
+                      <td className="text-right py-3 text-sm font-medium">
+                        {calculateItemPrice(item).toFixed(2)} ₽
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          )}
 
-          {/* Discount */}
-          {order.discountAmount && order.discountAmount > 0 && (
-            <div className="flex justify-between text-sm ">
-              <span>{t.discount}:</span>
-              <span>-{order.discountAmount.toFixed(2)} ₽</span>
-            </div>
-          )}
-
-          {/* Bonus Points */}
-          {order.bonusPointsUsed && order.bonusPointsUsed > 0 && (
-            <div className="flex justify-between text-sm ">
-              <span>{t.bonusPoints}:</span>
-              <span>-{order.bonusPointsUsed.toFixed(2)} ₽</span>
-            </div>
-          )}
-
+            {/* Дополнительные сборы */}
             {order.surcharges && order.surcharges.length > 0 && (
-              <div className="mt-2">
-                <div className="text-sm font-medium mb-1">{t.surcharges}:</div>
-                {order.surcharges.map(surcharge => (
-                  <div key={surcharge.id} className="flex justify-between text-sm">
-                    <span>{surcharge.title}</span>
-                    <span>
+              <div className="border-t border-gray-300 pt-4 mb-4">
+                <div className="text-sm font-medium mb-2">{t.surcharges}:</div>
+                {order.surcharges.map((surcharge, index) => (
+                  <div key={surcharge.id} className={`flex justify-between text-sm ${index < order.surcharges!.length - 1 ? 'mb-1' : ''}`}>
+                    <span className="text-gray-600">{surcharge.title}</span>
+                    <span className="font-medium">
                       {surcharge.type === 'FIXED' 
                         ? `+${surcharge.amount.toFixed(2)} ₽` 
                         : `+${surcharge.amount}%`}
@@ -313,39 +314,67 @@ const PrecheckDialog = ({ order, onClose }: PrecheckDialogProps) => {
               </div>
             )}
 
-          <div className="border-t border-gray-300 pt-2 mb-4">
-            <div className="flex justify-between font-medium">
-              <span>{t.total}:</span>
-              <span>{calculateSubtotal().toFixed(2)} ₽</span>
-            </div>
-            <div className="flex justify-between text-lg font-bold">
-              <span>{t.toPay}:</span>
-              <span>{calculateTotal().toFixed(2)} ₽</span>
-            </div>
-          </div>
+            {/* Скидки и бонусы */}
+            <div className="space-y-2 mb-4">
+              {order.discountAmount && order.discountAmount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">{t.discount}:</span>
+                  <span className="text-red-600 font-medium">-{order.discountAmount.toFixed(2)} ₽</span>
+                </div>
+              )}
 
-          <div className="text-center text-xl mb-4">
-            <p>{t.thanks}</p>
-          </div>
-          <div className="text-center text-xl mb-4 font-semibold">
-            {getDomain()}
-          </div>
-          <div className="flex justify-center mb-4">
-            <QRCodeSVG 
-              value={getDomain()}
-              size={240}
-              level="H"
-            />
+              {order.bonusPointsUsed && order.bonusPointsUsed > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">{t.bonusPoints}:</span>
+                  <span className="text-red-600 font-medium">-{order.bonusPointsUsed.toFixed(2)} ₽</span>
+                </div>
+              )}
+            </div>
+
+            {/* Итоги */}
+            <div className="border-t border-gray-300 pt-4 mb-6">
+              <div className="flex justify-between text-sm mb-2">
+                <span className="text-gray-600">{t.total}:</span>
+                <span className="font-medium">{calculateSubtotal().toFixed(2)} ₽</span>
+              </div>
+              <div className="flex justify-between text-lg font-bold">
+                <span>{t.toPay}:</span>
+                <span className="text-green-600">{calculateTotal().toFixed(2)} ₽</span>
+              </div>
+            </div>
+
+            {/* Благодарность и QR код */}
+            <div className="text-center border-t border-gray-300 pt-6">
+              <p className="text-lg mb-4 font-semibold">{t.thanks}</p>
+              {getDomain() && (
+                <>
+                  <div className="text-lg mb-4 font-semibold text-blue-600">
+                    {getDomain()}
+                  </div>
+                  <div className="flex justify-center mb-4">
+                    <QRCodeSVG 
+                      value={getDomain() || ''}
+                      size={200}
+                      level="H"
+                      includeMargin
+                    />
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 mt-4 no-print">
-          <Button variant="outline" onClick={onClose}>
-            {t.close}
-          </Button>
-          <Button onClick={safeHandlePrint} disabled={isPrinting}>
-            {isPrinting ? t.printing : t.print}
-          </Button>
+        {/* Кнопки действий */}
+        <div className="p-6 border-t dark:border-gray-700 no-print flex-shrink-0">
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={onClose}>
+              {t.close}
+            </Button>
+            <Button onClick={safeHandlePrint} disabled={isPrinting}>
+              {isPrinting ? t.printing : t.print}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
