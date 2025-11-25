@@ -27,9 +27,9 @@ import dynamic from 'next/dynamic';
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { Trash2, Edit } from 'lucide-react';
-import { Restaurant } from '@/components/features/staff/StaffTable';
 import { debounce } from 'lodash';
 import React from 'react';
+import { Restaurant } from '@/lib/api/dictionaries.service';
 
 const MapEditor = dynamic(() => import('@/components/features/MapEditor'), {
   ssr: false,
@@ -270,7 +270,7 @@ const DeliveryZoneDialogContent = React.memo(
               <SelectContent>
                 {restaurants.map((rest) => (
                   <SelectItem key={rest.id} value={rest.id}>
-                    {rest.title}
+                    {rest.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -481,7 +481,7 @@ export default function DeliveryZonePage() {
               <SelectItem value="all">{t.allRestaurants}</SelectItem>
               {restaurants.map((rest : Restaurant) => (
                 <SelectItem key={rest.id} value={rest.id}>
-                  {rest.title}
+                  {rest.name}
                 </SelectItem>
               ))}
             </SelectContent>

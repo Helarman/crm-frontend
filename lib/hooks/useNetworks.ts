@@ -1,6 +1,5 @@
 import useSWR from 'swr';
 import { Network, NetworkService } from '../api/network.service';
-import { Restaurant } from '@/components/features/staff/StaffTable';
 import { useAuth } from './useAuth';
 
 export const useNetworks = () => {
@@ -89,7 +88,7 @@ export const useUserNetworks = () => {
 };
 
 export const useNetworkRestaurants = (networkId?: string) => {
-  const { data, error, isLoading, isValidating, mutate } = useSWR<Restaurant[]>(
+  const { data, error, isLoading, isValidating, mutate } = useSWR<any[]>(
     networkId ? `/networks/${networkId}/restaurants` : null,
     networkId ? () => NetworkService.getRestaurants(networkId) : null,
     {
