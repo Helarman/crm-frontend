@@ -19,7 +19,6 @@ import { OrderService } from '@/lib/api/order.service'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import useSWRMutation from 'swr/mutation'
-import { Restaurant } from '../staff/StaffTable'
 import { Button } from '@/components/ui/button'
 import { Utensils, ShoppingBag, Truck, GlassWater, Archive, Calendar, Filter, X, Clock, AlertTriangle, List, Grid2X2, Grid3X3, Square } from 'lucide-react'
 import { useLanguageStore } from '@/lib/stores/language-store'
@@ -36,6 +35,7 @@ import { useOrderWebSocket } from '@/lib/hooks/useOrderWebSocket'
 import { useRestaurantSchedule } from '@/lib/hooks/useRestaurantSchedule'
 import { useRestaurants } from '@/lib/hooks/useRestaurant';
 import { useRestaurantById } from '@/lib/hooks/useRestaurantById'
+import { Restaurant } from '@/lib/types/restaurant'
 
 const ORDER_TYPES = [
   {

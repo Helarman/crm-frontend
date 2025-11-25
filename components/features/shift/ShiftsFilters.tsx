@@ -13,8 +13,8 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRestaurants } from '@/lib/hooks/useRestaurant';
 import { useDebounceCallback } from '@/lib/hooks/useDebounce';
 import { useState } from 'react';
-import { Restaurant } from '../staff/StaffTable';
 import { useLanguageStore } from '@/lib/stores/language-store';
+import { Restaurant } from '@/lib/types/restaurant';
 
 interface ShiftsFiltersProps {
   onFilterChange: (filters: {

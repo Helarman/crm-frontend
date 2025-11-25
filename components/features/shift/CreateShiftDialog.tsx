@@ -16,7 +16,6 @@ import { useShifts } from '@/lib/hooks/useShifts';
 import { toast } from 'sonner';
 import { RestaurantService } from '@/lib/api/restaurant.service';
 import { useLanguageStore } from '@/lib/stores/language-store';
-import { Restaurant } from '../staff/StaffTable';
 import SearchableSelect from '../menu/product/SearchableSelect';
 import { RestaurantDto } from '@/lib/api/order.service';
 

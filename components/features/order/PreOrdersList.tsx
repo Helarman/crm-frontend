@@ -17,12 +17,12 @@ import {
 import { Card } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Restaurant } from '../staff/StaffTable'
 import { DateRange } from 'react-day-picker'
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination'
 import { Archive, Volume2, VolumeX, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DateRangePicker } from '@/components/ui/data-range-picker'
+import { Restaurant } from '@/lib/types/restaurant'
 
 const RESTAURANT_STORAGE_KEY = 'selectedRestaurantId'
 const KITCHEN_SOUNDS_ENABLED_KEY = 'kitchenSoundsEnabled'
