@@ -101,6 +101,8 @@ export interface DeliveryZone {
   price: number;
   minOrder?: number;
   polygon: string; // WKT или GeoJSON
+  color: string; // HEX цвет зоны
+  priority: number; // Приоритет (чем выше число, тем выше приоритет)
   restaurantId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -111,7 +113,9 @@ export interface CreateDeliveryZoneDto {
   price: number;
   minOrder?: number;
   polygon: string; 
-  restaurantId?: string ;
+  color?: string; // HEX цвет (опционально)
+  priority?: number; // Приоритет (опционально)
+  restaurantId?: string;
 }
 
 export interface UpdateDeliveryZoneDto {
@@ -119,6 +123,8 @@ export interface UpdateDeliveryZoneDto {
   price?: number;
   minOrder?: number;
   polygon?: string; 
+  color?: string; // HEX цвет
+  priority?: number; // Приоритет
 }
 
 export interface CheckCoverageDto {
@@ -127,17 +133,36 @@ export interface CheckCoverageDto {
   lng: number;
 }
 
+// Константы для цветов по умолчанию
+export const DEFAULT_ZONE_COLORS = [
+  '#3B82F6', // blue
+  '#EF4444', // red
+  '#10B981', // green
+  '#F59E0B', // yellow
+  '#8B5CF6', // purple
+  '#EC4899', // pink
+  '#06B6D4', // cyan
+  '#84CC16', // lime
+] as const;
+
 export const DeliveryZoneService = {
   /**
    * Создать новую зону доставки
    */
   create: async (dto: CreateDeliveryZoneDto): Promise<DeliveryZone> => {
     try {
-       if (!dto.polygon || !dto.polygon.startsWith('POLYGON')) {
+      if (!dto.polygon || !dto.polygon.startsWith('POLYGON')) {
         throw new Error('Invalid polygon format');
       }
 
-      const { data } = await api.post<DeliveryZone>('/delivery-zones', dto);
+      // Автоматически назначаем цвет, если не указан
+      const dataToSend = {
+        ...dto,
+        color: dto.color || DEFAULT_ZONE_COLORS[Math.floor(Math.random() * DEFAULT_ZONE_COLORS.length)],
+        priority: dto.priority || 0,
+      };
+
+      const { data } = await api.post<DeliveryZone>('/delivery-zones', dataToSend);
       return data;
     } catch (error) {
       console.error('Failed to create delivery zone:', error);
@@ -196,7 +221,6 @@ export const DeliveryZoneService = {
     }
   },
 
-
   /**
    * Получить зону доставки для конкретной точки
    */
@@ -210,5 +234,107 @@ export const DeliveryZoneService = {
       console.error('Failed to find delivery zone for point:', error);
       throw error;
     }
+  },
+
+  /**
+   * Обновить только приоритет зоны
+   */
+  updatePriority: async (id: string, priority: number): Promise<DeliveryZone> => {
+    try {
+      const { data } = await api.patch<DeliveryZone>(`/delivery-zones/${id}`, { priority });
+      return data;
+    } catch (error) {
+      console.error(`Failed to update priority for zone ${id}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Обновить только цвет зоны
+   */
+  updateColor: async (id: string, color: string): Promise<DeliveryZone> => {
+    try {
+      const { data } = await api.patch<DeliveryZone>(`/delivery-zones/${id}`, { color });
+      return data;
+    } catch (error) {
+      console.error(`Failed to update color for zone ${id}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Получить следующий доступный приоритет для нового зоны
+   */
+  getNextAvailablePriority: async (restaurantId: string): Promise<number> => {
+    try {
+      const zones = await DeliveryZoneService.findAllByRestaurant(restaurantId);
+      if (zones.length === 0) return 0;
+      
+      const maxPriority = Math.max(...zones.map(zone => zone.priority));
+      return maxPriority + 1;
+    } catch (error) {
+      console.error('Failed to get next available priority:', error);
+      return 0;
+    }
+  },
+
+  /**
+   * Переупорядочить приоритеты зон
+   */
+  reorderPriorities: async (restaurantId: string, zoneIds: string[]): Promise<DeliveryZone[]> => {
+    try {
+      const updates = zoneIds.map((id, index) => 
+        DeliveryZoneService.updatePriority(id, zoneIds.length - index - 1)
+      );
+      
+      return await Promise.all(updates);
+    } catch (error) {
+      console.error('Failed to reorder priorities:', error);
+      throw error;
+    }
+  }
+};
+
+// Вспомогательные функции для работы с цветами
+export const ZoneColorUtils = {
+  /**
+   * Проверить валидность HEX цвета
+   */
+  isValidHexColor: (color: string): boolean => {
+    return /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(color);
+  },
+
+  /**
+   * Получить контрастный цвет текста для фона
+   */
+  getContrastTextColor: (backgroundColor: string): string => {
+    // Упрощенная проверка яркости цвета
+    const hex = backgroundColor.replace('#', '');
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    
+    // Формула яркости
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    
+    return brightness > 128 ? '#000000' : '#FFFFFF';
+  },
+
+  /**
+   * Осветлить цвет
+   */
+  lightenColor: (color: string, percent: number): string => {
+    const num = parseInt(color.replace('#', ''), 16);
+    const amt = Math.round(2.55 * percent);
+    const R = (num >> 16) + amt;
+    const G = (num >> 8 & 0x00FF) + amt;
+    const B = (num & 0x0000FF) + amt;
+    
+    return '#' + (
+      0x1000000 +
+      (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 +
+      (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 +
+      (B < 255 ? B < 1 ? 0 : B : 255)
+    ).toString(16).slice(1);
   }
 };

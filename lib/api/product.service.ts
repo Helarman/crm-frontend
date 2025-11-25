@@ -106,6 +106,7 @@ export interface ProductDto {
   restaurantId?: string;
   image?: string;
   sortOrder?: number;
+  composition?: string
 }
 
 export interface SortOrderRequest {

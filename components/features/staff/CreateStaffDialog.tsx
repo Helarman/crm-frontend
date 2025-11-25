@@ -8,6 +8,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Loader2 } from "lucide-react"
@@ -15,19 +22,42 @@ import { useLanguageStore } from '@/lib/stores/language-store'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { UserService } from '@/lib/api/user.service'
 import { toast } from 'sonner'
+import SearchableSelect from '../menu/product/SearchableSelect'
+import { Restaurant } from '@/lib/types/restaurant'
+import { RestaurantService } from '@/lib/api/restaurant.service'
 
-interface CreateUserDialogProps {
+enum UserRoles {
+  NONE = "NONE",
+  STOREMAN = "STOREMAN",
+  COURIER = "COURIER",
+  COOK = "COOK",
+  CHEF = "CHEF",
+  WAITER = "WAITER",
+  CASHIER = "CASHIER",
+  MANAGER = "MANAGER",
+  SUPERVISOR = "SUPERVISOR"
+}
+
+interface CreateStaffDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSuccess?: () => void
+  onSuccess: () => void
+  defaultRestaurantId?: string
+  restaurants?: Restaurant[]
 }
 
 const translations = {
   ru: {
-    createUser: "Создать пользователя",
+    createUser: "Создать сотрудника",
     name: "Имя",
     email: "Email",
     password: "Пароль",
+    role: "Роль",
+    selectRole: "Выберите роль",
+    restaurants: "Рестораны",
+    selectRestaurants: "Выберите рестораны",
+    searchRestaurants: "Поиск ресторанов...",
+    noRestaurants: "Рестораны не найдены",
     create: "Создать",
     cancel: "Отмена",
     nameRequired: "Имя обязательно",
@@ -35,16 +65,33 @@ const translations = {
     invalidEmail: "Некорректный email",
     passwordRequired: "Пароль обязателен",
     minPasswordLength: "Пароль должен содержать минимум 6 символов",
+    roleRequired: "Роль обязательна",
+    restaurantsRequired: "Выберите хотя бы один ресторан",
     emailTaken: "Email уже занят",
     checkingEmail: "Проверка email...",
-    userCreated: "Пользователь успешно создан",
-    error: "Ошибка при создании пользователя"
+    userCreated: "Сотрудник успешно создан",
+    error: "Ошибка при создании сотрудника",
+    [UserRoles.NONE]: "Без роли",
+    [UserRoles.STOREMAN]: "Кладовщик",
+    [UserRoles.COURIER]: "Курьер",
+    [UserRoles.COOK]: "Повар",
+    [UserRoles.CHEF]: "Шеф-повар",
+    [UserRoles.WAITER]: "Официант",
+    [UserRoles.CASHIER]: "Кассир",
+    [UserRoles.MANAGER]: "Менеджер",
+    [UserRoles.SUPERVISOR]: "Супервайзер"
   },
   ka: {
-    createUser: "მომხმარებლის შექმნა",
+    createUser: "თანამშრომლის შექმნა",
     name: "სახელი",
     email: "ელ. ფოსტა",
     password: "პაროლი",
+    role: "როლი",
+    selectRole: "აირჩიეთ როლი",
+    restaurants: "რესტორანები",
+    selectRestaurants: "აირჩიეთ რესტორანები",
+    searchRestaurants: "რესტორანების ძებნა...",
+    noRestaurants: "რესტორანები ვერ მოიძებნა",
     create: "შექმნა",
     cancel: "გაუქმება",
     nameRequired: "სახელი სავალდებულოა",
@@ -52,10 +99,21 @@ const translations = {
     invalidEmail: "არასწორი ელ. ფოსტა",
     passwordRequired: "პაროლი სავალდებულოა",
     minPasswordLength: "პაროლი უნდა შედგებოდეს მინიმუმ 6 სიმბოლოსგან",
+    roleRequired: "როლი სავალდებულოა",
+    restaurantsRequired: "აირჩიეთ მინიმუმ ერთი რესტორანი",
     emailTaken: "ელ. ფოსტა უკვე დაკავებულია",
     checkingEmail: "ელ. ფოსტის შემოწმება...",
-    userCreated: "მომხმარებელი წარმატებით შეიქმნა",
-    error: "მომხმარებლის შექმნის შეცდომა"
+    userCreated: "თანამშრომელი წარმატებით შეიქმნა",
+    error: "თანამშრომლის შექმნის შეცდომა",
+    [UserRoles.NONE]: "როლის გარეშე",
+    [UserRoles.STOREMAN]: "საწყობის მენეჯერი",
+    [UserRoles.COURIER]: "კურიერი",
+    [UserRoles.COOK]: "მზარეული",
+    [UserRoles.CHEF]: "შეფ-მზარეული",
+    [UserRoles.WAITER]: "ოფიციანტი",
+    [UserRoles.CASHIER]: "კასირი",
+    [UserRoles.MANAGER]: "მენეჯერი",
+    [UserRoles.SUPERVISOR]: "სუპერვაიზერი"
   }
 }
 
@@ -63,13 +121,17 @@ const createUserSchema = z.object({
   name: z.string().min(1),
   email: z.string().min(1).email(),
   password: z.string().min(6),
+  role: z.nativeEnum(UserRoles),
+  restaurantIds: z.array(z.string()).min(1),
 })
 
 export function CreateStaffDialog({
   open,
   onOpenChange,
   onSuccess,
-}: CreateUserDialogProps) {
+  defaultRestaurantId,
+  restaurants
+}: CreateStaffDialogProps) {
   const { language } = useLanguageStore()
   const t = translations[language]
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -81,41 +143,66 @@ export function CreateStaffDialog({
       name: '',
       email: '',
       password: '',
+      role: UserRoles.NONE,
+      restaurantIds: defaultRestaurantId ? [defaultRestaurantId] : [],
     }
   })
 
-  const onSubmit = async (values: z.infer<typeof createUserSchema>) => {
-    try {
-      setIsSubmitting(true)
-      
-      const isUserExist = await UserService.getByEmail(values.email)
-      if (isUserExist) {
-        toast.error('Email занят')
-        setEmailError('Email занят')
-        return
-      }
+  const allRoles = Object.values(UserRoles)
 
-     await UserService.register(values)
-      form.reset()
-      onOpenChange(false)
-      toast.success(t.userCreated)
-      onSuccess?.()
-    } catch (error) {
-      toast.error(t.error)
-    } finally {
-      setIsSubmitting(false)
+const onSubmit = async (values: z.infer<typeof createUserSchema>) => {
+  try {
+    setIsSubmitting(true)
+    setEmailError(null)
+    
+    const isUserExist = await UserService.getByEmail(values.email)
+    if (isUserExist) {
+      setEmailError('emailTaken')
+      toast.error(t.emailTaken)
+      return
     }
+
+    const newUser = await UserService.register({
+      name: values.name,
+      email: values.email,
+      password: values.password,
+      role: values.role,
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 1000))
+
+    if (defaultRestaurantId) {
+        RestaurantService.addUserByEmail(defaultRestaurantId, { email: values.email })
+    }
+
+    form.reset()
+    onOpenChange(false)
+    toast.success(t.userCreated)
+     await new Promise(resolve => setTimeout(resolve, 2000))
+    onSuccess()
+  } catch (error) {
+    console.error('Failed to create user:', error)
+    toast.error(t.error)
+  } finally {
+    setIsSubmitting(false)
   }
+}
 
   return (
     <Dialog open={open} onOpenChange={(open) => {
       if (!open) {
-        form.reset()
+        form.reset({
+          name: '',
+          email: '',
+          password: '',
+          role: UserRoles.NONE,
+          restaurantIds: defaultRestaurantId ? [defaultRestaurantId] : [],
+        })
         setEmailError(null)
       }
       onOpenChange(open)
     }}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>{t.createUser}</DialogTitle>
         </DialogHeader>
@@ -131,9 +218,7 @@ export function CreateStaffDialog({
                   <FormControl>
                     <Input {...field} />
                   </FormControl>
-                  <FormMessage>
-                    {form.formState.errors.name && t.nameRequired}
-                  </FormMessage>
+                  <FormMessage />
                 </FormItem>
               )}
             />
@@ -148,6 +233,10 @@ export function CreateStaffDialog({
                     <Input
                       {...field}
                       type="email"
+                      onChange={(e) => {
+                        field.onChange(e)
+                        setEmailError(null)
+                      }}
                     />
                   </FormControl>
                   <FormMessage>
@@ -168,15 +257,66 @@ export function CreateStaffDialog({
                   <FormControl>
                     <Input type="password" {...field} />
                   </FormControl>
-                  <FormMessage>
-                    {form.formState.errors.password?.type === 'required' && t.passwordRequired}
-                    {form.formState.errors.password?.type === 'too_small' && t.minPasswordLength}
-                  </FormMessage>
+                  <FormMessage />
                 </FormItem>
               )}
             />
 
-            <div className="flex justify-end gap-2 pt-2">
+            <FormField
+              control={form.control}
+              name="role"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t.role}</FormLabel>
+                  <FormControl>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={t.selectRole} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {allRoles.map((role) => (
+                          <SelectItem 
+                            key={role} 
+                            value={role}
+                            className="text-sm"
+                          >
+                            {t[role]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {restaurants && restaurants.length > 0 && <FormField
+              control={form.control}
+              name="restaurantIds"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t.restaurants}</FormLabel>
+                  <FormControl>
+                    <SearchableSelect
+                      options={restaurants.map(r => ({ id: r.id, label: r.title }))}
+                      value={field.value}
+                      onChange={field.onChange}
+                      placeholder={t.selectRestaurants}
+                      searchPlaceholder={t.searchRestaurants}
+                      emptyText={t.noRestaurants}
+                      multiple={true}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            }
+            <div className="flex justify-end gap-2 pt-4">
               <Button
                 type="button"
                 variant="outline"

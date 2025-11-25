@@ -198,6 +198,7 @@ export const UserService = {
    async register(dto: {
     name: string
     email: string
+    role: string
     password: string
   }): Promise<{ id: string }> {
     const { data } = await api.post('/auth/register', dto)

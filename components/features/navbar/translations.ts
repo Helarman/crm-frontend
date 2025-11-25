@@ -37,7 +37,7 @@ export const navTranslations = {
       kitchen: "Кухня",
       restaurants: "Рестораны",
       menu: "Меню",
-      staff: "Персонал",
+      staff: "Пользователи",
       shifts: "Смены",
       discounts: "Скидки",
       bonuses: "Надбавки",

@@ -15,11 +15,11 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Check, Loader2, Trash2 } from "lucide-react"
-import { Restaurant } from "./StaffTable"
 import { useLanguageStore } from '@/lib/stores/language-store'
 import { WorkshopDto } from '@/lib/api/workshop.service'
 import { toast } from 'sonner'
 import SearchableSelect from '../menu/product/SearchableSelect'
+import { Restaurant } from '@/lib/types/restaurant'
 
 enum UserRoles {
   NONE = "NONE",

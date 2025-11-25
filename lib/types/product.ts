@@ -16,6 +16,7 @@ export interface Product {
   printLabels: boolean
   publishedInApp: boolean
   isStopList: boolean
+  composition?: string
   title: string
   titleGe?: string
   price: number

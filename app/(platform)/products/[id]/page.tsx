@@ -47,7 +47,7 @@ const ProductEditPage = () => {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    ingredients: '',
+    composition: '',
     price: 0,
     images: [''],
     categoryId: '',
@@ -145,7 +145,7 @@ const loadInventoryItems = async () => {
       setFormData({
         title: product.title,
         description: product.description,
-        ingredients: product.ingredients,
+        composition: product.composition,
         price: product.price,
         images: product.images.length ? product.images : [''],
         categoryId: product.categoryId,
@@ -178,7 +178,7 @@ const loadInventoryItems = async () => {
     setFormData({
       title: '',
       description: '',
-      ingredients: '',
+      composition: '',
       price: 0,
       images: [''],
       categoryId: '',
@@ -470,6 +470,10 @@ const loadInventoryItems = async () => {
       ru: 'Назад',
       ka: 'უკან',
     },
+     composition: { 
+      ru: 'Состав',
+      ka: 'შემადგენლობა',
+    },
   }
 
   const renderStepContent = () => {
@@ -505,13 +509,13 @@ const loadInventoryItems = async () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="ingredients" className="text-sm">
-                {language === 'ru' ? 'Состав' : 'შემადგენლობა'}
+              <Label htmlFor="composition" className="text-sm"> 
+                {translations.composition[language]} 
               </Label>
               <Textarea
-                id="ingredients"
-                name="ingredients"
-                value={formData.ingredients}
+                id="composition"
+                name="composition" 
+                value={formData.composition}
                 onChange={handleInputChange}
                 className="text-sm min-h-[80px] resize-none"
               />

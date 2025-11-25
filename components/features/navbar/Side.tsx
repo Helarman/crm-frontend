@@ -322,7 +322,7 @@ export default function Side() {
       },*/
       { 
         name: t.staff, 
-        href: "/staff", 
+        href: "/users", 
         icon: <Users className="w-5 h-5" />,
         roles: ['MANAGER', 'SUPERVISOR']
       },

@@ -17,48 +17,42 @@ import {
 import { Card } from '@/components/ui/card'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Restaurant } from '../staff/StaffTable'
 import { DateRange } from 'react-day-picker'
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from '@/components/ui/pagination'
 import { Archive, Volume2, VolumeX, X, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DateRangePicker } from '@/components/ui/data-range-picker'
 import { Badge } from '@/components/ui/badge'
+import { Restaurant } from '@/lib/types/restaurant'
 
 const RESTAURANT_STORAGE_KEY = 'selectedRestaurantId'
 const KITCHEN_SOUNDS_ENABLED_KEY = 'kitchenSoundsEnabled'
 
-const createSound = (frequency: number, duration: number, type: OscillatorType = 'sine') => {
-  return () => {
-    try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-      const oscillator = audioContext.createOscillator()
-      const gainNode = audioContext.createGain()
-      
-      oscillator.connect(gainNode)
-      gainNode.connect(audioContext.destination)
-      
-      oscillator.frequency.value = frequency
-      oscillator.type = type
-      
-      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration)
-      
-      oscillator.start(audioContext.currentTime)
-      oscillator.stop(audioContext.currentTime + duration)
-      
-      return audioContext
-    } catch (error) {
-      console.warn('Web Audio API not supported:', error)
-      return null
-    }
-  }
+const createAudio = (src: string) => {
+  if (typeof window === 'undefined') return null
+  const audio = new Audio(src)
+  audio.volume = 0.3 // Устанавливаем громкость 30%
+  return audio
 }
 
-const newOrderSound = createSound(800, 1, 'sine')
-const itemInProgressSound = createSound(600, 0.3, 'sine')
-const itemRefundedSound = createSound(400, 0.5, 'square') // Низкий частотный звук для REFUNDED
+// Инициализация звуков
+const orderSound = createAudio('/sounds/order.mp3')
+const reorderSound = createAudio('/sounds/item.mp3')
+const refundSound = createAudio('/sounds/refaund.mp3')
 
+const playSound = (audio: HTMLAudioElement | null) => {
+  if (!audio) return
+  
+  try {
+    // Сбрасываем звук на начало если он уже играет
+    audio.currentTime = 0
+    audio.play().catch(error => {
+      console.warn('Failed to play sound:', error)
+    })
+  } catch (error) {
+    console.warn('Error playing sound:', error)
+  }
+}
 const translations = {
   authRequired: {
     ru: 'Пожалуйста, авторизуйтесь для просмотра заказов',
@@ -213,33 +207,19 @@ export default function KitchenOrdersList() {
     localStorage.setItem(KITCHEN_SOUNDS_ENABLED_KEY, JSON.stringify(soundsEnabled))
   }, [soundsEnabled])
 
-  const playNewOrderSound = useCallback(() => {
-    if (soundsEnabledRef.current) {
-      try {
-        newOrderSound()
-      } catch (error) {
-        console.warn('Failed to play new order sound:', error)
-      }
+    const playNewOrderSound = useCallback(() => {
+    if (soundsEnabledRef.current && orderSound) {
+      playSound(orderSound)
     }
   }, [])
 
   const playItemInProgressSound = useCallback(() => {
-    if (soundsEnabledRef.current) {
-      try {
-        itemInProgressSound()
-      } catch (error) {
-        console.warn('Failed to play item in progress sound:', error)
-      }
-    }
+  playSound(reorderSound)
   }, [])
 
   const playItemRefundedSound = useCallback(() => {
-    if (soundsEnabledRef.current) {
-      try {
-        itemRefundedSound()
-      } catch (error) {
-        console.warn('Failed to play item refunded sound:', error)
-      }
+    if (soundsEnabledRef.current && refundSound) {
+      playSound(refundSound)
     }
   }, [])
 
@@ -381,6 +361,8 @@ export default function KitchenOrdersList() {
     }, false)
   }, [playNewOrderSound, playItemInProgressSound, playItemRefundedSound, highlightOrderWithRefunded, updatePreviousOrders])
 
+
+
   const { isConnected } = useOrderWebSocket({
     restaurantId: selectedRestaurantId,
     enabled: !!selectedRestaurantId,
@@ -406,7 +388,7 @@ export default function KitchenOrdersList() {
     }, [mutateActive, handleOrdersUpdate])
   })
 
-  type OrderStatus = 'PREPARING' | 'CONFIRMED' | 'READY'
+  type OrderStatus = 'PREPARING' | 'READY'
 
   const filteredActiveOrders = activeOrders.filter((order: OrderResponse) => 
     [ 'PREPARING', 'READY'].includes(order.status)
@@ -417,21 +399,25 @@ export default function KitchenOrdersList() {
   const error = showArchive ? archiveError : activeError
   const totalPages = archiveData?.meta?.totalPages || 1
 
-  const sortedActiveOrders = [...filteredActiveOrders].sort((a, b) => {
-    const statusPriority: Record<OrderStatus, number> = {
-      'PREPARING': 2,
-      'CONFIRMED': 1,
-      'READY': 3
-    }
+const sortedActiveOrders = [...filteredActiveOrders].sort((a, b) => {
+  const statusPriority: Record<OrderStatus, number> = {
+    'PREPARING': 1,
+    'READY': 2,
+  }
 
-    const aStatus = a.status as OrderStatus
-    const bStatus = b.status as OrderStatus
+  const aStatus = a.status as OrderStatus
+  const bStatus = b.status as OrderStatus
 
-    if (statusPriority[aStatus] === statusPriority[bStatus]) {
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    }
+  if (statusPriority[aStatus] !== statusPriority[bStatus]) {
     return statusPriority[aStatus] - statusPriority[bStatus]
-  })
+  }
+
+  if (aStatus === 'PREPARING') {
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  } else {
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  }
+})
 
   const sortedOrders = showArchive 
     ? [...currentData]
@@ -534,6 +520,7 @@ export default function KitchenOrdersList() {
     <div className="space-y-6">
       <div className="flex justify-between items-center gap-4 flex-col lg:flex-row">
         <div className="flex items-center gap-4">
+        
          <h2 className="text-2xl font-bold">
             {showArchive ? translations.archiveOrders.ru : translations.kitchenOrders.ru}
           </h2>

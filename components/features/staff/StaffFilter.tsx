@@ -75,6 +75,8 @@ interface StaffFiltersProps {
   selectedPosition: string
   onPositionChange: (value: UserRoles | typeof ALL_POSITIONS_VALUE) => void
   restaurants: Restaurant[]
+  isRestaurantLocked?: boolean
+  
 }
 
 export function StaffFilter({
@@ -84,7 +86,8 @@ export function StaffFilter({
   onRestaurantChange,
   selectedPosition,
   onPositionChange,
-  restaurants
+  restaurants,
+  isRestaurantLocked = false
 }: StaffFiltersProps) {
   const { language } = useLanguageStore();
 
@@ -127,7 +130,8 @@ export function StaffFilter({
           />
         </div>
 
-        <Select value={selectedRestaurant} onValueChange={onRestaurantChange}>
+        {!isRestaurantLocked && 
+        <Select value={selectedRestaurant} onValueChange={onRestaurantChange}  disabled={isRestaurantLocked}>
           <SelectTrigger className="w-[200px]">
             <SelectValue placeholder={t.filterByRestaurant} />
           </SelectTrigger>
@@ -145,7 +149,7 @@ export function StaffFilter({
             ))}
           </SelectContent>
         </Select>
-
+          }
         <Select 
           value={selectedPosition} 
           onValueChange={(value) => onPositionChange(value as UserRoles | typeof ALL_POSITIONS_VALUE)}
@@ -169,8 +173,8 @@ export function StaffFilter({
         </Select>
       </div>
 
-      <div className="flex flex-wrap gap-2 mt-2">
-        {selectedRestaurant !== ALL_RESTAURANTS_VALUE && (
+       <div className="flex flex-wrap gap-2 mt-2">
+        {!isRestaurantLocked && selectedRestaurant !== ALL_RESTAURANTS_VALUE && (
           <Badge variant="outline" className="px-3 py-1">
             {t.filterByRestaurant}: {selectedRestaurantName}
             <button 

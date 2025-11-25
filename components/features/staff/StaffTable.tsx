@@ -16,12 +16,9 @@ import { RestaurantService } from '@/lib/api/restaurant.service'
 import { UserService } from '@/lib/api/user.service'
 import { EditStaffDialog } from './EditStaffDialog'
 import { WorkshopService } from "@/lib/api/workshop.service"
+import { useAuth } from "@/lib/hooks/useAuth"
+import { Restaurant } from "@/lib/types/restaurant"
 
-export interface Restaurant {
-  id: string
-  title: string
-  shiftCloseTime: any;
-}
 
 export interface StaffMember {
   id: string
@@ -262,7 +259,7 @@ const handleSaveChanges = async (
     }
     setIsDeleting(false)
   }
-
+  const {user} = useAuth()
   return (
     <>
       <div className="rounded-md border">
@@ -271,7 +268,7 @@ const handleSaveChanges = async (
             <TableRow>
               <TableHead>{t.name}</TableHead>
               <TableHead>{t.email}</TableHead>
-              <TableHead>{t.restaurant}</TableHead>
+              {user.role === 'SUPERVISOR' && <TableHead>{t.restaurant}</TableHead>}
               <TableHead>{t.position}</TableHead>
             </TableRow>
           </TableHeader>
@@ -282,17 +279,19 @@ const handleSaveChanges = async (
                   <TableCell className="font-medium">{member.name}</TableCell>
                   <TableCell>{member.email}</TableCell>
                   
+                 {user.role === 'SUPERVISOR' &&
                   <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {member.restaurant.map(restaurant => (
-                        <Link key={restaurant.id} href={`/restaurants/${restaurant.id}`}>
-                          <Badge variant="outline">
-                            {restaurant.title}
-                          </Badge>
-                        </Link>
-                      ))}
-                    </div>
-                  </TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {member.restaurant.map(restaurant => (
+                          <Link key={restaurant.id} href={`/restaurants/${restaurant.id}`}>
+                            <Badge variant="outline">
+                              {restaurant.title}
+                            </Badge>
+                          </Link>
+                        ))}
+                      </div>
+                    </TableCell>
+                  }
 
                   <TableCell>
                     <Badge className={tRoles.roleColors[member.position as UserRoles]}>

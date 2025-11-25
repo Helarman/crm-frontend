@@ -6,7 +6,7 @@ import { Plus } from "lucide-react"
 import { useState, useEffect } from "react"
 import { UserService } from "@/lib/api/user.service"
 import { RestaurantService } from "@/lib/api/restaurant.service"
-import { WorkshopService } from "@/lib/api/workshop.service" // Добавляем импорт сервиса цехов
+import { WorkshopService } from "@/lib/api/workshop.service"
 import { StaffTable } from "@/components/features/staff/StaffTable"
 import { StaffFilter } from "@/components/features/staff/StaffFilter"
 import { UserRoles, StaffMember } from "@/components/features/staff/StaffTable"
@@ -23,7 +23,7 @@ interface Workshop {
   name: string;
 }
 
-export default function StaffManagementPage() {
+export default function UsersPage() {
   const ALL_RESTAURANTS_VALUE = "all-restaurants"
   const ALL_POSITIONS_VALUE = "all-positions"
 
@@ -98,7 +98,7 @@ export default function StaffManagementPage() {
       setLoading(true)
       const [freshUsers, freshWorkshops] = await Promise.all([
         UserService.getAll(),
-        WorkshopService.getAll() // Обновляем список цехов
+        WorkshopService.getAll()
       ])
       
       const formattedStaff = freshUsers.map((user: any) => ({
@@ -131,8 +131,8 @@ export default function StaffManagementPage() {
   }
 
   return (
-    <AccessCheck allowedRoles={['MANAGER', 'SUPERVISOR']}>
-      <div className="space-y-6">
+    <AccessCheck allowedRoles={[ 'SUPERVISOR']}>
+      <div className="space-y-6">\
         <PageHeader
           title={t.title}
           buttonText={t.addStaff}
@@ -156,7 +156,7 @@ export default function StaffManagementPage() {
         />
 
         <StaffTable
-          workshops={workshops} // Передаем цехи в таблицу
+          workshops={workshops}
           staff={staff}
           restaurants={restaurants as any}
           searchTerm={searchTerm}

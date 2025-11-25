@@ -11,7 +11,7 @@ import { Language, useLanguageStore } from '@/lib/stores/language-store'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { Button } from '@/components/ui/button'
-import { ChevronDown, Check, Clock, Package, AlertCircle } from 'lucide-react'
+import { ChevronDown, Check, Clock, Package, AlertCircle, Beef } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/hooks/useAuth'
@@ -21,6 +21,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { OrderItem } from '@/lib/types/order'
 import { useRestaurant } from '@/lib/hooks/useRestaurant'
 import { useOrderWebSocket } from '@/lib/hooks/useOrderWebSocket'
+import { stringify } from 'querystring'
+import { NetworkService } from '@/lib/api/network.service'
+import { RestaurantService } from '@/lib/api/restaurant.service'
 
 type OrderItemWithStatus = {
   id: string
@@ -114,7 +117,7 @@ const getStatusText = (status: OrderItemStatus, language: string): string => {
   const translations = {
     ru: {
       [OrderItemStatus.CREATED]: 'Создан',
-      [OrderItemStatus.IN_PROGRESS]: 'В процессе',
+      [OrderItemStatus.IN_PROGRESS]: 'Готовится',
       [OrderItemStatus.PARTIALLY_DONE]: 'Частично готов',
       [OrderItemStatus.PAUSED]: 'На паузе',
       [OrderItemStatus.CONFIRMED]: '',
@@ -179,10 +182,9 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
   const [isCommentOverflowing, setIsCommentOverflowing] = useState(false)
   const orderId = order.id;
   const [warehouse, setWarehouse] = useState<any>(null)
+  const [restaurantData, setRestaurantData] = useState<any>(null)
 
 
-
-  // Получаем данные ресторана
   const { data: restaurant } = useRestaurant(selectedRestaurantId as string)
 
   const { isConnected } = useOrderWebSocket({
@@ -294,7 +296,7 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
       connected: "Онлайн",
       connecting: "Подключение...",
       disconnected: "Офлайн",
-      confirmCompletion: "Подтвердить выполнение",
+      confirmCompletion: "Подтвердить",
       completionText: "Вы уверены, что хотите отметить блюдо как готовое?",
       completing: "Выполнение...",
       itemCompleted: "Блюдо отмечено как готовое",
@@ -506,6 +508,22 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
       })))
     }
   }, [order])
+  const loadRestaurantData = async () => {
+    try {
+      if (selectedRestaurantId) {
+        const restaurant = await RestaurantService.getById(selectedRestaurantId)
+        setRestaurantData(restaurant)
+      }
+    } catch (error) {
+      console.error('Failed to load restaurant data:', error)
+    }
+  }
+
+    useEffect(() => {
+    if (selectedRestaurantId) {
+      loadRestaurantData()
+    }
+  }, [selectedRestaurantId])
 
   const handleCardClick = () => {
     const routePath = `/orders/${order.id}`
@@ -593,7 +611,11 @@ const handleConfirmWriteOff = async () => {
     }
 
     await handleStatusChange(currentItemId, OrderItemStatus.COMPLETED)
-    
+    const completedItem = order.items.find(item => item.id === currentItemId);
+      if (true) {
+        printItemLabel(completedItem, order.number);
+      }
+
     setWriteOffDialogOpen(false)
     
     // Показываем соответствующее сообщение
@@ -676,6 +698,65 @@ const handleConfirmWriteOff = async () => {
     loadWarehouseData()
   }
 }, [selectedRestaurantId, shouldUseWarehouse])
+
+const printItemLabel = (item: any, orderNumber: number) => {
+   const networkName = restaurantData?.network?.name || 'Appetit' 
+  const dishName = item.product.title;
+  const composition = item.product.composition || ""; 
+  
+  // Рассчитываем количество этикеток
+  const totalQuantity = item.quantity;
+  const packageQuantity = 5;
+  const fullPackages = Math.floor(totalQuantity / packageQuantity);
+  const remainder = totalQuantity % packageQuantity;
+  
+  // Печатаем этикетки для полных упаковок
+  for (let i = 0; i < fullPackages; i++) {
+    printLabel(networkName, orderNumber, dishName, packageQuantity, composition);
+  }
+  
+  // Печатаем этикетку для остатка
+  if (remainder > 0) {
+    printLabel(networkName, orderNumber, dishName, remainder, composition);
+  }
+};
+
+const printLabel = (networkName: string, orderNumber: number, dishName: string, quantity: number, composition: string) => {
+  const labelContent = `
+${networkName} #${orderNumber}
+---------------------------
+${dishName} - ${quantity}
+-------------------------------
+${composition}
+  `;
+  
+  // Открываем новое окно для печати
+  const printWindow = window.open('', '_blank');
+  if (printWindow) {
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Print Label</title>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              font-size: 14px;
+              line-height: 1.4;
+              white-space: pre-line;
+              margin: 10px;
+            }
+          </style>
+        </head>
+        <body>
+          ${labelContent}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
+    printWindow.close();
+  }
+};
 
 const loadWarehouseData = async () => {
   try {
@@ -805,12 +886,22 @@ const loadWarehouseData = async () => {
                               </div>
                             )}
                           </div>
-                          {order.status === EnumOrderStatus.PREPARING ? <Badge 
-                            variant="outline" 
-                            className="text-xs"
-                          >
-                            {getStatusText(item.status, language)}
-                          </Badge> : ''}
+                            <Badge variant="outline" className="text-xs">
+                              
+                              {item.status === OrderItemStatus.IN_PROGRESS && item.timestamps.startedAt ? (
+                                <>
+                                  {language === 'ru' ? 'Готовится' : 'მზადდება'}{' '}
+                                  {Math.round((new Date().getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
+                                </>
+                              ) : item.status === OrderItemStatus.COMPLETED && item.timestamps.startedAt && item.timestamps.completedAt ? (
+                                <>
+                                  {language === 'ru' ? 'Приготовлен за' : 'მზად იყო'}{' '}
+                                  {Math.round((new Date(item.timestamps.completedAt).getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
+                                </>
+                              ) : (
+                                getStatusText(item.status, language)
+                              )}
+                            </Badge>
                         </div>
                       </div>
                     ))
@@ -843,9 +934,22 @@ const loadWarehouseData = async () => {
                                     </div>
                                   )}
                                 </div>
-                                <Badge variant="outline" className="text-xs">
-                                  {getStatusText(item.status, language)}
-                                </Badge>
+                                   <Badge variant="outline" className="text-xs">
+                                    
+                                    {item.status === OrderItemStatus.IN_PROGRESS && item.timestamps.startedAt ? (
+                                      <>
+                                        {language === 'ru' ? 'Готовится' : 'მზადდება'}{' '}
+                                        {Math.round((new Date().getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
+                                      </>
+                                    ) : item.status === OrderItemStatus.COMPLETED && item.timestamps.startedAt && item.timestamps.completedAt ? (
+                                      <>
+                                        {language === 'ru' ? 'Приготовлен за' : 'მზად იყო'}{' '}
+                                        {Math.round((new Date(item.timestamps.completedAt).getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
+                                      </>
+                                    ) : (
+                                      getStatusText(item.status, language)
+                                    )}
+                                  </Badge>
                               </div>
                               <div className="text-xs text-muted-foreground mt-1">
                                 {t.responsibleWorkshop}: {item.product.workshops?.[0]?.workshop.name || (language === 'ru' ? 'Не указан' : 'არ არის მითითებული')}
@@ -881,9 +985,22 @@ const loadWarehouseData = async () => {
                                     </div>
                                   )}
                                 </div>
-                                <Badge variant="outline" className="text-xs">
-                                  {getStatusText(item.status, language)}
-                                </Badge>
+                                  <Badge variant="outline" className="text-xs">
+                              
+                              {item.status === OrderItemStatus.IN_PROGRESS && item.timestamps.startedAt ? (
+                                <>
+                                  {language === 'ru' ? 'Готовится' : 'მზადდება'}{' '}
+                                  {Math.round((new Date().getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
+                                </>
+                              ) : item.status === OrderItemStatus.COMPLETED && item.timestamps.startedAt && item.timestamps.completedAt ? (
+                                <>
+                                  {language === 'ru' ? 'Приготовлен за' : 'მზად იყო'}{' '}
+                                  {Math.round((new Date(item.timestamps.completedAt).getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
+                                </>
+                              ) : (
+                                getStatusText(item.status, language)
+                              )}
+                            </Badge>
                               </div>
                               <div className="text-xs text-muted-foreground mt-1">
                                 {t.responsibleWorkshop}: {item.product.workshops?.[0]?.workshop.name || (language === 'ru' ? 'Не указан' : 'არ არის მითითებული')}
@@ -927,51 +1044,45 @@ const loadWarehouseData = async () => {
         </div>
       </Card>
 
-      <Dialog open={writeOffDialogOpen} onOpenChange={setWriteOffDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              { t.confirmCompletion}
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            <p className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-yellow-500" />
-              {t.completionText}
-            </p>
-            
-            
-          </div>
-          
-          <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setWriteOffDialogOpen(false)} 
-              disabled={isWritingOff}
-            >
-              {t.cancel}
-            </Button>
-            <Button 
-              onClick={handleConfirmWriteOff} 
-              disabled={isWritingOff}
-            >
-              {isWritingOff ? (
-                <>
-                  <Clock className="mr-2 h-4 w-4 animate-spin" />
-                  {t.completing}
-                </>
-              ) : (
-                <>
-                  <Check className="mr-2 h-4 w-4" />
-                  {t.confirmCompletion}
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+     <Dialog open={writeOffDialogOpen} onOpenChange={setWriteOffDialogOpen}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle className="flex items-center gap-2">
+        <Beef className="h-5 w-5" />
+        Блюдо   {currentItemId && (() => {
+          const item = order.items.find(i => i.id === currentItemId);
+          return item ? `${item.product.title}(${item.quantity}шт) готово?` : 'Блюдо готово?';
+        })()}
+      </DialogTitle>
+    </DialogHeader>
+    
+    <DialogFooter>
+      <Button 
+        variant="outline" 
+        onClick={() => setWriteOffDialogOpen(false)} 
+        disabled={isWritingOff}
+      >
+        {t.cancel}
+      </Button>
+      <Button 
+        onClick={handleConfirmWriteOff} 
+        disabled={isWritingOff}
+      >
+        {isWritingOff ? (
+          <>
+            <Clock className="mr-2 h-4 w-4 animate-spin" />
+            {t.completing}
+          </>
+        ) : (
+          <>
+            <Check className="mr-2 h-4 w-4" />
+            {t.confirmCompletion}
+          </>
+        )}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
     </div>
   )
 }

@@ -3,7 +3,7 @@
 import { useRestaurant } from '@/lib/hooks/useRestaurant';
 import { RestaurantService } from '@/lib/api/restaurant.service';
 import { Button } from '@/components/ui/button';
-import { RestaurantUsers } from '@/components/features/restaurant/RestaurantUsers';
+import  RestaurantUsers  from '@/components/features/restaurant/RestaurantUsers';
 import { RestaurantProducts } from '@/components/features/restaurant/RestaurantProducts';
 import { useState } from 'react';
 import { EditRestaurantForm } from '@/components/features/restaurant/EditRestaurantForm';
@@ -20,7 +20,8 @@ import {
   BookOpen,
   Palette,
   CreditCard,
-  Warehouse
+  Warehouse,
+  Map
 } from 'lucide-react';
 import { RestaurantDeliveryZones } from './RestaurantDeliveryZones';
 import { RestaurantDirectories } from './RestaurantDirectories';
@@ -182,9 +183,6 @@ export function RestaurantDetails({ restaurantId }: { restaurantId: string }) {
 
         <TabsContent value="staff">
           <Card>
-            <CardHeader>
-              <CardTitle>{translations.staff.title[language]}</CardTitle>
-            </CardHeader>
             <CardContent>
               <RestaurantUsers />
             </CardContent>
@@ -192,10 +190,14 @@ export function RestaurantDetails({ restaurantId }: { restaurantId: string }) {
         </TabsContent>
 
         <TabsContent value="delivery-zones">
-          <RestaurantDeliveryZones
+          {false ? <RestaurantDeliveryZones
             restaurantId={restaurantId}
             restaurantName={restaurant.title}
-          />
+          />: <div className="text-center py-8 text-muted-foreground">
+                <Map className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Настройки зон доставки будут добавлены позже</p>
+              </div>}
+
         </TabsContent>
 
         <TabsContent value="directories">
