@@ -5,8 +5,7 @@ import {
   DeliveryZoneService, 
   DeliveryZone, 
   CreateDeliveryZoneDto,
-  DEFAULT_ZONE_COLORS,
-  ZoneColorUtils
+  DEFAULT_ZONE_COLORS
 } from '@/lib/api/delivery-zone.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -98,11 +97,6 @@ const translations = {
       createZone: 'Создание зоны',
       editZone: 'Редактирование зоны',
     },
-    priority: {
-      high: 'Высокий',
-      medium: 'Средний',
-      low: 'Низкий',
-    }
   },
   ka: {
     title: 'მიტანის ზონები',
@@ -183,12 +177,6 @@ const SortableZoneItem = ({
     transition,
   };
 
-  const getPriorityText = (priority: number) => {
-    if (priority >= 7) return t.priority.high;
-    if (priority >= 3) return t.priority.medium;
-    return t.priority.low;
-  };
-
   return (
     <TableRow ref={setNodeRef} style={style}>
       <TableCell>
@@ -209,8 +197,7 @@ const SortableZoneItem = ({
         </div>
       </TableCell>
       <TableCell>
-        <Badge 
-        >
+        <Badge variant={zone.priority >= 7 ? "destructive" : zone.priority >= 3 ? "default" : "secondary"}>
           {zone.priority}
         </Badge>
       </TableCell>
@@ -468,7 +455,7 @@ const DeliveryZoneDialog = ({
               }
             </div>
             <YandexMapEditor
-              zones={getZonesToDisplay} // Используем отфильтрованный список
+              zones={getZonesToDisplay}
               initialPolygon={editingZone?.polygon}
               onChange={(polygon) => setFormData(prev => ({ ...prev, polygon: polygon || '' }))}
               onValidationChange={setIsPolygonValid}
@@ -487,7 +474,6 @@ const DeliveryZoneDialog = ({
           <Button variant="outline" onClick={handleCancel} disabled={isLoading}>
             {t.dialog.cancelButton}
           </Button>
-          {JSON.stringify(isPolygonValid)}
           <Button 
             onClick={handleSave}
             disabled={!isPolygonValid || !formData.title.trim() || isLoading}
@@ -527,7 +513,7 @@ export function RestaurantDeliveryZones({ restaurantId, restaurantName }: Restau
     try {
       setLoading(true);
       const zonesData = await DeliveryZoneService.findAllByRestaurant(restaurantId);
-      // Сортируем по приоритету (по убыванию)
+      console.log('zones', zonesData)
       const sortedZones = zonesData.sort((a, b) => b.priority - a.priority);
       setZones(sortedZones);
     } catch (error) {
@@ -541,32 +527,31 @@ export function RestaurantDeliveryZones({ restaurantId, restaurantName }: Restau
     loadZones();
   }, [loadZones]);
 
-const handleSaveZone = async (formData: CreateDeliveryZoneDto) => {
-  try {
-    const dataToSave = {
-      ...formData,
-      restaurantId,
-    };
+  const handleSaveZone = async (formData: CreateDeliveryZoneDto) => {
+    try {
+      const dataToSave = {
+        ...formData,
+        restaurantId,
+      };
 
-    let savedZone: DeliveryZone;
-    if (editingZone) {
-      savedZone = await DeliveryZoneService.update(editingZone.id, dataToSave);
-      setZones(zones.map(z => z.id === savedZone.id ? savedZone : z));
-      toast.success(t.errors.updateSuccess);
-    } else {
-      savedZone = await DeliveryZoneService.create(dataToSave);
-      setZones(prev => [savedZone, ...prev]);
-      toast.success(t.errors.createSuccess);
+      if (editingZone) {
+        await DeliveryZoneService.update(editingZone.id, dataToSave);
+        toast.success(t.errors.updateSuccess);
+      } else {
+        await DeliveryZoneService.create(dataToSave);
+        toast.success(t.errors.createSuccess);
+      }
+
+      // Перезагружаем данные после успешного сохранения
+      await loadZones();
+      
+      setOpenDialog(false);
+      setEditingZone(null);
+    } catch (error) {
+      toast.error(t.errors.saveError);
+      throw error;
     }
-
-    setOpenDialog(false);
-    setEditingZone(null);
-  } catch (error) {
-    toast.error(t.errors.saveError);
-    throw error;
-  }
-};
-
+  };
 
   const handleEditZone = (zone: DeliveryZone) => {
     setEditingZone(zone);
@@ -576,8 +561,9 @@ const handleSaveZone = async (formData: CreateDeliveryZoneDto) => {
   const handleDeleteZone = async (id: string) => {
     try {
       await DeliveryZoneService.remove(id);
-      setZones(zones.filter(z => z.id !== id));
       toast.success(t.errors.deleteSuccess);
+      // Перезагружаем данные после успешного удаления
+      await loadZones();
     } catch (error) {
       toast.error(t.errors.deleteError);
     }
@@ -591,13 +577,21 @@ const handleSaveZone = async (formData: CreateDeliveryZoneDto) => {
       const newIndex = zones.findIndex(zone => zone.id === over.id);
 
       const reorderedZones = arrayMove(zones, oldIndex, newIndex);
-      setZones(reorderedZones);
+      
+      // Обновляем приоритеты на основе позиции (выше в списке = выше приоритет)
+      const updatedZones = reorderedZones.map((zone, index) => ({
+        ...zone,
+        priority: reorderedZones.length - index
+      }));
+
+      setZones(updatedZones);
 
       try {
-        // Обновляем приоритеты на основе нового порядка
-        const zoneIds = reorderedZones.map(zone => zone.id);
+        const zoneIds = updatedZones.map(zone => zone.id);
         await DeliveryZoneService.reorderPriorities(restaurantId, zoneIds);
         toast.success(t.errors.orderUpdateSuccess);
+        // Перезагружаем данные после успешного изменения порядка
+        await loadZones();
       } catch (error) {
         // Откатываем изменения при ошибке
         setZones(zones);
@@ -629,32 +623,42 @@ const handleSaveZone = async (formData: CreateDeliveryZoneDto) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex justify-between items-center">
-          <span>{t.title}</span>
-          <div className="flex gap-2">
-            <Button
-              variant={viewMode === 'map' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setViewMode('map')}
-            >
-              {t.map.viewAllZones}
-            </Button>
-            <Button
-              variant={viewMode === 'list' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setViewMode('list')}
-            >
-              Список
-            </Button>
+        <div className="flex flex-col gap-4">
+          <CardTitle className="text-xl">{t.title}</CardTitle>
+          
+          <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+            <div className="flex gap-2">
+              <Button
+                variant={viewMode === 'map' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('map')}
+                className="flex-1 sm:flex-none"
+              >
+                {t.map.viewAllZones}
+              </Button>
+              <Button
+                variant={viewMode === 'list' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('list')}
+                className="flex-1 sm:flex-none"
+              >
+                Список
+              </Button>
+            </div>
+            
             <Dialog open={openDialog} onOpenChange={setOpenDialog}>
               <DialogTrigger asChild>
-                <Button size="sm" onClick={() => setEditingZone(null)}>
+                <Button 
+                  size="sm" 
+                  onClick={() => setEditingZone(null)}
+                  className="w-full sm:w-auto"
+                >
                   {t.createButton}
                 </Button>
               </DialogTrigger>
             </Dialog>
           </div>
-        </CardTitle>
+        </div>
       </CardHeader>
       
       <CardContent>
@@ -740,21 +744,21 @@ const handleSaveZone = async (formData: CreateDeliveryZoneDto) => {
             )}
           </div>
         )}
-          <DeliveryZoneDialog
-            open={openDialog}
-            onOpenChange={(open) => {
-              setOpenDialog(open);
-              if (!open) {
-                setEditingZone(null);
-              }
-            }}
-            editingZone={editingZone}
-            zones={zones}
-            t={t}
-            onSave={handleSaveZone}
-            setEditingZone={setEditingZone}
-            onCancel={resetForm}
-          />
+        <DeliveryZoneDialog
+          open={openDialog}
+          onOpenChange={(open) => {
+            setOpenDialog(open);
+            if (!open) {
+              setEditingZone(null);
+            }
+          }}
+          editingZone={editingZone}
+          zones={zones}
+          t={t}
+          onSave={handleSaveZone}
+          setEditingZone={setEditingZone}
+          onCancel={resetForm}
+        />
       </CardContent>
     </Card>
   );

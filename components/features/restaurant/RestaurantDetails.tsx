@@ -190,7 +190,7 @@ export function RestaurantDetails({ restaurantId }: { restaurantId: string }) {
         </TabsContent>
 
         <TabsContent value="delivery-zones">
-          {false ? <RestaurantDeliveryZones
+          {true ? <RestaurantDeliveryZones
             restaurantId={restaurantId}
             restaurantName={restaurant.title}
           />: <div className="text-center py-8 text-muted-foreground">

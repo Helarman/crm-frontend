@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { DeliveryZone } from '@/lib/api/delivery-zone.service';
 import { Button } from '../ui/button';
+import { toast } from 'sonner';
 
 declare global {
   interface Window {
@@ -36,32 +37,31 @@ export function YandexMapEditor({
   const mapRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // useRef для хранения состояния
-  const stateRef = useRef({
-    map: null as any,
-    ymaps: null as any,
-    currentPolygon: null as any,
-    drawingMode: false,
-    points: [] as number[][],
-    temporaryPolyline: null as any,
-    completeButton: null as any,
-    zonesCollection: null as any
-  });
+  
+  const mapInstanceRef = useRef<any>(null);
+  const ymapsRef = useRef<any>(null);
+  const currentPolygonRef = useRef<any>(null);
+  const zonesCollectionRef = useRef<any>(null);
+  const isInitializedRef = useRef(false);
 
   // Функция для преобразования WKT в координаты
   const wktToCoordinates = useCallback((wkt: string): number[][][] => {
     try {
       if (!wkt) return [];
-      const match = wkt.match(/POLYGON\s*\(\s*\(\s*(.+?)\s*\)\s*\)/i);
+      
+      // Убираем пробелы и находим координаты
+      const cleanWkt = wkt.replace(/\s+/g, ' ');
+      const match = cleanWkt.match(/POLYGON\s*\(\s*\(\s*([^)]+)\s*\)\s*\)/i);
+      
       if (!match) return [];
 
       const coordsStr = match[1];
-      const coordPairs = coordsStr.split(',').map(coord => 
-        coord.trim().split(/\s+/).map(Number)
-      );
+      const coordPairs = coordsStr.split(',').map(coord => {
+        const numbers = coord.trim().split(/\s+/).map(Number);
+        return [numbers[1], numbers[0]]; // [lat, lng]
+      });
 
-      return [coordPairs.map(coord => [coord[1], coord[0]])];
+      return [coordPairs];
     } catch (error) {
       console.error('Error parsing WKT:', error);
       return [];
@@ -78,121 +78,161 @@ export function YandexMapEditor({
         `${coord[1].toFixed(6)} ${coord[0].toFixed(6)}`
       ).join(', ');
 
-      return `POLYGON((${wktCoordinates}))`;
+      // Замыкаем полигон
+      const firstCoord = contour[0];
+      const closedCoordinates = wktCoordinates + `, ${firstCoord[1].toFixed(6)} ${firstCoord[0].toFixed(6)}`;
+
+      return `POLYGON((${closedCoordinates}))`;
     } catch (error) {
       console.error('Error converting to WKT:', error);
       return '';
     }
   }, []);
 
+  // Валидация цвета
+  const validateColor = useCallback((color: string): string => {
+    if (!color) return '#FF0000';
+    
+    // Простая валидация hex цвета
+    const hexRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
+    if (hexRegex.test(color)) {
+      return color;
+    }
+    
+    // Если цвет в неправильном формате, возвращаем красный
+    return '#FF0000';
+  }, []);
+
   // Инициализация карты
-  useEffect(() => {
-    let isMounted = true;
+  const initializeMap = useCallback(async () => {
+    if (!mapRef.current || isInitializedRef.current) return;
 
-    const initMap = async () => {
-      try {
-        // Проверяем, уже загружены ли карты
-        if (window.ymaps) {
-          initializeWithYMaps();
-          return;
-        }
-
-        // Загружаем скрипт
-        const script = document.createElement('script');
-        script.src = `https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=${YANDEX_MAPS_API_KEY}`;
-        script.async = true;
-        
-        script.onload = () => {
-          if (!isMounted) return;
-          window.ymaps.ready(() => {
-            if (!isMounted) return;
-            initializeWithYMaps();
-          });
-        };
-        
-        script.onerror = () => {
-          if (!isMounted) return;
-          setError('Не удалось загрузить Яндекс.Карты');
-          setIsLoading(false);
-        };
-
-        document.head.appendChild(script);
-
-      } catch (err) {
-        if (isMounted) {
-          console.error('Error initializing map:', err);
-          setError('Ошибка инициализации карты');
-          setIsLoading(false);
-        }
+    try {
+      // Проверяем, уже загружены ли Яндекс Карты
+      if (!window.ymaps) {
+        await loadYandexMaps();
       }
-    };
 
-    const initializeWithYMaps = () => {
-      if (!mapRef.current || !window.ymaps) {
-        setIsLoading(false);
+      const ymaps = window.ymaps;
+      ymapsRef.current = ymaps;
+
+      // Ждем готовности API
+      await ymaps.ready();
+
+      // Создаем карту
+      const map = new ymaps.Map(mapRef.current, {
+        center: center,
+        zoom: zoom,
+        controls: ['zoomControl', 'fullscreenControl']
+      });
+
+      mapInstanceRef.current = map;
+      isInitializedRef.current = true;
+      
+      // Инициализируем зоны
+      initializeZonesOnMap();
+      
+      // Если есть initialPolygon, создаем его
+      if (initialPolygon) {
+        initializeExistingPolygon();
+      }
+      
+      // Если интерактивный режим, добавляем обработчики
+      if (interactive) {
+        setupInteractiveMode();
+      }
+
+      setIsLoading(false);
+
+    } catch (err) {
+      console.error('Error initializing map:', err);
+      setError('Ошибка инициализации карты');
+      setIsLoading(false);
+    }
+  }, [center, zoom, initialPolygon, interactive]);
+
+  // Загрузка Яндекс Карт
+  const loadYandexMaps = useCallback(() => {
+    return new Promise((resolve, reject) => {
+      // Проверяем, не загружены ли уже карты
+      if (window.ymaps) {
+        resolve(window.ymaps);
         return;
       }
 
-      try {
-        const ymaps = window.ymaps;
-        const map = new ymaps.Map(mapRef.current, {
-          center: center,
-          zoom: zoom,
-          controls: ['zoomControl', 'fullscreenControl']
-        });
-
-        stateRef.current.map = map;
-        stateRef.current.ymaps = ymaps;
-        
-        setIsLoading(false);
-        
-        // Инициализируем зоны и редактор после создания карты
-        setTimeout(() => {
-          initializeZones();
-          initializePolygonEditor();
-        }, 100);
-
-      } catch (err) {
-        console.error('Error creating map:', err);
-        setError('Ошибка создания карты');
-        setIsLoading(false);
+      const existingScript = document.querySelector(`script[src*="api-maps.yandex.ru"]`);
+      if (existingScript) {
+        // Скрипт уже загружается или загружен
+        const checkReady = () => {
+          if (window.ymaps) {
+            resolve(window.ymaps);
+          } else {
+            setTimeout(checkReady, 100);
+          }
+        };
+        checkReady();
+        return;
       }
-    };
 
-    initMap();
+      const script = document.createElement('script');
+      script.src = `https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=${YANDEX_MAPS_API_KEY}`;
+      script.async = true;
+      
+      script.onload = () => {
+        if (window.ymaps) {
+          window.ymaps.ready(() => resolve(window.ymaps));
+        } else {
+          reject(new Error('YMaps not loaded'));
+        }
+      };
+      
+      script.onerror = () => {
+        reject(new Error('Failed to load Yandex Maps'));
+      };
 
-    return () => {
-      isMounted = false;
-      // Очистка при размонтировании
-      cleanup();
-    };
-  }, [center, zoom]);
+      document.head.appendChild(script);
+    });
+  }, []);
 
-  // Инициализация зон доставки
-  const initializeZones = useCallback(() => {
-    const { map, ymaps } = stateRef.current;
+  // Инициализация зон на карте
+  const initializeZonesOnMap = useCallback(() => {
+    const map = mapInstanceRef.current;
+    const ymaps = ymapsRef.current;
+    
     if (!map || !ymaps || zones.length === 0) return;
 
     try {
       // Удаляем старые зоны
-      if (stateRef.current.zonesCollection) {
-        map.geoObjects.remove(stateRef.current.zonesCollection);
+      if (zonesCollectionRef.current) {
+        map.geoObjects.remove(zonesCollectionRef.current);
       }
 
-      const zonesCollection = new ymaps.GeoObjectCollection();
+      const zonesCollection = new ymaps.GeoObjectCollection({}, {
+        preset: 'islands#blueCircleIcon'
+      });
 
       zones.forEach(zone => {
         try {
           const coordinates = wktToCoordinates(zone.polygon);
-          if (coordinates.length === 0) return;
+          if (coordinates.length === 0 || !coordinates[0]) return;
 
+          const validColor = validateColor(zone.color);
+          
           const polygon = new ymaps.Polygon(coordinates, {
             hintContent: zone.title,
+            balloonContent: `
+              <div>
+                <strong>${zone.title}</strong><br/>
+                Доставка: ${zone.price}₽<br/>
+                Мин. заказ: ${zone.minOrder || 0}₽
+              </div>
+            `
           }, {
-            fillColor: zone.color + '40',
-            strokeColor: zone.color,
+            fillColor: validColor + '60', // Добавляем прозрачность
+            strokeColor: validColor,
             strokeWidth: 2,
-            opacity: 0.8
+            strokeOpacity: 0.8,
+            fillOpacity: 0.4
           });
 
           zonesCollection.add(polygon);
@@ -202,233 +242,264 @@ export function YandexMapEditor({
       });
 
       map.geoObjects.add(zonesCollection);
-      stateRef.current.zonesCollection = zonesCollection;
+      zonesCollectionRef.current = zonesCollection;
 
     } catch (error) {
       console.error('Error initializing zones:', error);
     }
-  }, [zones, wktToCoordinates]);
+  }, [zones, wktToCoordinates, validateColor]);
 
-  // Инициализация редактора полигонов
-  const initializePolygonEditor = useCallback(() => {
-    const { map, ymaps } = stateRef.current;
-    if (!map || !ymaps || !interactive) return;
+  // Инициализация существующего полигона для редактирования
+  const initializeExistingPolygon = useCallback(() => {
+    const map = mapInstanceRef.current;
+    const ymaps = ymapsRef.current;
+    
+    if (!map || !ymaps || !initialPolygon) return;
 
-    const updatePolygonWKT = (polygon: any) => {
-      if (!polygon || !onChange) return;
+    try {
+      const coordinates = wktToCoordinates(initialPolygon);
+      if (coordinates.length === 0) return;
 
-      try {
-        const coordinates = polygon.geometry.getCoordinates();
-        const wkt = coordinatesToWkt(coordinates);
-        
-        if (wkt) {
-          onChange(wkt);
-          onValidationChange?.(true);
-        } else {
-          onChange(null);
-          onValidationChange?.(false);
-        }
-      } catch (error) {
-        console.error('Error converting to WKT:', error);
-        onChange?.(null);
-        onValidationChange?.(false);
+      // Удаляем старый полигон если есть
+      if (currentPolygonRef.current) {
+        map.geoObjects.remove(currentPolygonRef.current);
       }
-    };
+
+      const polygon = new ymaps.Polygon(coordinates, {}, {
+        fillColor: '#1E40AF60',
+        strokeColor: '#1E40AF',
+        strokeWidth: 3,
+        strokeOpacity: 0.8,
+        fillOpacity: 0.4,
+        editorMaxPoints: Infinity
+      });
+
+      map.geoObjects.add(polygon);
+      currentPolygonRef.current = polygon;
+
+      // Включаем редактирование
+      if (interactive) {
+        try {
+          const editor = polygon.editor;
+          if (editor) {
+            editor.startEditing();
+            
+            // Следим за изменениями
+            polygon.geometry.events.add('change', () => {
+              const newCoordinates = polygon.geometry.getCoordinates();
+              const wkt = coordinatesToWkt(newCoordinates);
+              
+              if (wkt) {
+                onChange?.(wkt);
+                onValidationChange?.(true);
+              } else {
+                onChange?.(null);
+                onValidationChange?.(false);
+              }
+            });
+          }
+        } catch (editorError) {
+          console.error('Error enabling editor:', editorError);
+        }
+      }
+
+      // Обновляем состояние валидации
+      onValidationChange?.(true);
+
+    } catch (error) {
+      console.error('Error initializing existing polygon:', error);
+      onValidationChange?.(false);
+    }
+  }, [initialPolygon, interactive, onChange, onValidationChange, wktToCoordinates, coordinatesToWkt]);
+
+  // Настройка интерактивного режима для создания новых полигонов
+  const setupInteractiveMode = useCallback(() => {
+    const map = mapInstanceRef.current;
+    const ymaps = ymapsRef.current;
+    
+    if (!map || !ymaps || !interactive || initialPolygon) return;
+
+    let drawingMode = false;
+    let points: number[][] = [];
+    let polyline: any = null;
 
     const handleMapClick = (e: any) => {
       const coords = e.get('coords');
-      const state = stateRef.current;
       
-      if (!state.drawingMode) {
+      if (!drawingMode) {
         startDrawing(coords);
       } else {
-        continueDrawing(coords);
+        addPoint(coords);
       }
     };
 
     const startDrawing = (coords: number[]) => {
-      const state = stateRef.current;
-      cleanupDrawing();
+      drawingMode = true;
+      points = [coords];
       
-      state.drawingMode = true;
-      state.points = [coords];
-      
-      state.temporaryPolyline = new ymaps.Polyline([coords, coords], {}, {
-        strokeColor: "#FF0000",
-        strokeWidth: 2,
+      // Создаем временную ломаную линию
+      polyline = new ymaps.Polyline([coords], {}, {
+        strokeColor: '#EF4444',
+        strokeWidth: 3,
         strokeOpacity: 0.8
       });
       
-      map.geoObjects.add(state.temporaryPolyline);
-      addCompleteButton();
+      map.geoObjects.add(polyline);
     };
 
-    const continueDrawing = (coords: number[]) => {
-      const state = stateRef.current;
-      state.points.push(coords);
-      state.temporaryPolyline.geometry.setCoordinates(state.points);
+    const addPoint = (coords: number[]) => {
+      points.push(coords);
+      polyline.geometry.setCoordinates(points);
+      
+      // Если точек достаточно, предлагаем завершить
+      if (points.length >= 3) {
+        showCompleteButton();
+      }
+    };
+
+    const showCompleteButton = () => {
+      // Удаляем старую кнопку если есть
+      const existingButton = map.controls.getContainer().querySelector('.complete-drawing-btn');
+      if (existingButton) {
+        existingButton.remove();
+      }
+
+      const button = document.createElement('button');
+      button.className = 'complete-drawing-btn bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg hover:bg-blue-700 transition-colors';
+      button.textContent = 'Завершить рисование';
+      button.style.position = 'absolute';
+      button.style.top = '10px';
+      button.style.right = '10px';
+      button.style.zIndex = '1000';
+      
+      button.onclick = completeDrawing;
+      
+      map.controls.getContainer().appendChild(button);
     };
 
     const completeDrawing = () => {
-      const state = stateRef.current;
-      
-      if (state.points.length < 3) {
+      if (points.length < 3) {
+        toast.error('Добавьте минимум 3 точки для создания зоны');
         return;
       }
 
+      // Замыкаем полигон
+      const polygonCoords = [...points, points[0]];
+      
+      // Удаляем временные элементы
+      if (polyline) {
+        map.geoObjects.remove(polyline);
+      }
+      
+      const completeButton = map.controls.getContainer().querySelector('.complete-drawing-btn');
+      if (completeButton) {
+        completeButton.remove();
+      }
+
       // Создаем полигон
-      const polygonCoords = [...state.points, state.points[0]];
-      state.currentPolygon = new ymaps.Polygon([polygonCoords], {}, {
-        fillColor: "#00FF0040",
-        strokeColor: "#00FF00",
+      const polygon = new ymaps.Polygon([polygonCoords], {}, {
+        fillColor: '#1E40AF60',
+        strokeColor: '#1E40AF',
         strokeWidth: 3,
-        opacity: 0.8
+        strokeOpacity: 0.8,
+        fillOpacity: 0.4,
+        editorMaxPoints: Infinity
       });
 
-      map.geoObjects.add(state.currentPolygon);
-      
+      map.geoObjects.add(polygon);
+      currentPolygonRef.current = polygon;
+
       // Включаем редактирование
       try {
-        state.currentPolygon.editor.startEditing();
-        state.currentPolygon.geometry.events.add('change', () => {
-          updatePolygonWKT(state.currentPolygon);
-        });
-      } catch (error) {
-        console.error('Error enabling editor:', error);
-      }
-      
-      updatePolygonWKT(state.currentPolygon);
-      cleanupDrawing();
-      removeCompleteButton();
-      map.events.remove('click', handleMapClick);
-    };
-
-    const addCompleteButton = () => {
-      const state = stateRef.current;
-      
-      if (state.completeButton) {
-        map.controls.remove(state.completeButton);
-      }
-
-      state.completeButton = new ymaps.control.Button({
-        data: {
-          content: "Завершить рисование",
-          title: "Завершить создание полигона"
-        },
-        options: {
-          maxWidth: 200,
-          position: { top: 10, right: 10 }
-        }
-      });
-      
-      state.completeButton.events.add('press', completeDrawing);
-      map.controls.add(state.completeButton);
-    };
-
-    const removeCompleteButton = () => {
-      const state = stateRef.current;
-      if (state.completeButton) {
-        map.controls.remove(state.completeButton);
-        state.completeButton = null;
-      }
-    };
-
-    const cleanupDrawing = () => {
-      const state = stateRef.current;
-      
-      if (state.temporaryPolyline) {
-        map.geoObjects.remove(state.temporaryPolyline);
-        state.temporaryPolyline = null;
-      }
-      
-      state.drawingMode = false;
-      state.points = [];
-    };
-
-    const initializeExistingPolygon = () => {
-      if (!initialPolygon) return;
-
-      try {
-        const coordinates = wktToCoordinates(initialPolygon);
-        if (coordinates.length === 0) return;
-
-        const state = stateRef.current;
-        state.currentPolygon = new ymaps.Polygon(coordinates, {}, {
-          fillColor: "#00FF0040",
-          strokeColor: "#00FF00",
-          strokeWidth: 3,
-          opacity: 0.8
-        });
-
-        map.geoObjects.add(state.currentPolygon);
-        
-        // Включаем редактирование
-        try {
-          state.currentPolygon.editor.startEditing();
-          state.currentPolygon.geometry.events.add('change', () => {
-            updatePolygonWKT(state.currentPolygon);
+        const editor = polygon.editor;
+        if (editor) {
+          editor.startEditing();
+          
+          polygon.geometry.events.add('change', () => {
+            const newCoordinates = polygon.geometry.getCoordinates();
+            const wkt = coordinatesToWkt(newCoordinates);
+            
+            if (wkt) {
+              onChange?.(wkt);
+              onValidationChange?.(true);
+            } else {
+              onChange?.(null);
+              onValidationChange?.(false);
+            }
           });
-        } catch (error) {
-          console.error('Error enabling editor:', error);
         }
-        
-        updatePolygonWKT(state.currentPolygon);
-      } catch (error) {
-        console.error('Error initializing existing polygon:', error);
+      } catch (editorError) {
+        console.error('Error enabling editor:', editorError);
       }
+
+      // Сбрасываем состояние рисования
+      drawingMode = false;
+      points = [];
+      polyline = null;
+      
+      // Убираем обработчик кликов
+      map.events.remove('click', handleMapClick);
+      
+      // Обновляем состояние
+      const wkt = coordinatesToWkt([polygonCoords]);
+      onChange?.(wkt);
+      onValidationChange?.(true);
     };
 
-    // Очистка предыдущего состояния
-    cleanupDrawing();
-    removeCompleteButton();
-    map.events.remove('click', handleMapClick);
-
-    if (initialPolygon) {
-      initializeExistingPolygon();
-    } else {
+    // Добавляем обработчик кликов только если нет начального полигона
+    if (!initialPolygon) {
       map.events.add('click', handleMapClick);
     }
 
-  }, [initialPolygon, interactive, onChange, onValidationChange, coordinatesToWkt, wktToCoordinates]);
+    // Функция очистки
+    return () => {
+      map.events.remove('click', handleMapClick);
+      const completeButton = map.controls.getContainer().querySelector('.complete-drawing-btn');
+      if (completeButton) {
+        completeButton.remove();
+      }
+    };
+  }, [interactive, initialPolygon, onChange, onValidationChange, coordinatesToWkt]);
 
   // Очистка
   const cleanup = useCallback(() => {
-    const { map } = stateRef.current;
-    
-    if (map) {
-      // Удаляем все обработчики и контролы
-      map.events.remove('click');
-      if (stateRef.current.completeButton) {
-        map.controls.remove(stateRef.current.completeButton);
+    if (mapInstanceRef.current) {
+      try {
+        mapInstanceRef.current.destroy();
+      } catch (error) {
+        console.error('Error destroying map:', error);
       }
-      
-      // Удаляем все геообъекты
-      map.geoObjects.removeAll();
-      
-      // Уничтожаем карту
-      map.destroy();
     }
-
-    // Сбрасываем состояние
-    stateRef.current = {
-      map: null,
-      ymaps: null,
-      currentPolygon: null,
-      drawingMode: false,
-      points: [],
-      temporaryPolyline: null,
-      completeButton: null,
-      zonesCollection: null
-    };
+    
+    mapInstanceRef.current = null;
+    ymapsRef.current = null;
+    currentPolygonRef.current = null;
+    zonesCollectionRef.current = null;
+    isInitializedRef.current = false;
   }, []);
 
-  // Обновление при изменении пропсов
+  // Основной эффект инициализации
   useEffect(() => {
-    if (!isLoading && !error) {
-      initializeZones();
-      initializePolygonEditor();
+    initializeMap();
+
+    return () => {
+      cleanup();
+    };
+  }, [initializeMap, cleanup]);
+
+  // Эффект для обновления зон
+  useEffect(() => {
+    if (isInitializedRef.current) {
+      initializeZonesOnMap();
     }
-  }, [initializeZones, initializePolygonEditor, isLoading, error]);
+  }, [initializeZonesOnMap]);
+
+  // Эффект для обновления полигона при изменении initialPolygon
+  useEffect(() => {
+    if (isInitializedRef.current && initialPolygon) {
+      initializeExistingPolygon();
+    }
+  }, [initialPolygon, initializeExistingPolygon]);
 
   if (error) {
     return (
@@ -450,7 +521,7 @@ export function YandexMapEditor({
   }
 
   return (
-    <div className="w-full rounded-lg overflow-hidden border bg-white">
+    <div className="w-full rounded-lg overflow-hidden border bg-white relative">
       <div 
         ref={mapRef} 
         className="w-full"
@@ -462,16 +533,6 @@ export function YandexMapEditor({
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
             <p className="mt-2 text-gray-600 text-sm">Загрузка карты...</p>
           </div>
-        </div>
-      )}
-      {interactive && (
-        <div className="p-3 bg-gray-50 border-t">
-          <p className="text-sm text-gray-600 text-center">
-            {initialPolygon 
-              ? 'Перетаскивайте точки для изменения зоны' 
-              : 'Кликните на карте, чтобы начать рисовать зону доставки. Добавьте минимум 3 точки и нажмите "Завершить рисование".'
-            }
-          </p>
         </div>
       )}
     </div>

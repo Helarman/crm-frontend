@@ -177,6 +177,7 @@ export const DeliveryZoneService = {
     try {
       const { data } = await api.get<DeliveryZone[]>(`/delivery-zones?restaurantId=${restaurantId}`);
       return data;
+      console.log(data)
     } catch (error) {
       console.error('Failed to fetch delivery zones:', error);
       throw error;
