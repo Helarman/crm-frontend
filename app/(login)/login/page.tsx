@@ -13,17 +13,8 @@ export default function LoginPage() {
   }, [theme])
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md dark:bg-gray-900 dark:border-gray-800">
-        <CardHeader>
-          <CardTitle className="text-center dark:text-gray-100">
-            Вход в систему
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <AuthForm isLogin />
-        </CardContent>
-      </Card>
+    <div>
+          <AuthForm/>
     </div>
   )
 }
