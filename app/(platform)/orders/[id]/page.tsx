@@ -3184,7 +3184,7 @@ const renderCategoryCards = () => {
                         </>
                       )}
 
-                     {(order.status === 'READY' || order.status === 'DELIVERING') && (
+                     {(order.status === 'READY' && order.type != 'DELIVERY') && (
                       <Button
                           disabled={isUpdating || shiftLoading || !order.attentionFlags.isPrecheck}
                           onClick={handleCalculateOrder}

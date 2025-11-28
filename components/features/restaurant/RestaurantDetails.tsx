@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import { RestaurantDeliveryZones } from './RestaurantDeliveryZones';
 import { RestaurantDirectories } from './RestaurantDirectories';
+import { PaymentIntegrations } from './PaymentIntegrations';
+import { TenantDetails } from '../network/TenandDetails';
 
 interface Restaurant {
   id: string;
@@ -117,6 +119,7 @@ export function RestaurantDetails({ restaurantId }: { restaurantId: string }) {
         <h1 className="text-2xl font-bold">
           {restaurant.title}
         </h1>
+
         <Button
           onClick={() => router.push(`/restaurants/${restaurant.id}/warehouse`)}
           className="flex items-center gap-2"
@@ -220,10 +223,7 @@ export function RestaurantDetails({ restaurantId }: { restaurantId: string }) {
               <CardTitle>{translations.interface.title[language]}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-center py-8 text-muted-foreground">
-                <Palette className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>Настройки интерфейса будут добавлены позже</p>
-              </div>
+              <TenantDetails network={restaurant.network} onSuccess={() => handleUpdate}/>
             </CardContent>
           </Card>
         </TabsContent>
@@ -234,10 +234,7 @@ export function RestaurantDetails({ restaurantId }: { restaurantId: string }) {
               <CardTitle>{translations.payment.title[language]}</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-center py-8 text-muted-foreground">
-                <CreditCard className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>Настройки оплаты будут добавлены позже</p>
-              </div>
+               <PaymentIntegrations restaurantId={restaurantId} />
             </CardContent>
           </Card>
         </TabsContent>

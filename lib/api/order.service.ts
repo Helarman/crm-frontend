@@ -95,9 +95,23 @@
     }
   }
 
-  /**
-   * Интерфейсы для работы с заказами
-   */
+  export interface AssignCourierDto {
+    courierId: string;
+  }
+
+  export interface DeliveryCourierDto {
+    id: string;
+    name: string;
+    phone: string;
+  }
+
+  export interface DeliveryInfoExtendedDto {
+    address: string;
+    time?: Date;
+    notes?: string;
+    startedAt?: Date;
+    courier?: DeliveryCourierDto;
+  }
 
   export interface UpdateOrderItemDto {
     comment?: string;
@@ -294,7 +308,7 @@
     restaurant: RestaurantDto;
     items: OrderItem[];
     payment?: PaymentDto;
-    delivery?: DeliveryInfoDto;
+    delivery?: DeliveryInfoExtendedDto;
     
     totalPrice: number;
     totalItems: number;
@@ -994,6 +1008,99 @@
         userId
       );
     },
-    
+
+  assignCourierToDelivery: async (
+    orderId: string,
+    courierId: string
+  ): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.post<OrderResponse>(
+        `/orders/${orderId}/assign-courier`,
+        { courierId }
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to assign courier to delivery:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Начать доставку
+   */
+  startDelivery: async (orderId: string): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.post<OrderResponse>(
+        `/orders/${orderId}/start-delivery`
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to start delivery:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Завершить доставку
+   */
+  completeDelivery: async (orderId: string): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.post<OrderResponse>(
+        `/orders/${orderId}/complete-delivery`
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to complete delivery:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Удалить курьера из доставки
+   */
+  removeCourierFromDelivery: async (orderId: string): Promise<OrderResponse> => {
+    try {
+      const { data } = await api.delete<OrderResponse>(
+        `/orders/${orderId}/courier`
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to remove courier from delivery:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Получить активные заказы доставки
+   */
+  getDeliveryOrders: async (restaurantId?: string): Promise<OrderResponse[]> => {
+    try {
+      const params = restaurantId ? { restaurantId } : {};
+      const { data } = await api.get<OrderResponse[]>(
+        '/orders/delivery/active',
+        { params }
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to get delivery orders:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Получить активные доставки курьера
+   */
+  getCourierActiveDeliveries: async (courierId: string): Promise<OrderResponse[]> => {
+    try {
+      const { data } = await api.get<OrderResponse[]>(
+        `/orders/courier/${courierId}/active-deliveries`
+      );
+      return data;
+    } catch (error) {
+      console.error('Failed to get courier active deliveries:', error);
+      throw error;
+    }
+  },
+
   };
 

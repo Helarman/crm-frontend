@@ -19,19 +19,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Loader2, MapPin, Search } from 'lucide-react';
+import { ImageUploader } from '../menu/product/ImageUploader';
 
-// Динамически загружаем Yandex карту без SSR
-const YandexMap = dynamic(
-  () => import('@/components/ui/yandex-map').then((mod) => mod.YandexMap),
-  { 
-    ssr: false,
-    loading: () => (
-      <div className="h-[400px] w-full flex items-center justify-center bg-muted">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    )
-  }
-);
+
 
 interface RestaurantFormValues {
   title: string;
@@ -41,7 +31,7 @@ interface RestaurantFormValues {
   latitude: string;
   longitude: string;
   networkId: string;
-  images?: string[];
+  images: string[];
   useWarehouse: boolean;
   shiftCloseTime: string;
   mondayOpen: string;
@@ -65,6 +55,8 @@ interface RestaurantFormValues {
   sundayOpen: string;
   sundayClose: string;
   sundayIsWorking: boolean;
+  allowNegativeStock: boolean;
+  acceptOrders: boolean;
 }
 
 interface EditRestaurantFormProps {
@@ -73,7 +65,6 @@ interface EditRestaurantFormProps {
   onCancel: () => void;
 }
 
-// Сервис для работы с DADATA
 class DadataService {
   private static readonly API_URL = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs';
   private static readonly TOKEN = process.env.NEXT_PUBLIC_DADATA_API_KEY;
@@ -159,17 +150,14 @@ export function EditRestaurantForm({
   const [manualAddressEdit, setManualAddressEdit] = useState(false);
   const { language } = useLanguageStore();
 
-  // Исправленная функция форматирования времени
   const formatTimeForInput = (timeValue: string | Date | null): string => {
     if (!timeValue) return '00:00';
     
     try {
-      // Если это уже строка в формате HH:mm
       if (typeof timeValue === 'string' && /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(timeValue)) {
         return timeValue;
       }
       
-      // Если это Date объект
       const date = new Date(timeValue);
       
       if (isNaN(date.getTime())) {
@@ -187,11 +175,13 @@ export function EditRestaurantForm({
     }
   };
 
-  // Исправленные начальные значения
   const getDefaultValues = () => {
     return {
       ...initialValues,
+      images: initialValues.images || [],
       useWarehouse: initialValues.useWarehouse || false,
+      allowNegativeStock: initialValues.allowNegativeStock || false,
+      acceptOrders: initialValues.acceptOrders || true,
       shiftCloseTime: formatTimeForInput(initialValues.shiftCloseTime),
       mondayOpen: formatTimeForInput(initialValues.mondayOpen),
       mondayClose: formatTimeForInput(initialValues.mondayClose),
@@ -227,6 +217,7 @@ export function EditRestaurantForm({
       address: 'Адрес *',
       description: 'Описание',
       legalInfo: 'Юридическая информация',
+      images: 'Изображения ресторана',
       location: 'Местоположение на карте *',
       currentLocation: 'Текущие координаты',
       selectLocation: 'Пожалуйста, выберите местоположение на карте',
@@ -239,6 +230,10 @@ export function EditRestaurantForm({
       noNetworks: 'Нет доступных сетей',
       useWarehouse: 'Использовать складскую систему',
       useWarehouseDescription: 'Включить управление складом и учет остатков',
+      allowNegativeStock: 'Разрешить отрицательный остаток',
+      allowNegativeStockDescription: 'Позволить продавать товары при нулевом остатке',
+      acceptOrders: 'Принимать заказы',
+      acceptOrdersDescription: 'Разрешить клиентам делать заказы из этого ресторана',
       shiftCloseTime: 'Время закрытия смены *',
       shiftCloseTimeDescription: 'Время по умолчанию для автоматического закрытия смен',
       timeFormat: 'Формат: ЧЧ:ММ (24-часовой)',
@@ -272,6 +267,7 @@ export function EditRestaurantForm({
       address: 'Address *',
       description: 'Description',
       legalInfo: 'Legal Information',
+      images: 'Restaurant Images',
       location: 'Location on map *',
       currentLocation: 'Current coordinates',
       selectLocation: 'Please select location on map',
@@ -284,6 +280,10 @@ export function EditRestaurantForm({
       noNetworks: 'No networks available',
       useWarehouse: 'Use warehouse system',
       useWarehouseDescription: 'Enable warehouse management and stock tracking',
+      allowNegativeStock: 'Allow negative stock',
+      allowNegativeStockDescription: 'Allow selling products when stock is zero',
+      acceptOrders: 'Accept orders',
+      acceptOrdersDescription: 'Allow customers to place orders from this restaurant',
       shiftCloseTime: 'Shift Close Time *',
       shiftCloseTimeDescription: 'Default time for automatic shift closing',
       timeFormat: 'Format: HH:MM (24-hour)',
@@ -317,6 +317,7 @@ export function EditRestaurantForm({
       address: 'მისამართი *',
       description: 'აღწერა',
       legalInfo: 'იურიდიული ინფორმაცია',
+      images: 'რესტორნის სურათები',
       location: 'მდებარეობა რუკაზე *',
       currentLocation: 'მიმდინარე კოორდინატები',
       selectLocation: 'გთხოვთ აირჩიოთ მდებარეობა რუკაზე',
@@ -329,6 +330,10 @@ export function EditRestaurantForm({
       noNetworks: 'ხელმისაწვდომი ქსელი არ არის',
       useWarehouse: 'საწყობის სისტემის გამოყენება',
       useWarehouseDescription: 'ჩართეთ საწყობის მენეჯმენტი და მარაგების თვალყურის დევნება',
+      allowNegativeStock: 'ნეგატიური მარაგის ნებართვა',
+      allowNegativeStockDescription: 'ნულოვანი მარაგის შემთხვევაში პროდუქტების გაყიდვის ნებართვა',
+      acceptOrders: 'შეკვეთების მიღება',
+      acceptOrdersDescription: 'მომხმარებლებისთვის ამ რესტორნიდან შეკვეთების განთავსების ნებართვა',
       shiftCloseTime: 'ცვლის დახურვის დრო *',
       shiftCloseTimeDescription: 'ავტომატური ცვლის დახურვის ნაგულისხმევი დრო',
       timeFormat: 'ფორმატი: სს:წწ (24-საათიანი)',
@@ -362,7 +367,10 @@ export function EditRestaurantForm({
   const t = translations[language];
 
   const useWarehouseValue = watch('useWarehouse');
+  const allowNegativeStockValue = watch('allowNegativeStock');
+  const acceptOrdersValue = watch('acceptOrders');
   const addressValue = watch('address');
+  const imagesValue = watch('images');
   const mondayIsWorking = watch('mondayIsWorking');
   const tuesdayIsWorking = watch('tuesdayIsWorking');
   const wednesdayIsWorking = watch('wednesdayIsWorking');
@@ -462,8 +470,20 @@ export function EditRestaurantForm({
     setValue('useWarehouse', checked, { shouldDirty: true });
   };
 
+  const handleNegativeStockToggle = (checked: boolean) => {
+    setValue('allowNegativeStock', checked, { shouldDirty: true });
+  };
+
+  const handleAcceptOrdersToggle = (checked: boolean) => {
+    setValue('acceptOrders', checked, { shouldDirty: true });
+  };
+
   const handleWorkingDayToggle = (day: string, checked: boolean) => {
     setValue(`${day}IsWorking` as any, checked, { shouldDirty: true });
+  };
+
+  const handleImagesChange = (images: string[]) => {
+    setValue('images', images, { shouldDirty: true });
   };
 
   const validateTime = (time: string) => {
@@ -496,6 +516,9 @@ export function EditRestaurantForm({
         longitude: coordinates.lng.toString(),
         networkId: data.networkId,
         useWarehouse: data.useWarehouse,
+        allowNegativeStock: data.allowNegativeStock,
+        acceptOrders: data.acceptOrders,
+        images: data.images || [],
         shiftCloseTime: formatTimeForApi(data.shiftCloseTime),
         mondayOpen: data.mondayIsWorking ? formatTimeForApi(data.mondayOpen) : null,
         mondayClose: data.mondayIsWorking ? formatTimeForApi(data.mondayClose) : null,
@@ -519,7 +542,6 @@ export function EditRestaurantForm({
     }
   });
 
-  // Исправленный компонент DaySchedule
   const DaySchedule = ({ 
     day, 
     label, 
@@ -570,7 +592,6 @@ export function EditRestaurantForm({
   );
 
   return (
-    
     <form onSubmit={onSubmitHandler} className="space-y-6">
       {/* Сетевой выбор - вынесен отдельно */}
       <div>
@@ -627,52 +648,9 @@ export function EditRestaurantForm({
               {...register('address', { required: t.requiredField })}
               onChange={handleAddressInput}
               className="flex-1"
-              placeholder="Введите адрес для поиска"
+              placeholder="Введите адрес"
             />
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={handleSearchAddress}
-              disabled={isGeocoding || !addressValue}
-              size="icon"
-            >
-              {isGeocoding ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Search className="h-4 w-4" />
-              )}
-            </Button>
-            <Dialog open={mapDialogOpen} onOpenChange={setMapDialogOpen}>
-              <DialogTrigger asChild>
-                <Button type="button" variant="outline" className="whitespace-nowrap">
-                  <MapPin className="h-4 w-4 mr-2" />
-                  {t.selectOnMap}
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
-                <DialogHeader>
-                  <DialogTitle>{t.selectPointOnMap}</DialogTitle>
-                </DialogHeader>
-                <div className="flex-1 min-h-0 mt-4">
-                  <YandexMap
-                    onMapClick={handleMapClick}
-                    initialCenter={coordinates}
-                    markerPosition={coordinates}
-                  />
-                </div>
-                <div className="flex justify-between items-center pt-4 border-t">
-                  <div className="text-sm text-muted-foreground">
-                    {t.currentLocation}: {coordinates.lat.toFixed(6)}, {coordinates.lng.toFixed(6)}
-                  </div>
-                  <Button 
-                    type="button" 
-                    onClick={() => setMapDialogOpen(false)}
-                  >
-                    {t.updateAddress}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+       
           </div>
           {isGeocoding && (
             <div className="flex items-center space-x-2 text-sm text-muted-foreground mt-1">
@@ -702,6 +680,20 @@ export function EditRestaurantForm({
             className="mt-1"
           />
         </div>
+
+        {/* Компонент загрузки изображений */}
+        <div>
+          <Label>{t.images}</Label>
+          <div className="mt-2">
+            <ImageUploader
+              value={imagesValue}
+              onChange={handleImagesChange}
+              maxFiles={10}
+              disabled={isUploading}
+              language={language}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Настройки */}
@@ -721,6 +713,38 @@ export function EditRestaurantForm({
             id="useWarehouse"
             checked={useWarehouseValue}
             onCheckedChange={handleWarehouseToggle}
+          />
+        </div>
+
+        <div className="flex items-center justify-between p-4 border rounded-lg">
+          <div className="space-y-0.5">
+            <Label htmlFor="allowNegativeStock" className="text-base">
+              {t.allowNegativeStock}
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              {t.allowNegativeStockDescription}
+            </p>
+          </div>
+          <Switch
+            id="allowNegativeStock"
+            checked={allowNegativeStockValue}
+            onCheckedChange={handleNegativeStockToggle}
+          />
+        </div>
+
+        <div className="flex items-center justify-between p-4 border rounded-lg">
+          <div className="space-y-0.5">
+            <Label htmlFor="acceptOrders" className="text-base">
+              {t.acceptOrders}
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              {t.acceptOrdersDescription}
+            </p>
+          </div>
+          <Switch
+            id="acceptOrders"
+            checked={acceptOrdersValue}
+            onCheckedChange={handleAcceptOrdersToggle}
           />
         </div>
 

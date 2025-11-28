@@ -16,7 +16,7 @@ export default function RootLayout({
   useTitle('CRM')
   return (
     <html suppressHydrationWarning> 
-      <body className={inter.className}>
+      <body className={`${inter.className} pb-16 md:pb-0`}>
         <ThemeProvider
             attribute="class"
             defaultTheme="light"

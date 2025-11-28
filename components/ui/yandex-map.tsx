@@ -37,11 +37,9 @@ export function YandexMap({
           zoom: 13
         });
 
-        // Добавляем элементы управления
         map.controls.add('zoomControl');
         map.controls.add('fullscreenControl');
 
-        // Создаем маркер
         marker = new window.ymaps.Placemark(
           [initialCenter.lat, initialCenter.lng],
           {},
@@ -53,7 +51,6 @@ export function YandexMap({
 
         map.geoObjects.add(marker);
 
-        // Обработчики событий
         map.events.add('click', (e: any) => {
           const coords = e.get('coords');
           marker.geometry.setCoordinates(coords);
@@ -73,11 +70,9 @@ export function YandexMap({
       }
     };
 
-    // Проверяем, загружены ли уже Яндекс.Карты
     if (window.ymaps) {
       window.ymaps.ready(initializeMap);
     } else {
-      // Загружаем Яндекс.Карты
       const script = document.createElement('script');
       script.src = 'https://api-maps.yandex.ru/2.1/?lang=ru_RU&apikey=ваш_api_ключ';
       script.async = true;
@@ -95,7 +90,6 @@ export function YandexMap({
     }
 
     return () => {
-      // Очистка при размонтировании
       if (map) {
         try {
           map.destroy();
@@ -106,37 +100,17 @@ export function YandexMap({
     };
   }, []);
 
-  // Обновляем маркер при изменении позиции
   useEffect(() => {
     if (markerPosition && window.ymaps && !isLoading) {
       window.ymaps.ready(() => {
-        // Здесь нужно обновить маркер, но для простоты пересоздадим карту
-        // В реальном приложении нужно сохранять ссылки на map и marker
       });
     }
   }, [markerPosition, isLoading]);
 
   return (
-    <div className="h-full w-full relative">
-      {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-muted z-10">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
-            <p className="text-sm text-muted-foreground">Загрузка карты...</p>
-          </div>
-        </div>
-      )}
-      {error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-muted z-10">
-          <div className="text-center text-destructive">
-            <p className="font-medium">{error}</p>
-          </div>
-        </div>
-      )}
       <div 
         ref={mapContainerRef} 
         className="h-full w-full"
       />
-    </div>
   );
 }

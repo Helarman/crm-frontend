@@ -310,16 +310,6 @@ export function RestaurantList() {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">{t.restaurants}</h2>
         <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            asChild
-            className="flex items-center gap-2"
-          >
-            <Link href="/networks">
-              <Network className="w-4 h-4" />
-              {t.manageNetworks}
-            </Link>
-          </Button>
           <Button onClick={() => setIsCreating(true)}>
             {t.addRestaurans}
           </Button>
@@ -393,20 +383,6 @@ export function RestaurantList() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {network.id !== 'no-network' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        asChild
-                        onClick={(e) => e.stopPropagation()}
-                        className="flex items-center gap-2"
-                      >
-                        <Link href={`/networks/${network.id}`}>
-                          <Settings className="w-4 h-4" />
-                          {t.manageNetworks}
-                        </Link>
-                      </Button>
-                    )}
                     {isExpanded ? (
                       <ChevronDown className="w-5 h-5" />
                     ) : (

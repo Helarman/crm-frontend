@@ -5,7 +5,7 @@ import { OrderHeader } from './OrderHeader'
 import { OrderCustomerInfo } from './OrderCustomerInfo'
 import { OrderPaymentStatus } from './OrderPaymentStatus'
 import { Card } from '@/components/ui/card'
-import { OrderResponse, OrderItemStatus, OrderService, EnumOrderStatus } from '@/lib/api/order.service'
+import { OrderResponse, OrderItemStatus, OrderService, EnumOrderStatus, EnumOrderType } from '@/lib/api/order.service'
 import { cn } from '@/lib/utils'
 import { Language, useLanguageStore } from '@/lib/stores/language-store'
 import { Badge } from '@/components/ui/badge'
@@ -612,7 +612,7 @@ const handleConfirmWriteOff = async () => {
 
     await handleStatusChange(currentItemId, OrderItemStatus.COMPLETED)
     const completedItem = order.items.find(item => item.id === currentItemId);
-      if (true) {
+      if (completedItem?.product.printLabels && (order.type == EnumOrderType.TAKEAWAY || order.type == EnumOrderType.DELIVERY ) ) {
         printItemLabel(completedItem, order.number);
       }
 

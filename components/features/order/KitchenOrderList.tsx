@@ -316,6 +316,7 @@ export default function KitchenOrdersList() {
   }, [activeOrders, updatePreviousOrders])
 
   
+  
   const handleOrdersUpdate = useCallback((
     updatedOrder: OrderResponse, 
     mutateFunction: any,

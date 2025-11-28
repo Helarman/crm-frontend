@@ -100,6 +100,8 @@ export interface CreateRestaurantDto {
   address: string;
   useWarehouse?: boolean;
   shiftCloseTime?: string;
+  allowNegativeStock?: string;
+  acceptOrders?: string;
   // Часы работы
   mondayOpen?: string;
   mondayClose?: string;
@@ -130,6 +132,8 @@ export interface UpdateRestaurantDto {
   address?: string;
   useWarehouse?: boolean;
   shiftCloseTime?: string;
+  allowNegativeStock?: string;
+  acceptOrders?: string;
   // Часы работы
   mondayOpen?: string;
   mondayClose?: string;
