@@ -255,7 +255,7 @@ export default function NewOrderPage() {
       let customerId = order.customerId
       if (!customerId && order.customerPhone) {
         const phoneNumber = order.customerPhone.replace(/\D/g, '')
-        const newCustomer = await CustomerService.createCustomer({
+        const newCustomer = await CustomerService.requestCode({
           phone: phoneNumber,
         })
         customerId = newCustomer.id

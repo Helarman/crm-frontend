@@ -1639,7 +1639,7 @@ const getDisplayQuantity = (product: Product, additives: string[], comment: stri
 
     try {
       setCustomerLoading(true);
-      const customer = await CustomerService.getCustomerByShortCode(customerCode);
+      const customer = await CustomerService.getByShortCode(customerCode);
 
       await OrderService.applyCustomerToOrder(
         orderId as string,

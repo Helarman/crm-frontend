@@ -7,7 +7,6 @@ const api = axios.create({
   withCredentials: true,
 });
 
-// Интерсепторы и вспомогательные функции остаются без изменений
 api.interceptors.request.use((config) => {
   const token = getAccessTokenFromCookie();
   if (token) {
@@ -85,16 +84,26 @@ function redirectToLogin() {
   }
 }
 
-export interface WorkshopDto {
-   id: string;
+// DTO интерфейсы
+export interface CreateWorkshopDto {
+  id?: string;
   name: string;
-  createdAt?: string;
-  updatedAt?: string;
+  restaurantId?: string[] | string;
+  restaurantIds?: string[] | string;
+  userIds?: string[];
 }
 
-export interface WorkshopResponse {
+export interface UpdateWorkshopDto {
+  name?: string;
+  restaurantIds?: string[];
+  userIds?: string[];
+}
+
+export interface WorkshopResponseDto {
   id: string;
   name: string;
+  restaurantIds: string[];
+  userIds: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -103,75 +112,75 @@ export interface AssignUsersDto {
   userIds: string[];
 }
 
+export interface AssignRestaurantsDto {
+  restaurantIds: string[];
+}
+
 export const WorkshopService = {
-  // Получение всех цехов
-  getAll: async (searchTerm?: string): Promise<WorkshopResponse[]> => {
-    const { data } = await api.get('/workshops', {
-      params: { searchTerm }
-    });
+  findAll: async (): Promise<WorkshopResponseDto[]> => {
+    const { data } = await api.get('/workshops');
     return data;
   },
 
-  // Получение цеха по ID
-  getById: async (id: string): Promise<WorkshopResponse> => {
+  findOne: async (id: string): Promise<WorkshopResponseDto> => {
     const { data } = await api.get(`/workshops/${id}`);
     return data;
   },
 
-  // Создание нового цеха
-  create: async (dto: WorkshopDto): Promise<WorkshopResponse> => {
+  create: async (dto: CreateWorkshopDto): Promise<WorkshopResponseDto> => {
     const { data } = await api.post('/workshops', dto);
     return data;
   },
 
-  // Обновление цеха
-  update: async (id: string, dto: WorkshopDto): Promise<WorkshopResponse> => {
+  update: async (id: string, dto: UpdateWorkshopDto): Promise<WorkshopResponseDto> => {
     const { data } = await api.put(`/workshops/${id}`, dto);
     return data;
   },
 
-  // Удаление цеха
   delete: async (id: string): Promise<void> => {
     await api.delete(`/workshops/${id}`);
   },
 
-  // Получение продуктов цеха
-  getProducts: async (workshopId: string): Promise<any[]> => {
-    const { data } = await api.get(`/workshops/${workshopId}/products`);
-    return data;
-  },
-
-  // Назначение продуктов цеху
-  assignProducts: async (workshopId: string, productIds: string[]): Promise<void> => {
-    await api.post(`/workshops/${workshopId}/products`, { productIds });
-  },
-
-  // Назначение пользователей цеху
-  assignUsers: async (workshopId: string, dto: AssignUsersDto): Promise<void> => {
-    await api.post(`/workshops/${workshopId}/users`, dto);
-  },
-
-
-    // Добавление пользователей в цех
   addUsers: async (workshopId: string, userIds: string[]): Promise<void> => {
     await api.post(`/workshops/${workshopId}/users`, { userIds });
   },
 
-  // Удаление пользователей из цеха
   removeUsers: async (workshopId: string, userIds: string[]): Promise<void> => {
     await api.delete(`/workshops/${workshopId}/users`, { 
       data: { userIds } 
     });
   },
 
-  // Получение пользователей цеха
   getUsers: async (workshopId: string): Promise<string[]> => {
     const { data } = await api.get(`/workshops/${workshopId}/users`);
     return data;
   },
 
-  // Удаление конкретного пользователя из цеха (дополнительный метод)
-  removeUser: async (workshopId: string, userId: string): Promise<void> => {
-    await api.delete(`/workshops/${workshopId}/users/${userId}`);
-  }
+  // Методы для работы с ресторанами
+  addRestaurants: async (workshopId: string, restaurantIds: string[]): Promise<void> => {
+    await api.post(`/workshops/${workshopId}/restaurants`, { restaurantIds });
+  },
+
+  removeRestaurants: async (workshopId: string, restaurantIds: string[]): Promise<void> => {
+    await api.delete(`/workshops/${workshopId}/restaurants`, { 
+      data: { restaurantIds } 
+    });
+  },
+
+  findByRestaurantId: async (restaurantId: string): Promise<WorkshopResponseDto[]> => {
+    const { data } = await api.get(`/workshops/restaurant/${restaurantId}`);
+    return data;
+  },
+
+  getAll: async (): Promise<WorkshopResponseDto[]> => {
+    return WorkshopService.findAll();
+  },
+
+  getById: async (id: string): Promise<WorkshopResponseDto> => {
+    return WorkshopService.findOne(id);
+  },
+
+  getByRestaurantId: async (restaurantId: string): Promise<WorkshopResponseDto[]> => {
+    return WorkshopService.findByRestaurantId(restaurantId);
+  },
 };

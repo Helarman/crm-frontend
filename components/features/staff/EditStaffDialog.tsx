@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -16,10 +16,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Check, Loader2, Trash2 } from "lucide-react"
 import { useLanguageStore } from '@/lib/stores/language-store'
-import { WorkshopDto } from '@/lib/api/workshop.service'
 import { toast } from 'sonner'
 import SearchableSelect from '../menu/product/SearchableSelect'
 import { Restaurant } from '@/lib/types/restaurant'
+import { WorkshopResponseDto } from '@/lib/api/workshop.service'
 
 enum UserRoles {
   NONE = "NONE",
@@ -51,7 +51,7 @@ interface EditStaffDialogProps {
     position: string
   }
   restaurants: Restaurant[]
-  workshops: WorkshopDto[]
+  workshops: WorkshopResponseDto[]
   onSave: (role: UserRoles, restaurants: string[], workshops?: string[]) => Promise<void>
   onDelete: (userId: string) => Promise<void>
   isLoading: boolean
@@ -76,7 +76,7 @@ const translations = {
     save: "Сохранить",
     cancel: "Отмена",
     delete: "Удалить",
-    deleteConfirm: "Подвердить",
+    deleteConfirm: "Подтвердить",
     roleUpdated: "Роль успешно обновлена",
     restaurantUpdated: "Рестораны успешно обновлены",
     userDeleted: "Сотрудник успешно удален",
@@ -151,6 +151,16 @@ export function EditStaffDialog({
   const allRoles = Object.values(UserRoles)
   const isKitchenRole = selectedRole === UserRoles.COOK || selectedRole === UserRoles.CHEF
 
+  // Сброс данных при изменении staffMember или открытии/закрытии диалога
+  useEffect(() => {
+    if (open && staffMember) {
+      setSelectedRole(staffMember.position as UserRoles)
+      setSelectedRestaurants(staffMember.restaurant.map(r => r.id))
+      setSelectedWorkshops(staffMember.workshops?.map(w => w.workshopId) || [])
+      setDeleteConfirm(false)
+    }
+  }, [open, staffMember])
+
   const handleDelete = async () => {
     if (!deleteConfirm) {
       setDeleteConfirm(true)
@@ -185,13 +195,20 @@ export function EditStaffDialog({
     }
   }
 
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      // Сбрасываем все данные при закрытии
+      setDeleteConfirm(false)
+      // Восстанавливаем исходные значения из staffMember
+      setSelectedRole(staffMember.position as UserRoles)
+      setSelectedRestaurants(staffMember.restaurant.map(r => r.id))
+      setSelectedWorkshops(staffMember.workshops?.map(w => w.workshopId) || [])
+    }
+    onOpenChange(open)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={(open) => {
-      if (!open) {
-        setDeleteConfirm(false)
-      }
-      onOpenChange(open)
-    }}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold">{t.editStaff}</DialogTitle>
@@ -284,10 +301,7 @@ export function EditStaffDialog({
           <div className="flex gap-2">
             <Button
               variant="outline"
-              onClick={() => {
-                setDeleteConfirm(false)
-                onOpenChange(false)
-              }}
+              onClick={() => handleOpenChange(false)}
               disabled={isLoading || isDeleting}
               className="px-4"
             >

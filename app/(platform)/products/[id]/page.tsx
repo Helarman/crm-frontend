@@ -23,6 +23,8 @@ import IngredientSelect from '@/components/features/menu/product/IngredientSelec
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useLanguageStore } from '@/lib/stores/language-store'
+import { useAuth } from '@/lib/hooks/useAuth'
+import { Restaurant } from '@/lib/types/restaurant'
 
 interface RestaurantPrice {
   restaurantId: string
@@ -42,6 +44,7 @@ const ProductEditPage = () => {
   const productId = params.id
   const { language } = useLanguageStore()
   const router = useRouter()
+  const { user } = useAuth()
   
   const [currentStep, setCurrentStep] = useState<FormStep>('basic')
   const [formData, setFormData] = useState({
@@ -66,7 +69,8 @@ const ProductEditPage = () => {
 
   const [selectedAdditives, setSelectedAdditives] = useState<string[]>([])
   const [additives, setAdditives] = useState<{ id: string; title: string; price: number }[]>([])
-  const [restaurants, setRestaurants] = useState<{ id: string; title: string }[]>([])
+  const [allRestaurants, setAllRestaurants] = useState<{ id: string; title: string }[]>([])
+  const [userRestaurants, setUserRestaurants] = useState<{ id: string; title: string }[]>([])
   const [categories, setCategories] = useState<{ id: string; title: string }[]>([])
   const [workshops, setWorkshops] = useState<Workshop[]>([])
   const [selectedRestaurants, setSelectedRestaurants] = useState<string[]>([])
@@ -90,6 +94,15 @@ const ProductEditPage = () => {
     loadAdditives()
   }, [])
 
+  useEffect(() => {
+    if (user?.restaurant && allRestaurants.length > 0) {
+      const filteredRestaurants = allRestaurants.filter(restaurant => 
+        user.restaurant?.some((userRestaurant : Restaurant) => userRestaurant.id === restaurant.id)
+      )
+      setUserRestaurants(filteredRestaurants)
+    }
+  }, [user, allRestaurants])
+
   const loadWorkshops = async () => {
     setIsWorkshopsLoading(true)
     try {
@@ -103,30 +116,29 @@ const ProductEditPage = () => {
     }
   }
 
-const loadInventoryItems = async () => {
-  setIsInventoryLoading(true);
-  try {
-    // Используем тот же подход, что и в компоненте склада
-    const items = await WarehouseService.getAllInventoryItems();
-    
-    const formattedItems = items.map((item: any) => ({
-      id: item.id,
-      name: item.name,
-      unit: item.unit,
-      categoryId: item.categoryId,
-    }));
-    
-    setInventoryItems(formattedItems);
-  } catch (error) {
-    console.error('Failed to load inventory items', error);
-    toast.error(language === 'ru' 
-      ? 'Ошибка загрузки ингредиентов' 
-      : 'ინგრედიენტების ჩატვირთვის შეცდომა');
-    setInventoryItems([]);
-  } finally {
-    setIsInventoryLoading(false);
+  const loadInventoryItems = async () => {
+    setIsInventoryLoading(true);
+    try {
+      const items = await WarehouseService.getAllInventoryItems();
+      
+      const formattedItems = items.map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        unit: item.unit,
+        categoryId: item.categoryId,
+      }));
+      
+      setInventoryItems(formattedItems);
+    } catch (error) {
+      console.error('Failed to load inventory items', error);
+      toast.error(language === 'ru' 
+        ? 'Ошибка загрузки ингредиентов' 
+        : 'ინგრედიენტების ჩატვირთვის შეცდომა');
+      setInventoryItems([]);
+    } finally {
+      setIsInventoryLoading(false);
+    }
   }
-}
 
   const loadData = async () => {
     if (!productId) {
@@ -164,7 +176,13 @@ const loadInventoryItems = async () => {
 
       setSelectedAdditives(productAdditives.map((a: Additive) => a.id))
       setRestaurantPrices(prices)
-      setSelectedRestaurants(prices.map((p: RestaurantPrice) => p.restaurantId))
+      
+      const userRestaurantIds = user?.restaurants?.map((r : Restaurant) => r.id) || []
+      const filteredSelectedRestaurants = prices
+        .map((p: RestaurantPrice) => p.restaurantId)
+        .filter((id: string) => userRestaurantIds.includes(id))
+      
+      setSelectedRestaurants(filteredSelectedRestaurants)
       setSelectedWorkshops(product.workshops?.map((w: any) => w.workshop.id) || [])
       setIngredients(productIngredients || [])
     } catch (error) {
@@ -218,7 +236,7 @@ const loadInventoryItems = async () => {
     setIsRestaurantsLoading(true)
     try {
       const data = await RestaurantService.getAll()
-      setRestaurants(data)
+      setAllRestaurants(data)
     } catch (error) {
       console.error('Failed to load restaurants', error)
     } finally {
@@ -270,37 +288,6 @@ const loadInventoryItems = async () => {
     )
   }
 
-  const toggleRestaurant = (restaurantId: string) => {
-    setSelectedRestaurants(prev => {
-      const newSelection = prev.includes(restaurantId)
-        ? prev.filter(id => id !== restaurantId)
-        : [...prev, restaurantId]
-      
-      if (!newSelection.includes(restaurantId)) {
-        setRestaurantPrices(prevPrices => 
-          prevPrices.filter(rp => rp.restaurantId !== restaurantId)
-        )
-      } else {
-        // Добавляем новую запись, если ресторан выбран и ещё не существует
-        setRestaurantPrices(prev => {
-          const exists = prev.some(rp => rp.restaurantId === restaurantId)
-          if (!exists) {
-            return [
-              ...prev,
-              {
-                restaurantId,
-                price: formData.price,
-                isStopList: false
-              }
-            ]
-          }
-          return prev
-        })
-      }
-      
-      return newSelection
-    })
-  }
   const handleRestaurantsChange = (selectedIds: string[]) => {
     // Определяем добавленные и удаленные рестораны
     const added = selectedIds.filter(id => !selectedRestaurants.includes(id));
@@ -710,7 +697,7 @@ const loadInventoryItems = async () => {
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <SearchableSelect
-                  options={restaurants.map(r => ({ id: r.id, label: r.title }))}
+                  options={userRestaurants.map(r => ({ id: r.id, label: r.title }))}
                   value={selectedRestaurants}
                   onChange={handleRestaurantsChange}
                   placeholder={language === 'ru' ? 'Выберите рестораны' : 'აირჩიეთ რესტორნები'}
@@ -719,11 +706,10 @@ const loadInventoryItems = async () => {
                 />
               )}
             </div>
-
             {selectedRestaurants.length > 0 && (
               <div className="space-y-3">
                 {selectedRestaurants.map(restaurantId => {
-                  const restaurant = restaurants.find(r => r.id === restaurantId)
+                  const restaurant = userRestaurants.find(r => r.id === restaurantId)
                   if (!restaurant) return null
                   
                   const priceInfo = getRestaurantPrice(restaurantId)

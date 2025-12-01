@@ -44,7 +44,7 @@ export const NetworkService = {
     return data;
   },
 
-  async getByUser(userId: string): Promise<Network> {
+  async getByUser(userId: string): Promise<Network[]> {
     const { data } = await api.get(`/networks/user/${userId}`);
     return data;
   },

@@ -270,7 +270,7 @@ const DeliveryZoneDialogContent = React.memo(
               <SelectContent>
                 {restaurants.map((rest) => (
                   <SelectItem key={rest.id} value={rest.id}>
-                    {rest.name}
+                    {rest.title}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -481,7 +481,7 @@ export default function DeliveryZonePage() {
               <SelectItem value="all">{t.allRestaurants}</SelectItem>
               {restaurants.map((rest : Restaurant) => (
                 <SelectItem key={rest.id} value={rest.id}>
-                  {rest.name}
+                  {rest.title}
                 </SelectItem>
               ))}
             </SelectContent>

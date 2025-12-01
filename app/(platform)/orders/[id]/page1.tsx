@@ -1345,7 +1345,7 @@ const handleQuantityChange = useCallback(async (product: Product, newQuantity: n
     
     try {
       setCustomerLoading(true);
-      const customer = await CustomerService.getCustomerByShortCode(customerCode);
+      const customer = await CustomerService.getByShortCode(customerCode);
       
       await OrderService.applyCustomerToOrder(
         orderId as string,

@@ -39,14 +39,21 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command'
-import { Calendar } from '@/components/ui/calendar'
-import { CalendarIcon } from 'lucide-react'
-import { format } from 'date-fns'
-import { ru, ka } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useLanguageStore } from '@/lib/stores/language-store'
 import { toast } from 'sonner'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 
 type OrderType = "DINE_IN" | "TAKEAWAY" | "DELIVERY" | "BANQUET";
 
@@ -100,7 +107,8 @@ const translations: Translations = {
     takeaway: 'На вынос',
     delivery: 'Доставка',
     banquet: 'Банкет',
-    selected: 'выбрано'
+    selected: 'выбрано',
+    toggleStatus: 'Активировать/деактивировать'
   },
   ka: {
     title: 'სახელი',
@@ -135,14 +143,14 @@ const translations: Translations = {
     takeaway: 'წასაღები',
     delivery: 'მიტანა',
     banquet: 'ბანკეტი',
-    selected: 'selected'
+    selected: 'selected',
+    toggleStatus: 'გააქტიურება/გამორთვა'
   }
 };
 
 const SurchargesTable = () => {
   const { language } = useLanguageStore();
   const t = translations[language];
-  const locale = language === 'ka' ? ka : ru;
 
   const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false);
   const [editingSurcharge, setEditingSurcharge] = useState<SurchargeResponse | null>(null);
@@ -158,8 +166,6 @@ const SurchargesTable = () => {
 
   const [openOrderTypesDialog, setOpenOrderTypesDialog] = useState<boolean>(false);
   const [openRestaurantsDialog, setOpenRestaurantsDialog] = useState<boolean>(false);
-  const [openStartDateDialog, setOpenStartDateDialog] = useState<boolean>(false);
-  const [openEndDateDialog, setOpenEndDateDialog] = useState<boolean>(false);
   const [searchValue, setSearchValue] = useState<string>('');
 
   const { data: surcharges, error: surchargesError, isLoading } = useSWR<SurchargeResponse[]>('surcharges', () => SurchargeService.getAll());
@@ -167,15 +173,14 @@ const SurchargesTable = () => {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => ({ 
+      ...prev, 
+      [name]: name === 'amount' ? Number(value) : value 
+    }));
   };
 
   const handleSelectChange = (name: string, value: any): void => {
     setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleDateChange = (name: string, date: Date | undefined): void => {
-    setFormData(prev => ({ ...prev, [name]: date ? date.toISOString() : null }));
   };
 
   const toggleSelection = (currentItems: string[], itemId: string): string[] => {
@@ -231,15 +236,13 @@ const SurchargesTable = () => {
   };
 
   const handleDelete = async (id: string): Promise<void> => {
-    if (confirm(t.deleteConfirm)) {
-      try {
-        await SurchargeService.delete(id);
-        mutate('surcharges');
-        toast.success(language === 'ru' ? 'Надбавка успешно удалена' : 'დანამატი წარმატებით წაიშალა');
-      } catch (error) {
-        console.error('Error deleting surcharge:', error);
-        toast.error(language === 'ru' ? 'Ошибка при удалении надбавки' : 'დანამატის წაშლის შეცდომა');
-      }
+    try {
+      await SurchargeService.delete(id);
+      mutate('surcharges');
+      toast.success(language === 'ru' ? 'Надбавка успешно удалена' : 'დანამატი წარმატებით წაიშალა');
+    } catch (error) {
+      console.error('Error deleting surcharge:', error);
+      toast.error(language === 'ru' ? 'Ошибка при удалении надбавки' : 'დანამატის წაშლის შეცდომა');
     }
   };
 
@@ -399,7 +402,7 @@ const SurchargesTable = () => {
                   </div>
                 )}
 
-                {formData.orderTypes &&  formData.orderTypes?.length > 0 && (
+                {formData.orderTypes && formData.orderTypes.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
                     {formData.orderTypes.map(type => {
                       const label = orderTypeOptions.find(o => o.value === type)?.label;
@@ -498,7 +501,7 @@ const SurchargesTable = () => {
                   </div>
                 )}
 
-                {formData.restaurantIds && formData.restaurantIds?.length > 0 && (
+                {formData.restaurantIds && formData.restaurantIds.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
                     {formData.restaurantIds.map(id => {
                       const restaurant = restaurants?.find(r => r.id === id);
@@ -563,6 +566,8 @@ const SurchargesTable = () => {
               <TableHead>{t.amount}</TableHead>
               <TableHead>{t.orderTypes}</TableHead>
               <TableHead>{t.restaurants}</TableHead>
+              <TableHead>{t.status}</TableHead>
+              <TableHead>{t.actions}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -585,7 +590,12 @@ const SurchargesTable = () => {
             ) : (
               surcharges?.map((surcharge) => (
                 <TableRow key={surcharge.id}>
-                  <TableCell>{surcharge.title}</TableCell>
+                  <TableCell>
+                    <div className="font-medium">{surcharge.title}</div>
+                    {surcharge.description && (
+                      <div className="text-sm text-muted-foreground">{surcharge.description}</div>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Badge variant="outline">
                       {surcharge.type === 'FIXED' ? t.fixed : t.percentage}
@@ -599,7 +609,7 @@ const SurchargesTable = () => {
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {surcharge.orderTypes.map((type) => (
-                        <Badge key={type} variant="secondary">
+                        <Badge key={type} variant="secondary" className="text-xs">
                           {type === 'DINE_IN' && t.dineIn}
                           {type === 'TAKEAWAY' && t.takeaway}
                           {type === 'DELIVERY' && t.delivery}
@@ -612,22 +622,32 @@ const SurchargesTable = () => {
                     {surcharge.restaurants?.length ? (
                       <div className="flex flex-wrap gap-1">
                         {surcharge.restaurants.slice(0, 2).map((r) => (
-                          <Badge key={r.restaurant.id} variant="secondary">
+                          <Badge key={r.restaurant.id} variant="secondary" className="text-xs">
                             {r.restaurant.title}
                           </Badge>
                         ))}
                         {surcharge.restaurants.length > 2 && (
-                          <Badge variant="secondary">
+                          <Badge variant="secondary" className="text-xs">
                             +{surcharge.restaurants.length - 2}
                           </Badge>
                         )}
                       </div>
                     ) : (
-                      <span className="text-muted-foreground">{t.all}</span>
+                      <span className="text-muted-foreground text-sm">{t.all}</span>
                     )}
                   </TableCell>
                   <TableCell>
-                    <div className="flex space-x-2  justify-end">
+                    <div className="flex items-center space-x-2">
+                      <div 
+                        className={`w-3 h-3 rounded-full ${surcharge.isActive ? 'bg-green-500' : 'bg-gray-300'}`}
+                      />
+                      <span className="text-sm">
+                        {surcharge.isActive ? t.active : t.inactive}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex space-x-2 justify-end">
                       <Button
                         variant="ghost"
                         size="icon"
@@ -635,13 +655,35 @@ const SurchargesTable = () => {
                       >
                         <PencilIcon className="h-4 w-4" />
                       </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(surcharge.id)}
-                      >
-                        <TrashIcon className="h-4 w-4 text-red-500" />
-                      </Button>
+                      
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <TrashIcon className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>{t.deleteConfirm}</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              {language === 'ru' 
+                                ? 'Это действие нельзя отменить. Надбавка будет удалена безвозвратно.' 
+                                : 'ამ მოქმედების გაუქმება შეუძლებელია. დანამატი სამუდამოდ წაიშლება.'}
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>
+                              {t.cancel}
+                            </AlertDialogCancel>
+                            <AlertDialogAction 
+                              onClick={() => handleDelete(surcharge.id)}
+                              className="bg-red-500 hover:bg-red-600"
+                            >
+                              {language === 'ru' ? 'Удалить' : 'წაშლა'}
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   </TableCell>
                 </TableRow>

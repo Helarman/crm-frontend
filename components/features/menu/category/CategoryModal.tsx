@@ -11,7 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { CategoryService } from "@/lib/api/category.service"
 import { Language } from '@/lib/stores/language-store';
-import SearchableSelect  from '@/components/features/menu/product/SearchableSelect'
+import SearchableSelect from '../product/SearchableSelect';
+import { toast } from 'sonner';
 
 interface CategoryModalProps {
   isOpen: boolean;
@@ -20,9 +21,11 @@ interface CategoryModalProps {
   categoryId: string | null | undefined;
   formData: any;
   onInputChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
-  onSelectChange: (name: string, value: string) => void;
+  onSelectChange: (name: string, value: string | string[]) => void;
   language: string;
   categories: any[];
+  restaurants: any[];
+  // Убрали selectedRestaurant из пропсов
 }
 
 const translations = {
@@ -74,6 +77,22 @@ const translations = {
     noParent: {
       ru: 'Нет (основная категория)',
       ka: 'არა (მთავარი კატეგორია)',
+    },
+    restaurants: {
+      ru: 'Рестораны',
+      ka: 'რესტორანები',
+    },
+    selectRestaurants: {
+      ru: 'Выберите рестораны',
+      ka: 'აირჩიეთ რესტორანები',
+    },
+    noRestaurants: {
+      ru: 'Рестораны не найдены',
+      ka: 'რესტორანები არ მოიძებნა',
+    },
+    selectAtLeastOneRestaurant: {
+      ru: 'Выберите хотя бы один ресторан',
+      ka: 'აირჩიეთ მინიმუმ ერთი რესტორანი',
     }
   },
   save: {
@@ -96,14 +115,28 @@ export const CategoryModal = ({
   onSelectChange,
   language,
   categories,
+  restaurants,
 }: CategoryModalProps) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Валидация: минимум 1 ресторан должен быть выбран
+    if (!formData.restaurantIds || formData.restaurantIds.length === 0) {
+      toast.warning(translations.fields.selectAtLeastOneRestaurant[language as Language]);
+      return;
+    }
+
     try {
+      const submitData = {
+        ...formData,
+        // restaurantIds берется напрямую из formData - независимо от фильтра
+        restaurantIds: formData.restaurantIds
+      };
+
       if (categoryId) {
-        await CategoryService.update(categoryId, formData);
+        await CategoryService.update(categoryId, submitData);
       } else {
-        await CategoryService.create(formData);
+        await CategoryService.create(submitData);
       }
       onSubmitSuccess();
     } catch (error) {
@@ -121,9 +154,14 @@ export const CategoryModal = ({
       }))
   ];
 
+  const restaurantOptions = restaurants.map(restaurant => ({
+    id: restaurant.id,
+    label: restaurant.title
+  }));
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-h-[80vh] overflow-y-auto max-w-2xl">
         <DialogHeader>
           <DialogTitle>
             {categoryId ? translations.editCategory[language as Language] : translations.addCategory[language as Language]}
@@ -143,6 +181,34 @@ export const CategoryModal = ({
                 onChange={onInputChange}
                 className="col-span-9"
                 required
+              />
+            </div>
+
+            <div className="grid grid-cols-12 items-start gap-2">
+              <Label htmlFor="slug" className="col-span-3 text-left">
+                {translations.fields.slug[language as Language]}
+              </Label>
+              <Input
+                id="slug"
+                name="slug"
+                value={formData.slug}
+                onChange={onInputChange}
+                className="col-span-9"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-12 items-start gap-2">
+              <Label htmlFor="description" className="col-span-3 text-left">
+                {translations.fields.description[language as Language]}
+              </Label>
+              <Textarea
+                id="description"
+                name="description"
+                value={formData.description}
+                onChange={onInputChange}
+                className="col-span-9"
+                rows={3}
               />
             </div>
 
@@ -173,6 +239,29 @@ export const CategoryModal = ({
                 rows={3}
               />
             </div>
+
+            {/* Рестораны - ОБЯЗАТЕЛЬНОЕ поле */}
+            {restaurants.length > 0 && (
+              <div className="grid grid-cols-12 items-start gap-2">
+                <Label className="col-span-3 text-left">
+                  {translations.fields.restaurants[language as Language]} *
+                </Label>
+                <div className="col-span-9">
+                  <SearchableSelect
+                    options={restaurantOptions}
+                    value={formData.restaurantIds || []}
+                    onChange={(values) => onSelectChange('restaurantIds', values)}
+                    placeholder={translations.fields.selectRestaurants[language as Language]}
+                    searchPlaceholder={translations.fields.restaurants[language as Language]}
+                    emptyText={translations.fields.noRestaurants[language as Language]}
+                    multiple={true}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {translations.fields.selectAtLeastOneRestaurant[language as Language]}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Иерархия и сортировка */}
             <div className="grid grid-cols-12 items-start gap-2">

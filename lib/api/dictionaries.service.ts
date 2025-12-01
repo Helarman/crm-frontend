@@ -42,7 +42,7 @@ export interface CopyResult {
 
 export interface Restaurant {
   id: string;
-  name: string;
+  title: string;
   address: string;
   isActive: boolean;
 }

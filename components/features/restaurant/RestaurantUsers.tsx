@@ -50,7 +50,7 @@ export default function RestaurantUsers() {
 
         const [restaurantData, workshopsData, usersData] = await Promise.all([
           RestaurantService.getById(restaurantId),
-          WorkshopService.getAll(),
+          WorkshopService.getByRestaurantId(restaurantId),
           UserService.getAll()
         ])
 
@@ -113,7 +113,7 @@ export default function RestaurantUsers() {
       setLoading(true)
       const [freshUsers, freshWorkshops] = await Promise.all([
         UserService.getAll(),
-        WorkshopService.getAll()
+        WorkshopService.getByRestaurantId(restaurantId)
       ])
       
       const restaurantUsers = freshUsers.filter((user: any) => 

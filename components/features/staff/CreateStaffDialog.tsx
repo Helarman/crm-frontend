@@ -55,7 +55,7 @@ const translations = {
     role: "Роль",
     selectRole: "Выберите роль",
     restaurants: "Рестораны",
-    selectRestaurants: "Выберите рестораны",
+    selectRestaurant: "Выберите ресторан", // Изменено
     searchRestaurants: "Поиск ресторанов...",
     noRestaurants: "Рестораны не найдены",
     create: "Создать",
@@ -66,7 +66,7 @@ const translations = {
     passwordRequired: "Пароль обязателен",
     minPasswordLength: "Пароль должен содержать минимум 6 символов",
     roleRequired: "Роль обязательна",
-    restaurantsRequired: "Выберите хотя бы один ресторан",
+    restaurantRequired: "Выберите ресторан", // Изменено
     emailTaken: "Email уже занят",
     checkingEmail: "Проверка email...",
     userCreated: "Сотрудник успешно создан",
@@ -89,7 +89,7 @@ const translations = {
     role: "როლი",
     selectRole: "აირჩიეთ როლი",
     restaurants: "რესტორანები",
-    selectRestaurants: "აირჩიეთ რესტორანები",
+    selectRestaurant: "აირჩიეთ რესტორანი", // Изменено
     searchRestaurants: "რესტორანების ძებნა...",
     noRestaurants: "რესტორანები ვერ მოიძებნა",
     create: "შექმნა",
@@ -100,7 +100,7 @@ const translations = {
     passwordRequired: "პაროლი სავალდებულოა",
     minPasswordLength: "პაროლი უნდა შედგებოდეს მინიმუმ 6 სიმბოლოსგან",
     roleRequired: "როლი სავალდებულოა",
-    restaurantsRequired: "აირჩიეთ მინიმუმ ერთი რესტორანი",
+    restaurantRequired: "აირჩიეთ რესტორანი", // Изменено
     emailTaken: "ელ. ფოსტა უკვე დაკავებულია",
     checkingEmail: "ელ. ფოსტის შემოწმება...",
     userCreated: "თანამშრომელი წარმატებით შეიქმნა",
@@ -117,12 +117,13 @@ const translations = {
   }
 }
 
+// Изменяем схему валидации для одного ресторана
 const createUserSchema = z.object({
   name: z.string().min(1),
   email: z.string().min(1).email(),
   password: z.string().min(6),
   role: z.nativeEnum(UserRoles),
-  restaurantIds: z.array(z.string()).min(1),
+  restaurantId: z.string().min(1), // Изменено на строку вместо массива
 })
 
 export function CreateStaffDialog({
@@ -144,49 +145,50 @@ export function CreateStaffDialog({
       email: '',
       password: '',
       role: UserRoles.NONE,
-      restaurantIds: defaultRestaurantId ? [defaultRestaurantId] : [],
+      restaurantId: defaultRestaurantId 
     }
   })
 
   const allRoles = Object.values(UserRoles)
 
-const onSubmit = async (values: z.infer<typeof createUserSchema>) => {
-  try {
-    setIsSubmitting(true)
-    setEmailError(null)
-    
-    const isUserExist = await UserService.getByEmail(values.email)
-    if (isUserExist) {
-      setEmailError('emailTaken')
-      toast.error(t.emailTaken)
-      return
+  const onSubmit = async (values: z.infer<typeof createUserSchema>) => {
+    try {
+      setIsSubmitting(true)
+      setEmailError(null)
+      
+      const isUserExist = await UserService.getByEmail(values.email)
+      if (isUserExist) {
+        setEmailError('emailTaken')
+        toast.error(t.emailTaken)
+        return
+      }
+
+      const newUser = await UserService.register({
+        name: values.name,
+        email: values.email,
+        password: values.password,
+        role: values.role,
+      })
+
+      await new Promise(resolve => setTimeout(resolve, 1000))
+
+      // Используем выбранный restaurantId
+      if (values.restaurantId) {
+        RestaurantService.addUserByEmail(values.restaurantId, { email: values.email })
+      }
+
+      form.reset()
+      onOpenChange(false)
+      toast.success(t.userCreated)
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      onSuccess()
+    } catch (error) {
+      console.error('Failed to create user:', error)
+      toast.error(t.error)
+    } finally {
+      setIsSubmitting(false)
     }
-
-    const newUser = await UserService.register({
-      name: values.name,
-      email: values.email,
-      password: values.password,
-      role: values.role,
-    })
-
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    if (defaultRestaurantId) {
-        RestaurantService.addUserByEmail(defaultRestaurantId, { email: values.email })
-    }
-
-    form.reset()
-    onOpenChange(false)
-    toast.success(t.userCreated)
-     await new Promise(resolve => setTimeout(resolve, 2000))
-    onSuccess()
-  } catch (error) {
-    console.error('Failed to create user:', error)
-    toast.error(t.error)
-  } finally {
-    setIsSubmitting(false)
   }
-}
 
   return (
     <Dialog open={open} onOpenChange={(open) => {
@@ -196,7 +198,7 @@ const onSubmit = async (values: z.infer<typeof createUserSchema>) => {
           email: '',
           password: '',
           role: UserRoles.NONE,
-          restaurantIds: defaultRestaurantId ? [defaultRestaurantId] : [],
+          restaurantId: defaultRestaurantId || '', // Изменено
         })
         setEmailError(null)
       }
@@ -294,28 +296,30 @@ const onSubmit = async (values: z.infer<typeof createUserSchema>) => {
               )}
             />
 
-            {restaurants && restaurants.length > 0 && <FormField
-              control={form.control}
-              name="restaurantIds"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t.restaurants}</FormLabel>
-                  <FormControl>
-                    <SearchableSelect
-                      options={restaurants.map(r => ({ id: r.id, label: r.title }))}
-                      value={field.value}
-                      onChange={field.onChange}
-                      placeholder={t.selectRestaurants}
-                      searchPlaceholder={t.searchRestaurants}
-                      emptyText={t.noRestaurants}
-                      multiple={true}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            }
+            {restaurants && restaurants.length > 0 && (
+              <FormField
+                control={form.control}
+                name="restaurantId" // Изменено
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t.restaurants}</FormLabel>
+                    <FormControl>
+                      <SearchableSelect
+                        options={restaurants.map(r => ({ id: r.id, label: r.title }))}
+                        value={field.value as any}
+                        onChange={field.onChange}
+                        placeholder={t.selectRestaurant} 
+                        searchPlaceholder={t.searchRestaurants}
+                        emptyText={t.noRestaurants}
+                        multiple={false} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+            
             <div className="flex justify-end gap-2 pt-4">
               <Button
                 type="button"

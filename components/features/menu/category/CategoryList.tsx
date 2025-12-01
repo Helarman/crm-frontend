@@ -7,11 +7,15 @@ import { CategoryTable } from './CategoryTable';
 import { CategoryModal } from './CategoryModal';
 import { CategoryFilters } from './CategoryFilters';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAuth } from '@/lib/hooks/useAuth';
+import { Restaurant } from '@/lib/types/restaurant';
 
 export const CategoryList = () => {
   const { language } = useLanguageStore();
+  const { user } = useAuth();
   const [categories, setCategories] = useState<CategoryDto[]>([]);
   const [filteredCategories, setFilteredCategories] = useState<CategoryDto[]>([]);
+  const [selectedRestaurant, setSelectedRestaurant] = useState<string>(user.role === 'SUPERVISOR' ? 'all' : user.restaurant[0].id);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentCategoryId, setCurrentCategoryId] = useState<string | null | undefined>(null);
@@ -25,7 +29,8 @@ export const CategoryList = () => {
     metaDescription: '',
     metaKeywords: '',
     parentId: undefined,
-    order: 0
+    order: 0,
+    restaurantIds: []
   });
 
   const translations = {
@@ -46,8 +51,19 @@ export const CategoryList = () => {
         tree: 'ხე',
         flat: 'სია'
       }
+    },
+    filterByRestaurant: {
+      ru: 'Фильтр по ресторану',
+      ka: 'ფილტრი რესტორანის მიხედვით'
+    },
+    allRestaurants: {
+      ru: 'Все рестораны',
+      ka: 'ყველა რესტორანი'
     }
   };
+
+  // Получаем рестораны пользователя
+  const userRestaurants = user?.restaurant || [];
 
   const handleRefreshData = () => {
     fetchCategories();
@@ -55,7 +71,7 @@ export const CategoryList = () => {
 
   useEffect(() => {
     fetchCategories();
-  }, [viewMode]);
+  }, [viewMode, selectedRestaurant]);
 
   useEffect(() => {
     filterCategories();
@@ -64,9 +80,16 @@ export const CategoryList = () => {
   const fetchCategories = async () => {
     setIsLoading(true);
     try {
-      const data = viewMode === 'tree'
-        ? await CategoryService.getTree()
-        : await CategoryService.getAllFlat();
+      let data;
+      if (selectedRestaurant === 'all') {
+        data = viewMode === 'tree'
+          ? await CategoryService.getTree()
+          : await CategoryService.getAllFlat();
+      } else {
+        data = viewMode === 'tree'
+          ? await CategoryService.getTreeByRestaurant(selectedRestaurant)
+          : await CategoryService.getAllFlatByRestaurant(selectedRestaurant);
+      }
       setCategories(data);
     } catch (error) {
       console.error('Error fetching categories:', error);
@@ -96,17 +119,21 @@ export const CategoryList = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSelectChange = (name: string, value: string) => {
+  const handleSelectChange = (name: string, value: string | string[]) => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const openAddModal = (parentId?: string) => {
+    // Если выбран конкретный ресторан, добавляем его в restaurantIds по умолчанию
+    const defaultRestaurantIds = selectedRestaurant !== 'all' ? [selectedRestaurant] : [];
+    
     setFormData({
       title: '',
       description: '',
       slug: '',
       parentId,
-      order: 0
+      order: 0,
+      restaurantIds: defaultRestaurantIds
     });
     setCurrentCategoryId(null);
     setIsModalOpen(true);
@@ -123,7 +150,8 @@ export const CategoryList = () => {
       metaKeywords: category.metaKeywords,
       parentId: category.parentId,
       order: category.order,
-      image: category.image
+      image: category.image,
+      restaurantIds: category.restaurantIds || category.restaurants?.map(r => r.id) || []
     });
     setIsModalOpen(true);
   };
@@ -141,7 +169,6 @@ export const CategoryList = () => {
       console.error('Error deleting category:', error);
     }
   };
-
 
   const handleMoveUp = async (id: string) => {
     try {
@@ -195,6 +222,26 @@ export const CategoryList = () => {
               <SelectItem value="flat">{translations.viewOptions[language].flat}</SelectItem>
             </SelectContent>
           </Select>
+
+          {/* Фильтр по ресторану - показываем только если у пользователя есть рестораны */}
+          {userRestaurants.length > 0 && (
+            <Select value={selectedRestaurant} onValueChange={setSelectedRestaurant}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder={translations.filterByRestaurant[language]} />
+              </SelectTrigger>
+              <SelectContent>
+                {user.role === 'SUPERVISOR' && <SelectItem value="all">
+                  {translations.allRestaurants[language]}
+                </SelectItem>}
+                {userRestaurants.map((restaurant : Restaurant) => (
+                  <SelectItem key={restaurant.id} value={restaurant.id}>
+                    {restaurant.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
           <Button onClick={() => openAddModal()}>
             <Plus className="mr-2 h-4 w-4" />
             {translations.addCategory[language]}
@@ -233,6 +280,7 @@ export const CategoryList = () => {
         onSelectChange={handleSelectChange}
         language={language}
         categories={categories}
+        restaurants={userRestaurants}
       />
     </div>
   );

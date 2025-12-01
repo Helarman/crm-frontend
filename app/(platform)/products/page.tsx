@@ -13,7 +13,8 @@ import {
   Utensils, 
   PlusCircle, 
   ListTree, 
-  Factory 
+  Factory, 
+  Square
 } from 'lucide-react';
 import { useAuth } from '@/lib/hooks/useAuth';
 
@@ -81,7 +82,7 @@ const MenuPage = () => {
             </TabsTrigger>
             <TabsTrigger value="workshops" className="flex-1">
               <div className="flex items-center gap-2 justify-center sm:justify-start">
-                <Factory className="h-4 w-4 flex-shrink-0" />
+                <Square className="h-4 w-4 flex-shrink-0" />
                 <span className="truncate">{translations.workshops.title[language]}</span>
               </div>
             </TabsTrigger>

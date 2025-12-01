@@ -21,12 +21,14 @@ import {
   Palette,
   CreditCard,
   Warehouse,
-  Map
+  Map,
+  Factory
 } from 'lucide-react';
 import { RestaurantDeliveryZones } from './RestaurantDeliveryZones';
 import { RestaurantDirectories } from './RestaurantDirectories';
 import { PaymentIntegrations } from './PaymentIntegrations';
 import { TenantDetails } from '../network/TenandDetails';
+import { RestaurantWorkshops } from './RestaurantWorkshops';
 
 interface Restaurant {
   id: string;
@@ -42,8 +44,7 @@ export function RestaurantDetails({ restaurantId }: { restaurantId: string }) {
   // Получаем данные ресторана, состояние загрузки и ошибки
   const { data: restaurant, error, isLoading, mutate } = useRestaurant(restaurantId);
 
-  // Переводы
-  const translations = {
+   const translations = {
     main: {
       title: {
         ru: 'Основные',
@@ -54,6 +55,12 @@ export function RestaurantDetails({ restaurantId }: { restaurantId: string }) {
       title: {
         ru: 'Персонал',
         ka: 'პერსონალი',
+      },
+    },
+    workshops: {
+      title: {
+        ru: 'Цехи',
+        ka: 'სახელოსნოები',
       },
     },
     deliveryZones: {
@@ -191,7 +198,6 @@ export function RestaurantDetails({ restaurantId }: { restaurantId: string }) {
             </CardContent>
           </Card>
         </TabsContent>
-
         <TabsContent value="delivery-zones">
           {true ? <RestaurantDeliveryZones
             restaurantId={restaurantId}

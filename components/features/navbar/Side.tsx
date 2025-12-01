@@ -37,7 +37,8 @@ import {
   Hexagon,
   Network,
   BookText,
-  ClockFading
+  ClockFading,
+  CircleCheck
 } from 'lucide-react'
 
 const ROLE_COLORS = {
@@ -57,37 +58,45 @@ const hasAccess = (role: string | undefined, requiredRoles: string[]) => {
     return requiredRoles.includes(role)
 }
 
-function Logo({ collapsed, toggleCollapse }: { collapsed: boolean, toggleCollapse: () => void }) {
+function Logo({ collapsed, toggleCollapse }: { collapsed: boolean; toggleCollapse: () => void }) {
   const { user } = useAuth()
   const roleColor = ROLE_COLORS[user?.role as keyof typeof ROLE_COLORS] || 'text-gray-500 dark:text-gray-400'
 
   return (
-    <div className="h-16 border-b flex items-center justify-center bg-white dark:bg-gray-900 relative">  
-      <button 
+    <div className="h-16 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-white dark:bg-gray-900 px-4 relative">
+      {/* Логотип и название */}
+      <div className={`flex items-center gap-3 transition-all duration-300 ${collapsed ? 'justify-center w-full' : ''}`}>
+        <div className="flex items-center min-w-0">
+          {!collapsed &&
+            <div className="flex items-center justify-center mr-1">
+              <CircleCheck className="h-5 w-5 text-red-400" />
+            </div>
+          }
+          {!collapsed && (
+            <div className="flex items-top min-w-0">
+              <h1 className="text-xl font-semibold uppercase text-red-400 truncate">Appetit</h1>
+              {user?.role && user.role !== 'NONE' && (
+                <span className={`text-xs font-medium uppercase whitespace-nowrap ${roleColor}`}>
+                  {user.role.toLowerCase()}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Кнопка меню */}
+      <button
         onClick={toggleCollapse}
-        className={`absolute right-4 w-7 h-7 flex items-center justify-center rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${
-          collapsed ? 'left-auto right-auto' : ''
+        className={`w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200 active:scale-95 ${
+          collapsed ? 'absolute left-1/2 transform -translate-x-1/2' : ''
         }`}
       >
-        {collapsed ? <Menu className="w-7 h-7" /> : <Menu className="w-7 h-7" />}
+        <Menu className="w-5 h-5 text-gray-600 dark:text-gray-400" />
       </button>
-
-      <div className={`flex-1 flex justify-start ${collapsed ? 'ml-10' : ''}`}>
-        {!collapsed ? (
-          <h1 className="text-xl font-bold flex items-start px-4 ext-gray-700 dark:text-gray-300">
-            CRM
-            {user?.role && user.role !== 'NONE' && (
-              <span className={`uppercase text-xs font-medium ml-1 align-super ${roleColor}`}>
-                {user.role.toLowerCase()}
-              </span>
-            )}
-          </h1>
-        ) : null }
-      </div>
     </div>
   )
-}
-
+} 
 function DesktopSidebar({ 
   collapsed, 
   toggleCollapse, 
@@ -295,13 +304,7 @@ export default function Side() {
         href: "/restaurants", 
         icon: <Store className="w-5 h-5" />,
         roles: ['MANAGER', 'SUPERVISOR']
-      },/*
-         { 
-        name: t.networks, 
-        href: "/networks", 
-        icon: <Network className="w-5 h-5" />,
-        roles: ['MANAGER', 'SUPERVISOR']
-      },*/
+      },
       { 
         name: t.menu, 
         href: "/products", 
@@ -313,13 +316,7 @@ export default function Side() {
         href: "/warehouse", 
         icon: <Package className="w-5 h-5" />,
         roles: ['MANAGER', 'SUPERVISOR']
-      },/*
-      { 
-        name: t.dliveryZone, 
-        href: "/delivery-zones", 
-        icon: <Hexagon className="w-5 h-5" />,
-        roles: ['MANAGER', 'SUPERVISOR']
-      },*/
+      },
       { 
         name: t.staff, 
         href: "/users", 
@@ -333,20 +330,8 @@ export default function Side() {
         roles: [/*'STOREMAN', 'COURIER', 'COOK', 'CHEF', 'WAITER', 'CASHIER', */'MANAGER', 'SUPERVISOR']
       },
       { 
-        name: t.discounts, 
-        href: "/discounts", 
-        icon: <Tag className="w-5 h-5" />,
-        roles: ['MANAGER', 'SUPERVISOR']
-      },
-      { 
-        name: t.bonuses, 
-        href: "/surcharge", 
-        icon: <TrendingUp className="w-5 h-5" />,
-        roles: ['MANAGER', 'SUPERVISOR']
-      },
-      { 
-        name: t.customers, 
-        href: "/customers", 
+        name: t.loyality, 
+        href: "/loyality", 
         icon: <PersonStanding className="w-5 h-5" />,
         roles: ['SUPERVISOR']
       },

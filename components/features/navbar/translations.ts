@@ -52,7 +52,7 @@ export const navTranslations = {
       customers: "Клиенты",
       networks: "Сети",
       dictionaries: "Справочники",
-      
+      loyality: "Лояльность",
       preorders:"Предзаказы"
     },
     ka: {
@@ -76,6 +76,7 @@ export const navTranslations = {
       notAvailable: "მიუწვდომელია თქვენი როლისთვის",
       version: "ვერსია",
       warehouse: "საწყობი",
+      loyality: "Лояльность",
       customers: "კლიენტებს",
       networks: "",
       

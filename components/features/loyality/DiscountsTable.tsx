@@ -38,7 +38,6 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandDialog,
 } from '@/components/ui/command'
 import { Calendar } from '@/components/ui/calendar'
 import { format, Locale } from 'date-fns'
@@ -50,8 +49,12 @@ import { toast } from 'sonner'
 import { ProductService } from '@/lib/api/product.service'
 import { Switch } from '@/components/ui/switch'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 
-type OrderType = "DINE_IN" | "TAKEAWAY" | "DELIVERY" | "BANQUET";
 type DiscountType = "FIXED" | "PERCENTAGE";
 type DiscountTargetType = "ALL" | "PRODUCT";
 
@@ -191,7 +194,6 @@ const DatePickerWithTime = ({
   locale: Locale;
   error?: string;
 }) => {
-  const [showCalendar, setShowCalendar] = useState(false);
   const [timeValue, setTimeValue] = useState(
     date ? format(date, 'HH:mm') : '00:00'
   );
@@ -219,37 +221,39 @@ const DatePickerWithTime = ({
   };
 
   return (
-    <div className="relative">
-      <Button
-        variant={error ? "destructive" : "outline"}
-        className={cn("w-full justify-start text-left font-normal", error && "border-red-500")}
-        type="button"
-        onClick={() => setShowCalendar(!showCalendar)}
-      >
-        <CalendarIcon className="mr-2 h-4 w-4" />
-        {date ? format(date, 'PPPp', { locale }) : <span>{placeholder}</span>}
-      </Button>
-      {error && <p className="mt-1 text-sm text-red-500">{error}</p>}
-
-      {showCalendar && (
-        <div className="absolute z-50 mt-1 bg-white border rounded-md shadow-lg p-2">
-          <Calendar
-            mode="single"
-            selected={date  || undefined}
-            onSelect={handleDateSelect}
-            initialFocus
-          />
-          <div className="mt-2 p-2 border-t">
-            <Label>Time</Label>
-            <Input
-              type="time"
-              value={timeValue}
-              onChange={handleTimeChange}
-              className="mt-1"
+    <div className="space-y-2">
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant={error ? "destructive" : "outline"}
+            className={cn("w-full justify-start text-left font-normal", error && "border-red-500")}
+            type="button"
+          >
+            <CalendarIcon className="mr-2 h-4 w-4" />
+            {date ? format(date, 'PPPp', { locale }) : <span>{placeholder}</span>}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0">
+          <div className="p-3">
+            <Calendar
+              mode="single"
+              selected={date || undefined}
+              onSelect={handleDateSelect}
+              initialFocus
             />
+            <div className="mt-2 p-2 border-t">
+              <Label>Time</Label>
+              <Input
+                type="time"
+                value={timeValue}
+                onChange={handleTimeChange}
+                className="mt-1"
+              />
+            </div>
           </div>
-        </div>
-      )}
+        </PopoverContent>
+      </Popover>
+      {error && <p className="text-sm text-red-500">{error}</p>}
     </div>
   );
 };
@@ -295,51 +299,55 @@ const SearchableSelect = ({
 
   return (
     <div className="space-y-1">
-      <Button
-        type="button"
-        variant={error ? "destructive" : "outline"}
-        className={cn("w-full justify-between", error && "border-red-500")}
-        role="combobox"
-        aria-expanded={open}
-        onClick={() => setOpen(true)}
-      >
-        {value.length > 0 
-          ? multiple 
-            ? `${value.length} ${translations[useLanguageStore.getState().language].selected}`
-            : options.find(opt => opt.id === value[0])?.label || placeholder
-          : placeholder}
-        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-      </Button>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant={error ? "destructive" : "outline"}
+            className={cn("w-full justify-between", error && "border-red-500")}
+            role="combobox"
+            aria-expanded={open}
+          >
+            {value.length > 0 
+              ? multiple 
+                ? `${value.length} ${translations[useLanguageStore.getState().language].selected}`
+                : options.find(opt => opt.id === value[0])?.label || placeholder
+              : placeholder}
+            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-full p-0">
+          <Command shouldFilter={false}>
+            <CommandInput 
+              placeholder={searchPlaceholder} 
+              value={searchValue}
+              onValueChange={setSearchValue}
+            />
+            <CommandList>
+              <CommandEmpty>{emptyText}</CommandEmpty>
+              <CommandGroup className="max-h-[200px] overflow-y-auto">
+                {filteredOptions.map((option) => (
+                  <CommandItem
+                    type="button"
+                    key={option.id}
+                    value={option.label}
+                    onSelect={() => handleSelect(option.id)}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        value.includes(option.id) ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    {option.label}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
       {error && <p className="text-sm text-red-500">{error}</p>}
-
-      <CommandDialog open={open} onOpenChange={setOpen}>
-        <CommandInput 
-          placeholder={searchPlaceholder} 
-          value={searchValue}
-          onValueChange={setSearchValue}
-        />
-        <CommandList>
-          <CommandEmpty>{emptyText}</CommandEmpty>
-          <CommandGroup className="max-h-[200px] overflow-y-auto">
-            {filteredOptions.map((option) => (
-              <CommandItem
-                type="button"
-                key={option.id}
-                value={option.label}
-                onSelect={() => handleSelect(option.id)}
-              >
-                <Check
-                  className={cn(
-                    "mr-2 h-4 w-4",
-                    value.includes(option.id) ? "opacity-100" : "opacity-0"
-                  )}
-                />
-                {option.label}
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        </CommandList>
-      </CommandDialog>
     </div>
   );
 };
@@ -363,10 +371,10 @@ const DiscountsTable = () => {
     isActive: true,
     code: '',
     maxUses: 0,
-     startDate: null,  
-  endDate: null,   
-  startTime: 0,   
-  endTime: 0      
+    startDate: undefined,
+    endDate: undefined,
+    startTime: 0,
+    endTime: 0
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
@@ -465,38 +473,46 @@ const DiscountsTable = () => {
     setIsDialogOpen(true);
   };
 
- const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateForm()) return;
 
-  // Проверяем, что restaurantIds и productIds — это массивы
-  const restaurantIds = Array.isArray(formData.restaurantIds) 
-    ? formData.restaurantIds.filter(Boolean) // Удаляем пустые значения
-    : [];
+    const restaurantIds = Array.isArray(formData.restaurantIds) 
+      ? formData.restaurantIds.filter(Boolean)
+      : [];
 
-  const productIds = formData.targetType === 'PRODUCT' && Array.isArray(formData.productIds)
-    ? formData.productIds.filter(Boolean)
-    : undefined;
+    const productIds = formData.targetType === 'PRODUCT' && Array.isArray(formData.productIds)
+      ? formData.productIds.filter(Boolean)
+      : undefined;
 
-  const requestData: CreateDiscountDto = {
-    ...formData,
-    restaurantIds: restaurantIds.length > 0 ? restaurantIds : undefined, // Если пусто — отправляем undefined
-    productIds,
-    startDate: formData.startDate, // Преобразуем Date в строку
-    endDate: formData.endDate,
+    const requestData: CreateDiscountDto = {
+      ...formData,
+      restaurantIds: restaurantIds.length > 0 ? restaurantIds : undefined,
+      productIds,
+      startDate: formData.startDate,
+      endDate: formData.endDate,
+    };
+
+    try {
+      if (editingDiscount) {
+        await DiscountService.update(editingDiscount.id, requestData);
+        toast.success(language === 'ru' ? 'Скидка успешно обновлена' : 'ფასდაკლება წარმატებით განახლდა');
+      } else {
+        await DiscountService.create(requestData);
+        toast.success(language === 'ru' ? 'Скидка успешно создана' : 'ფასდაკლება წარმატებით შეიქმნა');
+      }
+      
+      mutate('discounts');
+      setIsDialogOpen(false);
+      setEditingDiscount(null);
+      resetForm();
+    } catch (error) {
+      console.error("Ошибка при сохранении:", error);
+      toast.error(language === 'ru' ? 'Не удалось сохранить скидку' : 'ფასდაკლების შენახვა ვერ მოხერხდა');
+    }
   };
 
-  try {
-    if (editingDiscount) {
-      await DiscountService.update(editingDiscount.id, requestData);
-    } else {
-      await DiscountService.create(requestData);
-    }
-    // ... остальная логика
-  } catch (error) {
-    console.error("Ошибка при сохранении:", error);
-    toast.error("Не удалось сохранить скидку");
-  }
-};
   const resetForm = () => {
     setFormData({
       title: '',
