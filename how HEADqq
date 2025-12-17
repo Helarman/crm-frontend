@@ -1,0 +1,40 @@
+[33mcommit 92f3b8ab798db07f8fd6e1c33401ad8b8baff4b5[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: Helarman <helarman@bk.ru>
+Date:   Sat Dec 13 21:54:08 2025 +0300
+
+    Revert "fix claendar"
+    
+    This reverts commit 9a296a6853f3d93f6ef95c19bb53f29805993a06.
+
+[1mdiff --git a/components/ui/calendar.tsx b/components/ui/calendar.tsx[m
+[1mindex da6ef99..a1115a6 100644[m
+[1m--- a/components/ui/calendar.tsx[m
+[1m+++ b/components/ui/calendar.tsx[m
+[36m@@ -59,6 +59,14 @@[m [mfunction Calendar({[m
+         day_hidden: "invisible",[m
+         ...classNames,[m
+       }}[m
+[32m+[m[32m      components={{[m
+[32m+[m[32m        IconLeft: ({ className, ...props }) => ([m
+[32m+[m[32m          <ChevronLeft className={cn("size-4", className)} {...props} />[m
+[32m+[m[32m        ),[m
+[32m+[m[32m        IconRight: ({ className, ...props }) => ([m
+[32m+[m[32m          <ChevronRight className={cn("size-4", className)} {...props} />[m
+[32m+[m[32m        ),[m
+[32m+[m[32m      }}[m
+       {...props}[m
+     />[m
+   )[m
+[1mdiff --git a/tsconfig.json b/tsconfig.json[m
+[1mindex ee9732d..279b360 100644[m
+[1m--- a/tsconfig.json[m
+[1m+++ b/tsconfig.json[m
+[36m@@ -15,7 +15,7 @@[m
+     "moduleResolution": "bundler",[m
+     "resolveJsonModule": true,[m
+     "isolatedModules": true,[m
+[31m-    "jsx": "preserve",[m
+[32m+[m[32m    "jsx": "react-jsx",[m
+     "incremental": true,[m
+     "plugins": [[m
+       {[m
