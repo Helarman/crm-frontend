@@ -44,7 +44,6 @@ export const useAuth = () => {
   return {
     user,
     loading: isLoading && !error, // Не показываем загрузку при ошибке
-    isLoading,
     error,
     setUser,
     mutate,
