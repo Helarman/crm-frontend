@@ -3,7 +3,7 @@ import { useLanguageStore } from '@/lib/stores/language-store';
 import { AdditiveService, Additive } from '@/lib/api/additive.service';
 import { NetworkService } from '@/lib/api/network.service';
 import { Button } from '@/components/ui/button';
-import { Plus, Layers } from 'lucide-react';
+import { Plus, Layers, Store, RefreshCw, X, ArrowLeftRight } from 'lucide-react';
 import { AdditiveTable } from './AdditiveTable';
 import { AdditiveModal } from './AdditiveModal';
 import { AdditiveFilters } from './AdditiveFilters';
@@ -12,12 +12,15 @@ import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
+const STORAGE_KEY = 'selected_network_id';
+
 export const AdditiveList = () => {
   const { language } = useLanguageStore();
   const { user } = useAuth();
   const [additives, setAdditives] = useState<Additive[]>([]);
   const [networks, setNetworks] = useState<any[]>([]);
   const [selectedNetworkId, setSelectedNetworkId] = useState<string | null>(null);
+  const [showNetworkSelector, setShowNetworkSelector] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isNetworksLoading, setIsNetworksLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -33,7 +36,6 @@ export const AdditiveList = () => {
     ru: {
       addAdditive: 'Добавить модификатор',
       title: 'Модификаторы',
-      noNetworkSelected: 'Выберите сеть для просмотра модификаторов',
       selectNetwork: 'Выберите сеть',
       selectNetworkDescription: 'Выберите сеть для управления модификаторами',
       noNetworks: 'Нет доступных сетей',
@@ -41,16 +43,19 @@ export const AdditiveList = () => {
       manageNetworks: 'Управление сетями',
       networkManagement: 'Управление модификаторами сети',
       loading: 'Загрузка...',
+      changeNetwork: 'Сменить сеть',
+      currentNetwork: 'Текущая сеть',
+      hideSelector: 'Скрыть выбор сети',
+      clearNetworkSelection: 'Очистить выбор сети',
+      refresh: 'Обновить',
       networkRestaurants: (count: number) => `${count} ресторан(ов)`,
       additivesCount: (count: number) => `${count} модификатор(ов)`,
       backToNetworks: 'Сети',
-      viewAdditives: 'Просмотр модификаторов',
-      allAdditives: 'Все модификаторы'
+      viewAdditives: 'Просмотр модификаторов'
     },
     ka: {
       addAdditive: 'მოდიფიკატორის დამატება',
       title: 'მოდიფიკატორები',
-      noNetworkSelected: 'აირჩიეთ ქსელი მოდიფიკატორების სანახავად',
       selectNetwork: 'აირჩიეთ ქსელი',
       selectNetworkDescription: 'აირჩიეთ ქსელი მოდიფიკატორების მართვისთვის',
       noNetworks: 'წვდომადი ქსელები არ არის',
@@ -58,15 +63,36 @@ export const AdditiveList = () => {
       manageNetworks: 'ქსელების მართვა',
       networkManagement: 'ქსელის მოდიფიკატორების მართვა',
       loading: 'იტვირთება...',
+      changeNetwork: 'ქსელის შეცვლა',
+      currentNetwork: 'მიმდინარე ქსელი',
+      hideSelector: 'ქსელის არჩევის დამალვა',
+      clearNetworkSelection: 'ქსელის არჩევის გასუფთავება',
+      refresh: 'განახლება',
       networkRestaurants: (count: number) => `${count} რესტორნი`,
       additivesCount: (count: number) => `${count} მოდიფიკატორი`,
       backToNetworks: 'ქსელები',
-      viewAdditives: 'მოდიფიკატორების ნახვა',
-      allAdditives: 'ყველა მოდიფიკატორი'
+      viewAdditives: 'მოდიფიკატორების ნახვა'
     }
   };
 
   const t = translations[language as 'ru' | 'ka'];
+
+  // Загрузка сохраненной сети из localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedNetworkId = localStorage.getItem(STORAGE_KEY);
+      if (savedNetworkId) {
+        setSelectedNetworkId(savedNetworkId);
+      }
+    }
+  }, []);
+
+  // Сохранение выбранной сети в localStorage
+  useEffect(() => {
+    if (selectedNetworkId && typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, selectedNetworkId);
+    }
+  }, [selectedNetworkId]);
 
   // Загрузка сетей пользователя
   useEffect(() => {
@@ -77,8 +103,16 @@ export const AdditiveList = () => {
           const networksData = await NetworkService.getByUser(user.id);
           setNetworks(networksData);
           
-          // Если у пользователя только одна сеть, выбираем ее автоматически
-          if (networksData.length === 1) {
+          // Если есть сохраненная сеть, проверяем доступность
+          if (selectedNetworkId) {
+            const networkExists = networksData.some(n => n.id === selectedNetworkId);
+            if (!networkExists && networksData.length > 0) {
+              // Если сохраненной сети нет в доступных, выбираем первую
+              setSelectedNetworkId(networksData[0].id);
+              setFormData(prev => ({ ...prev, networkId: networksData[0].id }));
+            }
+          } else if (networksData.length === 1) {
+            // Если у пользователя только одна сеть, выбираем ее автоматически
             setSelectedNetworkId(networksData[0].id);
             setFormData(prev => ({ ...prev, networkId: networksData[0].id }));
           }
@@ -172,8 +206,21 @@ export const AdditiveList = () => {
 
   const handleNetworkSelect = (networkId: string) => {
     setSelectedNetworkId(networkId);
-    // Сбрасываем поиск при смене сети
+    setShowNetworkSelector(false);
     setSearchTerm('');
+    setFormData(prev => ({ ...prev, networkId }));
+  };
+
+  const handleChangeNetworkClick = () => {
+    setShowNetworkSelector(true);
+  };
+
+  const handleClearNetwork = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+    setSelectedNetworkId(null);
+    setShowNetworkSelector(true);
   };
 
   // Фильтрация модификаторов по поиску
@@ -181,8 +228,11 @@ export const AdditiveList = () => {
     additive.title.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Если загружаются сети
-  if (isNetworksLoading) {
+  // Получаем текущую сеть
+  const currentNetwork = networks.find(n => n.id === selectedNetworkId);
+
+  // Если загружаются сети и нет выбранной сети
+  if (isNetworksLoading && !selectedNetworkId) {
     return (
       <div className="p-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -203,29 +253,77 @@ export const AdditiveList = () => {
     );
   }
 
-  // Если у пользователя несколько сетей и ни одна не выбрана
-  if (networks.length > 1 && !selectedNetworkId) {
+  // Если показываем селектор сетей или нет выбранной сети
+  if (showNetworkSelector || !selectedNetworkId) {
     return (
       <div className="p-4">
         <div className="mb-6">
-          <h2 className="text-xl font-semibold mb-2">
-            {t.selectNetwork}
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold mb-2">
+              {t.selectNetwork}
+            </h2>
+            {selectedNetworkId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowNetworkSelector(false)}
+                className="h-auto p-0 text-muted-foreground hover:text-foreground flex items-center gap-1"
+              >
+                <X className="h-4 w-4" />
+                {t.hideSelector}
+              </Button>
+            )}
+          </div>
           <p className="text-muted-foreground">
             {t.selectNetworkDescription}
           </p>
         </div>
         
+        {selectedNetworkId && currentNetwork && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Store className="h-5 w-5" />
+                {t.currentNetwork}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">{currentNetwork.name}</p>
+                  {currentNetwork.description && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {currentNetwork.description}
+                    </p>
+                  )}
+                </div>
+                <Badge variant="outline">
+                  {t.networkRestaurants(currentNetwork.restaurants?.length || 0)}
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {networks.map((network) => (
             <Card 
               key={network.id}
-              className="cursor-pointer hover:shadow-md transition-shadow hover:border-primary/50"
+              className={`cursor-pointer hover:shadow-md transition-shadow hover:border-primary/50 ${
+                network.id === selectedNetworkId 
+                  ? 'border-primary border-2 bg-primary/5' 
+                  : ''
+              }`}
               onClick={() => handleNetworkSelect(network.id)}
             >
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">{network.name}</CardTitle>
+                  {network.id === selectedNetworkId && (
+                    <Badge className="bg-primary text-primary-foreground">
+                      {language === 'ru' ? 'Текущая' : 'მიმდინარე'}
+                    </Badge>
+                  )}
                 </div>
                 <CardDescription>
                   {language === 'ru' ? 'Сеть ресторанов' : 'რესტორნების ქსელი'}
@@ -251,6 +349,18 @@ export const AdditiveList = () => {
             </Card>
           ))}
         </div>
+
+        {selectedNetworkId && (
+          <div className="mt-6 pt-6 border-t">
+            <Button 
+              variant="outline" 
+              onClick={handleClearNetwork}
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              {t.clearNetworkSelection}
+            </Button>
+          </div>
+        )}
       </div>
     );
   }
@@ -272,8 +382,6 @@ export const AdditiveList = () => {
     );
   }
 
-  const currentNetwork = networks.find(n => n.id === selectedNetworkId);
-
   return (
     <div className="p-4 space-y-4">
       {/* Хлебные крошки и информация о сети */}
@@ -285,11 +393,11 @@ export const AdditiveList = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setSelectedNetworkId(null)}
+                  onClick={handleChangeNetworkClick}
                   className="h-auto p-0 text-muted-foreground hover:text-foreground flex items-center gap-1"
                 >
-                  <Layers className="h-3 w-3" />
-                  {t.backToNetworks}
+                  <Store className="h-3 w-3" />
+                  {t.changeNetwork}
                 </Button>
                 <span className="text-muted-foreground">/</span>
               </>
@@ -298,15 +406,30 @@ export const AdditiveList = () => {
               {currentNetwork?.name}
             </h2>
           </div>
-          <p className="text-sm text-muted-foreground">
-            {t.networkManagement} • {t.additivesCount(additives.length)}
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-muted-foreground">
+              {t.networkManagement} • {t.additivesCount(additives.length)}
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={fetchAdditives}
+              className="h-6 w-6 p-0"
+              title={t.refresh}
+            >
+              <RefreshCw className="h-3 w-3" />
+            </Button>
+            
+          </div>
         </div>
         
-        <Button onClick={openAddModal}>
-          <Plus className="mr-2 h-4 w-4" />
-          {t.addAdditive}
-        </Button>
+        <div className="flex gap-2">
+         
+          <Button onClick={openAddModal}>
+            <Plus className="mr-2 h-4 w-4" />
+            {t.addAdditive}
+          </Button>
+        </div>
       </div>
 
       {/* Фильтры */}

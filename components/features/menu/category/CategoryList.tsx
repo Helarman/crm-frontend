@@ -1,10 +1,11 @@
+// Обновляем импорты, если нужно
 import { useState, useEffect, useMemo } from 'react';
 import { useLanguageStore } from '@/lib/stores/language-store';
 import { CategoryService } from '@/lib/api/category.service';
 import { RestaurantService } from '@/lib/api/restaurant.service';
 import { NetworkService } from '@/lib/api/network.service';
 import { Button } from '@/components/ui/button';
-import { Plus, Grid3X3, Store, Layers } from 'lucide-react';
+import { Plus, Grid3X3, Store, RefreshCw, X, Folder, FolderOpen } from 'lucide-react';
 import { CategoryFilters } from './CategoryFilters';
 import { CategoryTable } from './CategoryTable';
 import { CategoryModal } from './CategoryModal';
@@ -17,6 +18,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
+const STORAGE_KEY = 'selected_network_id';
+
 export const CategoryList = () => {
   const router = useRouter();
   const { user } = useAuth();
@@ -24,8 +27,10 @@ export const CategoryList = () => {
   
   const [networks, setNetworks] = useState<any[]>([]);
   const [selectedNetworkId, setSelectedNetworkId] = useState<string | null>(null);
+  const [showNetworkSelector, setShowNetworkSelector] = useState(false);
   
   const [categories, setCategories] = useState<any[]>([]);
+  const [categoriesCount, setCategoriesCount] = useState<number>(0); // Добавляем состояние для подсчета категорий
   const [isLoading, setIsLoading] = useState(true);
   const [isNetworksLoading, setIsNetworksLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -54,7 +59,15 @@ export const CategoryList = () => {
       },
       filterByRestaurant: 'Фильтр по ресторану',
       allRestaurants: 'Все рестораны',
-      restaurantsCount: (count: number) => `${count} ресторан(ов)`
+      categoriesCount: (count: number) => `${count} категорий`, 
+      restaurantsCount: (count: number) => `${count} ресторан(ов)`, 
+      changeNetwork: 'Сменить сеть',
+      currentNetwork: 'Текущая сеть',
+      hideSelector: 'Скрыть выбор сети',
+      clearNetworkSelection: 'Очистить выбор сети',
+      refresh: 'Обновить',
+      network: 'Сеть',
+      networks: 'Сети'
     },
     ka: {
       title: 'კატეგორიები',
@@ -71,12 +84,37 @@ export const CategoryList = () => {
         flat: 'სია'
       },
       filterByRestaurant: 'ფილტრი რესტორანის მიხედვით',
-      allRestaurants: 'ყველა რესტორანი',
-      restaurantsCount: (count: number) => `${count} რესტორნი`
+      allRestaurants: 'ყველა რესტორნი',
+      categoriesCount: (count: number) => `${count} კატეგორია`, 
+      restaurantsCount: (count: number) => `${count} რესტორნი`, 
+      changeNetwork: 'ქსელის შეცვლა',
+      currentNetwork: 'მიმდინარე ქსელი',
+      hideSelector: 'ქსელის არჩევის დამალვა',
+      clearNetworkSelection: 'ქსელის არჩევის გასუფთავება',
+      refresh: 'განახლება',
+      network: 'ქსელი',
+      networks: 'ქსელები'
     }
   };
 
   const t = translations[language as 'ru' | 'ka'];
+
+  // Загрузка сохраненной сети из localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedNetworkId = localStorage.getItem(STORAGE_KEY);
+      if (savedNetworkId) {
+        setSelectedNetworkId(savedNetworkId);
+      }
+    }
+  }, []);
+
+  // Сохранение выбранной сети в localStorage
+  useEffect(() => {
+    if (selectedNetworkId && typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, selectedNetworkId);
+    }
+  }, [selectedNetworkId]);
 
   // Загрузка сетей пользователя
   useEffect(() => {
@@ -86,8 +124,15 @@ export const CategoryList = () => {
         const networksData = await NetworkService.getByUser(user.id);
         setNetworks(networksData);
         
-        // Если у пользователя только одна сеть, выбираем ее автоматически
-        if (networksData.length === 1) {
+        // Если есть сохраненная сеть, проверяем доступность
+        if (selectedNetworkId) {
+          const networkExists = networksData.some(n => n.id === selectedNetworkId);
+          if (!networkExists && networksData.length > 0) {
+            // Если сохраненной сети нет в доступных, выбираем первую
+            setSelectedNetworkId(networksData[0].id);
+          }
+        } else if (networksData.length === 1) {
+          // Если у пользователя только одна сеть, выбираем ее автоматически
           setSelectedNetworkId(networksData[0].id);
         }
       } catch (error) {
@@ -143,12 +188,40 @@ export const CategoryList = () => {
         }
       }
       
+      // Обновляем общее количество категорий
+      const totalCategoriesCount = selectedRestaurant === 'all' 
+        ? await getTotalCategoriesCount(selectedNetworkId)
+        : await getCategoriesCountByRestaurant(selectedRestaurant);
+      
       setCategories(categoriesData);
+      setCategoriesCount(totalCategoriesCount);
     } catch (error) {
       console.error('Error fetching categories:', error);
       toast.error(language === 'ru' ? 'Ошибка загрузки категорий' : 'კატეგორიების ჩატვირთვის შეცდომა');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Функция для получения общего количества категорий в сети
+  const getTotalCategoriesCount = async (networkId: string): Promise<number> => {
+    try {
+      const allCategories = await CategoryService.getByNetwork(networkId);
+      return allCategories.length;
+    } catch (error) {
+      console.error('Error fetching total categories count:', error);
+      return 0;
+    }
+  };
+
+  // Функция для получения количества категорий в конкретном ресторане
+  const getCategoriesCountByRestaurant = async (restaurantId: string): Promise<number> => {
+    try {
+      const categories = await CategoryService.getByRestaurant(restaurantId);
+      return categories.length;
+    } catch (error) {
+      console.error('Error fetching categories count by restaurant:', error);
+      return 0;
     }
   };
 
@@ -189,7 +262,6 @@ export const CategoryList = () => {
 
   const openAddModal = (parentId?: string) => {
     setCurrentCategoryId(null);
-    // Можно добавить логику для установки parentId
     setIsModalOpen(true);
   };
 
@@ -203,6 +275,9 @@ export const CategoryList = () => {
       await CategoryService.delete(id);
       toast.success(language === 'ru' ? 'Категория удалена' : 'კატეგორია წაიშალა');
       fetchData();
+      // Обновляем количество категорий после удаления
+      const newCount = await getTotalCategoriesCount(selectedNetworkId!);
+      setCategoriesCount(newCount);
     } catch (error) {
       console.error('Error deleting category:', error);
       toast.error(language === 'ru' ? 'Ошибка удаления' : 'წაშლის შეცდომა');
@@ -216,17 +291,33 @@ export const CategoryList = () => {
 
   const handleNetworkSelect = (networkId: string) => {
     setSelectedNetworkId(networkId);
+    setShowNetworkSelector(false);
     // Сбрасываем фильтры при смене сети
     setSearchTerm('');
     setSelectedRestaurant('all');
+  };
+
+  const handleChangeNetworkClick = () => {
+    setShowNetworkSelector(true);
+  };
+
+  const handleClearNetwork = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+    setSelectedNetworkId(null);
+    setShowNetworkSelector(true);
   };
 
   const handleRefreshData = () => {
     fetchData();
   };
 
-  // Если загружаются сети
-  if (isNetworksLoading) {
+  // Получаем текущую сеть
+  const currentNetwork = networks.find(n => n.id === selectedNetworkId);
+
+  // Если загружаются сети и нет выбранной сети
+  if (isNetworksLoading && !selectedNetworkId) {
     return (
       <div className="p-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -247,29 +338,82 @@ export const CategoryList = () => {
     );
   }
 
-  // Если у пользователя несколько сетей и ни одна не выбрана
-  if (networks.length > 1 && !selectedNetworkId) {
+  // Если показываем селектор сетей или нет выбранной сети
+  if (showNetworkSelector || !selectedNetworkId) {
     return (
       <div className="p-4">
         <div className="mb-6">
-          <h2 className="text-xl font-semibold mb-2">
-            {t.selectNetwork}
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold mb-2">
+              {t.selectNetwork}
+            </h2>
+            {selectedNetworkId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowNetworkSelector(false)}
+                className="h-auto p-0 text-muted-foreground hover:text-foreground flex items-center gap-1"
+              >
+                <X className="h-4 w-4" />
+                {t.hideSelector}
+              </Button>
+            )}
+          </div>
           <p className="text-muted-foreground">
             {t.selectNetworkDescription}
           </p>
         </div>
         
+        {selectedNetworkId && currentNetwork && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Store className="h-5 w-5" />
+                {t.currentNetwork}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">{currentNetwork.name}</p>
+                  {currentNetwork.description && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {currentNetwork.description}
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Badge variant="outline" className="flex items-center gap-1">
+                    {t.categoriesCount(categories.length)}
+                  </Badge>
+                  <Badge variant="outline">
+                    {t.restaurantsCount(currentNetwork.restaurants?.length || 0)}
+                  </Badge>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+        
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {networks.map((network) => (
             <Card 
               key={network.id}
-              className="cursor-pointer hover:shadow-md transition-shadow"
+              className={`cursor-pointer hover:shadow-md transition-shadow ${
+                network.id === selectedNetworkId 
+                  ? 'border-primary border-2 bg-primary/5' 
+                  : ''
+              }`}
               onClick={() => handleNetworkSelect(network.id)}
             >
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">{network.name}</CardTitle>
+                  {network.id === selectedNetworkId && (
+                    <Badge className="bg-primary text-primary-foreground">
+                      {language === 'ru' ? 'Текущая' : 'მიმდინარე'}
+                    </Badge>
+                  )}
                 </div>
                 <CardDescription>
                   {language === 'ru' ? 'Сеть ресторанов' : 'რესტორნების ქსელი'}
@@ -277,7 +421,16 @@ export const CategoryList = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                   <div className="flex items-center justify-between text-sm">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      {language === 'ru' ? 'Категории:' : 'კატეგორიები:'}
+                    </span>
+                    <Badge variant="outline">
+                      {/* Здесь будет количество категорий, можно загрузить отдельно или показать после загрузки */}
+                      {0}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">
                       {language === 'ru' ? 'Рестораны:' : 'რესტორნები:'}
                     </span>
@@ -295,6 +448,18 @@ export const CategoryList = () => {
             </Card>
           ))}
         </div>
+
+        {selectedNetworkId && (
+          <div className="mt-6 pt-6 border-t">
+            <Button 
+              variant="outline" 
+              onClick={handleClearNetwork}
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              {t.clearNetworkSelection}
+            </Button>
+          </div>
+        )}
       </div>
     );
   }
@@ -319,9 +484,7 @@ export const CategoryList = () => {
     );
   }
 
-  // Если выбрана сеть, показываем категории
-  const currentNetwork = networks.find(n => n.id === selectedNetworkId);
-
+  // Если выбрана сеть и не показываем селектор
   if (isLoading && !categories.length) {
     return (
       <div className="p-4 space-y-4">
@@ -348,28 +511,62 @@ export const CategoryList = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSelectedNetworkId(null)}
-              className="h-auto p-0 text-muted-foreground hover:text-foreground"
-            >
-              {language === 'ru' ? 'Сети' : 'ქსელები'}
-            </Button>
-            <span className="text-muted-foreground">/</span>
-            <h2 className="text-xl font-semibold">
+            {networks.length > 1 && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleChangeNetworkClick}
+                  className="h-auto p-0 text-muted-foreground hover:text-foreground flex items-center gap-1"
+                >
+                  <Store className="h-3 w-3" />
+                  {t.changeNetwork}
+                </Button>
+                <span className="text-muted-foreground">/</span>
+              </>
+            )}
+            <h2 className="text-xl font-semibold flex items-center gap-2">
               {currentNetwork?.name}
             </h2>
           </div>
-          <p className="text-sm text-muted-foreground">
-            {t.networkManagement} • {t.restaurantsCount(restaurants.length)}
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-muted-foreground flex items-center gap-1">
+              {t.networkManagement} • {t.categoriesCount(categoriesCount)}
+              {selectedRestaurant !== 'all' && (
+                <>
+                  • {t.filterByRestaurant}: {restaurants.find(r => r.id === selectedRestaurant)?.title}
+                </>
+              )}
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRefreshData}
+              className="h-6 w-6 p-0"
+              title={t.refresh}
+            >
+              <RefreshCw className="h-3 w-3" />
+            </Button>
+          </div>
         </div>
         
-        <Button onClick={() => openAddModal()}>
-          <Plus className="mr-2 h-4 w-4" />
-          {t.addCategory}
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
+          {networks.length > 1 && (
+            <Button 
+              variant="outline" 
+              onClick={handleChangeNetworkClick}
+              size="sm"
+              className="mb-2 sm:mb-0"
+            >
+              <Store className="h-3 w-3 mr-1" />
+              {t.changeNetwork}
+            </Button>
+          )}
+          <Button onClick={() => openAddModal()}>
+            <Plus className="mr-2 h-4 w-4" />
+            {t.addCategory}
+          </Button>
+        </div>
       </div>
 
       {/* Фильтры и настройки отображения */}
@@ -409,6 +606,30 @@ export const CategoryList = () => {
                 ))}
               </SelectContent>
             </Select>
+          )}
+        </div>
+      </div>
+
+      {/* Информация о количестве отображаемых категорий */}
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <div>
+          {t.categoriesCount(categoriesCount)}
+          {searchTerm && (
+            <span className="ml-2">
+              • {language === 'ru' ? 'Найдено:' : 'ნაპოვნია:'} {filteredCategories.length}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {viewMode === 'tree' && (
+            <Badge variant="outline" className="text-xs">
+              {language === 'ru' ? 'Древовидный вид' : 'ხის ხედი'}
+            </Badge>
+          )}
+          {viewMode === 'flat' && (
+            <Badge variant="outline" className="text-xs">
+              {language === 'ru' ? 'Плоский список' : 'ბრტყელი სია'}
+            </Badge>
           )}
         </div>
       </div>
@@ -467,6 +688,7 @@ export const CategoryList = () => {
         networkId={selectedNetworkId || ''}
         restaurantId={selectedRestaurant !== 'all' ? selectedRestaurant : undefined}
         categories={categories}
+       
       />
     </div>
   );
