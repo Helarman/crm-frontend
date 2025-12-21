@@ -44,7 +44,8 @@ const translations = {
       metaDescription: 'Мета-описание',
       metaKeywords: 'Ключевые слова',
       parent: 'Родительская категория',
-      order: 'Порядок сортировки',
+      order: 'Порядок сортировки (админка)',
+      clientOrder: 'Порядок сортировки (клиент)',
       image: 'Изображение',
       noParent: 'Нет (основная категория)',
       restaurants: 'Рестораны',
@@ -53,7 +54,7 @@ const translations = {
       noRestaurants: 'Рестораны не найдены',
       selectAtLeastOneRestaurant: 'Выберите хотя бы один ресторан',
       published: 'Опубликована',
-      isMain: 'Основная категория',
+      autoGenerateOrder: 'Сгенерировать автоматически',
     },
     steps: {
       basic: 'Основная информация',
@@ -64,7 +65,8 @@ const translations = {
       titleRequired: 'Название обязательно',
       slugRequired: 'URL-адрес обязателен',
       restaurantsRequired: 'Выберите хотя бы один ресторан',
-      invalidSlug: 'URL-адрес может содержать только латинские буквы, цифры и дефисы'
+      invalidSlug: 'URL-адрес может содержать только латинские буквы, цифры и дефисы',
+      invalidOrder: 'Порядок должен быть числом не меньше 0'
     }
   },
   ka: {
@@ -82,7 +84,8 @@ const translations = {
       metaDescription: 'მეტა-აღწერა',
       metaKeywords: 'საკვანძო სიტყვები',
       parent: 'მშობელი კატეგორია',
-      order: 'დალაგების თანმიმდევრობა',
+      order: 'დალაგების თანმიმდევრობა (ადმინი)',
+      clientOrder: 'დალაგების თანმიმდევრობა (კლიენტი)',
       image: 'სურათი',
       noParent: 'არა (მთავარი კატეგორია)',
       restaurants: 'რესტორნები',
@@ -91,7 +94,7 @@ const translations = {
       noRestaurants: 'რესტორნები არ მოიძებნა',
       selectAtLeastOneRestaurant: 'აირჩიეთ მინიმუმ ერთი რესტორანი',
       published: 'გამოქვეყნებული',
-      isMain: 'მთავარი კატეგორია',
+      autoGenerateOrder: 'ავტომატურად გენერირება',
     },
     steps: {
       basic: 'ძირითადი ინფორმაცია',
@@ -102,7 +105,8 @@ const translations = {
       titleRequired: 'სათაური სავალდებულოა',
       slugRequired: 'URL-მისამართი სავალდებულოა',
       restaurantsRequired: 'აირჩიეთ მინიმუმ ერთი რესტორანი',
-      invalidSlug: 'URL-მისამართს შეიძლება ჰქონდეს მხოლოდ ლათინური ასოები, ციფრები და ტირეები'
+      invalidSlug: 'URL-მისამართს შეიძლება ჰქონდეს მხოლოდ ლათინური ასოები, ციფრები და ტირეები',
+      invalidOrder: 'რიგი უნდა იყოს რიცხვი არანაკლებ 0'
     }
   }
 };
@@ -127,16 +131,17 @@ export const CategoryModal = ({
     metaKeywords: '',
     parentId: null as string | null,
     order: 0,
+    clientOrder: 0,
     image: '',
     restaurantIds: [] as string[],
-    published: true,
-    isMain: false,
   });
 
   const [restaurants, setRestaurants] = useState<{ id: string; title: string }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRestaurantsLoading, setIsRestaurantsLoading] = useState(false);
   const [availableParentCategories, setAvailableParentCategories] = useState<{ id: string; label: string }[]>([]);
+  const [isAutoGenerateOrder, setIsAutoGenerateOrder] = useState(false);
+  const [isAutoGenerateClientOrder, setIsAutoGenerateClientOrder] = useState(false);
 
   const t = translations[language];
 
@@ -147,7 +152,7 @@ export const CategoryModal = ({
       loadRestaurants();
       prepareParentCategories();
     }
-  }, [isOpen, categoryId, networkId, restaurantId]);
+  }, [isOpen, categoryId, networkId, restaurantId, categories]);
 
   // Подготовка списка родительских категорий
   const prepareParentCategories = () => {
@@ -157,7 +162,7 @@ export const CategoryModal = ({
     const options = [
       { id: "null", label: t.fields.noParent },
       ...categories
-        .filter(cat => !excludeIds.includes(cat.id))
+        .filter(cat => !excludeIds.includes(cat.id) && cat.networkId === networkId)
         .map(category => ({
           id: category.id,
           label: category.title
@@ -220,7 +225,6 @@ export const CategoryModal = ({
     setIsLoading(true);
     try {
       const category = await CategoryService.getById(categoryId);
-      
       setFormData({
         title: category.title || '',
         description: category.description || '',
@@ -230,10 +234,9 @@ export const CategoryModal = ({
         metaKeywords: category.metaKeywords || '',
         parentId: category.parentId || null,
         order: category.order || 0,
+        clientOrder: category.clientOrder || 0,
         image: category.image || '',
         restaurantIds: category.restaurantIds || category.restaurants?.map((r: any) => r.id) || [],
-        published: category.published !== false,
-        isMain: category.isMain || false,
       });
     } catch (error) {
       console.error('Failed to load category', error);
@@ -254,18 +257,25 @@ export const CategoryModal = ({
       metaKeywords: '',
       parentId: null,
       order: 0,
+      clientOrder: 0,
       image: '',
       restaurantIds: restaurantId ? [restaurantId] : [],
-      published: true,
-      isMain: false,
     });
     setCurrentStep('basic');
+    setIsAutoGenerateOrder(false);
+    setIsAutoGenerateClientOrder(false);
   };
 
   // Обработчики изменения полей
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleNumberInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    const numValue = parseInt(value, 10) || 0;
+    setFormData(prev => ({ ...prev, [name]: numValue }));
   };
 
   const handleSwitchChange = (name: string, checked: boolean) => {
@@ -292,6 +302,12 @@ export const CategoryModal = ({
     }));
   };
 
+  // Обработчик выбора родительской категории
+  const handleParentChange = (values: string[]) => {
+    const parentId = values[0] === 'null' ? null : values[0];
+    setFormData(prev => ({ ...prev, parentId }));
+  };
+
   // Валидация текущего шага
   const validateCurrentStep = () => {
     const errors = [];
@@ -307,6 +323,15 @@ export const CategoryModal = ({
       }
       if (formData.restaurantIds.length === 0) {
         errors.push(t.errors.restaurantsRequired);
+      }
+    }
+    
+    if (currentStep === 'details') {
+      if (formData.order < 0) {
+        errors.push(t.errors.invalidOrder);
+      }
+      if (formData.clientOrder < 0) {
+        errors.push(t.errors.invalidOrder);
       }
     }
     
@@ -336,49 +361,72 @@ export const CategoryModal = ({
     }
   };
 
-  // Отправка формы
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validateCurrentStep()) return;
-
-    setIsLoading(true);
-    try {
-      const categoryData = {
-        ...formData,
-        parentId: formData.parentId === 'null' ? null : formData.parentId,
-        restaurantIds: formData.restaurantIds,
-        networkId, // Добавляем ID сети
-      };
-
-      if (categoryId) {
-        await CategoryService.update(categoryId, categoryData);
-        toast.success(language === 'ru' ? 'Категория обновлена' : 'კატეგორია განახლებულია');
-      } else {
-        await CategoryService.create(categoryData);
-        toast.success(language === 'ru' ? 'Категория создана' : 'კატეგორია შექმნილია');
-      }
-
-      onSubmitSuccess();
-      onClose();
-    } catch (error: any) {
-      console.error('Error saving category:', error);
-      
-      // Более конкретные сообщения об ошибках
-      if (error.response?.status === 409) {
-        toast.error(language === 'ru' 
-          ? 'Категория с таким URL-адресом уже существует' 
-          : 'კატეგორია ამ URL-მისამართით უკვე არსებობს');
-      } else if (error.response?.status === 400) {
-        toast.error(language === 'ru' 
-          ? 'Неверные данные категории' 
-          : 'კატეგორიის არასწორი მონაცემები');
-      } else {
-        toast.error(language === 'ru' ? 'Ошибка сохранения' : 'შენახვის შეცდომა');
-      }
-    } finally {
-      setIsLoading(false);
+  // Автоматическая генерация order
+  const handleAutoGenerateOrder = () => {
+    if (!categoryId) {
+      // Для новой категории - просто сбросить на 0, сервер сам вычислит
+      setFormData(prev => ({ ...prev, order: 0 }));
     }
+    setIsAutoGenerateOrder(true);
   };
+
+  // Автоматическая генерация clientOrder
+  const handleAutoGenerateClientOrder = () => {
+    if (!categoryId) {
+      // Для новой категории - просто сбросить на 0, сервер сам вычислит
+      setFormData(prev => ({ ...prev, clientOrder: 0 }));
+    }
+    setIsAutoGenerateClientOrder(true);
+  };
+
+ const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!validateCurrentStep()) return;
+
+  setIsLoading(true);
+  try {
+    const categoryData = {
+      ...formData,
+      // Преобразуем 'null' строку в null
+      parentId: formData.parentId === 'null' ? null : formData.parentId,
+      restaurantIds: formData.restaurantIds,
+      networkId,
+      // Если выбрана автоматическая генерация, передаем undefined
+      order: isAutoGenerateOrder ? undefined : formData.order,
+      clientOrder: isAutoGenerateClientOrder ? undefined : formData.clientOrder,
+    };
+
+    if (categoryId) {
+      await CategoryService.update(categoryId, categoryData);
+      toast.success(language === 'ru' ? 'Категория обновлена' : 'კატეგორია განახლებულია');
+    } else {
+      await CategoryService.create(categoryData);
+      toast.success(language === 'ru' ? 'Категория создана' : 'კატეგორია შექმნილია');
+    }
+
+    onSubmitSuccess();
+    onClose();
+  } catch (error: any) {
+    console.error('Error saving category:', error);
+    
+    // Более конкретные сообщения об ошибках
+    if (error.response?.status === 409) {
+      toast.error(language === 'ru' 
+        ? 'Категория с таким URL-адресом уже существует' 
+        : 'კატეგორია ამ URL-მისამართით უკვე არსებობს');
+    } else if (error.response?.status === 400) {
+      toast.error(language === 'ru' 
+        ? 'Неверные данные категории' 
+        : 'კატეგორიის არასწორი მონაცემები');
+    } else if (error.response?.data?.message) {
+      toast.error(error.response.data.message);
+    } else {
+      toast.error(language === 'ru' ? 'Ошибка сохранения' : 'შენახვის შეცდომა');
+    }
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // Рендер содержимого шага
   const renderStepContent = () => {
@@ -386,6 +434,7 @@ export const CategoryModal = ({
       case 'basic':
         return (
           <div className="space-y-4">
+            
             <div className="space-y-2">
               <Label htmlFor="title" className="text-sm">
                 {t.fields.title}
@@ -446,11 +495,8 @@ export const CategoryModal = ({
               ) : (
                 <SearchableSelect
                   options={availableParentCategories}
-                  value={formData.parentId ? [formData.parentId] : []}
-                  onChange={(values) => setFormData(prev => ({ 
-                    ...prev, 
-                    parentId: values[0] === 'null' ? null : values[0] 
-                  }))}
+                  value={formData.parentId ? [formData.parentId] : ['null']}
+                  onChange={handleParentChange}
                   placeholder={t.fields.noParent}
                   searchPlaceholder={t.fields.parent}
                   emptyText={language === 'ru' ? 'Категории не найдены' : 'კატეგორიები ვერ მოიძებნა'}
@@ -486,65 +532,100 @@ export const CategoryModal = ({
 
       case 'details':
         return (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="order" className="text-sm">
                   {t.fields.order}
                 </Label>
-                <Input
-                  id="order"
-                  name="order"
-                  type="number"
-                  min="0"
-                  value={formData.order}
-                  onChange={handleInputChange}
-                  className="text-sm"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    id="order"
+                    name="order"
+                    type="number"
+                    min="0"
+                    value={formData.order}
+                    onChange={handleNumberInputChange}
+                    className="text-sm"
+                    disabled={isAutoGenerateOrder}
+                  />
+                  {!isAutoGenerateOrder && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAutoGenerateOrder}
+                      className="whitespace-nowrap"
+                    >
+                      {t.fields.autoGenerateOrder}
+                    </Button>
+                  )}
+                </div>
+                {isAutoGenerateOrder && (
+                  <p className="text-xs text-muted-foreground">
+                    {language === 'ru' 
+                      ? 'Порядок будет автоматически установлен сервером'
+                      : 'რიგი ავტომატურად დაყენდება სერვერის მიერ'}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="image" className="text-sm">
-                  {t.fields.image}
+                <Label htmlFor="clientOrder" className="text-sm">
+                  {t.fields.clientOrder}
                 </Label>
-                <Input
-                  id="image"
-                  name="image"
-                  value={formData.image}
-                  onChange={handleInputChange}
-                  className="text-sm"
-                  placeholder={language === 'ru' ? 'URL изображения' : 'სურათის URL'}
-                />
+                <div className="flex gap-2">
+                  <Input
+                    id="clientOrder"
+                    name="clientOrder"
+                    type="number"
+                    min="0"
+                    value={formData.clientOrder}
+                    onChange={handleNumberInputChange}
+                    className="text-sm"
+                    disabled={isAutoGenerateClientOrder}
+                  />
+                  {!isAutoGenerateClientOrder && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAutoGenerateClientOrder}
+                      className="whitespace-nowrap"
+                    >
+                      {t.fields.autoGenerateOrder}
+                    </Button>
+                  )}
+                </div>
+                {isAutoGenerateClientOrder && (
+                  <p className="text-xs text-muted-foreground">
+                    {language === 'ru' 
+                      ? 'Порядок для клиентов будет автоматически установлен сервером'
+                      : 'კლიენტებისთვის რიგი ავტომატურად დაყენდება სერვერის მიერ'}
+                  </p>
+                )}
               </div>
             </div>
 
-            <div className="space-y-3 pt-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="published" className="text-sm">
-                  {t.fields.published}
-                </Label>
-                <Switch
-                  id="published"
-                  checked={formData.published}
-                  onCheckedChange={checked => handleSwitchChange('published', checked)}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <Label htmlFor="isMain" className="text-sm">
-                  {t.fields.isMain}
-                </Label>
-                <Switch
-                  id="isMain"
-                  checked={formData.isMain}
-                  onCheckedChange={checked => handleSwitchChange('isMain', checked)}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="image" className="text-sm">
+                {t.fields.image}
+              </Label>
+              <Input
+                id="image"
+                name="image"
+                value={formData.image}
+                onChange={handleInputChange}
+                className="text-sm"
+                placeholder={language === 'ru' ? 'URL изображения' : 'სურათის URL'}
+              />
             </div>
 
             {formData.image && (
               <div className="space-y-2 pt-2">
-                <Label className="text-sm">Предпросмотр изображения</Label>
+                <Label className="text-sm">
+                  {language === 'ru' ? 'Предпросмотр изображения' : 'სურათის წინასწარი ნახვა'}
+                </Label>
                 <div className="relative h-48 w-full overflow-hidden rounded-lg border">
                   <img 
                     src={formData.image} 
@@ -630,7 +711,12 @@ export const CategoryModal = ({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => {
+      if (!open) {
+        resetForm();
+      }
+      onClose();
+    }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-lg">
@@ -639,7 +725,7 @@ export const CategoryModal = ({
           <div className="text-sm text-muted-foreground">{getStepTitle()}</div>
         </DialogHeader>
         
-        {isLoading ? (
+        {isLoading && categoryId ? (
           <div className="flex justify-center py-8">
             <Loader2 className="h-8 w-8 animate-spin" />
           </div>
@@ -663,7 +749,10 @@ export const CategoryModal = ({
                   <Button 
                     type="button"
                     variant="outline" 
-                    onClick={onClose}
+                    onClick={() => {
+                      resetForm();
+                      onClose();
+                    }}
                     disabled={isLoading}
                     className="text-sm"
                   >

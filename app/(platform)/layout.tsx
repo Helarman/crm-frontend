@@ -16,7 +16,6 @@ export default function RootLayout({
         <Side/>
         
         <div className="flex-1 flex flex-col overflow-hidden">
-          <Nav/>
           <VoiceAssistantProvider>
             <main className="flex-1 overflow-auto p-6 bg-white dark:bg-gray-700">
               {children}

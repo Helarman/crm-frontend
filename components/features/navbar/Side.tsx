@@ -8,10 +8,18 @@ import { authService } from "@/lib/api/auth";
 import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";  
 import { useTheme } from "next-themes";
-import { useLanguageStore } from "@/lib/stores/language-store";
+import { Language, useLanguageStore } from "@/lib/stores/language-store";
 import { sideTranslations } from "./translations";
-
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from "@/components/ui/dropdown-menu"
+import {
+  ChevronDown,
   LayoutDashboard,
   ClipboardList,
   Utensils,
@@ -161,29 +169,76 @@ function DesktopSidebar({
         </ul>
       </nav>
     
-      {/*<div className="p-2 border-t dark:border-gray-700 space-y-2">
-        <button
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg transition-colors mx-1 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300`}
-          title={collapsed ? t.theme : undefined}
-        >
-          {theme === 'dark' ? <Sun className="w-7 h-7" /> : <Moon className="w-7 h-7" />}
-          {!collapsed && <span>{t.theme}</span>}
-        </button>
+      <div className="p-2 border-t dark:border-gray-700 space-y-2">
+        {/* Переключение темы */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg transition-colors mx-1 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 w-full`}
+              title={collapsed ? t.theme : undefined}
+            >
+              {theme === 'dark' ? <Moon className="w-7 h-7" /> : <Sun className="w-7 h-7" />}
+              {!collapsed && <span className="whitespace-nowrap">{t.theme}</span>}
+              {!collapsed && <ChevronDown className="w-4 h-4 ml-auto" />}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-48 dark:bg-gray-800" align="start">
+            <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
+              <DropdownMenuRadioItem value="light" className="dark:hover:bg-gray-700">
+                <Sun className="w-4 h-4 mr-2" />
+                {t.light}
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="dark" className="dark:hover:bg-gray-700">
+                <Moon className="w-4 h-4 mr-2" />
+                {t.dark}
+              </DropdownMenuRadioItem>
+               <DropdownMenuRadioItem value="glass" className="dark:hover:bg-gray-700">
+                <Moon className="w-4 h-4 mr-2" />
+                glass
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="system" className="dark:hover:bg-gray-700">
+                <Settings className="w-4 h-4 mr-2" />
+                {t.system}
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-        <button
-          onClick={() => setLanguage(language === 'ru' ? 'ka' : 'ru')}
-          className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg transition-colors mx-1 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300`}
-          title={collapsed ? t.language : undefined}
-        >
-          <Languages className="w-7 h-7" />
-          {!collapsed && <span>{t.language}: {language === 'ru' ? 'Рус' : 'ქარ'}</span>}
-        </button>
+        {/* Переключение языка */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg transition-colors mx-1 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 w-full`}
+              title={collapsed ? t.language : undefined}
+            >
+              <Languages className="w-7 h-7" />
+              {!collapsed && (
+                <div className="flex items-center justify-between w-full">
+                  <span className="whitespace-nowrap">{t.language}</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    {language === 'ru' ? 'Рус' : 'ქარ'}
+                  </span>
+                </div>
+              )}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-48 dark:bg-gray-800" align="start">
+            <DropdownMenuRadioGroup value={language} onValueChange={(value) => setLanguage(value as Language)}>
+              <DropdownMenuRadioItem value="ru" className="dark:hover:bg-gray-700">
+                🇷🇺 {t.russian}
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="ka" className="dark:hover:bg-gray-700">
+                🇬🇪 {t.georgian}
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
         
+        {/* Кнопка выхода */}
         <button 
-            onClick={handleLogout}
-            className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 w-full px-3 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-red-500 dark:hover:text-red-400 transition-colors mx-1`}
-            title={collapsed ? t.logout : undefined}
+          onClick={handleLogout}
+          className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 w-full px-3 py-3 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-red-500 dark:hover:text-red-400 transition-colors mx-1`}
+          title={collapsed ? t.logout : undefined}
         >
           <LogOut className="w-7 h-7" />
           {!collapsed && (
@@ -196,12 +251,31 @@ function DesktopSidebar({
         {!collapsed && (
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-4 px-3">{t.version} 0.1.0</p>
         )}
-      </div>*/}
+      </div>
     </div>
   )
 }
 
 function MobileBottomBar({ activeItems, pathname }: { activeItems: any[], pathname: string }) {
+  const { theme, setTheme } = useTheme();
+  const { language, setLanguage } = useLanguageStore();
+  const t = sideTranslations[language];
+  const router = useRouter();
+  const { setUser, user, mutate } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await authService.logout();
+      Cookies.remove('accessToken');
+      setUser(null);
+      mutate(null);
+      router.push('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      router.push('/login');
+    }
+  };
+
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 z-50 md:hidden">
       <nav className="px-2 py-2">
@@ -225,6 +299,60 @@ function MobileBottomBar({ activeItems, pathname }: { activeItems: any[], pathna
               </Link>
             )
           })}
+          
+          {/* Дополнительные элементы для мобильного меню */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="flex flex-col items-center justify-center min-w-16 px-3 py-2 rounded-lg transition-colors flex-shrink-0 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                {theme === 'dark' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+                <span className="text-xs mt-1 whitespace-nowrap">{t.theme}</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-48 dark:bg-gray-800" align="center">
+              <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
+                <DropdownMenuRadioItem value="light" className="dark:hover:bg-gray-700">
+                  {t.light}
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="dark" className="dark:hover:bg-gray-700">
+                  {t.dark}
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="system" className="dark:hover:bg-gray-700">
+                  {t.system}
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="flex flex-col items-center justify-center min-w-16 px-3 py-2 rounded-lg transition-colors flex-shrink-0 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                <Languages className="w-5 h-5" />
+                <span className="text-xs mt-1 whitespace-nowrap">{t.language}</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-48 dark:bg-gray-800" align="center">
+              <DropdownMenuRadioGroup value={language} onValueChange={(value) => setLanguage(value as Language)}>
+                <DropdownMenuRadioItem value="ru" className="dark:hover:bg-gray-700">
+                  {t.russian}
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="ka" className="dark:hover:bg-gray-700">
+                  {t.georgian}
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <button 
+            onClick={handleLogout}
+            className="flex flex-col items-center justify-center min-w-16 px-3 py-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-red-500 dark:hover:text-red-400 transition-colors flex-shrink-0"
+          >
+            <LogOut className="w-5 h-5" />
+            <span className="text-xs mt-1 whitespace-nowrap">{t.logout}</span>
+          </button>
         </div>
       </nav>
     </div>
