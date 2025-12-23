@@ -28,7 +28,6 @@ import { RestaurantDeliveryZones } from './RestaurantDeliveryZones';
 import { RestaurantDirectories } from './RestaurantDirectories';
 import { PaymentIntegrations } from './PaymentIntegrations';
 import { TenantDetails } from '../network/TenandDetails';
-import { RestaurantWorkshops } from './RestaurantWorkshops';
 
 interface Restaurant {
   id: string;

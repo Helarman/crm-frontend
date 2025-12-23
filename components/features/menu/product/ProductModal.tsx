@@ -1,6 +1,7 @@
+// ... импорты остаются теми же, только добавим Expand
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Loader2, X, Plus, Check, ChevronsUpDown, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Loader2, X, Plus, Check, ChevronsUpDown, ArrowLeft, ArrowRight, Expand } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProductService } from '@/lib/api/product.service';
 import { Additive, AdditiveService } from '@/lib/api/additive.service';
@@ -14,14 +15,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogContentWide } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { WorkshopIn } from './ProductTable';
 import { ImageUploader } from './ImageUploader';
 import SearchableSelect from './SearchableSelect';
 import IngredientSelect from './IngredientSelect';
-
 
 interface RestaurantPrice {
   restaurantId: string;
@@ -41,9 +41,133 @@ interface ProductModalProps {
   onSubmitSuccess: () => void;
   productId: string | null;
   language: 'ru' | 'ka';
+   workshops: any[]; 
 }
 
 type FormStep = 'basic' | 'details' | 'images' | 'additives' | 'ingredients' | 'prices' | 'seo';
+
+const translations = {
+  ru: {
+    addProduct: 'Добавить продукт',
+    editProduct: 'Редактировать продукт',
+    save: 'Сохранить',
+    cancel: 'Отмена',
+    next: 'Далее',
+    back: 'Назад',
+    expandText: 'Раскрыть',
+    minimizeText: 'Свернуть',
+    fields: {
+      title: 'Название *',
+      description: 'Описание',
+      ingredients: 'Состав',
+      price: 'Базовая цена *',
+      category: 'Категория *',
+      weight: 'Вес (г)',
+      preparationTime: 'Время приготовления (мин)',
+      quantity: 'Количество',
+      packageQuantity: 'Кол-во в упаковке',
+      workshops: 'Цехи',
+      selectWorkshops: 'Выберите цехи',
+      searchWorkshops: 'Поиск цехов...',
+      noWorkshops: 'Цехи не найдены',
+      printLabels: 'Печать лейблов',
+      publishedOnWebsite: 'Опубликовать на сайте',
+      publishedInApp: 'Опубликовать в приложении',
+      isStopList: 'В стоп-листе',
+      selectRestaurants: 'Выберите рестораны',
+      searchRestaurants: 'Поиск ресторанов...',
+      noRestaurants: 'Рестораны не найдены',
+      selectAtLeastOneRestaurant: 'Выберите хотя бы один ресторан',
+      additives: 'Выберите Модификаторы',
+      searchAdditives: 'Поиск добавок...',
+      noAdditives: 'Модификаторы не найдены',
+      productIngredients: 'Ингредиенты продукта',
+      addIngredient: 'Добавить ингредиент',
+      selectIngredient: 'Выберите ингредиент',
+      searchIngredients: 'Поиск ингредиентов...',
+      noIngredients: 'Ингредиенты не найдены',
+      pageTitle: 'Заголовок страницы',
+      metaDescription: 'Мета описание',
+      content: 'Контент',
+    },
+    steps: {
+      basic: 'Основная информация',
+      details: 'Дополнительные параметры',
+      images: 'Изображения',
+      additives: 'Модификаторы',
+      ingredients: 'Ингредиенты',
+      prices: 'Цены в ресторанах',
+      seo: 'SEO'
+    },
+    errors: {
+      titleRequired: 'Название продукта обязательно',
+      categoryRequired: 'Выберите категорию',
+      pricePositive: 'Цена должна быть больше 0',
+      restaurantsRequired: 'Выберите хотя бы один ресторан',
+      ingredientsInvalid: 'Укажите корректные ингредиенты'
+    }
+  },
+  ka: {
+    addProduct: 'პროდუქტის დამატება',
+    editProduct: 'პროდუქტის რედაქტირება',
+    save: 'შენახვა',
+    cancel: 'გაუქმება',
+    next: 'შემდეგი',
+    back: 'უკან',
+    expandText: 'გახსნა',
+    minimizeText: 'დახურვა',
+    fields: {
+      title: 'სახელი *',
+      description: 'აღწერა',
+      ingredients: 'შემადგენლობა',
+      price: 'საბაზისო ფასი *',
+      category: 'კატეგორია *',
+      weight: 'წონა (გ)',
+      preparationTime: 'მომზადების დრო (წთ)',
+      quantity: 'რაოდენობა',
+      packageQuantity: 'რაოდენობა შეფუთვაში',
+      workshops: 'სახელოსნოები',
+      selectWorkshops: 'აირჩიეთ სახელოსნოები',
+      searchWorkshops: 'სახელოსნოების ძებნა...',
+      noWorkshops: 'სახელოსნოები ვერ მოიძებნა',
+      printLabels: 'ლეიბლების დაბეჭდვა',
+      publishedOnWebsite: 'საიტზე გამოქვეყნება',
+      publishedInApp: 'აპლიკაციაში გამოქვეყნება',
+      isStopList: 'სტოპ ლისტში',
+      selectRestaurants: 'აირჩიეთ რესტორნები',
+      searchRestaurants: 'რესტორნების ძებნა...',
+      noRestaurants: 'რესტორნები ვერ მოიძებნა',
+      selectAtLeastOneRestaurant: 'აირჩიეთ ერთი რესტორნი მაინც',
+      additives: 'აირჩიეთ მოდიფიკატორები',
+      searchAdditives: 'მოდიფიკატორების ძებნა...',
+      noAdditives: 'მოდიფიკატორები ვერ მოიძებნა',
+      productIngredients: 'პროდუქტის ინგრედიენტები',
+      addIngredient: 'ინგრედიენტის დამატება',
+      selectIngredient: 'აირჩიეთ ინგრედიენტი',
+      searchIngredients: 'ინგრედიენტების ძებნა...',
+      noIngredients: 'ინგრედიენტები ვერ მოიძებნა',
+      pageTitle: 'გვერდის სათაური',
+      metaDescription: 'მეტა აღწერა',
+      content: 'კონტენტი',
+    },
+    steps: {
+      basic: 'ძირითადი ინფორმაცია',
+      details: 'დამატებითი პარამეტრები',
+      images: 'სურათები',
+      additives: 'მოდიფიკატორები',
+      ingredients: 'ინგრედიენტები',
+      prices: 'რესტორნებში ფასები',
+      seo: 'SEO'
+    },
+    errors: {
+      titleRequired: 'პროდუქტის სახელი სავალდებულოა',
+      categoryRequired: 'აირჩიეთ კატეგორია',
+      pricePositive: 'ფასი უნდა იყოს 0-ზე მეტი',
+      restaurantsRequired: 'აირჩიეთ ერთი რესტორნი მაინც',
+      ingredientsInvalid: 'მიუთითეთ სწორი ინგრედიენტები'
+    }
+  }
+};
 
 export const ProductModal = ({
   isOpen,
@@ -51,7 +175,8 @@ export const ProductModal = ({
   onSubmitSuccess,
   productId,
   language,
-  networkId
+  networkId,
+  workshops 
 }: ProductModalProps) => {
   const [currentStep, setCurrentStep] = useState<FormStep>('basic');
   const [formData, setFormData] = useState({
@@ -72,13 +197,13 @@ export const ProductModal = ({
     pageTitle: '',
     metaDescription: '',
     content: '',
+    
   });
 
   const [selectedAdditives, setSelectedAdditives] = useState<string[]>([]);
   const [additives, setAdditives] = useState<{ id: string; title: string; price: number }[]>([]);
   const [restaurants, setRestaurants] = useState<{ id: string; title: string }[]>([]);
   const [categories, setCategories] = useState<{ id: string; title: string }[]>([]);
-  const [workshops, setWorkshops] = useState<Workshop[]>([]);
   const [selectedRestaurants, setSelectedRestaurants] = useState<string[]>([]);
   const [restaurantPrices, setRestaurantPrices] = useState<RestaurantPrice[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -90,66 +215,60 @@ export const ProductModal = ({
   const [ingredients, setIngredients] = useState<{inventoryItemId: string, quantity: number}[]>([]);
   const [inventoryItems, setInventoryItems] = useState<{id: string, name: string, unit: string}[]>([]);
   const [isInventoryLoading, setIsInventoryLoading] = useState(false);
+  
+  // Состояния для расширяемых textarea
+  const [expandedTextarea, setExpandedTextarea] = useState<string | null>(null);
+  const [expandedContent, setExpandedContent] = useState<string>('');
+
+  const t = translations[language];
 
   useEffect(() => {
     if (isOpen) {
       loadData();
       loadCategories();
       loadRestaurants();
-      loadWorkshops();
       loadInventoryItems();
     }
   }, [isOpen]);
 
-  const loadWorkshops = async () => {
-    setIsWorkshopsLoading(true);
-    try {
-      const data = await WorkshopService.getAll();
-      setWorkshops(data);
-    } catch (error) {
-      console.error('Failed to load workshops', error);
-      toast.error(language === 'ru' ? 'Ошибка загрузки цехов' : 'სახელოსნოების ჩატვირთვის შეცდომა');
-    } finally {
-      setIsWorkshopsLoading(false);
-    }
-  };
+  
 
   const loadInventoryItems = async () => {
-  setIsInventoryLoading(true);
-  try {
-    // Получаем список всех позиций склада
-    /*const items = await WarehouseService.getInventoryItems();
-    
-    // Преобразуем данные в нужный формат
-    const formattedItems = items.map((item: WarehouseItem) => ({
-      id: item.id,
-      name: item.name,
-      unit: item.unit,
-      ...(item.storageLocation && { 
-        storageLocation: {
-          id: item.storageLocation.id,
-          name: item.storageLocation.name
-        }
-      }),
-      ...(item.product && {
-        product: {
-          id: item.product.id,
-          title: item.product.title
-        }
-      })
-    }));
+    setIsInventoryLoading(true);
+    try {
+      // Получаем список всех позиций склада
+      /*const items = await WarehouseService.getInventoryItems();
+      
+      // Преобразуем данные в нужный формат
+      const formattedItems = items.map((item: WarehouseItem) => ({
+        id: item.id,
+        name: item.name,
+        unit: item.unit,
+        ...(item.storageLocation && { 
+          storageLocation: {
+            id: item.storageLocation.id,
+            name: item.storageLocation.name
+          }
+        }),
+        ...(item.product && {
+          product: {
+            id: item.product.id,
+            title: item.product.title
+          }
+        })
+      }));
 
-    setInventoryItems(formattedItems);*/
-    throw Error()
-  } catch (error) {
-    console.error('Failed to load inventory items', error);
-    toast.error(language === 'ru' 
-      ? 'Ошибка загрузки ингредиентов' 
-      : 'ინგრედიენტების ჩატვირთვის შეცდომა');
-  } finally {
-    setIsInventoryLoading(false);
-  }
-};
+      setInventoryItems(formattedItems);*/
+      throw Error()
+    } catch (error) {
+      console.error('Failed to load inventory items', error);
+      toast.error(language === 'ru' 
+        ? 'Ошибка загрузки ингредиентов' 
+        : 'ინგრედიენტების ჩატვირთვის შეცდომა');
+    } finally {
+      setIsInventoryLoading(false);
+    }
+  };
 
   const loadData = async () => {
     if (!productId) {
@@ -158,7 +277,7 @@ export const ProductModal = ({
     }
     
     setIsLoading(true);
-    loadAdditives()
+    loadAdditives();
     try {
       const [product, productAdditives, prices, productIngredients] = await Promise.all([
         ProductService.getById(productId),
@@ -225,6 +344,8 @@ export const ProductModal = ({
     setCurrentStep('basic');
     setSelectedWorkshops([]);
     setIngredients([]);
+    setExpandedTextarea(null);
+    setExpandedContent('');
   };
 
   const loadCategories = async () => {
@@ -350,24 +471,40 @@ export const ProductModal = ({
     });
   };
 
+  // Функция для открытия расширяемого textarea
+  const openExpandedTextarea = (fieldName: string, content: string) => {
+    setExpandedTextarea(fieldName);
+    setExpandedContent(content);
+  };
+
+  // Функция для сохранения контента из расширяемого textarea
+  const saveExpandedContent = () => {
+    if (expandedTextarea) {
+      setFormData(prev => ({
+        ...prev,
+        [expandedTextarea]: expandedContent
+      }));
+    }
+    setExpandedTextarea(null);
+  };
+
   const validateCurrentStep = () => {
     const errors = [];
     
     if (currentStep === 'basic') {
       if (!formData.title.trim()) {
-        errors.push(language === 'ru' ? 'Название продукта обязательно' : 'პროდუქტის სახელი სავალდებულოა');
+        errors.push(t.errors.titleRequired);
       }
       if (!formData.categoryId) {
-        errors.push(language === 'ru' ? 'Выберите категорию' : 'აირჩიეთ კატეგორია');
+        errors.push(t.errors.categoryRequired);
       }
       if (formData.price <= 0) {
-        errors.push(language === 'ru' ? 'Цена должна быть больше 0' : 'ფასი უნდა იყოს 0-ზე მეტი');
+        errors.push(t.errors.pricePositive);
       }
     }
     
-    
     if (currentStep === 'prices' && selectedRestaurants.length === 0) {
-      errors.push(language === 'ru' ? 'Выберите хотя бы один ресторан' : 'აირჩიეთ ერთი რესტორნი მაინც');
+      errors.push(t.errors.restaurantsRequired);
     }
 
     if (currentStep === 'ingredients') {
@@ -375,9 +512,7 @@ export const ProductModal = ({
         i => !i.inventoryItemId || i.quantity <= 0
       );
       if (hasEmptyIngredients) {
-        errors.push(language === 'ru' 
-          ? 'Укажите корректные ингредиенты' 
-          : 'მიუთითეთ სწორი ინგრედიენტები');
+        errors.push(t.errors.ingredientsInvalid);
       }
     }
     
@@ -406,67 +541,67 @@ export const ProductModal = ({
     }
   };
 
- const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  if (!validateCurrentStep()) return;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateCurrentStep()) return;
 
-  setIsLoading(true);
+    setIsLoading(true);
 
-  try {
-    const productData = {
-      ...formData,
-      networkId,
-      ingredients: ingredients.filter(i => i.inventoryItemId && i.quantity > 0)
-        .map(i => ({
-          inventoryItemId: i.inventoryItemId,
-          quantity: parseFloat(i.quantity.toString())
-        })),
-      images: formData.images.filter(img => img.trim()),
-      restaurantPrices: restaurantPrices.filter(rp => 
-        selectedRestaurants.includes(rp.restaurantId)
-      ),
-      additives: selectedAdditives,
-      workshopIds: selectedWorkshops,
-    };
+    try {
+      const productData = {
+        ...formData,
+        networkId,
+        ingredients: ingredients.filter(i => i.inventoryItemId && i.quantity > 0)
+          .map(i => ({
+            inventoryItemId: i.inventoryItemId,
+            quantity: parseFloat(i.quantity.toString())
+          })),
+        images: formData.images.filter(img => img.trim()),
+        restaurantPrices: restaurantPrices.filter(rp => 
+          selectedRestaurants.includes(rp.restaurantId)
+        ),
+        additives: selectedAdditives,
+        workshopIds: selectedWorkshops,
+      };
 
-    let productIdToUse = productId;
-    
-    // Create or update the product
-    if (productId) {
-      await ProductService.update(productId, productData);
-      toast.success(language === 'ru' ? 'Продукт обновлен' : 'პროდუქტი განახლებულია');
-    } else {
-      const createdProduct = await ProductService.create(productData);
-      productIdToUse = createdProduct.id;
-      toast.success(language === 'ru' ? 'Продукт создан' : 'პროდუქტი შექმნილია');
+      let productIdToUse = productId;
+      
+      // Create or update the product
+      if (productId) {
+        await ProductService.update(productId, productData);
+        toast.success(language === 'ru' ? 'Продукт обновлен' : 'პროდუქტი განახლებულია');
+      } else {
+        const createdProduct = await ProductService.create(productData);
+        productIdToUse = createdProduct.id;
+        toast.success(language === 'ru' ? 'Продукт создан' : 'პროდუქტი შექმნილია');
+      }
+
+      // Add product to selected restaurants
+      if (productIdToUse) {
+        await Promise.all(
+          selectedRestaurants.map(restaurantId => 
+            RestaurantService.addProduct(restaurantId, { productId: productIdToUse as string })
+              .catch(error => {
+                console.error(`Failed to add product to restaurant ${restaurantId}:`, error);
+                toast.error(
+                  language === 'ru' 
+                    ? `Ошибка добавления продукта в ресторан ${restaurantId}`
+                    : `პროდუქტის რესტორნში დამატების შეცდომა ${restaurantId}`
+                );
+              })
+          )
+        );
+      }
+
+      onSubmitSuccess();
+      onClose();
+    } catch (error) {
+      console.error('Error saving product:', error);
+      toast.error(language === 'ru' ? 'Ошибка сохранения' : 'შენახვის შეცდომა');
+    } finally {
+      setIsLoading(false);
     }
-
-    // Add product to selected restaurants
-    if (productIdToUse) {
-      await Promise.all(
-        selectedRestaurants.map(restaurantId => 
-          RestaurantService.addProduct(restaurantId, { productId: productIdToUse as string })
-            .catch(error => {
-              console.error(`Failed to add product to restaurant ${restaurantId}:`, error);
-              toast.error(
-                language === 'ru' 
-                  ? `Ошибка добавления продукта в ресторан ${restaurantId}`
-                  : `პროდუქტის რესტორნში დამატების შეცდომა ${restaurantId}`
-              );
-            })
-        )
-      );
-    }
-
-    onSubmitSuccess();
-    onClose();
-  } catch (error) {
-    console.error('Error saving product:', error);
-    toast.error(language === 'ru' ? 'Ошибка сохранения' : 'შენახვის შეცდომა');
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
   const getRestaurantPrice = (restaurantId: string) => {
     return restaurantPrices.find(rp => rp.restaurantId === restaurantId) || {
@@ -476,14 +611,66 @@ export const ProductModal = ({
     };
   };
 
+  // Функция для рендера поля с возможностью раскрытия
+  const renderExpandableField = (fieldName: string, label: string, value: string, placeholder?: string) => {
+    const fieldTranslations = {
+      description: {
+        ru: 'Описание продукта',
+        ka: 'პროდუქტის აღწერა'
+      },
+      ingredients: {
+        ru: 'Состав продукта',
+        ka: 'პროდუქტის შემადგენლობა'
+      },
+      metaDescription: {
+        ru: 'Мета-описание для поисковых систем',
+        ka: 'ძებნის სისტემებისთვის მეტა-აღწერა'
+      },
+      content: {
+        ru: 'Подробное описание продукта',
+        ka: 'პროდუქტის დეტალური აღწერა'
+      }
+    };
+
+    const fieldLabel = fieldTranslations[fieldName as keyof typeof fieldTranslations]?.[language] || label;
+
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label htmlFor={fieldName} className="text-sm">
+            {label}
+          </Label>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => openExpandedTextarea(fieldName, value)}
+            className="h-8 px-2"
+          >
+            <Expand className="h-4 w-4 mr-1" />
+            <span className="text-xs">{t.expandText}</span>
+          </Button>
+        </div>
+        <Textarea
+          id={fieldName}
+          name={fieldName}
+          value={value}
+          onChange={handleInputChange}
+          className="text-sm min-h-[80px] resize-none"
+          placeholder={placeholder}
+        />
+      </div>
+    );
+  };
+
   const renderStepContent = () => {
     switch (currentStep) {
       case 'basic':
-         return (
+        return (
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="title" className="text-sm">
-                {language === 'ru' ? 'Название' : 'სახელი'} *
+                {t.fields.title}
               </Label>
               <Input
                 id="title"
@@ -495,54 +682,42 @@ export const ProductModal = ({
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="description" className="text-sm">
-                {language === 'ru' ? 'Описание' : 'აღწერა'}
-              </Label>
-              <Textarea
-                id="description"
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                className="text-sm min-h-[80px] resize-none"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="ingredients" className="text-sm">
-                {language === 'ru' ? 'Состав' : 'შემადგენლობა'}
-              </Label>
-              <Textarea
-                id="ingredients"
-                name="ingredients"
-                value={formData.ingredients}
-                onChange={handleInputChange}
-                className="text-sm min-h-[80px] resize-none"
-              />
-            </div>
-
-           <div className="space-y-2">
-            <Label htmlFor="categoryId" className="text-sm">
-              {language === 'ru' ? 'Категория' : 'კატეგორია'} *
-            </Label>
-            {isCategoriesLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <SearchableSelect
-                options={categories.map(c => ({ id: c.id, label: c.title }))}
-                value={formData.categoryId ? [formData.categoryId] : []}
-                onChange={([id]) => setFormData({...formData, categoryId: id || ''})}
-                placeholder={language === 'ru' ? 'Выберите категорию' : 'აირჩიეთ კატეგორია'}
-                searchPlaceholder={language === 'ru' ? 'Поиск категорий...' : 'კატეგორიების ძებნა...'}
-                emptyText={language === 'ru' ? 'Категории не найдены' : 'კატეგორიები ვერ მოიძებნა'}
-                multiple={false}
-              />
+            {renderExpandableField(
+              'description', 
+              t.fields.description, 
+              formData.description,
+              language === 'ru' ? 'Опишите ваш продукт' : 'აღწერეთ თქვენი პროდუქტი'
             )}
-          </div>
+
+            {renderExpandableField(
+              'ingredients',
+              t.fields.ingredients,
+              formData.ingredients,
+              language === 'ru' ? 'Укажите состав продукта' : 'მიუთითეთ პროდუქტის შემადგენლობა'
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="categoryId" className="text-sm">
+                {t.fields.category}
+              </Label>
+              {isCategoriesLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <SearchableSelect
+                  options={categories.map(c => ({ id: c.id, label: c.title }))}
+                  value={formData.categoryId ? [formData.categoryId] : []}
+                  onChange={([id]) => setFormData({...formData, categoryId: id || ''})}
+                  placeholder={t.fields.category}
+                  searchPlaceholder={t.fields.category}
+                  emptyText={language === 'ru' ? 'Категории не найдены' : 'კატეგორიები ვერ მოიძებნა'}
+                  multiple={false}
+                />
+              )}
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="price" className="text-sm">
-                {language === 'ru' ? 'Базовая цена' : 'საბაზისო ფასი'} *
+                {t.fields.price}
               </Label>
               <Input
                 id="price"
@@ -563,7 +738,7 @@ export const ProductModal = ({
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="weight" className="text-sm">
-                  {language === 'ru' ? 'Вес (г)' : 'წონა (გ)'}
+                  {t.fields.weight}
                 </Label>
                 <Input
                   id="weight"
@@ -578,7 +753,7 @@ export const ProductModal = ({
 
               <div className="space-y-2">
                 <Label htmlFor="preparationTime" className="text-sm">
-                  {language === 'ru' ? 'Время приготовления (мин)' : 'მომზადების დრო (წთ)'}
+                  {t.fields.preparationTime}
                 </Label>
                 <Input
                   id="preparationTime"
@@ -593,7 +768,7 @@ export const ProductModal = ({
 
               <div className="space-y-2">
                 <Label htmlFor="quantity" className="text-sm">
-                  {language === 'ru' ? 'Количество' : 'რაოდენობა'}
+                  {t.fields.quantity}
                 </Label>
                 <Input
                   id="quantity"
@@ -605,9 +780,10 @@ export const ProductModal = ({
                   className="text-sm"
                 />
               </div>
+              
               <div className="space-y-2">
                 <Label htmlFor="packageQuantity" className="text-sm">
-                  {language === 'ru' ? 'Кол-во в упаковке' : 'რაოდენობა შეფუთვაში'}
+                  {t.fields.packageQuantity}
                 </Label>
                 <Input
                   id="packageQuantity"
@@ -620,29 +796,29 @@ export const ProductModal = ({
                 />
               </div>
 
-             <div className="space-y-2 col-span-2">
-              <Label className="text-sm">
-                {language === 'ru' ? 'Цехи' : 'სახელოსნოები'}
-              </Label>
-              {isWorkshopsLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <SearchableSelect
-                  options={workshops.map(w => ({ id: w.id, label: w.name }))}
-                  value={selectedWorkshops}
-                  onChange={setSelectedWorkshops}
-                  placeholder={language === 'ru' ? 'Выберите цехи' : 'აირჩიეთ სახელოსნოები'}
-                  searchPlaceholder={language === 'ru' ? 'Поиск цехов...' : 'სახელოსნოების ძებნა...'}
-                  emptyText={language === 'ru' ? 'Цехи не найдены' : 'სახელოსნოები ვერ მოიძებნა'}
-                />
-              )}
-            </div>
+              <div className="space-y-2 col-span-2">
+                <Label className="text-sm">
+                  {t.fields.workshops}
+                </Label>
+                {isWorkshopsLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <SearchableSelect
+                    options={workshops.map(w => ({ id: w.id, label: w.name }))}
+                    value={selectedWorkshops}
+                    onChange={setSelectedWorkshops}
+                    placeholder={t.fields.selectWorkshops}
+                    searchPlaceholder={t.fields.searchWorkshops}
+                    emptyText={t.fields.noWorkshops}
+                  />
+                )}
+              </div>
             </div>
 
             <div className="space-y-3 pt-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="printLabels" className="text-sm">
-                  {language === 'ru' ? 'Печать лейблов' : 'ლეიბლების დაბეჭდვა'}
+                  {t.fields.printLabels}
                 </Label>
                 <Switch
                   id="printLabels"
@@ -653,7 +829,7 @@ export const ProductModal = ({
 
               <div className="flex items-center justify-between">
                 <Label htmlFor="publishedOnWebsite" className="text-sm">
-                  {language === 'ru' ? 'Опубликовать на сайте' : 'საიტზე გამოქვეყნება'}
+                  {t.fields.publishedOnWebsite}
                 </Label>
                 <Switch
                   id="publishedOnWebsite"
@@ -664,7 +840,7 @@ export const ProductModal = ({
 
               <div className="flex items-center justify-between">
                 <Label htmlFor="publishedInApp" className="text-sm">
-                  {language === 'ru' ? 'Опубликовать в приложении' : 'აპლიკაციაში გამოქვეყნება'}
+                  {t.fields.publishedInApp}
                 </Label>
                 <Switch
                   id="publishedInApp"
@@ -675,7 +851,7 @@ export const ProductModal = ({
 
               <div className="flex items-center justify-between">
                 <Label htmlFor="isStopList" className="text-sm">
-                  {language === 'ru' ? 'В стоп-листе' : 'სტოპ ლისტში'}
+                  {t.fields.isStopList}
                 </Label>
                 <Switch
                   id="isStopList"
@@ -702,23 +878,23 @@ export const ProductModal = ({
       case 'prices':
         return (
           <div className="space-y-4">
-           <div className="space-y-2">
-            <Label className="text-sm">
-              {language === 'ru' ? 'Выберите рестораны' : 'აირჩიეთ რესტორნები'}
-            </Label>
-            {isRestaurantsLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <SearchableSelect
-                options={restaurants.map(r => ({ id: r.id, label: r.title }))}
-                value={selectedRestaurants}
-                onChange={setSelectedRestaurants}
-                placeholder={language === 'ru' ? 'Выберите рестораны' : 'აირჩიეთ რესტორნები'}
-                searchPlaceholder={language === 'ru' ? 'Поиск ресторанов...' : 'რესტორნების ძებნა...'}
-                emptyText={language === 'ru' ? 'Рестораны не найдены' : 'რესტორნები ვერ მოიძებნა'}
-              />
-            )}
-          </div>
+            <div className="space-y-2">
+              <Label className="text-sm">
+                {t.fields.selectRestaurants}
+              </Label>
+              {isRestaurantsLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <SearchableSelect
+                  options={restaurants.map(r => ({ id: r.id, label: r.title }))}
+                  value={selectedRestaurants}
+                  onChange={setSelectedRestaurants}
+                  placeholder={t.fields.selectRestaurants}
+                  searchPlaceholder={t.fields.searchRestaurants}
+                  emptyText={t.fields.noRestaurants}
+                />
+              )}
+            </div>
 
             {selectedRestaurants.length > 0 && (
               <div className="space-y-3">
@@ -765,190 +941,73 @@ export const ProductModal = ({
       
       case 'additives':
         return (
-         <div className="space-y-2">
-          <Label className="text-sm">
-            {language === 'ru' ? 'Выберите Модификаторы' : 'აირჩიეთ მოდიფიკატორები'}
-          </Label>
-          {isAdditivesLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <SearchableSelect
-              options={additives.map(a => ({ id: a.id, label: `${a.title} (+${a.price}₽)` }))}
-              value={selectedAdditives}
-              onChange={setSelectedAdditives}
-              placeholder={language === 'ru' ? 'Выберите Модификаторы' : 'აირჩიეთ მოდიფიკატორები'}
-              searchPlaceholder={language === 'ru' ? 'Поиск добавок...' : 'მოდიფიკატორების ძებნა...'}
-              emptyText={language === 'ru' ? 'Модификаторы не найдены' : 'მოდიფიკატორები ვერ მოიძებნა'}
-            />
-          )}
-        </div>
+          <div className="space-y-2">
+            <Label className="text-sm">
+              {t.fields.additives}
+            </Label>
+            {isAdditivesLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <SearchableSelect
+                options={additives.map(a => ({ id: a.id, label: `${a.title} (+${a.price}₽)` }))}
+                value={selectedAdditives}
+                onChange={setSelectedAdditives}
+                placeholder={t.fields.additives}
+                searchPlaceholder={t.fields.searchAdditives}
+                emptyText={t.fields.noAdditives}
+              />
+            )}
+          </div>
         );
 
       case 'ingredients':
         return (
-         <div className="space-y-4">
-          <div className="space-y-2">
-            <Label className="text-sm">
-              {language === 'ru' ? 'Ингредиенты продукта' : 'პროდუქტის ინგრედიენტები'}
-            </Label>
-            
-            <div className="space-y-3">
-              {ingredients.map((ingredient, index) => (
-                <IngredientSelect
-                  key={index}
-                  value={ingredient}
-                  onChange={(newValue) => {
-                    const newIngredients = [...ingredients];
-                    newIngredients[index] = newValue;
-                    setIngredients(newIngredients);
-                  }}
-                  onRemove={() => {
-                    const newIngredients = [...ingredients];
-                    newIngredients.splice(index, 1);
-                    setIngredients(newIngredients);
-                  }}
-                  inventoryItems={inventoryItems}
-                  language={language}
-                />
-              ))}
-            </div>
-            
-            <Button
-              type="button"
-              variant="outline"
-              className="mt-2 text-sm"
-              onClick={() => setIngredients([...ingredients, { inventoryItemId: '', quantity: 0 }])}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              {language === 'ru' ? 'Добавить ингредиент' : 'ინგრედიენტის დამატება'}
-            </Button>
-          </div>
-        </div>
-        );
-
-     case 'ingredients':
-  return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <Label className="text-sm">
-          {language === 'ru' ? 'Ингредиенты продукта' : 'პროდუქტის ინგრედიენტები'}
-        </Label>
-        
-        <div className="space-y-3">
-          {ingredients.map((ingredient, index) => {
-            const [open, setOpen] = useState(false);
-            const [searchValue, setSearchValue] = useState('');
-            const selectedItem = inventoryItems.find(i => i.id === ingredient.inventoryItemId);
-            
-            return (
-              <div key={index} className="grid grid-cols-12 gap-2 items-center">
-                <div className="col-span-5">
-                  <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={open}
-                    className="w-full justify-between text-sm"
-                    onClick={() => setOpen(true)}
-                  >
-                    {selectedItem 
-                      ? `${selectedItem.name} (${selectedItem.unit})`
-                      : language === 'ru' ? 'Выберите ингредиент' : 'აირჩიეთ ინგრედიენტი'}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-
-                  <CommandDialog open={open} onOpenChange={setOpen}>
-                    <CommandInput 
-                      placeholder={language === 'ru' ? 'Поиск ингредиентов...' : 'ინგრედიენტების ძებნა...'} 
-                      value={searchValue}
-                      onValueChange={setSearchValue}
-                      className="text-sm"
-                    />
-                    <CommandList>
-                      <CommandEmpty className="text-sm px-2 py-1.5">
-                        {language === 'ru' ? 'Ингредиенты не найдены' : 'ინგრედიენტები ვერ მოიძებნა'}
-                      </CommandEmpty>
-                      <CommandGroup className="max-h-[200px] overflow-y-auto">
-                        {inventoryItems.map((item) => (
-                          <CommandItem
-                            key={item.id}
-                            value={`${item.name} ${item.unit}`}
-                            onSelect={() => {
-                              const newIngredients = [...ingredients];
-                              newIngredients[index].inventoryItemId = item.id;
-                              setIngredients(newIngredients);
-                              setOpen(false);
-                              setSearchValue('');
-                            }}
-                            className="text-sm"
-                          >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                ingredient.inventoryItemId === item.id
-                                  ? "opacity-100"
-                                  : "opacity-0"
-                              )}
-                            />
-                            {item.name} ({item.unit})
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </CommandDialog>
-                </div>
-                
-                <div className="col-span-5">
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={ingredient.quantity}
-                    onChange={(e) => {
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-sm">
+                {t.fields.productIngredients}
+              </Label>
+              
+              <div className="space-y-3">
+                {ingredients.map((ingredient, index) => (
+                  <IngredientSelect
+                    key={index}
+                    value={ingredient}
+                    onChange={(newValue) => {
                       const newIngredients = [...ingredients];
-                      newIngredients[index].quantity = parseFloat(e.target.value) || 0;
+                      newIngredients[index] = newValue;
                       setIngredients(newIngredients);
                     }}
-                    className="text-sm"
-                  />
-                </div>
-                
-                <div className="col-span-2 flex justify-end">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
+                    onRemove={() => {
                       const newIngredients = [...ingredients];
                       newIngredients.splice(index, 1);
                       setIngredients(newIngredients);
                     }}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
+                    inventoryItems={inventoryItems}
+                    language={language}
+                  />
+                ))}
               </div>
-            );
-          })}
-        </div>
-        
-        <Button
-          type="button"
-          variant="outline"
-          className="mt-2 text-sm"
-          onClick={() => setIngredients([...ingredients, { inventoryItemId: '', quantity: 0 }])}
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          {language === 'ru' ? 'Добавить ингредиент' : 'ინგრედიენტის დამატება'}
-        </Button>
-      </div>
-    </div>
-  );
+              
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-2 text-sm"
+                onClick={() => setIngredients([...ingredients, { inventoryItemId: '', quantity: 0 }])}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                {t.fields.addIngredient}
+              </Button>
+            </div>
+          </div>
+        );
+
       case 'seo':
-         return (
+        return (
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="pageTitle" className="text-sm">
-                {language === 'ru' ? 'Заголовок страницы' : 'გვერდის სათაური'}
+                {t.fields.pageTitle}
               </Label>
               <Input
                 id="pageTitle"
@@ -958,30 +1017,24 @@ export const ProductModal = ({
                 className="text-sm"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="metaDescription" className="text-sm">
-                {language === 'ru' ? 'Мета описание' : 'მეტა აღწერა'}
-              </Label>
-              <Textarea
-                id="metaDescription"
-                name="metaDescription"
-                value={formData.metaDescription}
-                onChange={handleInputChange}
-                className="text-sm min-h-[80px] resize-none"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="content" className="text-sm">
-                {language === 'ru' ? 'Контент' : 'კონტენტი'}
-              </Label>
-              <Textarea
-                id="content"
-                name="content"
-                value={formData.content}
-                onChange={handleInputChange}
-                className="text-sm min-h-[100px] resize-none"
-              />
-            </div>
+            
+            {renderExpandableField(
+              'metaDescription',
+              t.fields.metaDescription,
+              formData.metaDescription,
+              language === 'ru' 
+                ? 'Мета-описание для поисковых систем. Оптимальная длина: 150-160 символов.'
+                : 'ძებნის სისტემებისთვის მეტა-აღწერა. ოპტიმალური სიგრძე: 150-160 სიმბოლო.'
+            )}
+            
+            {renderExpandableField(
+              'content',
+              t.fields.content,
+              formData.content,
+              language === 'ru' 
+                ? 'Подробное описание продукта для страницы'
+                : 'გვერდისთვის პროდუქტის დეტალური აღწერა'
+            )}
           </div>
         );
 
@@ -991,94 +1044,124 @@ export const ProductModal = ({
   };
 
   const getStepTitle = () => {
-    switch (currentStep) {
-      case 'basic':
-        return language === 'ru' ? 'Основная информация' : 'ძირითადი ინფორმაცია';
-      case 'details':
-        return language === 'ru' ? 'Дополнительные параметры' : 'დამატებითი პარამეტრები';
-      case 'images':
-        return language === 'ru' ? 'Изображения' : 'სურათები';
-      case 'additives':
-        return language === 'ru' ? 'Модификаторы' : 'მოდიფიკატორები';
-      case 'ingredients':
-        return language === 'ru' ? 'Ингредиенты' : 'ინგრედიენტები';
-      case 'prices':
-        return language === 'ru' ? 'Цены в ресторанах' : 'რესტორნებში ფასები';
-      case 'seo':
-        return 'SEO';
-      default:
-        return '';
-    }
+    return t.steps[currentStep];
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-lg">
-            {productId 
-              ? language === 'ru' ? 'Редактировать продукт' : 'პროდუქტის რედაქტირება'
-              : language === 'ru' ? 'Добавить продукт' : 'პროდუქტის დამატება'}
-          </DialogTitle>
-          <div className="text-sm text-muted-foreground">{getStepTitle()}</div>
-        </DialogHeader>
-        {isLoading ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin" />
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {renderStepContent()}
+    <>
+      {/* Основная модалка */}
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg">
+              {productId ? t.editProduct : t.addProduct}
+            </DialogTitle>
+            <div className="text-sm text-muted-foreground">{getStepTitle()}</div>
+          </DialogHeader>
+          
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {renderStepContent()}
 
-            <DialogFooter>
-              <div className="flex justify-between w-full">
-                {currentStep !== 'basic' ? (
-                  <Button 
-                    type="button"
-                    variant="outline" 
-                    onClick={goToPrevStep}
-                    disabled={isLoading}
-                    className="text-sm"
-                  >
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    {language === 'ru' ? 'Назад' : 'უკან'}
-                  </Button>
-                ) : (
-                  <div />
-                )}
-                
-                {currentStep !== 'seo' ? (
-                  <Button 
-                    type="button"
-                    onClick={goToNextStep}
-                    disabled={isLoading}
-                    className="text-sm"
-                  >
-                    {language === 'ru' ? 'Далее' : 'შემდეგი'}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Button 
-                    type="button"
-                    onClick={handleSubmit}
-                    disabled={isLoading}
-                    className="text-sm"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {language === 'ru' ? 'Сохранение...' : 'შენახვა...'}
-                      </>
-                    ) : (
-                      language === 'ru' ? 'Сохранить' : 'შენახვა'
-                    )}
-                  </Button>
-                )}
-              </div>
-            </DialogFooter>
-          </form>
-        )}
-      </DialogContent>
-    </Dialog>
+              <DialogFooter>
+                <div className="flex justify-between w-full">
+                  {currentStep !== 'basic' ? (
+                    <Button 
+                      type="button"
+                      variant="outline" 
+                      onClick={goToPrevStep}
+                      disabled={isLoading}
+                      className="text-sm"
+                    >
+                      <ArrowLeft className="mr-2 h-4 w-4" />
+                      {t.back}
+                    </Button>
+                  ) : (
+                    <div />
+                  )}
+                  
+                  {currentStep !== 'seo' ? (
+                    <Button 
+                      type="button"
+                      onClick={goToNextStep}
+                      disabled={isLoading}
+                      className="text-sm"
+                    >
+                      {t.next}
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <Button 
+                      type="submit"
+                      disabled={isLoading}
+                      className="text-sm"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          {language === 'ru' ? 'Сохранение...' : 'შენახვა...'}
+                        </>
+                      ) : (
+                        t.save
+                      )}
+                    </Button>
+                  )}
+                </div>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Модалка для расширенного редактирования textarea */}
+      <Dialog open={!!expandedTextarea} onOpenChange={(open) => !open && setExpandedTextarea(null)}>
+        <DialogContentWide className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg">
+              {expandedTextarea === 'description' && t.fields.description}
+              {expandedTextarea === 'ingredients' && t.fields.ingredients}
+              {expandedTextarea === 'metaDescription' && t.fields.metaDescription}
+              {expandedTextarea === 'content' && t.fields.content}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <Textarea
+            value={expandedContent}
+            onChange={(e) => setExpandedContent(e.target.value)}
+            className="min-h-[80vh] resize-none text-sm"
+            placeholder={
+              expandedTextarea === 'description' 
+                ? (language === 'ru' 
+                    ? 'Введите описание продукта' 
+                    : 'შეიყვანეთ პროდუქტის დეტალური აღწერა')
+                : expandedTextarea === 'ingredients'
+                ? (language === 'ru' 
+                    ? 'Введите состав продукта' 
+                    : 'შეიყვანეთ პროდუქტის სრული შემადგენლობა')
+                : expandedTextarea === 'metaDescription'
+                ? (language === 'ru' 
+                    ? 'Введите мета-описание.' 
+                    : 'შეიყვანეთ მეტა-აღწერა')
+                : (language === 'ru' 
+                    ? 'Введите контент для страницы продукта' 
+                    : 'შეიყვანეთ  კონტენტი პროდუქტის გვერდისთვის')
+            }
+          />
+          
+          <DialogFooter>
+            <Button 
+              onClick={saveExpandedContent}
+              className="mt-4"
+            >
+              {language === 'ru' ? 'Сохранить' : 'შენახვა'}
+            </Button>
+          </DialogFooter>
+        </DialogContentWide>
+      </Dialog>
+    </>
   );
 };

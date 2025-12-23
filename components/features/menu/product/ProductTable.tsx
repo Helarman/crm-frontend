@@ -1,7 +1,6 @@
-// ProductTable.tsx
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
-import { Pencil, Trash2, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
+import { Pencil, Trash2, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown, GripVertical, Check, CheckSquare, Square } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Language } from '@/lib/stores/language-store';
 import {
@@ -23,7 +22,6 @@ import { Product } from '@/lib/types/product';
 import { Category } from '@/lib/types/order';
 import { useAuth } from '@/lib/hooks/useAuth';
 
-// Добавляем импорты для drag-and-drop
 import {
   Dialog,
   DialogContent,
@@ -50,6 +48,18 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import MultiSelect from '@/components/ui/multi-select';
+import Image from 'next/image'
+import SearchableSelect from './SearchableSelect';
 
 interface CategoryRowProps {
   category: CategoryNode;
@@ -64,6 +74,9 @@ interface CategoryRowProps {
   onMoveDown: (productId: string, categoryId: string) => void;
   onClientMoveUp: (productId: string, categoryId: string) => void;
   onClientMoveDown: (productId: string, categoryId: string) => void;
+  selectedProducts: Set<string>;
+  onSelectProduct: (id: string) => void;
+  onSelectAllInCategory: (categoryId: string) => void;
 }
 
 interface Restaurant {
@@ -98,6 +111,10 @@ interface ProductTableProps {
   language: Language;
   onDelete: (id: string) => void;
   fetchData: () => void;
+  categories: Category[];
+  workshops: Workshop[];
+  additives: any[];
+  networks: any[];
 }
 
 const translations = {
@@ -228,6 +245,95 @@ const translations = {
   saving: {
     ru: 'Сохранение...',
     ka: 'ინახება...'
+  },
+  // Новые переводы для массовых операций
+  selectAll: {
+    ru: 'Выбрать все',
+    ka: 'ყველას მონიშვნა'
+  },
+  clearSelection: {
+    ru: 'Очистить выбор',
+    ka: 'არჩევის გასუფთავება'
+  },
+  selectedCount: {
+    ru: (count: number) => `Выбрано: ${count}`,
+    ka: (count: number) => `არჩეული: ${count}`
+  },
+  bulkOperations: {
+    ru: 'Массовые операции',
+    ka: 'მასობრივი ოპერაციები'
+  },
+  bulkDelete: {
+    ru: 'Удалить выбранное',
+    ka: 'არჩეულის წაშლა'
+  },
+  bulkMoveToCategory: {
+    ru: 'Переместить в категорию',
+    ka: 'კატეგორიაში გადატანა'
+  },
+  bulkAssignWorkshops: {
+    ru: 'Назначить цехи',
+    ka: 'სახელოსნოების მინიჭება'
+  },
+  bulkAssignAdditives: {
+    ru: 'Назначить модификаторы',
+    ka: 'მოდიფიკატორების მინიჭება'
+  },
+  bulkTogglePrintLabels: {
+    ru: 'Вкл/Выкл печать этикеток',
+    ka: 'ეტიკეტების დაბეჭდვა ჩართ/გამორთ'
+  },
+  bulkTogglePublishedWebsite: {
+    ru: 'Вкл/Выкл на сайте',
+    ka: 'საიტზე ჩართ/გამორთ'
+  },
+  bulkTogglePublishedApp: {
+    ru: 'Вкл/Выкл в приложении',
+    ka: 'აპლიკაციაში ჩართ/გამორთ'
+  },
+  bulkToggleStopList: {
+    ru: 'Вкл/Выкл стоп-лист',
+    ka: 'სტოპ-ლისტში ჩართ/გამორთ'
+  },
+  bulkRestore: {
+    ru: 'Восстановить',
+    ka: 'აღდგენა'
+  },
+  selectAllInCategory: {
+    ru: 'Выбрать все в категории',
+    ka: 'კატეგორიაში ყველას მონიშვნა'
+  },
+  bulkOperationSuccess: {
+    ru: 'Массовая операция выполнена успешно',
+    ka: 'მასობრივი ოპერაცია წარმატებით შესრულდა'
+  },
+  bulkOperationError: {
+    ru: 'Ошибка при выполнении массовой операции',
+    ka: 'მასობრივი ოპერაციის შესრულების შეცდომა'
+  },
+  selectCategory: {
+    ru: 'Выберите категорию',
+    ka: 'აირჩიეთ კატეგორია'
+  },
+  selectWorkshops: {
+    ru: 'Выберите цехи',
+    ka: 'აირჩიეთ სახელოსნოები'
+  },
+  selectAdditives: {
+    ru: 'Выберите модификаторы',
+    ka: 'აირჩიეთ მოდიფიკატორები'
+  },
+  enable: {
+    ru: 'Включить',
+    ka: 'ჩართვა'
+  },
+  disable: {
+    ru: 'Выключить',
+    ka: 'გამორთვა'
+  },
+  apply: {
+    ru: 'Применить',
+    ka: 'გამოყენება'
   }
 };
 
@@ -438,6 +544,324 @@ const OrderManagementDialog = ({
   );
 };
 
+// Диалог для массового перемещения в категорию
+const BulkMoveToCategoryDialog = ({
+  isOpen,
+  onClose,
+  categories = [],
+  language,
+  onApply,
+  selectedCount
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  categories: Category[];
+  language: Language;
+  onApply: (categoryId?: string) => Promise<void>;
+  selectedCount: number;
+}) => {
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [isApplying, setIsApplying] = useState(false);
+
+  const handleApply = async () => {
+    setIsApplying(true);
+    try {
+      await onApply(selectedCategoryId || undefined);
+      onClose();
+      setSelectedCategoryId('');
+    } catch (error) {
+      console.error('Error applying bulk move:', error);
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  // Подготовка опций для SearchableSelect
+  const categoryOptions = [
+    { id: '', label: translations.uncategorized[language] },
+    ...categories.map(category => ({
+      id: category.id,
+      label: category.title
+    }))
+  ];
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{translations.bulkMoveToCategory[language]}</DialogTitle>
+          <DialogDescription>
+            {translations.selectedCount[language](selectedCount)}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>{translations.selectCategory[language]}</Label>
+            <SearchableSelect
+              options={categoryOptions}
+              value={selectedCategoryId ? [selectedCategoryId] : []}
+              onChange={(value) => setSelectedCategoryId(value[0] || '')}
+              placeholder={translations.uncategorized[language]}
+              searchPlaceholder={language === 'ru' ? 'Поиск категории...' : 'კატეგორიის ძებნა...'}
+              emptyText={language === 'ru' ? 'Категории не найдены' : 'კატეგორიები ვერ მოიძებნა'}
+              multiple={false}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            {translations.cancel[language]}
+          </Button>
+          <Button onClick={handleApply} disabled={isApplying || !selectedCategoryId}>
+            {isApplying ? translations.saving[language] : translations.apply[language]}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// Диалог для массового назначения цехов
+const BulkAssignWorkshopsDialog = ({
+  isOpen,
+  onClose,
+  workshops = [],
+  language,
+  onApply,
+  selectedCount
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  workshops: Workshop[];
+  language: Language;
+  onApply: (workshopIds: string[]) => Promise<void>;
+  selectedCount: number;
+}) => {
+  const [selectedWorkshopIds, setSelectedWorkshopIds] = useState<string[]>([]);
+  const [isApplying, setIsApplying] = useState(false);
+
+  const handleApply = async () => {
+    setIsApplying(true);
+    try {
+      await onApply(selectedWorkshopIds);
+      onClose();
+      setSelectedWorkshopIds([]);
+    } catch (error) {
+      console.error('Error applying bulk assign workshops:', error);
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  // Подготовка опций для SearchableSelect
+  const workshopOptions = workshops.map(workshop => ({
+    id: workshop.id,
+    label: workshop.name
+  }));
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{translations.bulkAssignWorkshops[language]}</DialogTitle>
+          <DialogDescription>
+            {translations.selectedCount[language](selectedCount)}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>{translations.selectWorkshops[language]}</Label>
+            <SearchableSelect
+              options={workshopOptions}
+              value={selectedWorkshopIds}
+              onChange={setSelectedWorkshopIds}
+              placeholder={language === 'ru' ? 'Выберите цехи...' : 'აირჩიეთ სახელოსნოები...'}
+              searchPlaceholder={language === 'ru' ? 'Поиск цехов...' : 'სახელოსნოების ძებნა...'}
+              emptyText={language === 'ru' ? 'Цехи не найдены' : 'სახელოსნოები ვერ მოიძებნა'}
+              multiple={true}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            {translations.cancel[language]}
+          </Button>
+          <Button onClick={handleApply} disabled={isApplying || selectedWorkshopIds.length === 0}>
+            {isApplying ? translations.saving[language] : translations.apply[language]}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// Диалог для массового назначения модификаторов
+const BulkAssignAdditivesDialog = ({
+  isOpen,
+  onClose,
+  additives = [],
+  language,
+  onApply,
+  selectedCount
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  additives: any[];
+  language: Language;
+  onApply: (additiveIds?: string[]) => Promise<void>;
+  selectedCount: number;
+}) => {
+  const [selectedAdditiveIds, setSelectedAdditiveIds] = useState<string[]>([]);
+  const [isApplying, setIsApplying] = useState(false);
+
+  const handleApply = async () => {
+    setIsApplying(true);
+    try {
+      await onApply(selectedAdditiveIds.length > 0 ? selectedAdditiveIds : undefined);
+      onClose();
+      setSelectedAdditiveIds([]);
+    } catch (error) {
+      console.error('Error applying bulk assign additives:', error);
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  // Подготовка опций для SearchableSelect
+  const additiveOptions = additives.map(additive => ({
+    id: additive.id,
+    label: additive.title
+  }));
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{translations.bulkAssignAdditives[language]}</DialogTitle>
+          <DialogDescription>
+            {translations.selectedCount[language](selectedCount)}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>{translations.selectAdditives[language]}</Label>
+            <SearchableSelect
+              options={additiveOptions}
+              value={selectedAdditiveIds}
+              onChange={setSelectedAdditiveIds}
+              placeholder={language === 'ru' ? 'Выберите модификаторы...' : 'აირჩიეთ მოდიფიკატორები...'}
+              searchPlaceholder={language === 'ru' ? 'Поиск модификаторов...' : 'მოდიფიკატორების ძებნა...'}
+              emptyText={language === 'ru' ? 'Модификаторы не найдены' : 'მოდიფიკატორები ვერ მოიძებნა'}
+              multiple={true}
+            />
+            <p className="text-xs text-muted-foreground">
+              {language === 'ru' 
+                ? 'Оставьте пустым, чтобы очистить все модификаторы у выбранных продуктов'
+                : 'დატოვეთ ცარიელი, რომ გაასუფთავოთ მოდიფიკატორები არჩეული პროდუქტებიდან'
+              }
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            {translations.cancel[language]}
+          </Button>
+          <Button onClick={handleApply} disabled={isApplying}>
+            {isApplying ? translations.saving[language] : translations.apply[language]}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+// Диалог для массового переключения свойств
+const BulkToggleDialog = ({
+  isOpen,
+  onClose,
+  language,
+  onApply,
+  selectedCount,
+  title,
+  enableText,
+  disableText
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  language: Language;
+  onApply: (enable: boolean) => Promise<void>;
+  selectedCount: number;
+  title: string;
+  enableText: string;
+  disableText: string;
+}) => {
+  const [enable, setEnable] = useState<boolean>(true);
+  const [isApplying, setIsApplying] = useState(false);
+
+  const handleApply = async () => {
+    setIsApplying(true);
+    try {
+      await onApply(enable);
+      onClose();
+    } catch (error) {
+      console.error('Error applying bulk toggle:', error);
+    } finally {
+      setIsApplying(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>
+            {translations.selectedCount[language](selectedCount)}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  id="enable"
+                  checked={enable === true}
+                  onChange={() => setEnable(true)}
+                  className="h-4 w-4"
+                />
+                <label htmlFor="enable" className="cursor-pointer">
+                  {enableText}
+                </label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  id="disable"
+                  checked={enable === false}
+                  onChange={() => setEnable(false)}
+                  className="h-4 w-4"
+                />
+                <label htmlFor="disable" className="cursor-pointer">
+                  {disableText}
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            {translations.cancel[language]}
+          </Button>
+          <Button onClick={handleApply} disabled={isApplying}>
+            {isApplying ? translations.saving[language] : translations.apply[language]}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 const buildCategoryTree = (
   categories: Category[],
   products: Product[],
@@ -543,7 +967,9 @@ const ProductRow = ({
   isFirst,
   isLast,
   isClientFirst,
-  isClientLast
+  isClientLast,
+  selectedProducts,
+  onSelectProduct
 }: {
   product: Product;
   depth?: number;
@@ -560,12 +986,16 @@ const ProductRow = ({
   isLast: boolean;
   isClientFirst: boolean;
   isClientLast: boolean;
+  selectedProducts: Set<string>;
+  onSelectProduct: (id: string) => void;
 }) => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [loadingToggles, setLoadingToggles] = useState<Record<string, boolean>>({});
   const [loadingAdminOrder, setLoadingAdminOrder] = useState(false);
   const [loadingClientOrder, setLoadingClientOrder] = useState(false);
   const { user } = useAuth()
+  const isSelected = selectedProducts.has(product.id);
+
   const handleMoveUp = async () => {
     if (isFirst) return;
     setLoadingAdminOrder(true);
@@ -621,6 +1051,7 @@ const ProductRow = ({
       setLoadingClientOrder(false);
     }
   };
+  
   const handleToggle = async (productId: string, serviceMethod: ToggleMethods) => {
     const toggleKey = `${productId}-${serviceMethod}`;
     setLoadingToggles(prev => ({ ...prev, [toggleKey]: true }));
@@ -639,11 +1070,38 @@ const ProductRow = ({
 
   return (
     <>
-      <TableRow>
-        <TableCell className="font-medium" style={{ paddingLeft: `${depth * 20 + 12}px` }}>
+      <TableRow className={isSelected ? "bg-primary/10" : ""}>
+        <TableCell style={{ paddingLeft: `${depth * 20 + 12}px` }}>
           <div className="flex items-center gap-2">
-            {product.title}
+            <button
+              onClick={() => onSelectProduct(product.id)}
+              className="focus:outline-none"
+            >
+              {isSelected ? (
+                <CheckSquare className="h-4 w-4 text-primary" />
+              ) : (
+                <Square className="h-4 w-4 text-gray-400" />
+              )}
+            </button>
+            
           </div>
+        
+        </TableCell>
+        <TableCell>
+         {product.images && product.images.length > 0?
+           <Image
+              src={product.images[0]}
+              width={25}
+              height={25}
+              alt="Product"
+              className='rounded-sm'
+            />
+            :
+            <div className='w-[25px] h-[25px] bg-gray-200 rounded-sm'></div>
+          }
+        </TableCell>
+        <TableCell>
+          <span className="font-medium">{product.title}</span>
         </TableCell>
         { user.role === 'COOK' ? '' :
             (<>
@@ -768,7 +1226,10 @@ const CategoryRow = ({
   onMoveUp,
   onMoveDown,
   onClientMoveUp,
-  onClientMoveDown
+  onClientMoveDown,
+  selectedProducts,
+  onSelectProduct,
+  onSelectAllInCategory
 }: CategoryRowProps) => {
   const isExpanded = expandedCategories.has(category.id);
   const hasChildren = category.children.length > 0 || category.products.length > 0;
@@ -802,6 +1263,18 @@ const CategoryRow = ({
     }
   };
 
+  // Определяем, выбраны ли все продукты в категории
+  const allProductsInCategorySelected = category.products.every(
+    product => selectedProducts.has(product.id)
+  );
+  const someProductsInCategorySelected = category.products.some(
+    product => selectedProducts.has(product.id)
+  );
+
+  const handleSelectAllInCategory = () => {
+    onSelectAllInCategory(category.id);
+  };
+
   return (
     <>
       {(hasChildren || isUncategorized) && (
@@ -809,6 +1282,19 @@ const CategoryRow = ({
           <TableCell colSpan={10} className="font-medium" style={{ paddingLeft: `${depth * 20 + 12}px` }}>
             <div className="flex items-center justify-between">
               <div className="flex items-center">
+                <button
+                  onClick={handleSelectAllInCategory}
+                  className="focus:outline-none mr-2"
+                  title={translations.selectAllInCategory[language]}
+                >
+                  {allProductsInCategorySelected ? (
+                    <CheckSquare className="h-4 w-4 text-primary" />
+                  ) : someProductsInCategorySelected ? (
+                    <CheckSquare className="h-4 w-4 text-primary/50" />
+                  ) : (
+                    <Square className="h-4 w-4 text-gray-400" />
+                  )}
+                </button>
                 {hasChildren && !isUncategorized ? (
                   <Button
                     variant="ghost"
@@ -907,6 +1393,9 @@ const CategoryRow = ({
               onMoveDown={onMoveDown}
               onClientMoveUp={onClientMoveUp}
               onClientMoveDown={onClientMoveDown}
+              selectedProducts={selectedProducts}
+              onSelectProduct={onSelectProduct}
+              onSelectAllInCategory={onSelectAllInCategory}
             />
           ))}
           {category.products.map((product, index) => {
@@ -936,6 +1425,8 @@ const CategoryRow = ({
                 isLast={index === category.products.length - 1}
                 isClientFirst={isClientFirst}
                 isClientLast={isClientLast}
+                selectedProducts={selectedProducts}
+                onSelectProduct={onSelectProduct}
               />
             );
           })}
@@ -969,6 +1460,8 @@ const CategoryRow = ({
             isLast={index === category.products.length - 1}
             isClientFirst={isClientFirst}
             isClientLast={isClientLast}
+            selectedProducts={selectedProducts}
+            onSelectProduct={onSelectProduct}
           />
         );
       })}
@@ -982,13 +1475,29 @@ export const ProductTable = ({
   filteredProductIds,
   language,
   onDelete,
-  fetchData
+  fetchData,
+  categories,
+  workshops,
+  additives,
+  networks
 }: ProductTableProps) => {
   const router = useRouter();
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
   const { user } = useAuth()
+
+  // Состояния для диалогов массовых операций
+  const [bulkMoveDialogOpen, setBulkMoveDialogOpen] = useState(false);
+  const [bulkWorkshopsDialogOpen, setBulkWorkshopsDialogOpen] = useState(false);
+  const [bulkAdditivesDialogOpen, setBulkAdditivesDialogOpen] = useState(false);
+  const [bulkPrintLabelsDialogOpen, setBulkPrintLabelsDialogOpen] = useState(false);
+  const [bulkWebsiteDialogOpen, setBulkWebsiteDialogOpen] = useState(false);
+  const [bulkAppDialogOpen, setBulkAppDialogOpen] = useState(false);
+  const [bulkStopListDialogOpen, setBulkStopListDialogOpen] = useState(false);
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+
   // ФИЛЬТРАЦИЯ: используем filteredProductIds для фильтрации продуктов
   const filteredProducts = products.filter(product =>
     filteredProductIds.has(product.id)
@@ -1052,6 +1561,182 @@ export const ProductTable = ({
     } catch (error) {
       console.error('Error moving product down:', error);
       throw error;
+    }
+  };
+
+  // Обработчики для массовых операций
+  const handleSelectProduct = (productId: string) => {
+    const newSelected = new Set(selectedProducts);
+    if (newSelected.has(productId)) {
+      newSelected.delete(productId);
+    } else {
+      newSelected.add(productId);
+    }
+    setSelectedProducts(newSelected);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedProducts.size === filteredProducts.length) {
+      setSelectedProducts(new Set());
+    } else {
+      setSelectedProducts(new Set(filteredProducts.map(p => p.id)));
+    }
+  };
+
+  const handleSelectAllInCategory = (categoryId: string) => {
+    // Находим все продукты в категории и её подкатегориях
+    const getAllProductsInCategory = (catId: string): string[] => {
+      const cat = categoryTree.find(c => c.id === catId);
+      if (!cat) return [];
+
+      let productIds = cat.products.map(p => p.id);
+      
+      // Рекурсивно получаем продукты из дочерних категорий
+      const getProductsFromChildren = (children: CategoryNode[]): string[] => {
+        let ids: string[] = [];
+        children.forEach(child => {
+          ids = [...ids, ...child.products.map(p => p.id)];
+          ids = [...ids, ...getProductsFromChildren(child.children)];
+        });
+        return ids;
+      };
+
+      productIds = [...productIds, ...getProductsFromChildren(cat.children)];
+      return productIds;
+    };
+
+    const categoryProductIds = getAllProductsInCategory(categoryId);
+    const allSelected = categoryProductIds.every(id => selectedProducts.has(id));
+
+    const newSelected = new Set(selectedProducts);
+    if (allSelected) {
+      // Если все выбраны - снимаем выделение
+      categoryProductIds.forEach(id => newSelected.delete(id));
+    } else {
+      // Если не все выбраны - выделяем все
+      categoryProductIds.forEach(id => newSelected.add(id));
+    }
+    setSelectedProducts(newSelected);
+  };
+
+  // Обработчики массовых операций
+  const handleBulkMoveToCategory = async (categoryId?: string) => {
+    try {
+      await ProductService.bulkUpdateCategory({
+        productIds: Array.from(selectedProducts),
+        categoryId
+      });
+      toast.success(translations.bulkOperationSuccess[language]);
+      fetchData();
+      setSelectedProducts(new Set());
+    } catch (error) {
+      console.error('Error in bulk move to category:', error);
+      toast.error(translations.bulkOperationError[language]);
+    }
+  };
+
+  const handleBulkAssignWorkshops = async (workshopIds: string[]) => {
+    try {
+      await ProductService.bulkAssignWorkshops({
+        productIds: Array.from(selectedProducts),
+        workshopIds
+      });
+      toast.success(translations.bulkOperationSuccess[language]);
+      fetchData();
+      setSelectedProducts(new Set());
+    } catch (error) {
+      console.error('Error in bulk assign workshops:', error);
+      toast.error(translations.bulkOperationError[language]);
+    }
+  };
+
+  const handleBulkAssignAdditives = async (additiveIds?: string[]) => {
+    try {
+      await ProductService.bulkAssignAdditives({
+        productIds: Array.from(selectedProducts),
+        additiveIds
+      });
+      toast.success(translations.bulkOperationSuccess[language]);
+      fetchData();
+      setSelectedProducts(new Set());
+    } catch (error) {
+      console.error('Error in bulk assign additives:', error);
+      toast.error(translations.bulkOperationError[language]);
+    }
+  };
+
+  const handleBulkTogglePrintLabels = async (enable: boolean) => {
+    try {
+      await ProductService.bulkTogglePrintLabels({
+        productIds: Array.from(selectedProducts),
+        enable
+      });
+      toast.success(translations.bulkOperationSuccess[language]);
+      fetchData();
+      setSelectedProducts(new Set());
+    } catch (error) {
+      console.error('Error in bulk toggle print labels:', error);
+      toast.error(translations.bulkOperationError[language]);
+    }
+  };
+
+  const handleBulkTogglePublishedWebsite = async (enable: boolean) => {
+    try {
+      await ProductService.bulkTogglePublishedWebsite({
+        productIds: Array.from(selectedProducts),
+        enable
+      });
+      toast.success(translations.bulkOperationSuccess[language]);
+      fetchData();
+      setSelectedProducts(new Set());
+    } catch (error) {
+      console.error('Error in bulk toggle published website:', error);
+      toast.error(translations.bulkOperationError[language]);
+    }
+  };
+
+  const handleBulkTogglePublishedApp = async (enable: boolean) => {
+    try {
+      await ProductService.bulkTogglePublishedApp({
+        productIds: Array.from(selectedProducts),
+        enable
+      });
+      toast.success(translations.bulkOperationSuccess[language]);
+      fetchData();
+      setSelectedProducts(new Set());
+    } catch (error) {
+      console.error('Error in bulk toggle published app:', error);
+      toast.error(translations.bulkOperationError[language]);
+    }
+  };
+
+  const handleBulkToggleStopList = async (enable: boolean) => {
+    try {
+      await ProductService.bulkToggleStopList({
+        productIds: Array.from(selectedProducts),
+        enable
+      });
+      toast.success(translations.bulkOperationSuccess[language]);
+      fetchData();
+      setSelectedProducts(new Set());
+    } catch (error) {
+      console.error('Error in bulk toggle stop list:', error);
+      toast.error(translations.bulkOperationError[language]);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    try {
+      await ProductService.bulkDelete({
+        productIds: Array.from(selectedProducts)
+      });
+      toast.success(translations.bulkOperationSuccess[language]);
+      fetchData();
+      setSelectedProducts(new Set());
+      setBulkDeleteDialogOpen(false);
+    } catch (error) {
+      console.error('Error in bulk delete:', error);
+      toast.error(translations.bulkOperationError[language]);
     }
   };
 
@@ -1138,90 +1823,286 @@ export const ProductTable = ({
   };
 
   return (
-    <div className="rounded-md border mt-4">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>
-              <button
-                className="flex items-center"
-                onClick={() => handleSort('title')}
+    <>
+      {/* Панель массовых операций */}
+      {selectedProducts.size > 0 && (
+        <div className="bg-primary/10 p-3 rounded-lg mb-4 border border-primary/20">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Badge variant="secondary" className="text-sm">
+                {translations.selectedCount[language](selectedProducts.size)}
+              </Badge>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSelectAll}
+                className="h-8 px-2 text-sm"
               >
-                {translations.title[language]}
-                {getSortIcon('title')}
-              </button>
-            </TableHead>
-            { user.role === 'COOK' ? '' :
-            (<>
-            <TableHead>{translations.workshops[language]}</TableHead>
-            <TableHead>
-              <button
-                className="flex items-center"
-                onClick={() => handleSort('price')}
+                {selectedProducts.size === filteredProducts.length ? (
+                  <>
+                    <Square className="h-3 w-3 mr-1" />
+                    {translations.clearSelection[language]}
+                  </>
+                ) : (
+                  <>
+                    <CheckSquare className="h-3 w-3 mr-1" />
+                    {translations.selectAll[language]}
+                  </>
+                )}
+              </Button>
+            </div>
+            
+            <div className="flex flex-wrap items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8">
+                    <CheckSquare className="h-3 w-3 mr-1" />
+                    {translations.bulkOperations[language]}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onClick={() => setBulkMoveDialogOpen(true)}>
+                    {translations.bulkMoveToCategory[language]}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setBulkWorkshopsDialogOpen(true)}>
+                    {translations.bulkAssignWorkshops[language]}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setBulkAdditivesDialogOpen(true)}>
+                    {translations.bulkAssignAdditives[language]}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setBulkPrintLabelsDialogOpen(true)}>
+                    {translations.bulkTogglePrintLabels[language]}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setBulkWebsiteDialogOpen(true)}>
+                    {translations.bulkTogglePublishedWebsite[language]}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setBulkAppDialogOpen(true)}>
+                    {translations.bulkTogglePublishedApp[language]}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setBulkStopListDialogOpen(true)}>
+                    {translations.bulkToggleStopList[language]}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem 
+                    onClick={() => setBulkDeleteDialogOpen(true)}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    {translations.bulkDelete[language]}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedProducts(new Set())}
+                className="h-8"
               >
-                {translations.price[language]}
-                {getSortIcon('price')}
-              </button>
-            </TableHead>
-            <TableHead>
-              <button
-                className="flex items-center"
-                onClick={() => handleSort('adminOrder')}
-              >
-                Панель
-                {getSortIcon('adminOrder')}
-              </button>
-            </TableHead>
-            <TableHead>
-              <button
-                className="flex items-center"
-                onClick={() => handleSort('clientOrder')}
-              >
-                Клиент
-                {getSortIcon('clientOrder')}
-              </button>
-            </TableHead>
-            <TableHead className="text-center">{translations.printLabels[language]}</TableHead>
-            <TableHead className="text-center">{translations.publishedOnWebsite[language]}</TableHead>
-            <TableHead className="text-center">{translations.publishedInApp[language]}</TableHead></>)}
-            <TableHead className="text-center">{translations.isStopList[language]}</TableHead>
-             { user.role === 'COOK' ? '' :
-            (<TableHead className="text-right">{translations.actions[language]}</TableHead>)}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {isLoading ? (
+                {translations.clearSelection[language]}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Диалоги массовых операций */}
+      <BulkMoveToCategoryDialog
+        isOpen={bulkMoveDialogOpen}
+        onClose={() => setBulkMoveDialogOpen(false)}
+        categories={categories}
+        language={language}
+        onApply={handleBulkMoveToCategory}
+        selectedCount={selectedProducts.size}
+      />
+
+      <BulkAssignWorkshopsDialog
+        isOpen={bulkWorkshopsDialogOpen}
+        onClose={() => setBulkWorkshopsDialogOpen(false)}
+        workshops={workshops}
+        language={language}
+        onApply={handleBulkAssignWorkshops}
+        selectedCount={selectedProducts.size}
+      />
+
+      <BulkAssignAdditivesDialog
+        isOpen={bulkAdditivesDialogOpen}
+        onClose={() => setBulkAdditivesDialogOpen(false)}
+        additives={additives}
+        language={language}
+        onApply={handleBulkAssignAdditives}
+        selectedCount={selectedProducts.size}
+      />
+
+      <BulkToggleDialog
+        isOpen={bulkPrintLabelsDialogOpen}
+        onClose={() => setBulkPrintLabelsDialogOpen(false)}
+        language={language}
+        onApply={handleBulkTogglePrintLabels}
+        selectedCount={selectedProducts.size}
+        title={translations.bulkTogglePrintLabels[language]}
+        enableText={translations.enable[language]}
+        disableText={translations.disable[language]}
+      />
+
+      <BulkToggleDialog
+        isOpen={bulkWebsiteDialogOpen}
+        onClose={() => setBulkWebsiteDialogOpen(false)}
+        language={language}
+        onApply={handleBulkTogglePublishedWebsite}
+        selectedCount={selectedProducts.size}
+        title={translations.bulkTogglePublishedWebsite[language]}
+        enableText={translations.enable[language]}
+        disableText={translations.disable[language]}
+      />
+
+      <BulkToggleDialog
+        isOpen={bulkAppDialogOpen}
+        onClose={() => setBulkAppDialogOpen(false)}
+        language={language}
+        onApply={handleBulkTogglePublishedApp}
+        selectedCount={selectedProducts.size}
+        title={translations.bulkTogglePublishedApp[language]}
+        enableText={translations.enable[language]}
+        disableText={translations.disable[language]}
+      />
+
+      <BulkToggleDialog
+        isOpen={bulkStopListDialogOpen}
+        onClose={() => setBulkStopListDialogOpen(false)}
+        language={language}
+        onApply={handleBulkToggleStopList}
+        selectedCount={selectedProducts.size}
+        title={translations.bulkToggleStopList[language]}
+        enableText={translations.enable[language]}
+        disableText={translations.disable[language]}
+      />
+
+      {/* Диалог подтверждения массового удаления */}
+      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{translations.bulkDelete[language]}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {language === 'ru' 
+                ? `Вы уверены, что хотите удалить ${selectedProducts.size} продукт(ов)?` 
+                : `დარწმუნებული ხართ, რომ გსურთ ${selectedProducts.size} პროდუქტის წაშლა?`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{translations.cancel[language]}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleBulkDelete}>
+              {translations.confirm[language]}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <div className="rounded-md border mt-4">
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell colSpan={10} className="h-24 text-center">
-                {translations.loading[language]}
-              </TableCell>
+              <TableHead className="w-10">
+                <button
+                  onClick={handleSelectAll}
+                  className="focus:outline-none"
+                  title={selectedProducts.size === filteredProducts.length ? 
+                    translations.clearSelection[language] : 
+                    translations.selectAll[language]
+                  }
+                >
+                  {selectedProducts.size === filteredProducts.length ? (
+                    <CheckSquare className="h-4 w-4 text-primary" />
+                  ) : (
+                    <Square className="h-4 w-4 text-gray-400" />
+                  )}
+                </button>
+              </TableHead>
+              <TableHead></TableHead>
+              <TableHead>
+                <button
+                  className="flex items-center"
+                  onClick={() => handleSort('title')}
+                >
+                  {translations.title[language]}
+                  {getSortIcon('title')}
+                </button>
+              </TableHead>
+              { user.role === 'COOK' ? '' :
+              (<>
+              <TableHead>{translations.workshops[language]}</TableHead>
+              <TableHead>
+                <button
+                  className="flex items-center"
+                  onClick={() => handleSort('price')}
+                >
+                  {translations.price[language]}
+                  {getSortIcon('price')}
+                </button>
+              </TableHead>
+              <TableHead>
+                <button
+                  className="flex items-center"
+                  onClick={() => handleSort('adminOrder')}
+                >
+                  Панель
+                  {getSortIcon('adminOrder')}
+                </button>
+              </TableHead>
+              <TableHead>
+                <button
+                  className="flex items-center"
+                  onClick={() => handleSort('clientOrder')}
+                >
+                  Клиент
+                  {getSortIcon('clientOrder')}
+                </button>
+              </TableHead>
+              <TableHead className="text-center">{translations.printLabels[language]}</TableHead>
+              <TableHead className="text-center">{translations.publishedOnWebsite[language]}</TableHead>
+              <TableHead className="text-center">{translations.publishedInApp[language]}</TableHead></>)}
+              <TableHead className="text-center">{translations.isStopList[language]}</TableHead>
+               { user.role === 'COOK' ? '' :
+              (<TableHead className="text-right">{translations.actions[language]}</TableHead>)}
             </TableRow>
-          ) : sortedCategoryTree.length > 0 ? (
-            sortedCategoryTree.map(category => (
-              <CategoryRow
-                key={category.id}
-                category={category}
-                language={language}
-                onDelete={onDelete}
-                fetchData={fetchData}
-                router={router}
-                expandedCategories={expandedCategories}
-                toggleCategory={toggleCategory}
-                onMoveUp={handleMoveUp}
-                onMoveDown={handleMoveDown}
-                onClientMoveUp={handleClientMoveUp}
-                onClientMoveDown={handleClientMoveDown}
-              />
-            ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={10} className="h-24 text-center">
-                {translations.noProducts[language]}
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </div>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={11} className="h-24 text-center">
+                  {translations.loading[language]}
+                </TableCell>
+              </TableRow>
+            ) : sortedCategoryTree.length > 0 ? (
+              sortedCategoryTree.map(category => (
+                <CategoryRow
+                  key={category.id}
+                  category={category}
+                  language={language}
+                  onDelete={onDelete}
+                  fetchData={fetchData}
+                  router={router}
+                  expandedCategories={expandedCategories}
+                  toggleCategory={toggleCategory}
+                  onMoveUp={handleMoveUp}
+                  onMoveDown={handleMoveDown}
+                  onClientMoveUp={handleClientMoveUp}
+                  onClientMoveDown={handleClientMoveDown}
+                  selectedProducts={selectedProducts}
+                  onSelectProduct={handleSelectProduct}
+                  onSelectAllInCategory={handleSelectAllInCategory}
+                />
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={11} className="h-24 text-center">
+                  {translations.noProducts[language]}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </>
   );
 };

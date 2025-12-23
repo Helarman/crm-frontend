@@ -12,62 +12,53 @@ import { WorkshopService } from "@/lib/api/workshop.service";
 import { Language } from '@/lib/stores/language-store';
 import SearchableSelect from '../product/SearchableSelect';
 import { toast } from 'sonner';
+import { useEffect, useState } from 'react';
 
 interface WorkshopModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmitSuccess: () => void;
   workshopId: string | null;
-  formData: any;
-  onInputChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
-  onSelectChange: (name: string, value: string | string[]) => void;
   language: string;
+  networkId: string;
   restaurants: any[];
 }
 
 const translations = {
-  addWorkshop: {
-    ru: 'Добавить цех',
-    ka: 'სახელოსნოს დამატება',
-  },
-  editWorkshop: {
-    ru: 'Редактировать цех',
-    ka: 'სახელოსნოს რედაქტირება',
-  },
-  fields: {
-    name: {
-      ru: 'Название цеха',
-      ka: 'სახელოსნოს სახელი',
+  ru: {
+    addWorkshop: 'Добавить цех',
+    editWorkshop: 'Редактировать цех',
+    fields: {
+      name: 'Название цеха',
+      network: 'Сеть',
+      restaurants: 'Рестораны',
+      selectRestaurants: 'Выберите рестораны',
+      noRestaurants: 'Рестораны не найдены',
+      selectAtLeastOneRestaurant: 'Выберите хотя бы один ресторан',
+      networkReadOnly: 'Сеть нельзя изменить'
     },
-    restaurants: {
-      ru: 'Рестораны',
-      ka: 'რესტორანები',
-    },
-    users: {
-      ru: 'Пользователи',
-      ka: 'მომხმარებლები',
-    },
-    selectRestaurants: {
-      ru: 'Выберите рестораны',
-      ka: 'აირჩიეთ რესტორანები',
-    },
-    noRestaurants: {
-      ru: 'Рестораны не найдены',
-      ka: 'რესტორანები არ მოიძებნა',
-    },
-    selectAtLeastOneRestaurant: {
-      ru: 'Выберите хотя бы один ресторан',
-      ka: 'აირჩიეთ მინიმუმ ერთი რესტორანი',
-    }
+    save: 'Сохранить',
+    cancel: 'Отмена',
+    creating: 'Создание...',
+    updating: 'Обновление...'
   },
-  save: {
-    ru: 'Сохранить',
-    ka: 'შენახვა',
-  },
-  cancel: {
-    ru: 'Отмена',
-    ka: 'გაუქმება',
-  },
+  ka: {
+    addWorkshop: 'სახელოსნოს დამატება',
+    editWorkshop: 'სახელოსნოს რედაქტირება',
+    fields: {
+      name: 'სახელოსნოს სახელი',
+      network: 'ქსელი',
+      restaurants: 'რესტორანები',
+      selectRestaurants: 'აირჩიეთ რესტორანები',
+      noRestaurants: 'რესტორანები არ მოიძებნა',
+      selectAtLeastOneRestaurant: 'აირჩიეთ მინიმუმ ერთი რესტორანი',
+      networkReadOnly: 'ქსელის შეცვლა შეუძლებელია'
+    },
+    save: 'შენახვა',
+    cancel: 'გაუქმება',
+    creating: 'ქმნიან...',
+    updating: 'განახლება...'
+  }
 };
 
 export const WorkshopModal = ({
@@ -75,101 +66,199 @@ export const WorkshopModal = ({
   onClose,
   onSubmitSuccess,
   workshopId,
-  formData,
-  onInputChange,
-  onSelectChange,
   language,
+  networkId,
   restaurants,
 }: WorkshopModalProps) => {
- const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  
-  if (!formData.restaurantIds || formData.restaurantIds.length === 0) {
-    toast.warning(translations.fields.selectAtLeastOneRestaurant[language as Language]);
-    return;
-  }
+  const [formData, setFormData] = useState({
+    name: '',
+    networkId: networkId,
+    restaurantIds: [] as string[]
+  });
+  const [isLoading, setIsLoading] = useState(false);
 
-  if (!formData.name?.trim()) {
-    toast.warning('Название цеха обязательно');
-    return;
-  }
+  const t = translations[language as 'ru' | 'ka'];
 
-  try {
-    const submitData = {
-      name: formData.name,
-      restaurantIds: formData.restaurantIds,
-    };
-
-    if (workshopId) {
-      await WorkshopService.update(workshopId, submitData);
+  // Загрузка данных цеха при редактировании
+  useEffect(() => {
+    if (workshopId && isOpen) {
+      fetchWorkshopData();
     } else {
-      await WorkshopService.create(submitData);
+      resetForm();
     }
-    onSubmitSuccess();
-  } catch (error) {
-    console.error('Error saving workshop:', error);
-    toast.error('Ошибка при сохранении цеха');
-  }
-};
+  }, [workshopId, isOpen, networkId]);
+
+  const fetchWorkshopData = async () => {
+    try {
+      const workshop = await WorkshopService.findOne(workshopId!);
+      setFormData({
+        name: workshop.name,
+        networkId: workshop.networkId || networkId,
+        restaurantIds: workshop.restaurantIds || []
+      });
+    } catch (error) {
+      console.error('Error fetching workshop:', error);
+      toast.error(language === 'ru' ? 'Ошибка загрузки цеха' : 'სახელოსნოს ჩატვირთვის შეცდომა');
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      networkId: networkId,
+      restaurantIds: []
+    });
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSelectChange = (name: string, value: string | string[]) => {
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.name?.trim()) {
+      toast.warning(language === 'ru' ? 'Название цеха обязательно' : 'სახელოსნოს სახელი სავალდებულოა');
+      return;
+    }
+
+    if (!formData.restaurantIds || formData.restaurantIds.length === 0) {
+      toast.warning(t.fields.selectAtLeastOneRestaurant);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const submitData = {
+        name: formData.name.trim(),
+        networkId: formData.networkId,
+        restaurantIds: formData.restaurantIds,
+      };
+
+      if (workshopId) {
+        await WorkshopService.update(workshopId, submitData);
+        toast.success(language === 'ru' ? 'Цех обновлен' : 'სახელოსნო განახლდა');
+      } else {
+        await WorkshopService.create(submitData);
+        toast.success(language === 'ru' ? 'Цех создан' : 'სახელოსნო შეიქმნა');
+      }
+      
+      onSubmitSuccess();
+    } catch (error: any) {
+      console.error('Error saving workshop:', error);
+      toast.error(
+        language === 'ru' ? 'Ошибка при сохранении цеха' : 'სახელოსნოს შენახვის შეცდომა'
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const restaurantOptions = restaurants.map(restaurant => ({
     id: restaurant.id,
     label: restaurant.title
   }));
 
+  // Фильтруем опции по выбранным значениям (для сохранения порядка выбора)
+  const selectedRestaurants = restaurantOptions.filter(option => 
+    formData.restaurantIds.includes(option.id)
+  );
+
+  const unselectedRestaurants = restaurantOptions.filter(option => 
+    !formData.restaurantIds.includes(option.id)
+  );
+
+  const sortedRestaurantOptions = [...selectedRestaurants, ...unselectedRestaurants];
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[80vh] min-h-[50vh] overflow-y-auto max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {workshopId ? translations.editWorkshop[language as Language] : translations.addWorkshop[language as Language]}
+            {workshopId ? t.editWorkshop : t.addWorkshop}
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="space-y-4 py-4">
-            {/* Основные поля */}
+            {/* Название цеха */}
             <div className="grid grid-cols-12 items-start gap-2">
               <Label htmlFor="name" className="col-span-3 text-left">
-                {translations.fields.name[language as Language]}
+                {t.fields.name}
               </Label>
               <Input
                 id="name"
                 name="name"
                 value={formData.name}
-                onChange={onInputChange}
+                onChange={handleInputChange}
                 className="col-span-9"
                 required
+                disabled={isLoading}
               />
             </div>
 
-            {/* Рестораны - ОБЯЗАТЕЛЬНОЕ поле */}
+
+            {/* Рестораны сети */}
             {restaurants.length > 0 && (
               <div className="grid grid-cols-12 items-start gap-2">
                 <Label className="col-span-3 text-left">
-                  {translations.fields.restaurants[language as Language]}
+                  {t.fields.restaurants}
                 </Label>
                 <div className="col-span-9">
                   <SearchableSelect
-                    options={restaurantOptions}
-                    value={formData.restaurantIds || []}
-                    onChange={(values) => onSelectChange('restaurantIds', values)}
-                    placeholder={translations.fields.selectRestaurants[language as Language]}
-                    searchPlaceholder={translations.fields.restaurants[language as Language]}
-                    emptyText={translations.fields.noRestaurants[language as Language]}
+                    options={sortedRestaurantOptions}
+                    value={formData.restaurantIds}
+                    onChange={(values) => handleSelectChange('restaurantIds', values)}
+                    placeholder={t.fields.selectRestaurants}
+                    searchPlaceholder={t.fields.restaurants}
+                    emptyText={t.fields.noRestaurants}
                     multiple={true}
+                    disabled={isLoading}
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    {translations.fields.selectAtLeastOneRestaurant[language as Language]}
+                    {t.fields.selectAtLeastOneRestaurant}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Если нет ресторанов в сети */}
+            {restaurants.length === 0 && (
+              <div className="grid grid-cols-12 items-start gap-2">
+                <Label className="col-span-3 text-left">
+                  {t.fields.restaurants}
+                </Label>
+                <div className="col-span-9">
+                  <p className="text-sm text-muted-foreground">
+                    {language === 'ru' 
+                      ? 'В этой сети нет ресторанов. Сначала добавьте рестораны в сеть.' 
+                      : 'ამ ქსელში რესტორანები არ არის. ჯერ დაამატეთ რესტორანები ქსელში.'}
                   </p>
                 </div>
               </div>
             )}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              {translations.cancel[language as Language]}
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={onClose}
+              disabled={isLoading}
+            >
+              {t.cancel}
             </Button>
-            <Button type="submit">{translations.save[language as Language]}</Button>
+            <Button 
+              type="submit" 
+              disabled={isLoading || restaurants.length === 0}
+            >
+              {isLoading 
+                ? (workshopId ? t.updating : t.creating)
+                : t.save}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

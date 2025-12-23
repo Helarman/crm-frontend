@@ -69,7 +69,6 @@ const ProductEditPage = () => {
 
   const [selectedAdditives, setSelectedAdditives] = useState<string[]>([])
   const [additives, setAdditives] = useState<{ id: string; title: string; price: number }[]>([])
-  const [allRestaurants, setAllRestaurants] = useState<{ id: string; title: string }[]>([])
   const [userRestaurants, setUserRestaurants] = useState<{ id: string; title: string }[]>([])
   const [categories, setCategories] = useState<{ id: string; title: string }[]>([])
   const [workshops, setWorkshops] = useState<Workshop[]>([])
@@ -86,27 +85,19 @@ const ProductEditPage = () => {
   const [isInventoryLoading, setIsInventoryLoading] = useState(false)
 
   useEffect(() => {
-    loadData()
+      loadData()
     loadCategories()
-    loadRestaurants()
     loadWorkshops()
     loadInventoryItems()
     loadAdditives()
   }, [])
 
-  useEffect(() => {
-    if (user?.restaurant && allRestaurants.length > 0) {
-      const filteredRestaurants = allRestaurants.filter(restaurant => 
-        user.restaurant?.some((userRestaurant : Restaurant) => userRestaurant.id === restaurant.id)
-      )
-      setUserRestaurants(filteredRestaurants)
-    }
-  }, [user, allRestaurants])
 
   const loadWorkshops = async () => {
     setIsWorkshopsLoading(true)
     try {
-      const data = await WorkshopService.getAll()
+      const product = await ProductService.getById(productId as string)
+      const data = await WorkshopService.getByNetworkId(product.networkId)
       setWorkshops(data)
     } catch (error) {
       console.error('Failed to load workshops', error)
@@ -148,12 +139,19 @@ const ProductEditPage = () => {
     
     setIsLoading(true)
     try {
-     const [product, productAdditives, prices, productIngredients] = await Promise.all([
+      const [product, productAdditives, prices, productIngredients] = await Promise.all([
         ProductService.getById(productId as string),
         AdditiveService.getByProduct(productId as string),
         ProductService.getRestaurantPrices(productId as string),
         ProductService.getIngredients(productId as string),
       ])
+       const networkId = product.networkId
+
+        if (networkId) {
+          const userRestaurantsData = await RestaurantService.getRestaurantsByUserAndNetwork(user.id, networkId)
+          setUserRestaurants(userRestaurantsData)
+        }
+
       setFormData({
         title: product.title,
         description: product.description,
@@ -229,18 +227,6 @@ const ProductEditPage = () => {
       console.error('Failed to load categories', error)
     } finally {
       setIsCategoriesLoading(false)
-    }
-  }
-
-  const loadRestaurants = async () => {
-    setIsRestaurantsLoading(true)
-    try {
-      const data = await RestaurantService.getAll()
-      setAllRestaurants(data)
-    } catch (error) {
-      console.error('Failed to load restaurants', error)
-    } finally {
-      setIsRestaurantsLoading(false)
     }
   }
 
@@ -894,7 +880,7 @@ const ProductEditPage = () => {
       </div>
 
       <Tabs defaultValue="basic" className="w-full">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-1 md:grid-cols-7">
           <TabsTrigger value="basic" onClick={() => setCurrentStep('basic')}>
             {translations.basic[language]}
           </TabsTrigger>

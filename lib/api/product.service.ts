@@ -129,7 +129,37 @@ export interface CategoryOrderStats {
   }>;
 }
 
+export interface BulkDeleteRequest {
+  productIds: string[];
+}
+
+export interface BulkCategoryRequest {
+  productIds: string[];
+  categoryId?: string;
+}
+
+export interface BulkWorkshopsRequest {
+  productIds: string[];
+  workshopIds: string[];
+}
+
+export interface BulkAdditivesRequest {
+  productIds: string[];
+  additiveIds?: string[];
+}
+
+export interface BulkToggleRequest {
+  productIds: string[];
+  enable: boolean;
+}
+
+export interface RestoreRequest {
+  productIds: string[];
+}
+
 export const ProductService = {
+  // ... существующие методы ...
+
   getAll: async (searchTerm?: string) => {
     const { data } = await api.get('/products', { params: { searchTerm } });
     return data;
@@ -153,14 +183,95 @@ export const ProductService = {
   delete: async (id: string) => {
     await api.delete(`/products/${id}`);
   },
+
+  // Массовые операции
+  deleteMultiple: async (productIds: string[]) => {
+    const { data } = await api.post('/products/delete-multiple', { productIds });
+    return data;
+  },
+
+  restoreProducts: async (productIds: string[]) => {
+    const { data } = await api.post('/products/restore', { productIds });
+    return data;
+  },
+
+  updateCategoryForMultiple: async (productIds: string[], categoryId?: string) => {
+    const { data } = await api.post('/products/update-category-multiple', { 
+      productIds, 
+      categoryId 
+    });
+    return data;
+  },
+
+  assignWorkshopsToMultiple: async (productIds: string[], workshopIds: string[]) => {
+    const { data } = await api.post('/products/assign-workshops-multiple', { 
+      productIds, 
+      workshopIds 
+    });
+    return data;
+  },
+
+  assignAdditivesToMultiple: async (productIds: string[], additiveIds?: string[]) => {
+    const { data } = await api.post('/products/assign-additives-multiple', { 
+      productIds, 
+      additiveIds 
+    });
+    return data;
+  },
+
+  togglePrintLabelsForMultiple: async (productIds: string[], enable: boolean) => {
+    const { data } = await api.post('/products/toggle-print-labels-multiple', { 
+      productIds, 
+      enable 
+    });
+    return data;
+  },
+
+  togglePublishedOnWebsiteForMultiple: async (productIds: string[], enable: boolean) => {
+    const { data } = await api.post('/products/toggle-published-website-multiple', { 
+      productIds, 
+      enable 
+    });
+    return data;
+  },
+
+  togglePublishedInAppForMultiple: async (productIds: string[], enable: boolean) => {
+    const { data } = await api.post('/products/toggle-published-app-multiple', { 
+      productIds, 
+      enable 
+    });
+    return data;
+  },
+
+  toggleStopListForMultiple: async (productIds: string[], enable: boolean) => {
+    const { data } = await api.post('/products/toggle-stop-list-multiple', { 
+      productIds, 
+      enable 
+    });
+    return data;
+  },
+
+  getDeletedProducts: async (searchTerm?: string) => {
+    const { data } = await api.get('/products/deleted', { 
+      params: { searchTerm } 
+    });
+    return data;
+  },
+
+  hardDelete: async (id: string) => {
+    await api.delete(`/products/hard-delete/${id}`);
+  },
+
   getByRestaurant: async (restaurantId: string) => {
     const { data } = await api.get(`/restaurants/${restaurantId}/products`);
     return data;
   },
+  
   getRestaurants: async (productId: string) => {
     const { data } = await api.get(`/products/${productId}/restaurants`);
     return data;
   },
+  
   updateRestaurants: async (productId: string, restaurantIds: string[]) => {
     const { data } = await api.put(`/products/${productId}/restaurants`, { restaurantIds });
     return data;
@@ -193,11 +304,13 @@ export const ProductService = {
     const { data } = await api.get(`/categories/${categoryId}/products`);
     return data;
   },
+  
   async getIngredients(productId: string): Promise<{ inventoryItemId: string, quantity: number }[]> {
     const { data } = await api.get(`/products/${productId}/ingredients`);
     console.log(data)
     return data;
   },
+  
   togglePrintLabels: async (id: string) => {
     const { data } = await api.put(`/products/${id}/toggle-print-labels`);
     return data;
@@ -217,6 +330,7 @@ export const ProductService = {
     const { data } = await api.put(`/products/${id}/toggle-stop-list`);
     return data;
   },
+  
   updateSortOrder: async (id: string, sortOrder: number) => {
     const { data } = await api.post(`/products/${id}/sort-order`, { sortOrder });
     return data;
@@ -234,6 +348,7 @@ export const ProductService = {
     const { data } = await api.get(`/products/category/${categoryId}/order-stats`);
     return data;
   },
+  
   async updateProductOrder(productId: string, newOrder: number, categoryId: string) {
     const response = await api.patch(`/products/order/admin/${productId}`, {
       newOrder,
@@ -291,10 +406,71 @@ export const ProductService = {
   async normalizeClientOrder(categoryId: string) {
     const response = await api.post(`/products/order/client/normalize/${categoryId}`);
     return response.data;
-  }
-  ,
-     getByNetwork: async (networkId: string) => {
+  },
+  
+  getByNetwork: async (networkId: string) => {
     const { data } = await api.get(`/products/by-network/${networkId}`);
     return data;
   },
+
+  // Новые методы для работы с сетями
+  assignNetworkToProducts: async (networkId: string, productIds?: string[]) => {
+    const { data } = await api.post('/products/assign-network', {
+      networkId,
+      productIds
+    });
+    return data;
+  },
+
+  getProductsWithoutNetwork: async () => {
+    const { data } = await api.get('/products/without-network');
+    return data;
+  },
+
+  // Массовые операции (альтернативные интерфейсы)
+  bulkDelete: async (data: BulkDeleteRequest) => {
+    const response = await api.post('/products/delete-multiple', data);
+    return response.data;
+  },
+
+  bulkRestore: async (data: RestoreRequest) => {
+    const response = await api.post('/products/restore', data);
+    return response.data;
+  },
+
+  bulkUpdateCategory: async (data: BulkCategoryRequest) => {
+    const response = await api.post('/products/update-category-multiple', data);
+    return response.data;
+  },
+
+  bulkAssignWorkshops: async (data: BulkWorkshopsRequest) => {
+    const response = await api.post('/products/assign-workshops-multiple', data);
+    return response.data;
+  },
+
+  bulkAssignAdditives: async (data: BulkAdditivesRequest) => {
+    const response = await api.post('/products/assign-additives-multiple', data);
+    return response.data;
+  },
+
+  bulkTogglePrintLabels: async (data: BulkToggleRequest) => {
+    const response = await api.post('/products/toggle-print-labels-multiple', data);
+    return response.data;
+  },
+
+  bulkTogglePublishedWebsite: async (data: BulkToggleRequest) => {
+    const response = await api.post('/products/toggle-published-website-multiple', data);
+    return response.data;
+  },
+
+  bulkTogglePublishedApp: async (data: BulkToggleRequest) => {
+    const response = await api.post('/products/toggle-published-app-multiple', data);
+    return response.data;
+  },
+
+  bulkToggleStopList: async (data: BulkToggleRequest) => {
+    const response = await api.post('/products/toggle-stop-list-multiple', data);
+    return response.data;
+  },
+
 };

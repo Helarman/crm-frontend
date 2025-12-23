@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import WorkshopService from '@/lib/api/workshop.service';
 
 const STORAGE_KEY = 'selected_network_id';
 const ALL_CATEGORIES_VALUE = "all-categories";
@@ -41,7 +42,7 @@ export const ProductList = () => {
   const [selectedCategory, setSelectedCategory] = useState(ALL_CATEGORIES_VALUE);
   const [selectedRestaurants, setSelectedRestaurants] = useState<string[]>([]);
   const [restaurants, setRestaurants] = useState<any[]>([]);
-
+  const [workshops, setWorkshops] = useState<any[]>([]);
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   const translations = {
@@ -133,12 +134,24 @@ export const ProductList = () => {
       loadNetworks();
     }
   }, [user?.id, language]);
-
+  const fetchWorkshops = async () => {
+    if (!selectedNetworkId) return;
+    
+    try {
+      const workshopsData = await WorkshopService.findByNetworkId(selectedNetworkId);
+      setWorkshops(workshopsData || []);
+    } catch (error) {
+      console.error('Error fetching workshops:', error);
+      setWorkshops([]);
+    }
+  };
+  
   // Загрузка данных при выборе сети
   useEffect(() => {
     if (selectedNetworkId) {
       fetchData();
       fetchRestaurants();
+       fetchWorkshops();
     }
   }, [selectedNetworkId]);
 
@@ -518,8 +531,7 @@ export const ProductList = () => {
         isLoading={isLoading && products.length > 0}
         language={language}
         onDelete={handleDelete}
-        fetchData={fetchData}
-      />
+        fetchData={fetchData} categories={categories} workshops={workshops} additives={additives} networks={networks}      />
 
       {/* Модальное окно создания/редактирования продукта */}
       <ProductModal
@@ -529,6 +541,7 @@ export const ProductList = () => {
         onSubmitSuccess={handleSubmitSuccess}
         language={language}
         networkId={selectedNetworkId || ''}
+         workshops={workshops}
       />
     </div>
   );

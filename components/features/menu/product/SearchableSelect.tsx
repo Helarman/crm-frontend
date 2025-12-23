@@ -7,10 +7,11 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
+
 interface SearchableSelectProps {
   options: { id: string; label: string }[];
   value: string[];
-  onChange: (value: string[]) => void ;
+  onChange: (value: string[]) => void;
   placeholder: string;
   searchPlaceholder: string;
   emptyText: string;
@@ -52,9 +53,44 @@ const SearchableSelect = ({
     }
   };
 
+  const handleSelectAll = () => {
+    const allIds = filteredOptions.map(option => option.id);
+    const currentIds = new Set(value);
+    const allSelected = allIds.every(id => currentIds.has(id));
+    
+    if (allSelected) {
+      // Убрать все отфильтрованные элементы
+      onChange(value.filter(id => !allIds.includes(id)));
+    } else {
+      // Добавить все отфильтрованные элементы
+      const newValue = [...new Set([...value, ...allIds])];
+      onChange(newValue);
+    }
+  };
+
+  const handleClearAll = () => {
+    if (searchValue) {
+      // Очистить только отфильтрованные элементы
+      const filteredIds = filteredOptions.map(option => option.id);
+      onChange(value.filter(id => !filteredIds.includes(id)));
+    } else {
+      // Очистить все
+      onChange([]);
+    }
+  };
+
+  const getSelectedFilteredCount = () => {
+    const filteredIds = filteredOptions.map(option => option.id);
+    return value.filter(id => filteredIds.includes(id)).length;
+  };
+
+  const getAllFilteredSelected = () => {
+    const filteredIds = filteredOptions.map(option => option.id);
+    return filteredIds.length > 0 && filteredIds.every(id => value.includes(id));
+  };
+
   useEffect(() => {
     if (open && inputRef.current) {
-      // Небольшая задержка для гарантии, что модальное окно полностью отрендерилось
       setTimeout(() => {
         inputRef.current?.focus();
       }, 0);
@@ -91,10 +127,10 @@ const SearchableSelect = ({
           }}
         >
           <div 
-            className="bg-background rounded-lg border shadow-lg w-full max-w-md max-h-[80vh] overflow-hidden"
+            className="bg-background rounded-lg border shadow-lg w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <Command className="h-full">
+            <Command className="flex flex-col h-full">
               <CommandInput
                 ref={inputRef}
                 placeholder={searchPlaceholder}
@@ -102,11 +138,49 @@ const SearchableSelect = ({
                 onValueChange={setSearchValue}
                 autoFocus
               />
-              <CommandList className="max-h-[300px] overflow-auto">
+              
+              {/* Кнопки управления */}
+              {multiple && filteredOptions.length > 0 && (
+                <div className="flex items-center justify-between px-3 py-2 border-b">
+                  <div className="text-sm text-muted-foreground">
+                    {searchValue 
+                      ? `Найдено: ${filteredOptions.length}, выбрано: ${getSelectedFilteredCount()}`
+                      : `Всего: ${options.length}, выбрано: ${value.length}`
+                    }
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleClearAll}
+                      className="h-7 text-xs"
+                    >
+                      {searchValue ? "Снять с найденных" : "Сбросить все"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleSelectAll}
+                      className="h-7 text-xs"
+                    >
+                      {getAllFilteredSelected() 
+                        ? "Снять все" 
+                        : searchValue 
+                          ? "Выбрать найденные" 
+                          : "Выбрать все"
+                      }
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <CommandList className="flex-1 overflow-auto">
                 <CommandEmpty className="text-sm px-2 py-1.5">
                   {emptyText}
                 </CommandEmpty>
-                <CommandGroup>
+                <CommandGroup className="max-h-[calc(300px-3rem)]">
                   {filteredOptions.map(option => (
                     <CommandItem
                       key={option.id}
@@ -132,32 +206,6 @@ const SearchableSelect = ({
         </div>
       )}
 
-      {multiple && value.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {value.map(id => {
-            const option = options.find(o => o.id === id);
-            return option ? (
-              <Badge
-                key={id}
-                variant="secondary"
-                className="flex items-center gap-1 text-sm"
-              >
-                {option.label}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onChange(value.filter(v => v !== id));
-                  }}
-                  className="rounded-full p-0.5 hover:bg-muted"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ) : null;
-          })}
-        </div>
-      )}
     </div>
   );
 };

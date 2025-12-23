@@ -1,6 +1,7 @@
+// ... предыдущий импорт остается таким же
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { Loader2, X, Plus, Check, ChevronsUpDown } from 'lucide-react';
+import { Loader2, X, Plus, Check, ChevronsUpDown, Expand } from 'lucide-react';
 import { CategoryService } from '@/lib/api/category.service';
 import { RestaurantService } from '@/lib/api/restaurant.service';
 import { Button } from '@/components/ui/button';
@@ -8,12 +9,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogContentWide, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import SearchableSelect from '../product/SearchableSelect';
 import { ImageUploader } from '../product/ImageUploader';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { useAuth } from '@/lib/hooks/useAuth';
 
 interface CategoryModalProps {
   isOpen: boolean;
@@ -55,6 +57,8 @@ const translations = {
       selectAtLeastOneRestaurant: 'Выберите хотя бы один ресторан',
       published: 'Опубликована',
       autoGenerateOrder: 'Сгенерировать автоматически',
+      expandText: 'Раскрыть',
+      minimizeText: 'Свернуть',
     },
     steps: {
       basic: 'Основная информация',
@@ -95,6 +99,8 @@ const translations = {
       selectAtLeastOneRestaurant: 'აირჩიეთ მინიმუმ ერთი რესტორანი',
       published: 'გამოქვეყნებული',
       autoGenerateOrder: 'ავტომატურად გენერირება',
+      expandText: 'გახსნა',
+      minimizeText: 'დახურვა',
     },
     steps: {
       basic: 'ძირითადი ინფორმაცია',
@@ -142,9 +148,10 @@ export const CategoryModal = ({
   const [availableParentCategories, setAvailableParentCategories] = useState<{ id: string; label: string }[]>([]);
   const [isAutoGenerateOrder, setIsAutoGenerateOrder] = useState(false);
   const [isAutoGenerateClientOrder, setIsAutoGenerateClientOrder] = useState(false);
+  const [isMetaDescriptionExpanded, setIsMetaDescriptionExpanded] = useState(false);
 
   const t = translations[language];
-
+  const { user } = useAuth()
   // Инициализация данных при открытии модалки
   useEffect(() => {
     if (isOpen) {
@@ -193,12 +200,12 @@ export const CategoryModal = ({
   const loadRestaurants = async () => {
     setIsRestaurantsLoading(true);
     try {
-      const restaurantsData = await RestaurantService.getAll();
+      const restaurantsData = await RestaurantService.getRestaurantsByUserAndNetwork(user.id, networkId);
       // Фильтруем рестораны по сети
       const networkRestaurants = restaurantsData.filter(
         (restaurant: any) => restaurant.networkId === networkId
       );
-      setRestaurants(networkRestaurants);
+      setRestaurants(restaurantsData);
       
       // Если передан конкретный ресторан, устанавливаем его по умолчанию
       if (restaurantId && !categoryId) {
@@ -264,6 +271,7 @@ export const CategoryModal = ({
     setCurrentStep('basic');
     setIsAutoGenerateOrder(false);
     setIsAutoGenerateClientOrder(false);
+    setIsMetaDescriptionExpanded(false);
   };
 
   // Обработчики изменения полей
@@ -622,7 +630,7 @@ export const CategoryModal = ({
             </div>
 
             {formData.image && (
-              <div className="space-y-2 pt-2">
+              <div className="space-y-2 pt column-2">
                 <Label className="text-sm">
                   {language === 'ru' ? 'Предпросмотр изображения' : 'სურათის წინასწარი ნახვა'}
                 </Label>
@@ -659,9 +667,21 @@ export const CategoryModal = ({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="metaDescription" className="text-sm">
-                {t.fields.metaDescription}
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="metaDescription" className="text-sm">
+                  {t.fields.metaDescription}
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsMetaDescriptionExpanded(true)}
+                  className="h-8 px-2"
+                >
+                  <Expand className="h-4 w-4 mr-1" />
+                  <span className="text-xs">{t.fields.expandText}</span>
+                </Button>
+              </div>
               <Textarea
                 id="metaDescription"
                 name="metaDescription"
@@ -669,8 +689,8 @@ export const CategoryModal = ({
                 onChange={handleInputChange}
                 className="text-sm min-h-[80px] resize-none"
                 placeholder={language === 'ru' 
-                  ? 'Мета-описание для поисковых систем (до 160 символов)' 
-                  : 'ძებნის სისტემებისთვის მეტა-აღწერა (160 სიმბოლომდე)'}
+                  ? 'Мета-описание для поисковых систем' 
+                  : 'ძებნის სისტემებისთვის მეტა-აღწერა'}
               />
             </div>
 
@@ -711,85 +731,112 @@ export const CategoryModal = ({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => {
-      if (!open) {
-        resetForm();
-      }
-      onClose();
-    }}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-lg">
-            {categoryId ? t.editCategory : t.addCategory}
-          </DialogTitle>
-          <div className="text-sm text-muted-foreground">{getStepTitle()}</div>
-        </DialogHeader>
-        
-        {isLoading && categoryId ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin" />
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {renderStepContent()}
+    <>
+      {/* Основная модалка */}
+      <Dialog open={isOpen} onOpenChange={(open) => {
+        if (!open) {
+          resetForm();
+        }
+        onClose();
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" confirmClose >
+          <DialogHeader>
+            <DialogTitle className="text-lg">
+              {categoryId ? t.editCategory : t.addCategory}
+            </DialogTitle>
+            <div className="text-sm text-muted-foreground">{getStepTitle()}</div>
+          </DialogHeader>
+          
+          {isLoading && categoryId ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {renderStepContent()}
 
-            <DialogFooter>
-              <div className="flex justify-between w-full">
-                {currentStep !== 'basic' ? (
-                  <Button 
-                    type="button"
-                    variant="outline" 
-                    onClick={goToPrevStep}
-                    disabled={isLoading}
-                    className="text-sm"
-                  >
-                    {t.back}
-                  </Button>
-                ) : (
-                  <Button 
-                    type="button"
-                    variant="outline" 
-                    onClick={() => {
-                      resetForm();
-                      onClose();
-                    }}
-                    disabled={isLoading}
-                    className="text-sm"
-                  >
-                    {t.cancel}
-                  </Button>
-                )}
-                
-                {currentStep !== 'seo' ? (
-                  <Button 
-                    type="button"
-                    onClick={goToNextStep}
-                    disabled={isLoading}
-                    className="text-sm"
-                  >
-                    {t.next}
-                  </Button>
-                ) : (
-                  <Button 
-                    type="submit"
-                    disabled={isLoading}
-                    className="text-sm"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {language === 'ru' ? 'Сохранение...' : 'შენახვა...'}
-                      </>
-                    ) : (
-                      t.save
-                    )}
-                  </Button>
-                )}
-              </div>
-            </DialogFooter>
-          </form>
-        )}
-      </DialogContent>
-    </Dialog>
+              <DialogFooter>
+                <div className="flex justify-between w-full">
+                  {currentStep !== 'basic' ? (
+                    <Button 
+                      type="button"
+                      variant="outline" 
+                      onClick={goToPrevStep}
+                      disabled={isLoading}
+                      className="text-sm"
+                    >
+                      {t.back}
+                    </Button>
+                  ) : (
+                    <Button 
+                      type="button"
+                      variant="outline" 
+                      onClick={() => {
+                        resetForm();
+                        onClose();
+                      }}
+                      disabled={isLoading}
+                      className="text-sm"
+                    >
+                      {t.cancel}
+                    </Button>
+                  )}
+                  
+                  {currentStep !== 'seo' ? (
+                    <Button 
+                      type="button"
+                      onClick={goToNextStep}
+                      disabled={isLoading}
+                      className="text-sm"
+                    >
+                      {t.next}
+                    </Button>
+                  ) : (
+                    <Button 
+                      type="submit"
+                      disabled={isLoading}
+                      className="text-sm"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          {language === 'ru' ? 'Сохранение...' : 'შენახვა...'}
+                        </>
+                      ) : (
+                        t.save
+                      )}
+                    </Button>
+                  )}
+                </div>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog  open={isMetaDescriptionExpanded} onOpenChange={setIsMetaDescriptionExpanded}>
+        <DialogContentWide >
+          <DialogHeader>
+            <DialogTitle className="text-lg">
+              {t.fields.metaDescription}
+            </DialogTitle>
+          </DialogHeader>
+          
+              <Textarea
+                id="expandedMetaDescription"
+                name="metaDescription"
+                value={formData.metaDescription}
+                onChange={handleInputChange}
+                className="min-h-[80vh] resize-none text-sm"
+                placeholder={language === 'ru' 
+                  ? 'Введите мета-описание.' 
+                  : 'შეიყვანეთ მეტა-აღწერა'}
+              />
+              <Button  onClick={() => setIsMetaDescriptionExpanded(false)}>
+                Подтвердить
+              </Button>
+        </DialogContentWide>
+      </Dialog>
+    </>
   );
 };
