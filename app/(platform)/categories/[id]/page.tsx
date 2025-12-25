@@ -82,7 +82,6 @@ const CategoryEditPage = () => {
     order: 0,
     clientOrder: 0,
     image: '',
-    published: true,
   })
 
   const [restaurants, setRestaurants] = useState<{ id: string; title: string }[]>([])
@@ -181,7 +180,6 @@ const CategoryEditPage = () => {
         order: category.order || 0,
         clientOrder: category.clientOrder || 0,
         image: category.image || '',
-        published: category.published !== undefined ? category.published : true,
       })
 
       setNetworkId(category.networkId as string)
@@ -205,7 +203,6 @@ const CategoryEditPage = () => {
       order: 0,
       clientOrder: 0,
       image: '',
-      published: true,
     })
     setSelectedRestaurants([])
     setCurrentStep('basic')
@@ -320,10 +317,11 @@ const CategoryEditPage = () => {
     if (!validateForm()) return
 
     setIsLoading(true)
-
+    const category = await CategoryService.getById(categoryId as string)
     try {
       const categoryData = {
         ...formData,
+        networkId: category.networkId,  
         restaurantIds: selectedRestaurants,
         parentId: formData.parentId === 'null' ? null : formData.parentId,
       }
@@ -591,16 +589,7 @@ const CategoryEditPage = () => {
                   </div>
                 )}
 
-                <div className="flex items-center justify-between pt-2">
-                  <Label htmlFor="published" className="text-sm">
-                    {language === 'ru' ? 'Опубликована' : 'გამოქვეყნებული'}
-                  </Label>
-                  <Switch
-                    id="published"
-                    checked={formData.published}
-                    onCheckedChange={checked => handleSwitchChange('published', checked)}
-                  />
-                </div>
+                
               </div>
             </CardContent>
           </Card>
