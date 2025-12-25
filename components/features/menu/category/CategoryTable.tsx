@@ -33,6 +33,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { CategoryService } from '@/lib/api/category.service';
+import { useRouter } from 'next/navigation';
 
 interface CategoryTableProps {
   categories: any[];
@@ -387,7 +388,7 @@ const CategoryRow = ({
       throw error;
     }
   };
-
+  const router = useRouter()
   return (
     <>
       <TableRow>
@@ -471,7 +472,7 @@ const CategoryRow = ({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => onEdit(category)}
+              onClick={() => router.push(`categories/${category.id}`)}
             >
               <Pencil className="h-4 w-4" />
             </Button>

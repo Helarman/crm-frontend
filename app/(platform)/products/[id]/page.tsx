@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Loader2, X, Plus, Check, ChevronsUpDown, ArrowLeft, ArrowRight, Save, Image as ImageIcon, Tag, Package, DollarSign, Soup, ShoppingBasket, Search, Globe, ChevronRight } from 'lucide-react'
+import { Loader2, X, Plus, Check, ChevronsUpDown, ArrowLeft, ArrowRight, Save, Image as ImageIcon, Tag,Info, Package, DollarSign, Soup, ShoppingBasket, Search, Globe, ChevronRight, Maximize2, CircleCheck, Minimize2, ListCollapse } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ProductService } from '@/lib/api/product.service'
 import { Additive, AdditiveService } from '@/lib/api/additive.service'
@@ -28,6 +28,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useLanguageStore } from '@/lib/stores/language-store'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { Restaurant } from '@/lib/types/restaurant'
+import { HtmlTextarea } from '@/components/ui/html-textarea'
+import { Dialog, DialogContentExtraWide, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 interface RestaurantPrice {
   restaurantId: string
@@ -46,14 +48,14 @@ const sections = [
   { 
     id: 'basic', 
     title: { ru: 'Основная информация', ka: 'ძირითადი ინფორმაცია' },
-    icon: Tag,
+    icon: Info,
     color: 'bg-gradient-to-br from-blue-500 to-cyan-400',
     description: { ru: 'Название, описание, цена', ka: 'სახელი, აღწერა, ფასი' }
   },
   { 
     id: 'details', 
     title: { ru: 'Детали', ka: 'დეტალები' },
-    icon: Package,
+    icon: ListCollapse,
     color: 'bg-gradient-to-br from-purple-500 to-pink-400',
     description: { ru: 'Вес, время приготовления, настройки', ka: 'წონა, მომზადების დრო, პარამეტრები' }
   },
@@ -74,7 +76,7 @@ const sections = [
   { 
     id: 'ingredients', 
     title: { ru: 'Ингредиенты', ka: 'ინგრედიენტები' },
-    icon: ShoppingBasket,
+    icon: Package,
     color: 'bg-gradient-to-br from-red-500 to-rose-400',
     description: { ru: 'Состав и компоненты', ka: 'შემადგენლობა და კომპონენტები' }
   },
@@ -139,7 +141,84 @@ const ProductEditPage = () => {
   const [inventoryItems, setInventoryItems] = useState<{id: string, name: string, unit: string}[]>([])
   const [isInventoryLoading, setIsInventoryLoading] = useState(false)
   const [isScrolling, setIsScrolling] = useState(false)
+ const [isFullscreenDialogOpen, setIsFullscreenDialogOpen] = useState(false)
+  const [fullscreenTextareaValue, setFullscreenTextareaValue] = useState('')
+  const [fullscreenTextareaName, setFullscreenTextareaName] = useState('')
+  const [fullscreenTextareaLabel, setFullscreenTextareaLabel] = useState('')
+  
+   const openFullscreenTextarea = (name: string, value: string, label: string) => {
+    setFullscreenTextareaName(name)
+    setFullscreenTextareaValue(value)
+    setFullscreenTextareaLabel(label)
+    setIsFullscreenDialogOpen(true)
+  }
 
+   const saveFullscreenTextarea = () => {
+    setFormData(prev => ({
+      ...prev,
+      [fullscreenTextareaName]: fullscreenTextareaValue
+    }))
+    setIsFullscreenDialogOpen(false)
+  }
+
+  // Функция для отмены изменений в полноэкранном редакторе
+  const cancelFullscreenTextarea = () => {
+    setIsFullscreenDialogOpen(false)
+  }
+
+   const EnhancedTextarea = ({ 
+    id, 
+    name, 
+    value, 
+    onChange, 
+    label, 
+    placeholder, 
+    className = '',
+    rows = 3,
+    required = false
+  }: {
+    id: string;
+    name: string;
+    value: string;
+    onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+    label: string;
+    placeholder: string;
+    className?: string;
+    rows?: number;
+    required?: boolean;
+  }) => {
+    return (
+      <div className="space-y-2 h-full">
+        <div className="flex items-center justify-between">
+          <Label htmlFor={id} className="text-sm">
+            {label} {required && '*'}
+          </Label>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1 text-xs"
+            onClick={() => openFullscreenTextarea(name, value, label)}
+          >
+            <Maximize2 className="h-3 w-3" />
+            {language === 'ru' ? 'Развернуть' : 'გაფართოება'}
+          </Button>
+        </div>
+        <div className="relative">
+          <Textarea
+            id={id}
+            name={name}
+            value={value}
+            onChange={onChange}
+            className={`text-sm resize-none ${className}`}
+            placeholder={placeholder}
+            rows={rows}
+            required={required}
+          />
+        </div>
+      </div>
+    )
+  }
   useEffect(() => {
     loadData()
     loadCategories()
@@ -865,51 +944,85 @@ const ProductEditPage = () => {
           </Card>
         )
 
-      case 'seo':
-        return (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="pageTitle" className="text-sm">
-                    {language === 'ru' ? 'Заголовок страницы' : 'გვერდის სათაური'}
-                  </Label>
-                  <Input
-                    id="pageTitle"
-                    name="pageTitle"
-                    value={formData.pageTitle}
-                    onChange={handleInputChange}
-                    className="text-sm"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="metaDescription" className="text-sm">
-                    {language === 'ru' ? 'Мета описание' : 'მეტა აღწერა'}
-                  </Label>
-                  <Textarea
-                    id="metaDescription"
-                    name="metaDescription"
-                    value={formData.metaDescription}
-                    onChange={handleInputChange}
-                    className="text-sm min-h-[80px] resize-none"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="content" className="text-sm">
-                    {language === 'ru' ? 'Контент' : 'კონტენტი'}
-                  </Label>
-                  <Textarea
-                    id="content"
-                    name="content"
-                    value={formData.content}
-                    onChange={handleInputChange}
-                    className="text-sm min-h-[100px] resize-none"
-                  />
-                </div>
+       case 'seo':
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="pageTitle" className="text-sm">
+                {language === 'ru' ? 'Заголовок страницы' : 'გვერდის სათაური'}
+              </Label>
+              <Input
+                id="pageTitle"
+                name="pageTitle"
+                value={formData.pageTitle}
+                onChange={handleInputChange}
+                className="text-sm"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="metaDescription" className="text-sm">
+                  {language === 'ru' ? 'Мета описание' : 'მეტა აღწერა'}
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 text-xs"
+                  onClick={() => openFullscreenTextarea('metaDescription', formData.metaDescription, language === 'ru' ? 'Мета описание' : 'მეტა აღწერა')}
+                >
+                  <Maximize2 className="h-3 w-3" />
+                  {language === 'ru' ? 'Развернуть' : 'გაფართოება'}
+                </Button>
               </div>
-            </CardContent>
-          </Card>
-        )
+              <HtmlTextarea
+                id="metaDescription"
+                value={formData.metaDescription}
+                onChange={(value: any) => setFormData({...formData, metaDescription: value})}
+                placeholder={language === 'ru' 
+                  ? 'Мета описание для поисковых систем' 
+                  : 'ძებნის სისტემებისთვის მეტა-აღწერა'}
+                className="min-h-24 font-mono text-sm"
+                language="html"
+                showLineNumbers={true}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="content" className="text-sm">
+                  {language === 'ru' ? 'Контент' : 'კონტენტი'}
+                </Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 text-xs"
+                  onClick={() => openFullscreenTextarea('content', formData.content, language === 'ru' ? 'Контент' : 'კონტენტი')}
+                >
+                  <Maximize2 className="h-3 w-3" />
+                  {language === 'ru' ? 'Развернуть' : 'გაფართოება'}
+                </Button>
+              </div>
+              <HtmlTextarea
+                id="content"
+                value={formData.content}
+                onChange={(value: any) => setFormData({...formData, content: value})}
+                placeholder={language === 'ru' 
+                  ? 'Контент страницы продукта' 
+                  : 'პროდუქტის გვერდის კონტენტი'}
+                className="min-h-32 font-mono text-sm"
+                language="html"
+                showLineNumbers={true}
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
 
       default:
         return null
@@ -1030,6 +1143,61 @@ const ProductEditPage = () => {
           })}
         </div>
       </div>
+<Dialog open={isFullscreenDialogOpen} onOpenChange={setIsFullscreenDialogOpen}>
+  <DialogContentExtraWide className="max-w-4xl h-[90vh] flex flex-col p-0">
+    <DialogHeader className="p-6 pb-4">
+      <DialogTitle className="text-xl flex items-center justify-between">
+        <span>
+          {language === 'ru' ? 'Редактирование' : 'რედაქტირება'}: {fullscreenTextareaLabel}
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1"
+          onClick={cancelFullscreenTextarea}
+        >
+          <Minimize2 className="h-4 w-4" />
+          {language === 'ru' ? 'Свернуть' : 'ჩაკეცვა'}
+        </Button>
+      </DialogTitle>
+    </DialogHeader>
+    
+    {/* Контейнер с flex-1 для заполнения доступного пространства */}
+    <div className="flex-1 flex flex-col px-6 pb-6">
+      <HtmlTextarea
+        value={fullscreenTextareaValue}
+        onChange={setFullscreenTextareaValue}
+        placeholder={language === 'ru' ? 'Введите текст...' : 'შეიყვანეთ ტექსტი...'}
+        className="flex-1 w-full min-h-0 text-base resize-none" // flex-1 и min-h-0 важны
+        language="html"
+        showLineNumbers={true}
+        style={{
+          height: '100%',
+          maxHeight: 'none' // Убираем любые ограничения по высоте
+        }}
+      />
+    </div>
+    
+    <div className="flex items-center justify-end gap-2 p-6 pt-0">
+      <Button
+        type="button"
+        variant="outline"
+        onClick={cancelFullscreenTextarea}
+      >
+        {language === 'ru' ? 'Отмена' : 'გაუქმება'}
+      </Button>
+      <Button
+        type="button"
+        onClick={saveFullscreenTextarea}
+      >
+        <CircleCheck className="mr-2 h-4 w-4" />
+        {language === 'ru' ? 'Подтвердить' : 'შენახვა'}
+      </Button>
+    </div>
+  </DialogContentExtraWide>
+</Dialog>
+      
     </div>
   )
 }

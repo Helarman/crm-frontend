@@ -246,7 +246,7 @@ export const RestaurantService = {
     return data;
   },
   getByNetwork: async (networkId: string) => {
-    const { data } = await api.get(`/products/by-network/${networkId}`);
+    const { data } = await api.get(`/networks/${networkId}/restaurants`);
     return data;
   },
   getRestaurantsByUserAndNetwork: async (userId: string, networkId: string) => {

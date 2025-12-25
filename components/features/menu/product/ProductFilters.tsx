@@ -232,6 +232,7 @@ interface ProductFiltersProps {
   onRestaurantChange: (value: string[]) => void;
   categories: any[];
   restaurants: any[];
+   isArchivedMode?: boolean;
   language: string;
 }
 
@@ -267,6 +268,7 @@ export function ProductFilters({
   onRestaurantChange,
   categories,
   restaurants,
+  isArchivedMode = false,
   language
 }: ProductFiltersProps) {
   const t = translations[language as Language];
@@ -312,33 +314,37 @@ export function ProductFilters({
           />
         </div>
 
-        <Select value={selectedCategory} onValueChange={onCategoryChange}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder={t.filterByCategory} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_CATEGORIES_VALUE}>
-              {t.allCategories}
-            </SelectItem>
-            {categories.map((category) => (
-              <SelectItem key={category.id} value={category.id}>
-                {category.title}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {!isArchivedMode && 
+          <>
+            <Select value={selectedCategory} onValueChange={onCategoryChange}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder={t.filterByCategory} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_CATEGORIES_VALUE}>
+                  {t.allCategories}
+                </SelectItem>
+                {categories.map((category) => (
+                  <SelectItem key={category.id} value={category.id}>
+                    {category.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-        <div className="w-[200px]">
-          <SearchableSelect
-            options={restaurantOptions}
-            value={selectedRestaurant}
-            onChange={handleRestaurantChange}
-            placeholder={t.selectRestaurants}
-            searchPlaceholder={t.searchRestaurants}
-            emptyText={t.noRestaurants}
-            multiple={true}
-          />
-        </div>
+            <div className="w-[200px]">
+              <SearchableSelect
+                options={restaurantOptions}
+                value={selectedRestaurant}
+                onChange={handleRestaurantChange}
+                placeholder={t.selectRestaurants}
+                searchPlaceholder={t.searchRestaurants}
+                emptyText={t.noRestaurants}
+                multiple={true}
+              />
+            </div>
+          </>
+        }
       </div>
 
       {/* Только бейдж для категории, рестораны отображаются внутри SearchableSelect */}

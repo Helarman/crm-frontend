@@ -6,9 +6,10 @@ import { RestaurantService } from '@/lib/api/restaurant.service';
 import { AdditiveService } from '@/lib/api/additive.service';
 import { NetworkService } from '@/lib/api/network.service';
 import { Button } from '@/components/ui/button';
-import { Plus, Grid3X3, Store, RefreshCw, X, ArrowLeftRight } from 'lucide-react';
+import { Plus, Grid3X3, Store, RefreshCw, X, ArrowLeftRight, Archive } from 'lucide-react';
 import { ProductFilters } from './ProductFilters';
 import { ProductTable } from './ProductTable';
+import { ProductTableArchived } from './ProductTableArchive';
 import { ProductModal } from './ProductModal';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDebounce } from '@/lib/hooks/useDebounce';
@@ -32,9 +33,12 @@ export const ProductList = () => {
   const [showNetworkSelector, setShowNetworkSelector] = useState(false);
   
   const [products, setProducts] = useState<any[]>([]);
+  const [archivedProducts, setArchivedProducts] = useState<any[]>([]); // Добавляем состояние для архивных продуктов
+  const [showArchived, setShowArchived] = useState(false); // Флаг для отображения архива
   const [categories, setCategories] = useState<any[]>([]);
   const [additives, setAdditives] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isArchivedLoading, setIsArchivedLoading] = useState(false); // Загрузка архива
   const [isNetworksLoading, setIsNetworksLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentProductId, setCurrentProductId] = useState<string | null>(null);
@@ -61,8 +65,22 @@ export const ProductList = () => {
       clearNetworkSelection: 'Очистить выбор сети',
       refresh: 'Обновить',
       productsCount: (count: number) => `${count} продукт(ов)`,
+      archivedCount: (count: number) => `${count} архивных продукт(ов)`,
       restaurantsCount: (count: number) => `${count} ресторан(ов)`,
-      viewProducts: 'Просмотр продуктов'
+      viewProducts: 'Просмотр продуктов',
+      showArchive: 'Архив',
+      showActive: 'Активные',
+      archiveTitle: 'Архив продуктов',
+      restoreProduct: 'Восстановить',
+      restoreSuccess: 'Продукт восстановлен',
+      restoreError: 'Ошибка восстановления',
+      hardDelete: 'Удалить навсегда',
+      hardDeleteSuccess: 'Продукт удален навсегда',
+      hardDeleteError: 'Ошибка удаления',
+      restoreAll: 'Восстановить все',
+      restoreSelected: 'Восстановить выбранные',
+      hardDeleteSelected: 'Удалить выбранные навсегда',
+      archiveNote: 'В архиве отображаются удаленные (неиспользуемые) продукты'
     },
     ka: {
       selectNetwork: 'აირჩიეთ ქსელი',
@@ -79,8 +97,22 @@ export const ProductList = () => {
       clearNetworkSelection: 'ქსელის არჩევის გასუფთავება',
       refresh: 'განახლება',
       productsCount: (count: number) => `${count} პროდუქტი`,
+      archivedCount: (count: number) => `${count} არქივირებული პროდუქტი`,
       restaurantsCount: (count: number) => `${count} რესტორნი`,
-      viewProducts: 'პროდუქტების ნახვა'
+      viewProducts: 'პროდუქტების ნახვა',
+      showArchive: 'არქივი',
+      showActive: 'აქტიური',
+      archiveTitle: 'პროდუქტების არქივი',
+      restoreProduct: 'აღდგენა',
+      restoreSuccess: 'პროდუქტი აღდგენილია',
+      restoreError: 'აღდგენის შეცდომა',
+      hardDelete: 'სამუდამოდ წაშლა',
+      hardDeleteSuccess: 'პროდუქტი სამუდამოდ წაიშალა',
+      hardDeleteError: 'წაშლის შეცდომა',
+      restoreAll: 'ყველას აღდგენა',
+      restoreSelected: 'არჩეულის აღდგენა',
+      hardDeleteSelected: 'არჩეულის სამუდამოდ წაშლა',
+      archiveNote: 'არქივში ნაჩვენებია წაშლილი (არამოხმარებადი) პროდუქტები'
     }
   };
 
@@ -134,6 +166,7 @@ export const ProductList = () => {
       loadNetworks();
     }
   }, [user?.id, language]);
+
   const fetchWorkshops = async () => {
     if (!selectedNetworkId) return;
     
@@ -151,7 +184,7 @@ export const ProductList = () => {
     if (selectedNetworkId) {
       fetchData();
       fetchRestaurants();
-       fetchWorkshops();
+      fetchWorkshops();
     }
   }, [selectedNetworkId]);
 
@@ -167,7 +200,7 @@ export const ProductList = () => {
     
     setIsLoading(true);
     try {
-      // Загружаем продукты сети
+      // Загружаем продукты сети (только активные)
       const productsData = await ProductService.getByNetwork(selectedNetworkId);
       
       // Загружаем категории сети
@@ -192,6 +225,23 @@ export const ProductList = () => {
     }
   };
 
+  const fetchArchivedProducts = async () => {
+    if (!selectedNetworkId) return;
+    
+    setIsArchivedLoading(true);
+    try {
+      // Используем новый метод для получения архивных продуктов по сети
+      const archivedData = await ProductService.getDeletedByNetwork(selectedNetworkId);
+      setArchivedProducts(archivedData || []);
+    } catch (error) {
+      console.error('Error fetching archived products:', error);
+      toast.error(language === 'ru' ? 'Ошибка загрузки архива' : 'არქივის ჩატვირთვის შეცდომა');
+      setArchivedProducts([]);
+    } finally {
+      setIsArchivedLoading(false);
+    }
+  };
+
   const fetchRestaurants = async () => {
     if (!selectedNetworkId) return;
     
@@ -208,8 +258,16 @@ export const ProductList = () => {
     }
   };
 
+  // При переключении в режим архива загружаем архивные продукты
+  useEffect(() => {
+    if (showArchived && selectedNetworkId) {
+      fetchArchivedProducts();
+    }
+  }, [showArchived, selectedNetworkId]);
+
   const filteredProductIds = useMemo(() => {
-    const filtered = products.filter(product => {
+    const currentProducts = showArchived ? archivedProducts : products;
+    const filtered = currentProducts.filter(product => {
       const matchesSearch = product.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
       const matchesCategory = selectedCategory === ALL_CATEGORIES_VALUE ||
         product.categoryId === selectedCategory;
@@ -225,22 +283,25 @@ export const ProductList = () => {
     });
 
     return new Set(filtered.map(product => product.id));
-  }, [products, debouncedSearchTerm, selectedCategory, selectedRestaurants, restaurants]);
+  }, [products, archivedProducts, showArchived, debouncedSearchTerm, selectedCategory, selectedRestaurants, restaurants]);
 
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = product.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === ALL_CATEGORIES_VALUE ||
-      product.categoryId === selectedCategory;
+  const filteredProducts = useMemo(() => {
+    const currentProducts = showArchived ? archivedProducts : products;
+    return currentProducts.filter(product => {
+      const matchesSearch = product.title.toLowerCase().includes(debouncedSearchTerm.toLowerCase());
+      const matchesCategory = selectedCategory === ALL_CATEGORIES_VALUE ||
+        product.categoryId === selectedCategory;
 
-    // Фильтрация по множественным ресторанам
-    const matchesRestaurants = selectedRestaurants.length === 0 || 
-      selectedRestaurants.length === restaurants.length ||
-      (product.restaurantPrices?.some((restaurantPrice: any) =>
-        selectedRestaurants.includes(restaurantPrice.restaurantId)
-      ));
+      // Фильтрация по множественным ресторанам
+      const matchesRestaurants = selectedRestaurants.length === 0 || 
+        selectedRestaurants.length === restaurants.length ||
+        (product.restaurantPrices?.some((restaurantPrice: any) =>
+          selectedRestaurants.includes(restaurantPrice.restaurantId)
+        ));
 
-    return matchesSearch && matchesCategory && matchesRestaurants;
-  });
+      return matchesSearch && matchesCategory && matchesRestaurants;
+    });
+  }, [products, archivedProducts, showArchived, debouncedSearchTerm, selectedCategory, selectedRestaurants, restaurants]);
 
   const openAddModal = () => {
     setCurrentProductId(null);
@@ -254,6 +315,68 @@ export const ProductList = () => {
       fetchData();
     } catch (error) {
       console.error('Error deleting product:', error);
+      toast.error(language === 'ru' ? 'Ошибка удаления' : 'წაშლის შეცდომა');
+    }
+  };
+
+  const handleRestore = async (id: string) => {
+    try {
+      await ProductService.restoreProducts([id]);
+      toast.success(language === 'ru' ? 'Продукт восстановлен' : 'პროდუქტი აღდგენილია');
+      fetchArchivedProducts(); // Обновляем список архива
+      fetchData(); // Обновляем список активных продуктов
+    } catch (error) {
+      console.error('Error restoring product:', error);
+      toast.error(language === 'ru' ? 'Ошибка восстановления' : 'აღდგენის შეცდომა');
+    }
+  };
+
+  const handleHardDelete = async (id: string) => {
+    try {
+      await ProductService.hardDelete(id);
+      toast.success(language === 'ru' ? 'Продукт удален навсегда' : 'პროდუქტი სამუდამოდ წაიშალა');
+      fetchArchivedProducts(); // Обновляем список архива
+    } catch (error) {
+      console.error('Error hard deleting product:', error);
+      toast.error(language === 'ru' ? 'Ошибка удаления' : 'წაშლის შეცდომა');
+    }
+  };
+
+  const handleBulkRestore = async (productIds: string[]) => {
+    try {
+      await ProductService.restoreProducts(productIds);
+      toast.success(
+        language === 'ru' 
+          ? `Восстановлено ${productIds.length} продуктов`
+          : `${productIds.length} პროდუქტი აღდგენილია`
+      );
+      fetchArchivedProducts(); // Обновляем список архива
+      fetchData(); // Обновляем список активных продуктов
+    } catch (error) {
+      console.error('Error restoring products:', error);
+      toast.error(language === 'ru' ? 'Ошибка восстановления' : 'აღდგენის შეცდომა');
+    }
+  };
+
+  const handleBulkHardDelete = async (productIds: string[]) => {
+    try {
+      // Если у ProductService есть метод для массового удаления навсегда
+      if (ProductService.bulkDelete) {
+        await ProductService.bulkDelete({ productIds });
+      } else {
+        // Или удаляем по одному
+        for (const id of productIds) {
+          await ProductService.hardDelete(id);
+        }
+      }
+      toast.success(
+        language === 'ru' 
+          ? `Удалено ${productIds.length} продуктов навсегда`
+          : `${productIds.length} პროდუქტი სამუდამოდ წაიშალა`
+      );
+      fetchArchivedProducts(); // Обновляем список архива
+    } catch (error) {
+      console.error('Error hard deleting products:', error);
       toast.error(language === 'ru' ? 'Ошибка удаления' : 'წაშლის შეცდომა');
     }
   };
@@ -442,7 +565,7 @@ export const ProductList = () => {
   }
 
   // Если выбрана сеть и не показываем селектор
-  if (isLoading && !products.length) {
+  if (isLoading && !products.length && !showArchived) {
     return (
       <div className="p-4 space-y-4">
         <div className="flex justify-between items-center">
@@ -488,26 +611,44 @@ export const ProductList = () => {
           </div>
           <div className="flex items-center gap-3">
             <p className="text-sm text-muted-foreground">
-              {t.networkManagement} • {t.productsCount(products.length)}
+              {showArchived ? t.archiveTitle : t.networkManagement} • 
+              {showArchived 
+                ? t.archivedCount(archivedProducts.length)
+                : t.productsCount(products.length)
+              }
             </p>
             <Button
               variant="ghost"
               size="sm"
-              onClick={fetchData}
+              onClick={showArchived ? fetchArchivedProducts : fetchData}
               className="h-6 w-6 p-0"
               title={t.refresh}
             >
               <RefreshCw className="h-3 w-3" />
             </Button>
           </div>
+          {showArchived && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {t.archiveNote}
+            </p>
+          )}
         </div>
         
         <div className="flex gap-2">
-          
-          <Button onClick={openAddModal}>
-            <Plus className="mr-2 h-4 w-4" />
-            {t.addProduct}
+          <Button 
+            onClick={() => setShowArchived(!showArchived)} 
+            variant={showArchived ? "default" : "outline"}
+          >
+            <Archive className="mr-2 h-4 w-4" />
+            {showArchived ? t.showActive : t.showArchive}
           </Button>
+
+          {!showArchived && (
+            <Button onClick={openAddModal}>
+              <Plus className="mr-2 h-4 w-4" />
+              {t.addProduct}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -522,16 +663,37 @@ export const ProductList = () => {
         categories={categories}
         restaurants={restaurants}
         language={language}
+        isArchivedMode={showArchived}
       />
 
-      {/* Таблица продуктов */}
-      <ProductTable
-        products={filteredProducts}
-        filteredProductIds={filteredProductIds}
-        isLoading={isLoading && products.length > 0}
-        language={language}
-        onDelete={handleDelete}
-        fetchData={fetchData} categories={categories} workshops={workshops} additives={additives} networks={networks}      />
+      {/* Выбор таблицы в зависимости от режима */}
+      {showArchived ? (
+        <ProductTableArchived
+          products={filteredProducts}
+          filteredProductIds={filteredProductIds}
+          isLoading={isArchivedLoading}
+          language={language}
+          isArchivedMode={true}
+          onRestore={handleRestore}
+          onHardDelete={handleHardDelete}
+          fetchData={fetchArchivedProducts}
+          onBulkRestore={handleBulkRestore}
+          onBulkHardDelete={handleBulkHardDelete}
+        />
+      ) : (
+        <ProductTable
+          products={filteredProducts}
+          filteredProductIds={filteredProductIds}
+          isLoading={isLoading}
+          language={language}
+          onDelete={handleDelete}
+          fetchData={fetchData}
+          categories={categories}
+          workshops={workshops}
+          additives={additives}
+          networks={networks}
+        />
+      )}
 
       {/* Модальное окно создания/редактирования продукта */}
       <ProductModal
@@ -541,7 +703,7 @@ export const ProductList = () => {
         onSubmitSuccess={handleSubmitSuccess}
         language={language}
         networkId={selectedNetworkId || ''}
-         workshops={workshops}
+        workshops={workshops}
       />
     </div>
   );

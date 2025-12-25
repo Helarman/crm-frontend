@@ -412,7 +412,10 @@ export const ProductService = {
     const { data } = await api.get(`/products/by-network/${networkId}`);
     return data;
   },
-
+  getDeletedByNetwork: async (networkId: string) => {
+    const { data } = await api.get(`/products/deleted/by-network/${networkId}`);
+    return data;
+  },
   // Новые методы для работы с сетями
   assignNetworkToProducts: async (networkId: string, productIds?: string[]) => {
     const { data } = await api.post('/products/assign-network', {

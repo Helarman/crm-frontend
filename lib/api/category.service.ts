@@ -10,6 +10,7 @@ const api = axios.create({
 export interface CategoryDto {
   id?: string;
   title: string;
+  networkId?: string;
   description: string;
   slug: string;
   image?: string;
