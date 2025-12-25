@@ -714,7 +714,6 @@ const CategoryEditPage = () => {
 
   return (
     <div className="min-h-screen">
-      {JSON.stringify(networkId)}
       {/* Навигация */}
       <nav className="sticky top-0 z-50 backdrop-blur-lg bg-white/80 border-b supports-backdrop-blur:bg-white/60">
         <div className="py-3">
