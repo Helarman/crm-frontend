@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Loader2, X, Plus, Check, ChevronsUpDown, ArrowLeft, ArrowRight, Save, Image as ImageIcon, Tag,Info, Package, DollarSign, Soup, ShoppingBasket, Search, Globe, ChevronRight, Maximize2, CircleCheck, Minimize2, ListCollapse } from 'lucide-react'
+import { Loader2, X, Plus, Check, ChevronsUpDown, ArrowLeft, ArrowRight, Save, Image as ImageIcon, Tag, Info, Package, DollarSign, Soup, ShoppingBasket, Search, Globe, ChevronRight, Maximize2, CircleCheck, Minimize2, ListCollapse } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ProductService } from '@/lib/api/product.service'
 import { Additive, AdditiveService } from '@/lib/api/additive.service'
@@ -94,15 +94,15 @@ const sections = [
     color: 'bg-gradient-to-br from-gray-600 to-gray-400',
     description: { ru: 'Оптимизация для поиска', ka: 'ოპტიმიზაცია ძიებისთვის' }
   },
-];
+]
 
-const ProductEditPage = () => {
-  const params = useParams()
-  const productId = params.id
+const STORAGE_KEY = 'selected_network_id'
+
+const ProductCreatePage = () => {
   const { language } = useLanguageStore()
   const router = useRouter()
   const { user } = useAuth()
-  
+  const [selectedNetworkId, setSelectedNetworkId] = useState<string | null>(null)
   const [currentStep, setCurrentStep] = useState<FormStep>('basic')
   const [formData, setFormData] = useState({
     title: '',
@@ -122,6 +122,7 @@ const ProductEditPage = () => {
     pageTitle: '',
     metaDescription: '',
     content: '',
+    networkId: '',
   })
 
   const [selectedAdditives, setSelectedAdditives] = useState<string[]>([])
@@ -132,6 +133,7 @@ const ProductEditPage = () => {
   const [selectedRestaurants, setSelectedRestaurants] = useState<string[]>([])
   const [restaurantPrices, setRestaurantPrices] = useState<RestaurantPrice[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [isAdditivesLoading, setIsAdditivesLoading] = useState(false)
   const [isCategoriesLoading, setIsCategoriesLoading] = useState(false)
   const [isRestaurantsLoading, setIsRestaurantsLoading] = useState(false)
@@ -141,19 +143,19 @@ const ProductEditPage = () => {
   const [inventoryItems, setInventoryItems] = useState<{id: string, name: string, unit: string}[]>([])
   const [isInventoryLoading, setIsInventoryLoading] = useState(false)
   const [isScrolling, setIsScrolling] = useState(false)
- const [isFullscreenDialogOpen, setIsFullscreenDialogOpen] = useState(false)
+  const [isFullscreenDialogOpen, setIsFullscreenDialogOpen] = useState(false)
   const [fullscreenTextareaValue, setFullscreenTextareaValue] = useState('')
   const [fullscreenTextareaName, setFullscreenTextareaName] = useState('')
   const [fullscreenTextareaLabel, setFullscreenTextareaLabel] = useState('')
-  
-   const openFullscreenTextarea = (name: string, value: string, label: string) => {
+
+  const openFullscreenTextarea = (name: string, value: string, label: string) => {
     setFullscreenTextareaName(name)
     setFullscreenTextareaValue(value)
     setFullscreenTextareaLabel(label)
     setIsFullscreenDialogOpen(true)
   }
 
-   const saveFullscreenTextarea = () => {
+  const saveFullscreenTextarea = () => {
     setFormData(prev => ({
       ...prev,
       [fullscreenTextareaName]: fullscreenTextareaValue
@@ -161,12 +163,11 @@ const ProductEditPage = () => {
     setIsFullscreenDialogOpen(false)
   }
 
-  // Функция для отмены изменений в полноэкранном редакторе
   const cancelFullscreenTextarea = () => {
     setIsFullscreenDialogOpen(false)
   }
 
-   const EnhancedTextarea = ({ 
+  const EnhancedTextarea = ({ 
     id, 
     name, 
     value, 
@@ -219,57 +220,106 @@ const ProductEditPage = () => {
       </div>
     )
   }
+
+  // Загружаем selectedNetworkId из localStorage при монтировании
   useEffect(() => {
-    loadData()
-    loadCategories()
-    loadWorkshops()
-    loadInventoryItems()
-    loadAdditives()
-    
+    if (typeof window !== 'undefined') {
+      const savedNetworkId = localStorage.getItem(STORAGE_KEY)
+      if (savedNetworkId) {
+        setSelectedNetworkId(savedNetworkId)
+        setFormData(prev => ({
+          ...prev,
+          networkId: savedNetworkId
+        }))
+      } else {
+        // Если сеть не выбрана, перенаправляем на страницу продуктов
+        toast.error(language === 'ru' 
+          ? 'Сначала выберите сеть' 
+          : 'ჯერ აირჩიეთ ქსელი')
+        router.push('/products')
+      }
+    }
+  }, [router, language])
+
+  // Загружаем данные когда selectedNetworkId установлен
+  useEffect(() => {
+    if (selectedNetworkId) {
+      loadData()
+    }
+  }, [selectedNetworkId])
+
+  useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach(entry => {
           if (entry.isIntersecting) {
-            setCurrentStep(entry.target.id as FormStep);
+            setCurrentStep(entry.target.id as FormStep)
           }
-        });
+        })
       },
       {
         root: null,
         rootMargin: '-40% 0px -40% 0px',
         threshold: 0
       }
-    );
+    )
 
     sections.forEach(section => {
-      const element = document.getElementById(section.id);
+      const element = document.getElementById(section.id)
       if (element) {
-        observer.observe(element);
+        observer.observe(element)
       }
-    });
+    })
 
     return () => {
-      observer.disconnect();
-    };
+      observer.disconnect()
+    }
   }, [])
 
   const scrollToSection = (id: string) => {
-    setIsScrolling(true);
-    const element = document.getElementById(id);
+    setIsScrolling(true)
+    const element = document.getElementById(id)
     if (element) {
       element.scrollIntoView({ 
         behavior: 'smooth',
         block: 'start'
-      });
+      })
     }
-    setTimeout(() => setIsScrolling(false), 1000);
-  };
+    setTimeout(() => setIsScrolling(false), 1000)
+  }
+  
+  const loadData = async () => {
+    if (!selectedNetworkId) {
+      toast.error(language === 'ru' 
+        ? 'Сеть не выбрана' 
+        : 'ქსელი არ არის არჩეული')
+      router.push('/products')
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      await Promise.all([
+        loadCategories(),
+        loadRestaurants(),
+        loadWorkshops(),
+        loadInventoryItems(),
+        loadAdditives()
+      ])
+    } catch (error) {
+      console.error('Failed to load data:', error)
+      toast.error(language === 'ru' ? 'Ошибка загрузки данных' : 'მონაცემების ჩატვირთვის შეცდომა')
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   const loadWorkshops = async () => {
+    if (!selectedNetworkId) return
+    
     setIsWorkshopsLoading(true)
     try {
-      const product = await ProductService.getById(productId as string)
-      const data = await WorkshopService.getByNetworkId(product.networkId)
+      const data = await WorkshopService.getByNetworkId(selectedNetworkId)
       setWorkshops(data)
     } catch (error) {
       console.error('Failed to load workshops', error)
@@ -278,87 +328,69 @@ const ProductEditPage = () => {
       setIsWorkshopsLoading(false)
     }
   }
+  
+  const loadRestaurants = async () => {
+    if (!selectedNetworkId) return
+    
+    setIsRestaurantsLoading(true)
+    try {
+      const userRestaurantsData = await RestaurantService.getByNetwork(selectedNetworkId)
+      setUserRestaurants(userRestaurantsData)
+    } catch (error) {
+      console.error('Failed to load restaurants', error)
+      toast.error(language === 'ru' ? 'Ошибка загрузки ресторанов' : 'რესტორნების ჩატვირთვის შეცდომა')
+    } finally {
+      setIsRestaurantsLoading(false)
+    }
+  }
 
   const loadInventoryItems = async () => {
-    setIsInventoryLoading(true);
+    setIsInventoryLoading(true)
     try {
-      const items = await WarehouseService.getAllInventoryItems();
+      const items = await WarehouseService.getAllInventoryItems()
       
       const formattedItems = items.map((item: any) => ({
         id: item.id,
         name: item.name,
         unit: item.unit,
         categoryId: item.categoryId,
-      }));
+      }))
       
-      setInventoryItems(formattedItems);
+      setInventoryItems(formattedItems)
     } catch (error) {
-      console.error('Failed to load inventory items', error);
+      console.error('Failed to load inventory items', error)
       toast.error(language === 'ru' 
         ? 'Ошибка загрузки ингредиентов' 
-        : 'ინგრედიენტების ჩატვირთვის შეცდომა');
-      setInventoryItems([]);
+        : 'ინგრედიენტების ჩატვირთვის შეცდომა')
+      setInventoryItems([])
     } finally {
-      setIsInventoryLoading(false);
+      setIsInventoryLoading(false)
     }
   }
 
-  const loadData = async () => {
-    if (!productId) {
-      resetForm()
-      return
-    }
-    
-    setIsLoading(true)
+  const loadCategories = async () => {
+    setIsCategoriesLoading(true)
     try {
-      const [product, productAdditives, prices, productIngredients] = await Promise.all([
-        ProductService.getById(productId as string),
-        AdditiveService.getByProduct(productId as string),
-        ProductService.getRestaurantPrices(productId as string),
-        ProductService.getIngredients(productId as string),
-      ])
-       const networkId = product.networkId
-
-        if (networkId) {
-          const userRestaurantsData = await RestaurantService.getRestaurantsByUserAndNetwork(user.id, networkId)
-          setUserRestaurants(userRestaurantsData)
-        }
-
-      setFormData({
-        title: product.title,
-        description: product.description,
-        composition: product.composition,
-        price: product.price,
-        images: product.images.length ? product.images : [''],
-        categoryId: product.categoryId,
-        weight: product.weight,
-        preparationTime: product.preparationTime,
-        packageQuantity: product.packageQuantity,
-        quantity: product.quantity || 0,
-        printLabels: product.printLabels,
-        publishedOnWebsite: product.publishedOnWebsite,
-        publishedInApp: product.publishedInApp,
-        isStopList: product.isStopList,
-        pageTitle: product.pageTitle || '',
-        metaDescription: product.metaDescription || '',
-        content: product.content || '',
-      })
-
-      setSelectedAdditives(productAdditives.map((a: Additive) => a.id))
-      setRestaurantPrices(prices)
-      
-      const userRestaurantIds = user?.restaurants?.map((r : Restaurant) => r.id) || []
-      const filteredSelectedRestaurants = prices
-        .map((p: RestaurantPrice) => p.restaurantId)
-        .filter((id: string) => userRestaurantIds.includes(id))
-      
-      setSelectedRestaurants(filteredSelectedRestaurants)
-      setSelectedWorkshops(product.workshops?.map((w: any) => w.workshop.id) || [])
-      setIngredients(productIngredients || [])
+      const data = await CategoryService.getByNetwork(selectedNetworkId as string)
+      setCategories(data as any)
     } catch (error) {
-      toast.error(language === 'ru' ? 'Ошибка загрузки данных' : 'მონაცემების ჩატვირთვის შეცდომა')
+      console.error('Failed to load categories', error)
+      toast.error(language === 'ru' ? 'Ошибка загрузки категорий' : 'კატეგორიების ჩატვირთვის შეცდომა')
     } finally {
-      setIsLoading(false)
+      setIsCategoriesLoading(false)
+    }
+  }
+
+  const loadAdditives = async () => {
+    setIsAdditivesLoading(true)
+    try {
+      const data = await AdditiveService.getAll()
+      setAdditives(data)
+    } catch (error) {
+      console.error('Failed to load additives', error)
+      toast.error(language === 'ru' ? 'Ошибка загрузки модификаторов' : 'მოდიფიკატორების ჩატვირთვის შეცდომა')
+    } finally {
+      setIsAdditivesLoading(false)
     }
   }
 
@@ -381,6 +413,7 @@ const ProductEditPage = () => {
       pageTitle: '',
       metaDescription: '',
       content: '',
+      networkId: selectedNetworkId || '',
     })
     setSelectedAdditives([])
     setSelectedRestaurants([])
@@ -388,30 +421,6 @@ const ProductEditPage = () => {
     setCurrentStep('basic')
     setSelectedWorkshops([])
     setIngredients([])
-  }
-
-  const loadCategories = async () => {
-    setIsCategoriesLoading(true)
-    try {
-      const data = await CategoryService.getAll()
-      setCategories(data as any)
-    } catch (error) {
-      console.error('Failed to load categories', error)
-    } finally {
-      setIsCategoriesLoading(false)
-    }
-  }
-
-  const loadAdditives = async () => {
-    setIsAdditivesLoading(true)
-    try {
-      const data = await AdditiveService.getAll()
-      setAdditives(data)
-    } catch (error) {
-      console.error('Failed to load additives', error)
-    } finally {
-      setIsAdditivesLoading(false)
-    }
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -438,22 +447,14 @@ const ProductEditPage = () => {
     })
   }
 
-  const toggleAdditive = (additiveId: string) => {
-    setSelectedAdditives(prev =>
-      prev.includes(additiveId)
-        ? prev.filter(id => id !== additiveId)
-        : [...prev, additiveId]
-    )
-  }
-
   const handleRestaurantsChange = (selectedIds: string[]) => {
-    const added = selectedIds.filter(id => !selectedRestaurants.includes(id));
-    const removed = selectedRestaurants.filter(id => !selectedIds.includes(id));
+    const added = selectedIds.filter(id => !selectedRestaurants.includes(id))
+    const removed = selectedRestaurants.filter(id => !selectedIds.includes(id))
 
-    setSelectedRestaurants(selectedIds);
+    setSelectedRestaurants(selectedIds)
 
     setRestaurantPrices(prev => {
-      let updated = prev.filter(rp => !removed.includes(rp.restaurantId));
+      let updated = prev.filter(rp => !removed.includes(rp.restaurantId))
       
       added.forEach(restaurantId => {
         if (!updated.some(rp => rp.restaurantId === restaurantId)) {
@@ -461,13 +462,13 @@ const ProductEditPage = () => {
             restaurantId,
             price: formData.price,
             isStopList: false
-          });
+          })
         }
-      });
+      })
       
-      return updated;
-    });
-  };
+      return updated
+    })
+  }
 
   const handleRestaurantPriceChange = (restaurantId: string, field: 'price' | 'isStopList', value: any) => {
     setRestaurantPrices(prev => {
@@ -511,6 +512,9 @@ const ProductEditPage = () => {
     if (formData.price <= 0) {
       errors.push(language === 'ru' ? 'Цена должна быть больше 0' : 'ფასი უნდა იყოს 0-ზე მეტი')
     }
+    if (!selectedNetworkId) {
+      errors.push(language === 'ru' ? 'Сеть не определена' : 'ქსელი არ არის განსაზღვრული')
+    }
     if (selectedRestaurants.length === 0) {
       errors.push(language === 'ru' ? 'Выберите хотя бы один ресторан' : 'აირჩიეთ ერთი რესტორნი მაინც')
     }
@@ -532,13 +536,23 @@ const ProductEditPage = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+      
+    if (!selectedNetworkId) {
+      toast.error(language === 'ru' 
+        ? 'Сеть не выбрана. Выберите сеть на странице продуктов' 
+        : 'ქსელი არ არის არჩეული. აირჩიეთ ქსელი პროდუქტების გვერდზე')
+      router.push('/products')
+      return
+    }
+    
     if (!validateForm()) return
 
-    setIsLoading(true)
+    setIsSaving(true)
 
     try {
       const productData = {
         ...formData,
+        networkId: selectedNetworkId, // Используем selectedNetworkId
         ingredients: ingredients.filter(i => i.inventoryItemId && i.quantity > 0)
           .map(i => ({
             inventoryItemId: i.inventoryItemId,
@@ -552,24 +566,24 @@ const ProductEditPage = () => {
         workshopIds: selectedWorkshops,
       }
 
-      const updatedProduct = await ProductService.update(productId as string, productData)
+      const createdProduct = await ProductService.create(productData)
 
       await Promise.all(
         selectedRestaurants.map(restaurantId => 
-          RestaurantService.addProduct(restaurantId, { productId: productId as string })
+          RestaurantService.addProduct(restaurantId, { productId: createdProduct.id })
             .catch(error => {
               console.error(`Failed to add product to restaurant ${restaurantId}:`, error)
             })
         )
       )
 
-      toast.success(language === 'ru' ? 'Продукт обновлен' : 'პროდუქტი განახლებულია')
-      router.back()
+      toast.success(language === 'ru' ? 'Продукт создан' : 'პროდუქტი შექმნილია')
+      router.push(`/menu/products/${createdProduct.id}/edit`)
     } catch (error) {
-      console.error('Error saving product:', error)
-      toast.error(language === 'ru' ? 'Ошибка сохранения' : 'შენახვის შეცდომა')
+      console.error('Error creating product:', error)
+      toast.error(language === 'ru' ? 'Ошибка создания продукта' : 'პროდუქტის შექმნის შეცდომა')
     } finally {
-      setIsLoading(false)
+      setIsSaving(false)
     }
   }
 
@@ -944,89 +958,105 @@ const ProductEditPage = () => {
           </Card>
         )
 
-       case 'seo':
-    return (
-      <Card>
-        <CardContent className="pt-6">
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="pageTitle" className="text-sm">
-                {language === 'ru' ? 'Заголовок страницы' : 'გვერდის სათაური'}
-              </Label>
-              <Input
-                id="pageTitle"
-                name="pageTitle"
-                value={formData.pageTitle}
-                onChange={handleInputChange}
-                className="text-sm"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="metaDescription" className="text-sm">
-                  {language === 'ru' ? 'Мета описание' : 'მეტა აღწერა'}
-                </Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 gap-1 text-xs"
-                  onClick={() => openFullscreenTextarea('metaDescription', formData.metaDescription, language === 'ru' ? 'Мета описание' : 'მეტა აღწერა')}
-                >
-                  <Maximize2 className="h-3 w-3" />
-                  {language === 'ru' ? 'Развернуть' : 'გაფართოება'}
-                </Button>
+      case 'seo':
+        return (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="pageTitle" className="text-sm">
+                    {language === 'ru' ? 'Заголовок страницы' : 'გვერდის სათაური'}
+                  </Label>
+                  <Input
+                    id="pageTitle"
+                    name="pageTitle"
+                    value={formData.pageTitle}
+                    onChange={handleInputChange}
+                    className="text-sm"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="metaDescription" className="text-sm">
+                      {language === 'ru' ? 'Мета описание' : 'მეტა აღწერა'}
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 text-xs"
+                      onClick={() => openFullscreenTextarea('metaDescription', formData.metaDescription, language === 'ru' ? 'Мета описание' : 'მეტა აღწერა')}
+                    >
+                      <Maximize2 className="h-3 w-3" />
+                      {language === 'ru' ? 'Развернуть' : 'გაფართოება'}
+                    </Button>
+                  </div>
+                  <HtmlTextarea
+                    id="metaDescription"
+                    value={formData.metaDescription}
+                    onChange={(value: any) => setFormData({...formData, metaDescription: value})}
+                    placeholder={language === 'ru' 
+                      ? 'Мета описание для поисковых систем' 
+                      : 'ძებნის სისტემებისთვის მეტა-აღწერა'}
+                    className="min-h-24 font-mono text-sm"
+                    language="html"
+                    showLineNumbers={true}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="content" className="text-sm">
+                      {language === 'ru' ? 'Контент' : 'კონტენტი'}
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 gap-1 text-xs"
+                      onClick={() => openFullscreenTextarea('content', formData.content, language === 'ru' ? 'Контент' : 'კონტენტი')}
+                    >
+                      <Maximize2 className="h-3 w-3" />
+                      {language === 'ru' ? 'Развернуть' : 'გაფართოება'}
+                    </Button>
+                  </div>
+                  <HtmlTextarea
+                    id="content"
+                    value={formData.content}
+                    onChange={(value: any) => setFormData({...formData, content: value})}
+                    placeholder={language === 'ru' 
+                      ? 'Контент страницы продукта' 
+                      : 'პროდუქტის გვერდის კონტენტი'}
+                    className="min-h-32 font-mono text-sm"
+                    language="html"
+                    showLineNumbers={true}
+                  />
+                </div>
               </div>
-              <HtmlTextarea
-                id="metaDescription"
-                value={formData.metaDescription}
-                onChange={(value: any) => setFormData({...formData, metaDescription: value})}
-                placeholder={language === 'ru' 
-                  ? 'Мета описание для поисковых систем' 
-                  : 'ძებნის სისტემებისთვის მეტა-აღწერა'}
-                className="min-h-24 font-mono text-sm"
-                language="html"
-                showLineNumbers={true}
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="content" className="text-sm">
-                  {language === 'ru' ? 'Контент' : 'კონტენტი'}
-                </Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 gap-1 text-xs"
-                  onClick={() => openFullscreenTextarea('content', formData.content, language === 'ru' ? 'Контент' : 'კონტენტი')}
-                >
-                  <Maximize2 className="h-3 w-3" />
-                  {language === 'ru' ? 'Развернуть' : 'გაფართოება'}
-                </Button>
-              </div>
-              <HtmlTextarea
-                id="content"
-                value={formData.content}
-                onChange={(value: any) => setFormData({...formData, content: value})}
-                placeholder={language === 'ru' 
-                  ? 'Контент страницы продукта' 
-                  : 'პროდუქტის გვერდის კონტენტი'}
-                className="min-h-32 font-mono text-sm"
-                language="html"
-                showLineNumbers={true}
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    )
+            </CardContent>
+          </Card>
+        )
 
       default:
         return null
     }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
+
+  if (!selectedNetworkId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
   }
 
   return (
@@ -1036,37 +1066,37 @@ const ProductEditPage = () => {
         <div className=" py-3">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold">
-              {language === 'ru' ? 'Редактирование продукта' : 'პროდუქტის რედაქტირება'}
+              {language === 'ru' ? 'Создание продукта' : 'პროდუქტის შექმნა'}
             </h1>
             <div className="flex gap-2">
               <Button 
                 variant="outline" 
                 onClick={() => router.back()}
-                disabled={isLoading}
+                disabled={isSaving}
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 {language === 'ru' ? 'Назад' : 'უკან'}
               </Button>
               <Button 
                 onClick={handleSubmit}
-                disabled={isLoading}
+                disabled={isSaving}
               >
-                {isLoading ? (
+                {isSaving ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {language === 'ru' ? 'Сохранение...' : 'შენახვა...'}
+                    {language === 'ru' ? 'Создание...' : 'შექმნა...'}
                   </>
                 ) : (
                   <>
-                    <Save className="mr-2 h-4 w-4" />
-                    {language === 'ru' ? 'Сохранить' : 'შენახვა'}
+                    <Plus className="mr-2 h-4 w-4" />
+                    {language === 'ru' ? 'Создать продукт' : 'პროდუქტის შექმნა'}
                   </>
                 )}
               </Button>
             </div>
           </div>
           
-           <div className="mt-4 hidden md:flex">
+          <div className="mt-4 hidden md:flex">
             <NavigationMenu>
               <NavigationMenuList>
                 {sections.map(section => {
@@ -1101,7 +1131,6 @@ const ProductEditPage = () => {
           </div>
         </div>
       </nav>
-
 
       {/* Основной контент */}
       <div >
@@ -1143,63 +1172,62 @@ const ProductEditPage = () => {
           })}
         </div>
       </div>
-<Dialog open={isFullscreenDialogOpen} onOpenChange={setIsFullscreenDialogOpen}>
-  <DialogContentExtraWide className="max-w-4xl h-[90vh] flex flex-col p-0">
-    <DialogHeader className="p-6 pb-4">
-      <DialogTitle className="text-xl flex items-center justify-between">
-        <span>
-          {language === 'ru' ? 'Редактирование' : 'რედაქტირება'}: {fullscreenTextareaLabel}
-        </span>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-7 gap-1"
-          onClick={cancelFullscreenTextarea}
-        >
-          <Minimize2 className="h-4 w-4" />
-          {language === 'ru' ? 'Свернуть' : 'ჩაკეცვა'}
-        </Button>
-      </DialogTitle>
-    </DialogHeader>
-    
-    {/* Контейнер с flex-1 для заполнения доступного пространства */}
-    <div className="flex-1 flex flex-col px-6 pb-6">
-      <HtmlTextarea
-        value={fullscreenTextareaValue}
-        onChange={setFullscreenTextareaValue}
-        placeholder={language === 'ru' ? 'Введите текст...' : 'შეიყვანეთ ტექსტი...'}
-        className="flex-1 w-full min-h-0 text-base resize-none" // flex-1 и min-h-0 важны
-        language="html"
-        showLineNumbers={true}
-        style={{
-          height: '100%',
-          maxHeight: 'none' // Убираем любые ограничения по высоте
-        }}
-      />
-    </div>
-    
-    <div className="flex items-center justify-end gap-2 p-6 pt-0">
-      <Button
-        type="button"
-        variant="outline"
-        onClick={cancelFullscreenTextarea}
-      >
-        {language === 'ru' ? 'Отмена' : 'გაუქმება'}
-      </Button>
-      <Button
-        type="button"
-        onClick={saveFullscreenTextarea}
-      >
-        <CircleCheck className="mr-2 h-4 w-4" />
-        {language === 'ru' ? 'Подтвердить' : 'შენახვა'}
-      </Button>
-    </div>
-  </DialogContentExtraWide>
-</Dialog>
-      
+
+      <Dialog open={isFullscreenDialogOpen} onOpenChange={setIsFullscreenDialogOpen}>
+        <DialogContentExtraWide className="max-w-4xl h-[90vh] flex flex-col p-0">
+          <DialogHeader className="p-6 pb-4">
+            <DialogTitle className="text-xl flex items-center justify-between">
+              <span>
+                {language === 'ru' ? 'Редактирование' : 'რედაქტირება'}: {fullscreenTextareaLabel}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1"
+                onClick={cancelFullscreenTextarea}
+              >
+                <Minimize2 className="h-4 w-4" />
+                {language === 'ru' ? 'Свернуть' : 'ჩაკეცვა'}
+              </Button>
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="flex-1 flex flex-col px-6 pb-6">
+            <HtmlTextarea
+              value={fullscreenTextareaValue}
+              onChange={setFullscreenTextareaValue}
+              placeholder={language === 'ru' ? 'Введите текст...' : 'შეიყვანეთ ტექსტი...'}
+              className="flex-1 w-full min-h-0 text-base resize-none"
+              language="html"
+              showLineNumbers={true}
+              style={{
+                height: '100%',
+                maxHeight: 'none'
+              }}
+            />
+          </div>
+          
+          <div className="flex items-center justify-end gap-2 p-6 pt-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={cancelFullscreenTextarea}
+            >
+              {language === 'ru' ? 'Отмена' : 'გაუქმება'}
+            </Button>
+            <Button
+              type="button"
+              onClick={saveFullscreenTextarea}
+            >
+              <CircleCheck className="mr-2 h-4 w-4" />
+              {language === 'ru' ? 'Подтвердить' : 'შენახვა'}
+            </Button>
+          </div>
+        </DialogContentExtraWide>
+      </Dialog>
     </div>
   )
 }
 
-export default ProductEditPage
+export default ProductCreatePage

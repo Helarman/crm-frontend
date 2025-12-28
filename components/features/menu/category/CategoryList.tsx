@@ -562,7 +562,7 @@ export const CategoryList = () => {
               {t.changeNetwork}
             </Button>
           )}
-          <Button onClick={() => openAddModal()}>
+          <Button onClick={() => router.push('/categories/new')}>
             <Plus className="mr-2 h-4 w-4" />
             {t.addCategory}
           </Button>

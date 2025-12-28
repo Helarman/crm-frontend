@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Loader2, X, Plus, Check, ChevronsUpDown, ArrowLeft, ArrowRight, Save, Image as ImageIcon, Tag, Globe, Layers, Hash, Building, Menu, Eye, EyeOff, FolderOpen, Link, Search, ChevronRight, Expand, Maximize2, Minimize2, CircleCheck, ListCollapse, Info, Store } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -63,13 +63,14 @@ const sections = [
   },
 ];
 
-const CategoryEditPage = () => {
-  const params = useParams()
-  const categoryId = params.id
+const STORAGE_KEY = 'selected_network_id'
+
+const CategoryCreatePage = () => {
   const { language } = useLanguageStore()
   const router = useRouter()
   const { user } = useAuth()
   
+  const [selectedNetworkId, setSelectedNetworkId] = useState<string | null>(null)
   const [currentStep, setCurrentStep] = useState<FormStep>('basic')
   const [formData, setFormData] = useState({
     title: '',
@@ -91,7 +92,6 @@ const CategoryEditPage = () => {
   const [isRestaurantsLoading, setIsRestaurantsLoading] = useState(false)
   const [isCategoriesLoading, setIsCategoriesLoading] = useState(false)
   const [isScrolling, setIsScrolling] = useState(false)
-  const [networkId, setNetworkId] = useState<string>('')
   
   // Состояния для полноэкранного редактора
   const [isFullscreenDialogOpen, setIsFullscreenDialogOpen] = useState(false)
@@ -100,11 +100,30 @@ const CategoryEditPage = () => {
   const [fullscreenTextareaLabel, setFullscreenTextareaLabel] = useState('')
   const [fullscreenTextareaLanguage, setFullscreenTextareaLanguage] = useState<'html' | 'text'>('text')
 
+  // Загружаем selectedNetworkId из localStorage при монтировании
   useEffect(() => {
-    loadData()
-    loadCategories()
-    loadRestaurants()
-    
+    if (typeof window !== 'undefined') {
+      const savedNetworkId = localStorage.getItem(STORAGE_KEY)
+      if (savedNetworkId) {
+        setSelectedNetworkId(savedNetworkId)
+      } else {
+        // Если сеть не выбрана, перенаправляем на страницу категорий
+        toast.error(language === 'ru' 
+          ? 'Сначала выберите сеть' 
+          : 'ჯერ აირჩიეთ ქსელი')
+        router.push('/categories')
+      }
+    }
+  }, [router, language])
+
+  // Загружаем данные когда selectedNetworkId установлен
+  useEffect(() => {
+    if (selectedNetworkId) {
+      loadData()
+    }
+  }, [selectedNetworkId])
+
+  useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach(entry => {
@@ -145,12 +164,12 @@ const CategoryEditPage = () => {
   };
 
   const loadRestaurants = async () => {
+    if (!selectedNetworkId) return
+    
     setIsRestaurantsLoading(true)
     try {
-         const category = await CategoryService.getById(categoryId as string)
-        const userRestaurantsData = await RestaurantService.getByNetwork(category.networkId as string)
-        setRestaurants(userRestaurantsData)
-      
+      const userRestaurantsData = await RestaurantService.getByNetwork(selectedNetworkId)
+      setRestaurants(userRestaurantsData)
     } catch (error) {
       console.error('Failed to load restaurants', error)
       toast.error(language === 'ru' ? 'Ошибка загрузки ресторанов' : 'რესტორნების ჩატვირთვის შეცდომა')
@@ -160,31 +179,22 @@ const CategoryEditPage = () => {
   }
 
   const loadData = async () => {
-    if (!categoryId) {
-      resetForm()
+    if (!selectedNetworkId) {
+      toast.error(language === 'ru' 
+        ? 'Сеть не выбрана' 
+        : 'ქსელი არ არის არჩეული')
+      router.push('/categories')
       return
     }
-    
+
     setIsLoading(true)
     try {
-      const category = await CategoryService.getById(categoryId as string)
-      
-      setFormData({
-        title: category.title || '',
-        description: category.description || '',
-        slug: category.slug || '',
-        metaTitle: category.metaTitle || '',
-        metaDescription: category.metaDescription || '',
-        metaKeywords: category.metaKeywords || '',
-        parentId: category.parentId || null,
-        order: category.order || 0,
-        clientOrder: category.clientOrder || 0,
-        image: category.image || '',
-      })
-
-      setNetworkId(category.networkId as string)
-      setSelectedRestaurants(category.restaurantIds || category.restaurants?.map((r: any) => r.id) || [])
+      await Promise.all([
+        loadCategories(),
+        loadRestaurants()
+      ])
     } catch (error) {
+      console.error('Failed to load data:', error)
       toast.error(language === 'ru' ? 'Ошибка загрузки данных' : 'მონაცემების ჩატვირთვის შეცდომა')
     } finally {
       setIsLoading(false)
@@ -209,9 +219,11 @@ const CategoryEditPage = () => {
   }
 
   const loadCategories = async () => {
+    if (!selectedNetworkId) return
+    
     setIsCategoriesLoading(true)
     try {
-      const data = await CategoryService.getAll()
+      const data = await CategoryService.getByNetwork(selectedNetworkId)
       setCategories(data as any)
     } catch (error) {
       console.error('Failed to load categories', error)
@@ -234,13 +246,6 @@ const CategoryEditPage = () => {
     setFormData({
       ...formData,
       [name]: numValue,
-    })
-  }
-
-  const handleSwitchChange = (name: string, checked: boolean) => {
-    setFormData({
-      ...formData,
-      [name]: checked,
     })
   }
 
@@ -316,26 +321,26 @@ const CategoryEditPage = () => {
     e.preventDefault()
     if (!validateForm()) return
 
+    if (!selectedNetworkId) {
+      toast.error(language === 'ru' 
+        ? 'Сеть не выбрана. Выберите сеть на странице категорий' 
+        : 'ქსელი არ არის არჩეული. აირჩიეთ ქსელი კატეგორიების გვერდზე')
+      router.push('/categories')
+      return
+    }
+
     setIsLoading(true)
-    const category = await CategoryService.getById(categoryId as string)
     try {
       const categoryData = {
         ...formData,
-        networkId: category.networkId,  
+        networkId: selectedNetworkId,
         restaurantIds: selectedRestaurants,
         parentId: formData.parentId === 'null' ? null : formData.parentId,
       }
 
-      let updatedCategory
-      if (categoryId) {
-        updatedCategory = await CategoryService.update(categoryId as string, categoryData)
-        toast.success(language === 'ru' ? 'Категория обновлена' : 'კატეგორია განახლებულია')
-      } else {
-        updatedCategory = await CategoryService.create(categoryData)
-        toast.success(language === 'ru' ? 'Категория создана' : 'კატეგორია შექმნილია')
-      }
-
-      router.back()
+      const createdCategory = await CategoryService.create(categoryData)
+      toast.success(language === 'ru' ? 'Категория создана' : 'კატეგორია შექმნილია')
+      router.push(`/menu/categories/${createdCategory.id}/edit`)
     } catch (error: any) {
       console.error('Error saving category:', error)
       
@@ -523,12 +528,10 @@ const CategoryEditPage = () => {
                     <SearchableSelect
                       options={[
                         { id: 'null', label: language === 'ru' ? 'Нет (основная категория)' : 'არა (მთავარი კატეგორია)' },
-                        ...categories
-                          .filter(cat => cat.id !== categoryId)
-                          .map(category => ({
-                            id: category.id,
-                            label: category.title
-                          }))
+                        ...categories.map(category => ({
+                          id: category.id,
+                          label: category.title
+                        }))
                       ]}
                       value={formData.parentId ? [formData.parentId] : ['null']}
                       onChange={([id]) => setFormData({...formData, parentId: id === 'null' ? null : id})}
@@ -571,6 +574,21 @@ const CategoryEditPage = () => {
                     />
                   </div>
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="image" className="text-sm">
+                    {language === 'ru' ? 'Изображение (URL)' : 'სურათი (URL)'}
+                  </Label>
+                  <Input
+                    id="image"
+                    name="image"
+                    value={formData.image}
+                    onChange={handleInputChange}
+                    className="text-sm"
+                    placeholder={language === 'ru' ? 'URL изображения' : 'სურათის URL'}
+                  />
+                </div>
+                
                 {formData.image && (
                   <div className="space-y-2">
                     <Label className="text-sm">
@@ -588,8 +606,6 @@ const CategoryEditPage = () => {
                     </div>
                   </div>
                 )}
-
-                
               </div>
             </CardContent>
           </Card>
@@ -701,6 +717,14 @@ const CategoryEditPage = () => {
     }
   }
 
+  if (!selectedNetworkId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen">
       {/* Навигация */}
@@ -708,9 +732,7 @@ const CategoryEditPage = () => {
         <div className="py-3">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold">
-              {categoryId 
-                ? (language === 'ru' ? 'Редактирование категории' : 'კატეგორიის რედაქტირება')
-                : (language === 'ru' ? 'Создание категории' : 'კატეგორიის შექმნა')}
+              {language === 'ru' ? 'Создание категории' : 'კატეგორიის შექმნა'}
             </h1>
             <div className="flex gap-2">
               <Button 
@@ -728,12 +750,12 @@ const CategoryEditPage = () => {
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {language === 'ru' ? 'Сохранение...' : 'შენახვა...'}
+                    {language === 'ru' ? 'Создание...' : 'შექმნა...'}
                   </>
                 ) : (
                   <>
-                    <Save className="mr-2 h-4 w-4" />
-                    {language === 'ru' ? 'Сохранить' : 'შენახვა'}
+                    <Plus className="mr-2 h-4 w-4" />
+                    {language === 'ru' ? 'Создать категорию' : 'კატეგორიის შექმნა'}
                   </>
                 )}
               </Button>
@@ -881,4 +903,4 @@ const CategoryEditPage = () => {
   )
 }
 
-export default CategoryEditPage
+export default CategoryCreatePage

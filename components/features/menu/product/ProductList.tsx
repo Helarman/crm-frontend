@@ -644,7 +644,7 @@ export const ProductList = () => {
           </Button>
 
           {!showArchived && (
-            <Button onClick={openAddModal}>
+            <Button onClick={() => router.push('/products/new')}>
               <Plus className="mr-2 h-4 w-4" />
               {t.addProduct}
             </Button>
