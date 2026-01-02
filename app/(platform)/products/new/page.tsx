@@ -347,7 +347,7 @@ const ProductCreatePage = () => {
   const loadInventoryItems = async () => {
     setIsInventoryLoading(true)
     try {
-      const items = await WarehouseService.getAllInventoryItems()
+      const items = await WarehouseService.getInventoryItemsByNetwork(selectedNetworkId as string)
       
       const formattedItems = items.map((item: any) => ({
         id: item.id,

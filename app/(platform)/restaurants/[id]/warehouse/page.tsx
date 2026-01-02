@@ -26,6 +26,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import React from 'react';
 import { useDictionaries } from '@/lib/hooks/useDictionaries';
 import { useAuth } from '@/lib/hooks/useAuth';
+import { RestaurantService } from '@/lib/api/restaurant.service';
 
 export default function WarehousePage() {
   const params = useParams();
@@ -54,6 +55,7 @@ export default function WarehousePage() {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [allCategories, setAllCategories] = useState<InventoryCategoryDto[]>([]);
+  const [restaurant, setRestaurant] = useState<any>(null);
   const [dateRange, setDateRange] = useState<DateRange | undefined>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -185,6 +187,18 @@ export default function WarehousePage() {
     }
   };
 
+  const loadRestaurantData = async () => {
+    try {
+      const restaurantData = await RestaurantService.getById(restaurantId);
+      setRestaurant(restaurantData);
+      return restaurantData;
+    } catch (error) {
+      console.error('Failed to load restaurant data:', error);
+      return null;
+    }
+  };
+
+
   // Функция для обновления названия склада
   const handleUpdateWarehouseName = async () => {
     if (!warehouseName.trim()) {
@@ -276,17 +290,36 @@ export default function WarehousePage() {
   const loadWarehouseData = async () => {
     try {
       setLoading(true);
+
+      // Загружаем данные ресторана
+      const restaurantData = await loadRestaurantData();
+      if (!restaurantData) return;
+
       const warehouseData = await WarehouseService.getRestaurantWarehouse(restaurantId);
       const items = await WarehouseService.getWarehouseItems(warehouseData.id);
       const locations = await WarehouseService.listStorageLocations(warehouseData.id);
-      const categoriesData = await WarehouseService.getCategoryTree();
-      const allCategoriesData = await WarehouseService.getAllInventoryCategories();
+
+      // Получаем категории по сети
+      const categoriesData = restaurantData.networkId
+        ? await WarehouseService.getCategoryTreeByNetwork(restaurantData.networkId)
+        : await WarehouseService.getCategoryTree();
+
+      // Получаем все категории по сети
+      const allCategoriesData = restaurantData.networkId
+        ? await WarehouseService.getInventoryCategoriesByNetwork(restaurantData.networkId)
+        : await WarehouseService.getAllInventoryCategories();
+
       setWarehouse(warehouseData);
       setItems(items || []);
       setLocations(locations || []);
       setCategories(categoriesData || []);
       setAllCategories(allCategoriesData || []);
-      const premixesData = await WarehouseService.listWarehousePremixes(warehouseData.id);
+
+      // Получаем премиксы по сети
+      const premixesData = restaurantData.networkId
+        ? await WarehouseService.getPremixesByNetwork(restaurantData.networkId)
+        : await WarehouseService.listWarehousePremixes(warehouseData.id);
+
       setPremixes(premixesData);
     } catch (error) {
       console.error('Failed to load warehouse data:', error);
@@ -433,7 +466,7 @@ export default function WarehousePage() {
   };
 
   const handleAddItem = async () => {
-    if (!validateItem()) return;
+    if (!validateItem() || !restaurant?.networkId) return;
 
     try {
       const inventoryItem = await WarehouseService.createInventoryItem({
@@ -441,14 +474,9 @@ export default function WarehousePage() {
         unit: newItem.unit,
         description: '',
         categoryId: newItem.categoryId === 'none' ? undefined : newItem.categoryId,
-      });
-
-      await WarehouseService.createWarehouseItem({
-        warehouseId: warehouse.id,
-        inventoryItemId: inventoryItem.id,
-        storageLocationId: newItem.storageLocationId === 'none' ? undefined : newItem.storageLocationId,
-        quantity: newItem.quantity,
-        minQuantity: 0,
+        networkId: restaurant.networkId, // Добавляем networkId
+        addToWarehouseId: warehouse.id, // Добавляем склад для автоматического создания warehouseItem
+        initialQuantity: newItem.quantity,
       });
 
       await loadWarehouseData();
@@ -465,39 +493,29 @@ export default function WarehousePage() {
       toast.success(t('itemAdded'));
     } catch (error: any) {
       console.error('Failed to add item:', error);
-      let errorMessage = t('addItemError');
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      }
-      toast.error(errorMessage);
+      toast.error(error.response?.data?.message || t('addItemError'));
     }
   };
 
   const handleAddLocation = async () => {
-    if (!validateLocation()) return;
+    if (!validateLocation() || !restaurant?.networkId) return;
 
     try {
-      await WarehouseService.createStorageLocation(warehouse.id, newLocation);
-      await loadWarehouseData();
-
-      setNewLocation({
-        name: '',
-        code: '',
+      await WarehouseService.createStorageLocation(warehouse.id, {
+        ...newLocation,
+        networkId: restaurant.networkId, 
       });
-
+      await loadWarehouseData();
+      setNewLocation({ name: '', code: '' });
       toast.success(t('locationAdded'));
     } catch (error: any) {
       console.error('Failed to add location:', error);
-      let errorMessage = t('addLocationError');
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      }
-      toast.error(errorMessage);
+      toast.error(error.response?.data?.message || t('addLocationError'));
     }
   };
 
   const handleAddCategory = async () => {
-    if (!validateCategory()) return;
+    if (!validateCategory() || !restaurant?.networkId) return;
 
     try {
       await WarehouseService.createInventoryCategory({
@@ -505,25 +523,20 @@ export default function WarehousePage() {
         description: newCategory.description,
         color: newCategory.color,
         parentId: newCategory.parentId === 'none' ? undefined : newCategory.parentId,
+        networkId: restaurant.networkId, // Добавляем networkId
       });
 
       await loadWarehouseData();
-
       setNewCategory({
         name: '',
         description: '',
         color: '#6b7280',
         parentId: 'none',
       });
-
       toast.success(t('categoryAdded'));
     } catch (error: any) {
       console.error('Failed to add category:', error);
-      let errorMessage = t('addCategoryError');
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      }
-      toast.error(errorMessage);
+      toast.error(error.response?.data?.message || t('addCategoryError'));
     }
   };
 
@@ -696,7 +709,7 @@ export default function WarehousePage() {
   };
 
   const handleAddPremix = async () => {
-    if (!validatePremix()) return;
+    if (!validatePremix() || !restaurant?.networkId) return;
 
     try {
       const ingredients = premixIngredients.map(ing => ({
@@ -710,6 +723,7 @@ export default function WarehousePage() {
         unit: newPremix.unit,
         yield: newPremix.yield,
         ingredients,
+        networkId: restaurant.networkId, // Добавляем networkId
       };
 
       await WarehouseService.createPremix(dto);
@@ -1887,16 +1901,16 @@ export default function WarehousePage() {
                 </TableHeader>
                 <TableBody>
                   {premixes.map((premix) => {
-                    const premixInventoryItem = items.find(item => 
+                    const premixInventoryItem = items.find(item =>
                       item.inventoryItem?.premixId === premix.id
                     );
-                    
-                    const premixWarehouseItem = items.find(item => 
+
+                    const premixWarehouseItem = items.find(item =>
                       item.premixId === premix.id
                     );
 
                     const premixItem = premixInventoryItem || premixWarehouseItem;
-                    
+
                     const ingredientsCount = premix.ingredients?.length;
                     const totalCost = calculatePremixCost(premix);
                     const costPerUnit = calculatePremixCostPerUnit(premix);
@@ -1904,11 +1918,11 @@ export default function WarehousePage() {
                     return (
                       <TableRow key={premix.id}>
                         <TableCell className="font-medium">{premix.name}</TableCell>
-                        
+
                         <TableCell>
                           {Math.max(premixItem?.quantity)}
                         </TableCell>
-                        
+
                         <TableCell>{premix.unit}</TableCell>
                         <TableCell>{premix.yield}</TableCell>
                         <TableCell>

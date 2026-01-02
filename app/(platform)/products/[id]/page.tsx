@@ -282,7 +282,8 @@ const ProductEditPage = () => {
   const loadInventoryItems = async () => {
     setIsInventoryLoading(true);
     try {
-      const items = await WarehouseService.getAllInventoryItems();
+      const product = await ProductService.getById(productId as string)
+      const items = await WarehouseService.getInventoryItemsByNetwork(product.networkId);
       
       const formattedItems = items.map((item: any) => ({
         id: item.id,

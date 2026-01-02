@@ -113,6 +113,7 @@ interface StorageLocationDto {
   code?: string;
   description?: string;
   isActive: boolean;
+  networkId: string;
   warehouseId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -121,6 +122,7 @@ interface StorageLocationDto {
 interface CreateStorageLocationDto {
   name: string;
   code?: string;
+  networkId?: string;
   description?: string;
 }
 
@@ -201,14 +203,14 @@ interface InventoryTransactionDto {
   previousQuantity: number;
   newQuantity: number;
   reason?: string;
-   cost?: number; 
+  cost?: number;
   totalValue?: number
   unitCost?: number;
   totalCost?: number;
   documentId?: string;
   createdAt: Date;
   updatedAt: Date;
-   warehouseItem?: {
+  warehouseItem?: {
     warehouseId?: string
   }
 }
@@ -218,8 +220,8 @@ interface CreateInventoryTransactionDto {
   userId?: string;
   type: InventoryTransactionType;
   warehouseId: string;
-  cost?: number; 
-  unitCost?: number; 
+  cost?: number;
+  unitCost?: number;
   quantity: number;
   reason?: string;
   documentId?: string;
@@ -233,12 +235,14 @@ interface PremixDto {
   yield: number;
   createdAt: Date;
   updatedAt: Date;
+  networkId: string;
   ingredients: any;
 }
 
 interface CreatePremixDto {
   name: string;
   description?: string;
+  networkId: string;
   unit: string;
   yield?: number;
   ingredients: AddPremixIngredientDto[];
@@ -301,6 +305,7 @@ export interface InventoryCategoryDto {
   name: string;
   description?: string;
   color?: string;
+  networkId: string;
   icon?: string;
   isActive: boolean;
   parentId?: string;
@@ -314,6 +319,7 @@ export interface CreateInventoryCategoryDto {
   name: string;
   description?: string;
   color?: string;
+  networkId: string;
   icon?: string;
   parentId?: string;
   isActive?: boolean;
@@ -391,7 +397,7 @@ export const WarehouseService = {
 
   // ==================== Storage Location Methods ====================
   createStorageLocation: async (
-    warehouseId: string, 
+    warehouseId: string,
     dto: CreateStorageLocationDto
   ): Promise<StorageLocationDto> => {
     const { data } = await api.post(`/warehouses/${warehouseId}/locations`, dto);
@@ -404,7 +410,7 @@ export const WarehouseService = {
   },
 
   updateStorageLocation: async (
-    id: string, 
+    id: string,
     dto: UpdateStorageLocationDto
   ): Promise<StorageLocationDto> => {
     const { data } = await api.put(`/warehouses/locations/${id}`, dto);
@@ -416,7 +422,11 @@ export const WarehouseService = {
   },
 
   // ==================== Inventory Item Methods ====================
-  createInventoryItem: async (dto: CreateInventoryItemDto): Promise<InventoryItemDto> => {
+  createInventoryItem: async (dto: CreateInventoryItemDto & {
+    networkId?: string;
+    addToWarehouseId?: string;
+    initialQuantity?: number;
+  }): Promise<InventoryItemDto> => {
     const { data } = await api.post('/warehouses/items', dto);
     return data;
   },
@@ -427,7 +437,7 @@ export const WarehouseService = {
   },
 
   updateInventoryItem: async (
-    id: string, 
+    id: string,
     dto: UpdateInventoryItemDto
   ): Promise<InventoryItemDto> => {
     const { data } = await api.put(`/warehouses/items/${id}`, dto);
@@ -450,7 +460,7 @@ export const WarehouseService = {
   },
 
   updateWarehouseItem: async (
-    id: string, 
+    id: string,
     dto: UpdateWarehouseItemDto
   ): Promise<WarehouseItemDto> => {
     const { data } = await api.put(`/warehouses/warehouse-items/${id}`, dto);
@@ -517,14 +527,14 @@ export const WarehouseService = {
     await api.delete(`/warehouses/premixes/${id}`);
   },
 
- getAllInventoryItems: async (): Promise<any> => {
+  getAllInventoryItems: async (): Promise<any> => {
     const response = await api.get('/warehouses/items/all');
     return response.data;
   },
 
   preparePremix: async (
-    id: string, 
-    quantity: number, 
+    id: string,
+    quantity: number,
     userId?: string
   ): Promise<void> => {
     await api.post(`/warehouses/premixes/${id}/prepare`, { quantity, userId });
@@ -532,7 +542,7 @@ export const WarehouseService = {
 
   // ==================== Premix Ingredient Methods ====================
   addPremixIngredient: async (
-    premixId: string, 
+    premixId: string,
     dto: AddPremixIngredientDto
   ): Promise<PremixIngredientDto> => {
     const { data } = await api.post(`/warehouses/premixes/${premixId}/ingredients`, dto);
@@ -552,7 +562,7 @@ export const WarehouseService = {
   },
 
   removePremixIngredient: async (
-    premixId: string, 
+    premixId: string,
     inventoryItemId: string
   ): Promise<void> => {
     await api.delete(`/warehouses/premixes/${premixId}/ingredients/${inventoryItemId}`);
@@ -588,7 +598,7 @@ export const WarehouseService = {
 
   // ==================== Utility Methods ====================
   checkProductAvailability: async (
-    productId: string, 
+    productId: string,
     quantity: number = 1
   ): Promise<InventoryAvailabilityDto> => {
     const { data } = await api.get(`/warehouses/products/${productId}/availability`, {
@@ -597,103 +607,103 @@ export const WarehouseService = {
     return data;
   },
 
-getWarehouseItems: async (
-  warehouseId: string,
-  filters?: {
+  getWarehouseItems: async (
+    warehouseId: string,
+    filters?: {
+      search?: string;
+      lowStock?: boolean;
+      storageLocationId?: string;
+    }
+  ): Promise<WarehouseItemDto[]> => {
+    const { data } = await api.get(`/warehouses/${warehouseId}/items`, {
+      params: {
+        search: filters?.search,
+        lowStock: filters?.lowStock,
+        storageLocationId: filters?.storageLocationId,
+      },
+    });
+    return data;
+  },
+
+  listStorageLocations: async (
+    warehouseId: string,
+    filters?: {
+      search?: string;
+    }
+  ): Promise<StorageLocationDto[]> => {
+    const { data } = await api.get(`/warehouses/${warehouseId}/locations`, {
+      params: {
+        search: filters?.search,
+      },
+    });
+    return data;
+  },
+
+  listPremixes: async (filters?: {
     search?: string;
-    lowStock?: boolean;
-    storageLocationId?: string;
-  }
-): Promise<WarehouseItemDto[]> => {
-  const { data } = await api.get(`/warehouses/${warehouseId}/items`, {
-    params: {
-      search: filters?.search,
-      lowStock: filters?.lowStock,
-      storageLocationId: filters?.storageLocationId,
-    },
-  });
-  return data;
-},
+  }): Promise<PremixDto[]> => {
+    const { data } = await api.get('/warehouses/premixes', {
+      params: {
+        search: filters?.search,
+      },
+    });
+    return data;
+  },
 
-listStorageLocations: async (
-  warehouseId: string,
-  filters?: {
-    search?: string;
-  }
-): Promise<StorageLocationDto[]> => {
-  const { data } = await api.get(`/warehouses/${warehouseId}/locations`, {
-    params: {
-      search: filters?.search,
-    },
-  });
-  return data;
-},
+  listWarehousePremixes: async (
+    warehouseId: string,
+    filters?: {
+      search?: string;
+    }
+  ): Promise<PremixDto[]> => {
+    const { data } = await api.get(`/warehouses/${warehouseId}/premixes`, {
+      params: {
+        search: filters?.search,
+      },
+    });
+    return data;
+  },
+  async getPremixWithWarehouseDetails(premixId: string, warehouseId: string): Promise<any> {
+    const response = await api.get(`/warehouses/${warehouseId}/premixes/${premixId}/details`);
+    return response.data;
+  },
 
-listPremixes: async (filters?: {
-  search?: string;
-}): Promise<PremixDto[]> => {
-  const { data } = await api.get('/warehouses/premixes', {
-    params: {
-      search: filters?.search,
-    },
-  });
-  return data;
-},
+  async getPremixTransactions(premixId: string, warehouseId: string): Promise<any[]> {
+    const response = await api.get(`/warehouses/${warehouseId}/premixes/${premixId}/transactions`);
+    return response.data;
+  },
+  // ==================== Inventory Item Methods ====================
+  searchInventoryItems: async (
+    search: string
+  ): Promise<InventoryItemDto[]> => {
+    const { data } = await api.get('/warehouses/items/search', {
+      params: { search },
+    });
+    return data;
+  },
 
-listWarehousePremixes: async (
-  warehouseId: string,
-  filters?: {
-    search?: string;
-  }
-): Promise<PremixDto[]> => {
-  const { data } = await api.get(`/warehouses/${warehouseId}/premixes`, {
-    params: {
-      search: filters?.search,
-    },
-  });
-  return data;
-},
- async getPremixWithWarehouseDetails(premixId: string, warehouseId: string): Promise<any> {
-  const response = await api.get(`/warehouses/${warehouseId}/premixes/${premixId}/details`);
-  return response.data;
-},
-
- async getPremixTransactions(premixId: string, warehouseId: string): Promise<any[]> {
-  const response = await api.get(`/warehouses/${warehouseId}/premixes/${premixId}/transactions`);
-  return response.data;
-},
-// ==================== Inventory Item Methods ====================
-searchInventoryItems: async (
-  search: string
-): Promise<InventoryItemDto[]> => {
-  const { data } = await api.get('/warehouses/items/search', {
-    params: { search },
-  });
-  return data;
-},
-
-// ==================== Premix Methods ====================
-getPremixDetails: async (id: string): Promise<PremixDto> => {
-  const { data } = await api.get(`/warehouses/premixes/${id}/details`);
-  return data;
-},
+  // ==================== Premix Methods ====================
+  getPremixDetails: async (id: string): Promise<PremixDto> => {
+    const { data } = await api.get(`/warehouses/premixes/${id}/details`);
+    return data;
+  },
 
 
 
-getWarehouseTransactionsByPeriod: async (
-  warehouseId: string,
-  startDate: string,
-  endDate: string
-): Promise<InventoryTransactionDto[]> => {
-  const { data } = await api.get(`/warehouses/${warehouseId}/transactions/period`, {
-    params: {
-      startDate,
-      endDate,
-    },
-  });
-  return data;
-},
-// ==================== Inventory Category Methods ====================
+  getWarehouseTransactionsByPeriod: async (
+    warehouseId: string,
+    startDate: string,
+    endDate: string
+  ): Promise<InventoryTransactionDto[]> => {
+    const { data } = await api.get(`/warehouses/${warehouseId}/transactions/period`, {
+      params: {
+        startDate,
+        endDate,
+      },
+    });
+    return data;
+  },
+  // ==================== Inventory Category Methods ====================
   createInventoryCategory: async (dto: CreateInventoryCategoryDto): Promise<InventoryCategoryDto> => {
     const { data } = await api.post('/warehouses/categories', dto);
     return data;
@@ -864,7 +874,7 @@ getWarehouseTransactionsByPeriod: async (
     const { data } = await api.put(`/warehouses/items/${itemId}/cost`, { cost });
     return data;
   },
-   getInventoryValue: async (
+  getInventoryValue: async (
     warehouseId: string
   ): Promise<{
     totalValue: number;
@@ -872,6 +882,92 @@ getWarehouseTransactionsByPeriod: async (
     averageCost: number;
   }> => {
     const { data } = await api.get(`/warehouses/${warehouseId}/inventory-value`);
+    return data;
+  },
+  getInventoryItemsByNetwork: async (
+    networkId: string,
+    filters?: {
+      search?: string;
+      includeInactive?: boolean;
+      categoryId?: string;
+      warehouseId?: string;
+    }
+  ): Promise<InventoryItemDto[]> => {
+    const { data } = await api.get(`/warehouses/network/${networkId}/items`, {
+      params: {
+        search: filters?.search,
+        includeInactive: filters?.includeInactive,
+        categoryId: filters?.categoryId,
+        warehouseId: filters?.warehouseId,
+      },
+    });
+    return data;
+  },
+  getInventoryItemsByNetworkAndCategory: async (
+    networkId: string,
+    categoryId: string,
+    filters?: {
+      search?: string;
+      includeInactive?: boolean;
+      warehouseId?: string;
+    }
+  ): Promise<InventoryItemDto[]> => {
+    const { data } = await api.get(`/warehouses/network/${networkId}/category/${categoryId}/items`, {
+      params: {
+        search: filters?.search,
+        includeInactive: filters?.includeInactive,
+        warehouseId: filters?.warehouseId,
+      },
+    });
+    return data;
+  },
+  getStorageLocationsByNetwork: async (
+    networkId: string,
+    filters?: {
+      search?: string;
+      warehouseId?: string;
+    }
+  ): Promise<StorageLocationDto[]> => {
+    const { data } = await api.get(`/warehouses/network/${networkId}/storage-locations`, {
+      params: {
+        search: filters?.search,
+        warehouseId: filters?.warehouseId,
+      },
+    });
+    return data;
+  },
+  getInventoryCategoriesByNetwork: async (
+    networkId: string,
+    filters?: {
+      search?: string;
+      includeInactive?: boolean;
+      parentId?: string | null;
+    }
+  ): Promise<InventoryCategoryDto[]> => {
+    const { data } = await api.get(`/warehouses/network/${networkId}/categories`, {
+      params: {
+        search: filters?.search,
+        includeInactive: filters?.includeInactive,
+        parentId: filters?.parentId,
+      },
+    });
+    return data;
+  },
+  getCategoryTreeByNetwork: async (networkId: string): Promise<InventoryCategoryDto[]> => {
+    const { data } = await api.get(`/warehouses/network/${networkId}/categories/tree`);
+    return data;
+  },
+  getPremixesByNetwork: async (
+    networkId: string,
+    filters?: {
+      search?: string;
+    }
+  ): Promise<PremixDto[]> => {
+    const { data } = await api.get(`/warehouses/network/${networkId}/premixes`, {
+      params: {
+        search: filters?.search,
+      },
+    });
     return data;
   },
 };
