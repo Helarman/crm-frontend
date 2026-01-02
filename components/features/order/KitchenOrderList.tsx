@@ -42,7 +42,7 @@ const refundSound = createAudio('/sounds/refaund.mp3')
 
 const playSound = (audio: HTMLAudioElement | null) => {
   if (!audio) return
-  
+
   try {
     // Сбрасываем звук на начало если он уже играет
     audio.currentTime = 0
@@ -143,31 +143,31 @@ const hasOrderBecomePreparing = (newOrder: OrderResponse, previousOrder?: OrderR
 
 const hasItemsBecomeInProgress = (newOrder: OrderResponse, previousOrder?: OrderResponse): boolean => {
   if (!previousOrder) return false
-  
+
   const newInProgressItems = newOrder.items?.filter(item => item.status === 'IN_PROGRESS') || []
   const previousInProgressItems = previousOrder.items?.filter(item => item.status === 'IN_PROGRESS') || []
-  
+
   // Находим items которые стали IN_PROGRESS (были в другом статусе, теперь IN_PROGRESS)
   const becameInProgress = newInProgressItems.filter(newItem => {
     const previousItem = previousInProgressItems.find(prevItem => prevItem.id === newItem.id)
     // Item стал IN_PROGRESS если его не было в предыдущих IN_PROGRESS
     return !previousItem
   })
-  
+
   return becameInProgress.length > 0
 }
 
 const hasNewItemsRefunded = (newOrder: OrderResponse, previousOrder?: OrderResponse): boolean => {
   if (!previousOrder) return false
-  
-  const newRefundedItems = newOrder.items?.filter(item => 
+
+  const newRefundedItems = newOrder.items?.filter(item =>
     item.status === 'REFUNDED'
   ) || []
-  
-  const previousRefundedItems = previousOrder.items?.filter(item => 
+
+  const previousRefundedItems = previousOrder.items?.filter(item =>
     item.status === 'REFUNDED'
   ) || []
-  
+
   return newRefundedItems.length > previousRefundedItems.length
 }
 
@@ -182,9 +182,9 @@ export default function KitchenOrdersList() {
   const [soundsEnabled, setSoundsEnabled] = useState<boolean>(true)
   const [page, setPage] = useState(1)
   const limit = 12
-  
+
   const [dateRange, setDateRange] = useState<DateRange | undefined>()
-  
+
   const previousOrdersRef = useRef<Map<string, OrderResponse>>(new Map())
   const soundsEnabledRef = useRef(soundsEnabled)
   const [ordersWithRefunded, setOrdersWithRefunded] = useState<Set<string>>(new Set())
@@ -207,14 +207,14 @@ export default function KitchenOrdersList() {
     localStorage.setItem(KITCHEN_SOUNDS_ENABLED_KEY, JSON.stringify(soundsEnabled))
   }, [soundsEnabled])
 
-    const playNewOrderSound = useCallback(() => {
+  const playNewOrderSound = useCallback(() => {
     if (soundsEnabledRef.current && orderSound) {
       playSound(orderSound)
     }
   }, [])
 
   const playItemInProgressSound = useCallback(() => {
-  playSound(reorderSound)
+    playSound(reorderSound)
   }, [])
 
   const playItemRefundedSound = useCallback(() => {
@@ -228,9 +228,9 @@ export default function KitchenOrdersList() {
     if (existingTimeout) {
       clearTimeout(existingTimeout)
     }
-    
+
     setOrdersWithRefunded(prev => new Set(prev).add(orderId))
-    
+
     const timeoutId = setTimeout(() => {
       setOrdersWithRefunded(prev => {
         const newSet = new Set(prev)
@@ -239,7 +239,7 @@ export default function KitchenOrdersList() {
       })
       highlightTimeoutsRef.current.delete(orderId)
     }, 30000) // 30 секунд
-    
+
     // Сохраняем ID таймаута
     highlightTimeoutsRef.current.set(orderId, timeoutId)
   }, [])
@@ -258,27 +258,27 @@ export default function KitchenOrdersList() {
     if (user?.restaurant?.length > 0) {
       const savedRestaurantId = localStorage.getItem(RESTAURANT_STORAGE_KEY)
       const defaultRestaurantId = user.restaurant[0].id
-      
-      const isValidSavedRestaurant = savedRestaurantId && 
+
+      const isValidSavedRestaurant = savedRestaurantId &&
         user.restaurant.some((r: Restaurant) => r.id === savedRestaurantId)
-      
+
       const newRestaurantId = isValidSavedRestaurant ? savedRestaurantId : defaultRestaurantId
-      
+
       setSelectedRestaurantId(newRestaurantId)
-      
+
       if (!isValidSavedRestaurant || savedRestaurantId !== newRestaurantId) {
         localStorage.setItem(RESTAURANT_STORAGE_KEY, newRestaurantId)
       }
     }
   }, [user])
-  
+
   useEffect(() => {
     if (selectedRestaurantId) {
       localStorage.setItem(RESTAURANT_STORAGE_KEY, selectedRestaurantId)
     }
   }, [selectedRestaurantId])
 
-  
+
   const archiveFilters = {
     page,
     limit,
@@ -287,11 +287,11 @@ export default function KitchenOrdersList() {
     endDate: dateRange?.to?.toISOString(),
   }
 
-  const { 
-    data: activeOrders = [], 
-    isLoading: activeLoading, 
+  const {
+    data: activeOrders = [],
+    isLoading: activeLoading,
     error: activeError,
-    mutate: mutateActive 
+    mutate: mutateActive
   } = useRestaurantOrders(selectedRestaurantId)
 
   const {
@@ -315,33 +315,33 @@ export default function KitchenOrdersList() {
     }
   }, [activeOrders, updatePreviousOrders])
 
-  
-  
+
+
   const handleOrdersUpdate = useCallback((
-    updatedOrder: OrderResponse, 
+    updatedOrder: OrderResponse,
     mutateFunction: any,
     source: string
   ) => {
     const previousOrder = previousOrdersRef.current.get(updatedOrder.id)
-    
+
     if (hasOrderBecomePreparing(updatedOrder, previousOrder)) {
       playNewOrderSound()
     }
-     if (hasItemsBecomeInProgress(updatedOrder, previousOrder)) {
+    if (hasItemsBecomeInProgress(updatedOrder, previousOrder)) {
       playItemInProgressSound()
     }
 
     if (hasNewItemsRefunded(updatedOrder, previousOrder)) {
       playItemRefundedSound()
       highlightOrderWithRefunded(updatedOrder.id)
-      
+
     }
-    
+
     mutateFunction((prevOrders: OrderResponse[] | undefined) => {
       const existingOrders = prevOrders || []
-      
+
       let newOrders: OrderResponse[]
-      
+
       if (['COMPLETED', 'CANCELLED'].includes(updatedOrder.status)) {
         newOrders = existingOrders.filter(order => order.id !== updatedOrder.id)
       } else {
@@ -353,11 +353,11 @@ export default function KitchenOrdersList() {
           newOrders = [updatedOrder, ...existingOrders]
         }
       }
-         
+
       setTimeout(() => {
         updatePreviousOrders(newOrders)
       }, 0)
-      
+
       return newOrders
     }, false)
   }, [playNewOrderSound, playItemInProgressSound, playItemRefundedSound, highlightOrderWithRefunded, updatePreviousOrders])
@@ -368,7 +368,7 @@ export default function KitchenOrdersList() {
     restaurantId: selectedRestaurantId,
     enabled: !!selectedRestaurantId,
     onOrderCreated: useCallback((newOrder: OrderResponse) => {
-      
+
       if (newOrder.status === 'PREPARING') {
         playNewOrderSound()
       }
@@ -391,8 +391,8 @@ export default function KitchenOrdersList() {
 
   type OrderStatus = 'PREPARING' | 'READY'
 
-  const filteredActiveOrders = activeOrders.filter((order: OrderResponse) => 
-    [ 'PREPARING', 'READY'].includes(order.status)
+  const filteredActiveOrders = activeOrders.filter((order: OrderResponse) =>
+    order.status === 'PREPARING' // Только заказы в приготовлении
   )
 
   const currentData = showArchive ? archiveData?.data || [] : activeOrders
@@ -400,35 +400,19 @@ export default function KitchenOrdersList() {
   const error = showArchive ? archiveError : activeError
   const totalPages = archiveData?.meta?.totalPages || 1
 
-const sortedActiveOrders = [...filteredActiveOrders].sort((a, b) => {
-  const statusPriority: Record<OrderStatus, number> = {
-    'PREPARING': 1,
-    'READY': 2,
-  }
-
-  const aStatus = a.status as OrderStatus
-  const bStatus = b.status as OrderStatus
-
-  if (statusPriority[aStatus] !== statusPriority[bStatus]) {
-    return statusPriority[aStatus] - statusPriority[bStatus]
-  }
-
-  if (aStatus === 'PREPARING') {
+  const sortedActiveOrders = [...filteredActiveOrders].sort((a, b) => {
     return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-  } else {
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  }
-})
+  })
 
-  const sortedOrders = showArchive 
+  const sortedOrders = showArchive
     ? [...currentData]
-        .filter(order => order?.id)
-        .map(order => createSafeOrder(order))
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .filter(order => order?.id)
+      .map(order => createSafeOrder(order))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     : sortedActiveOrders
 
   const handleStatusChange = (updatedOrder: OrderResponse) => {
-    mutateActive((prevOrders: OrderResponse[] | undefined) => 
+    mutateActive((prevOrders: OrderResponse[] | undefined) =>
       prevOrders?.map(o => o.id === updatedOrder.id ? updatedOrder : o) || []
     )
   }
@@ -440,7 +424,7 @@ const sortedActiveOrders = [...filteredActiveOrders].sort((a, b) => {
   const hasActiveFilters = () => {
     return dateRange?.from || dateRange?.to
   }
-  
+
   const renderPagination = () => {
     if (!showArchive || totalPages <= 1) return null
 
@@ -486,7 +470,7 @@ const sortedActiveOrders = [...filteredActiveOrders].sort((a, b) => {
       </Pagination>
     )
   }
-  
+
   if (!user) {
     return (
       <Card className="p-6 text-center">
@@ -521,23 +505,23 @@ const sortedActiveOrders = [...filteredActiveOrders].sort((a, b) => {
     <div className="space-y-6">
       <div className="flex justify-between items-center gap-4 flex-col lg:flex-row">
         <div className="flex items-center gap-4">
-        
-         <h2 className="text-2xl font-bold">
+
+          <h2 className="text-2xl font-bold">
             {showArchive ? translations.archiveOrders.ru : translations.kitchenOrders.ru}
           </h2>
           {!showArchive && (
             <div className={`flex items-center gap-2 ${isConnected ? 'text-green-500' : 'text-gray-500'}`}>
               <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
               <span className="text-sm">
-                {selectedRestaurantId 
-                  ? (isConnected ? 'Подключено' : 'Подключение...') 
+                {selectedRestaurantId
+                  ? (isConnected ? 'Подключено' : 'Подключение...')
                   : 'Выберите ресторан'
                 }
               </span>
             </div>
           )}
         </div>
-        
+
         <div className="flex flex-wrap gap-3 items-center">
           <Button
             variant="outline"
@@ -563,28 +547,28 @@ const sortedActiveOrders = [...filteredActiveOrders].sort((a, b) => {
               {showArchive ? translations.showActive.ru : translations.showArchive.ru}
             </span>
           </Button>
-           {showArchive && (
-        <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 p-4 bg-muted/50 rounded-lg">
-          <DateRangePicker
-            dateRange={dateRange}
-            onDateRangeChange={setDateRange}
-            className="w-full sm:w-[280px]"
-          />
+          {showArchive && (
+            <div className="flex flex-col sm:flex-row flex-wrap items-start sm:items-center gap-3 p-4 bg-muted/50 rounded-lg">
+              <DateRangePicker
+                dateRange={dateRange}
+                onDateRangeChange={setDateRange}
+                className="w-full sm:w-[280px]"
+              />
 
-          {hasActiveFilters() && (
-            <Button
-              variant="ghost"
-              onClick={clearFilters}
-              className="text-destructive h-8 px-3"
-              size="sm"
-            >
-              <X className="h-3 w-3 mr-2" />
-              {translations.clearFilters.ru}
-            </Button>
+              {hasActiveFilters() && (
+                <Button
+                  variant="ghost"
+                  onClick={clearFilters}
+                  className="text-destructive h-8 px-3"
+                  size="sm"
+                >
+                  <X className="h-3 w-3 mr-2" />
+                  {translations.clearFilters.ru}
+                </Button>
+              )}
+            </div>
           )}
-        </div>
-      )}
-      
+
           {/* Выбор ресторана */}
           {user.restaurant.length > 1 && (
             <Select
@@ -624,9 +608,9 @@ const sortedActiveOrders = [...filteredActiveOrders].sort((a, b) => {
             {sortedOrders.map(order => {
               const hasRefundedItems = order.items?.some(item => item.status === 'REFUNDED')
               const isHighlighted = ordersWithRefunded.has(order.id)
-              
+
               return (
-                <div 
+                <div
                   key={order.id}
                   className={`cursor-pointer relative transition-all duration-300`}
                 >
