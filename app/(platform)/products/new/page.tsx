@@ -167,6 +167,23 @@ const ProductCreatePage = () => {
     setIsFullscreenDialogOpen(false)
   }
 
+   const flattenCategories = (categoriesData: any[],): { id: string; title: string; }[] => {
+    let result: { id: string; title: string }[] = []
+
+    categoriesData.forEach(category => {
+      result.push({
+        id: category.id,
+        title: category.title,
+      })
+
+      if (category.children && category.children.length > 0) {
+        result = result.concat(flattenCategories(category.children,))
+      }
+    })
+
+    return result
+  }
+
   const EnhancedTextarea = ({ 
     id, 
     name, 
@@ -236,7 +253,7 @@ const ProductCreatePage = () => {
         toast.error(language === 'ru' 
           ? 'Сначала выберите сеть' 
           : 'ჯერ აირჩიეთ ქსელი')
-        router.push('/products')
+        router.push('/menu?tab=products')
       }
     }
   }, [router, language])
@@ -293,7 +310,7 @@ const ProductCreatePage = () => {
       toast.error(language === 'ru' 
         ? 'Сеть не выбрана' 
         : 'ქსელი არ არის არჩეული')
-      router.push('/products')
+      router.push('/menu?tab=products')
       return
     }
 
@@ -372,10 +389,10 @@ const ProductCreatePage = () => {
     setIsCategoriesLoading(true)
     try {
       const data = await CategoryService.getByNetwork(selectedNetworkId as string)
-      setCategories(data as any)
+      const flattenedCategories = flattenCategories(data)
+      setCategories(flattenedCategories)
     } catch (error) {
       console.error('Failed to load categories', error)
-      toast.error(language === 'ru' ? 'Ошибка загрузки категорий' : 'კატეგორიების ჩატვირთვის შეცდომა')
     } finally {
       setIsCategoriesLoading(false)
     }
@@ -541,7 +558,7 @@ const ProductCreatePage = () => {
       toast.error(language === 'ru' 
         ? 'Сеть не выбрана. Выберите сеть на странице продуктов' 
         : 'ქსელი არ არის არჩეული. აირჩიეთ ქსელი პროდუქტების გვერდზე')
-      router.push('/products')
+      router.push('/menu?tab=products')
       return
     }
     

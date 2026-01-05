@@ -2,24 +2,6 @@ import axios from 'axios';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
-export interface Additive {
-  id?: string;
-  title: string;
-  price: number;
-   networkId?: string;
-}
-export interface PaginatedResponse<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages?: number;
-}
-
-export interface UpdateProductAdditivesDto {
-  additiveIds: string[];
-}
-
 const api = axios.create({
   baseURL: API_URL,
   withCredentials: true,
@@ -115,103 +97,230 @@ interface AdditiveDto {
   title: string;
   price: number;
 }
+export interface Additive {
+  id?: string;
+  title: string;
+  price: number;
+  networkId?: string | null;
+  inventoryItemId?: string | null;
+  ingredientQuantity?: number;
+  createdAt?: Date;
+  updatedAt?: Date;
+  products?: any[];
+  network?: any | null;
+  inventoryItem?: any | null;
+}
+
+export interface AdditiveWithRelations extends Additive {
+  products: any[];
+  network: any | null;
+  inventoryItem: any | null;
+}
+
+export interface CreateAdditiveDto {
+  title: string;
+  price: number;
+  networkId?: string;
+  inventoryItemId?: string;
+}
+
+export interface UpdateAdditiveDto {
+  title?: string;
+  price?: number;
+  networkId?: string | null;
+  inventoryItemId?: string | null;
+}
+
+export interface UpdateProductAdditivesDto {
+  additiveIds: string[];
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages?: number;
+}
 
 export const AdditiveService = {
   // Получение всех добавок
-  getAll: async (searchTerm?: string) => {
-    const { data } = await api.get('/additives', {
-      params: { searchTerm }
-    });
-    return data;
+  getAll: async (): Promise<AdditiveWithRelations[]> => {
+    try {
+      const { data } = await api.get<AdditiveWithRelations[]>('/additives');
+      return data;
+    } catch (error) {
+      console.error('Failed to get all additives:', error);
+      throw error;
+    }
   },
 
-  // Получение Модификаторы по ID
-  getById: async (id: string) => {
-    const { data } = await api.get(`/additives/${id}`);
-    return data;
+  // Получение добавки по ID
+  getById: async (id: string): Promise<AdditiveWithRelations | null> => {
+    try {
+      const { data } = await api.get<AdditiveWithRelations>(`/additives/${id}`);
+      return data;
+    } catch (error) {
+      console.error(`Failed to get additive ${id}:`, error);
+      throw error;
+    }
   },
 
-  // Создание новой Модификаторы
-  create: async (dto: AdditiveDto) => {
-    const { data } = await api.post('/additives', dto);
-    return data;
+  // Создание новой добавки
+  create: async (dto: CreateAdditiveDto): Promise<AdditiveWithRelations> => {
+    try {
+      const { data } = await api.post<AdditiveWithRelations>('/additives', dto);
+      return data;
+    } catch (error) {
+      console.error('Failed to create additive:', error);
+      throw error;
+    }
   },
 
-  // Обновление Модификаторы
-  update: async (id: string, dto: Partial<AdditiveDto>) => {
-    const { data } = await api.patch(`/additives/${id}`, dto);
-    return data;
+  // Обновление добавки
+  update: async (id: string, dto: UpdateAdditiveDto): Promise<AdditiveWithRelations> => {
+    try {
+      const { data } = await api.patch<AdditiveWithRelations>(`/additives/${id}`, dto);
+      return data;
+    } catch (error) {
+      console.error(`Failed to update additive ${id}:`, error);
+      throw error;
+    }
   },
 
-  // Удаление Модификаторы
-  delete: async (id: string) => {
-    const { data } = await api.delete(`/additives/${id}`);
-    return data;
+  // Удаление добавки
+  delete: async (id: string): Promise<AdditiveWithRelations> => {
+    try {
+      const { data } = await api.delete<AdditiveWithRelations>(`/additives/${id}`);
+      return data;
+    } catch (error) {
+      console.error(`Failed to delete additive ${id}:`, error);
+      throw error;
+    }
   },
 
-  // Получение всех добавок для конкретного продукта
-  getByProduct: async (productId: string) => {
-    const { data } = await api.get(`/additives/product/${productId}`);
-    return data;
+  // Получение добавок для продукта
+  getByProduct: async (productId: string): Promise<AdditiveWithRelations[]> => {
+    try {
+      const { data } = await api.get<AdditiveWithRelations[]>(`/additives/product/${productId}`);
+      return data;
+    } catch (error) {
+      console.error(`Failed to get additives for product ${productId}:`, error);
+      throw error;
+    }
   },
 
-  // Добавление Модификаторы к продукту
-  addToProduct: async (additiveId: string, productId: string) => {
-    const { data } = await api.post(
-      `/additives/${additiveId}/products/${productId}`
-    );
-    return data;
+  // Добавление добавки к продукту
+  addToProduct: async (additiveId: string, productId: string): Promise<AdditiveWithRelations> => {
+    try {
+      const { data } = await api.post<AdditiveWithRelations>(
+        `/additives/${additiveId}/products/${productId}`
+      );
+      return data;
+    } catch (error) {
+      console.error(`Failed to add additive ${additiveId} to product ${productId}:`, error);
+      throw error;
+    }
   },
 
-  // Удаление Модификаторы из продукта
-  removeFromProduct: async (additiveId: string, productId: string) => {
-    const { data } = await api.delete(
-      `/additives/${additiveId}/products/${productId}`
-    );
-    return data;
+  // Удаление добавки из продукта
+  removeFromProduct: async (additiveId: string, productId: string): Promise<AdditiveWithRelations> => {
+    try {
+      const { data } = await api.delete<AdditiveWithRelations>(
+        `/additives/${additiveId}/products/${productId}`
+      );
+      return data;
+    } catch (error) {
+      console.error(`Failed to remove additive ${additiveId} from product ${productId}:`, error);
+      throw error;
+    }
   },
 
-  getProductAdditives: async (productId: string) => {
-    const { data } = await api.get(`/additives/product/${productId}`);
-    return data;
-  },
-
-  
+  // Обновление всех добавок продукта
   updateProductAdditives: async (
     productId: string,
     additiveIds: string[]
-  ): Promise<Additive[]> => {
+  ): Promise<AdditiveWithRelations[]> => {
     try {
-      const { data } = await api.put<Additive[]>(
+      const { data } = await api.put<AdditiveWithRelations[]>(
         `/additives/product/${productId}`,
         { additiveIds }
       );
       return data;
     } catch (error) {
-      console.error('Failed to update product additives:', error);
+      console.error(`Failed to update additives for product ${productId}:`, error);
       throw error;
     }
   },
-    getByNetwork: async (networkId: string): Promise<Additive[]> => {
-    const { data } = await api.get<Additive[]>(`/additives/network/${networkId}`);
-    return data;
+
+  // Получение добавок по сети
+  getByNetwork: async (networkId: string): Promise<AdditiveWithRelations[]> => {
+    try {
+      const { data } = await api.get<AdditiveWithRelations[]>(`/additives/network/${networkId}`);
+      return data;
+    } catch (error) {
+      console.error(`Failed to get additives for network ${networkId}:`, error);
+      throw error;
+    }
   },
 
+  // Получение добавок по сети с пагинацией
   getByNetworkPaginated: async (
     networkId: string,
     page: number = 1,
     limit: number = 10
-  ): Promise<PaginatedResponse<Additive>> => {
-    const { data } = await api.get<PaginatedResponse<Additive>>(
-      `/additives/network/${networkId}/available`,
-      { params: { page, limit } }
-    );
-    
-    if (data.total && data.limit) {
-      data.totalPages = Math.ceil(data.total / data.limit);
+  ): Promise<PaginatedResponse<AdditiveWithRelations>> => {
+    try {
+      const { data } = await api.get<PaginatedResponse<AdditiveWithRelations>>(
+        `/additives/network/${networkId}/available`,
+        { params: { page, limit } }
+      );
+      
+      // Вычисляем общее количество страниц
+      if (data.total && data.limit) {
+        data.totalPages = Math.ceil(data.total / data.limit);
+      }
+      
+      return data;
+    } catch (error) {
+      console.error(`Failed to get paginated additives for network ${networkId}:`, error);
+      throw error;
     }
-    
-    return data;
   },
-  
+
+  // Получение глобальных добавок (без сети)
+  getGlobalAdditives: async (): Promise<AdditiveWithRelations[]> => {
+    try {
+      const { data } = await api.get<AdditiveWithRelations[]>('/additives', {
+        params: { global: true } // Предполагается, что есть такой параметр в API
+      });
+      return data;
+    } catch (error) {
+      console.error('Failed to get global additives:', error);
+      throw error;
+    }
+  },
+
+  // Получение добавок с привязанными инвентарными товарами
+  getWithInventory: async (): Promise<AdditiveWithRelations[]> => {
+    try {
+      const { data } = await api.get<AdditiveWithRelations[]>('/additives/with-inventory');
+      return data;
+    } catch (error) {
+      console.error('Failed to get additives with inventory:', error);
+      throw error;
+    }
+  },
+  getByInventoryItem: async (inventoryItemId: string): Promise<AdditiveWithRelations[]> => {
+    try {
+      const { data } = await api.get<AdditiveWithRelations[]>(
+        `/additives/inventory/${inventoryItemId}`
+      );
+      return data;
+    } catch (error) {
+      console.error(`Failed to get additives for inventory item ${inventoryItemId}:`, error);
+      throw error;
+    }
+  },
+
 };

@@ -176,11 +176,12 @@ const SearchableSelect = ({
                 </div>
               )}
 
+              {/* Убрал className у CommandList и добавил flex-1 */}
               <CommandList className="flex-1 overflow-auto">
                 <CommandEmpty className="text-sm px-2 py-1.5">
                   {emptyText}
                 </CommandEmpty>
-                <CommandGroup className="max-h-[calc(300px-3rem)]">
+                <CommandGroup className="overflow-y-auto">
                   {filteredOptions.map(option => (
                     <CommandItem
                       key={option.id}

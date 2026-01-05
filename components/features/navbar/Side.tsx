@@ -626,7 +626,7 @@ export default function Side() {
     },
     {
       name: t.menu,
-      href: "/products",
+      href: "/menu",
       icon: <BookOpen className="w-5 h-5" />,
       roles: ['MANAGER', 'SUPERVISOR', 'COOK', 'CHEF']
     },

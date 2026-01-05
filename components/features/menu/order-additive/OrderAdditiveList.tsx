@@ -1,23 +1,27 @@
+'use client'
+
 import { useState, useEffect } from 'react';
 import { useLanguageStore } from '@/lib/stores/language-store';
-import { AdditiveService, Additive } from '@/lib/api/additive.service';
+import { OrderAdditiveService, OrderAdditiveWithRelations, CreateOrderAdditiveDto, UpdateOrderAdditiveDto, EnumOrderType, OrderAdditiveType } from '@/lib/api/order-additive.service';
 import { NetworkService } from '@/lib/api/network.service';
 import { Button } from '@/components/ui/button';
-import { Plus, Layers, Store, RefreshCw, X, ArrowLeftRight } from 'lucide-react';
-import { AdditiveTable } from './AdditiveTable';
-import { AdditiveModal } from './AdditiveModal';
-import { AdditiveFilters } from './AdditiveFilters';
+import { Plus, Store, RefreshCw, X, Filter } from 'lucide-react';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { OrderAdditiveTable } from './OrderAdditiveTable';
+import { OrderAdditiveModal } from './OrderAdditiveModal';
+import { OrderAdditiveFilters } from './OrderAdditiveFilters';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 
-const STORAGE_KEY = 'selected_network_id';
+const STORAGE_KEY = 'selected_order_additive_network_id';
 
-export const AdditiveList = () => {
+export const OrderAdditiveList = () => {
   const { language } = useLanguageStore();
   const { user } = useAuth();
-  const [additives, setAdditives] = useState<Additive[]>([]);
+  const [additives, setAdditives] = useState<OrderAdditiveWithRelations[]>([]);
   const [networks, setNetworks] = useState<any[]>([]);
   const [selectedNetworkId, setSelectedNetworkId] = useState<string | null>(null);
   const [showNetworkSelector, setShowNetworkSelector] = useState(false);
@@ -26,24 +30,34 @@ export const AdditiveList = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentAdditiveId, setCurrentAdditiveId] = useState<string | null | undefined>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [formData, setFormData] = useState<Additive>({
+  const [filters, setFilters] = useState<{
+    orderType?: EnumOrderType;
+    isActive?: boolean;
+    type?: OrderAdditiveType;
+  }>({});
+  
+  const [formData, setFormData] = useState<CreateOrderAdditiveDto>({
     title: '',
+    description: '',
     price: 0,
-    networkId: '',
+    type: OrderAdditiveType.FIXED,
+    orderTypes: [],
     inventoryItemId: '',
-    ingredientQuantity: 0,
+    ingredientQuantity: 1.0,
+    networkId: '',
+    isActive: true,
   });
 
   const translations = {
     ru: {
-      addAdditive: 'Добавить модификатор',
-      title: 'Модификаторы',
+      addOrderAdditive: 'Добавить модификатор заказа',
+      title: 'Модификаторы заказов',
       selectNetwork: 'Выберите сеть',
-      selectNetworkDescription: 'Выберите сеть для управления модификаторами',
+      selectNetworkDescription: 'Выберите сеть для управления модификаторами заказов',
       noNetworks: 'Нет доступных сетей',
       noNetworksDescription: 'У вас нет доступа к каким-либо сетям ресторанов',
       manageNetworks: 'Управление сетями',
-      networkManagement: 'Управление модификаторами сети',
+      networkManagement: 'Управление модификаторами заказов сети',
       loading: 'Загрузка...',
       changeNetwork: 'Сменить сеть',
       currentNetwork: 'Текущая сеть',
@@ -53,17 +67,26 @@ export const AdditiveList = () => {
       networkRestaurants: (count: number) => `${count} ресторан(ов)`,
       additivesCount: (count: number) => `${count} модификатор(ов)`,
       backToNetworks: 'Сети',
-      viewAdditives: 'Просмотр модификаторов'
+      viewAdditives: 'Просмотр модификаторов заказов',
+      allOrderTypes: 'Все типы заказов',
+      allAdditiveTypes: 'Все типы модификаторов',
+      allStatuses: 'Все статусы',
+      active: 'Активные',
+      inactive: 'Неактивные',
+      orderType: 'Тип заказа',
+      additiveType: 'Тип модификатора',
+      status: 'Статус',
+      clearFilters: 'Сбросить фильтры'
     },
     ka: {
-      addAdditive: 'მოდიფიკატორის დამატება',
-      title: 'მოდიფიკატორები',
+      addOrderAdditive: 'შეკვეთის მოდიფიკატორის დამატება',
+      title: 'შეკვეთის მოდიფიკატორები',
       selectNetwork: 'აირჩიეთ ქსელი',
-      selectNetworkDescription: 'აირჩიეთ ქსელი მოდიფიკატორების მართვისთვის',
+      selectNetworkDescription: 'აირჩიეთ ქსელი შეკვეთის მოდიფიკატორების მართვისთვის',
       noNetworks: 'წვდომადი ქსელები არ არის',
       noNetworksDescription: 'თქვენ არ გაქვთ წვდომა რესტორნების ქსელებზე',
       manageNetworks: 'ქსელების მართვა',
-      networkManagement: 'ქსელის მოდიფიკატორების მართვა',
+      networkManagement: 'ქსელის შეკვეთის მოდიფიკატორების მართვა',
       loading: 'იტვირთება...',
       changeNetwork: 'ქსელის შეცვლა',
       currentNetwork: 'მიმდინარე ქსელი',
@@ -73,7 +96,16 @@ export const AdditiveList = () => {
       networkRestaurants: (count: number) => `${count} რესტორნი`,
       additivesCount: (count: number) => `${count} მოდიფიკატორი`,
       backToNetworks: 'ქსელები',
-      viewAdditives: 'მოდიფიკატორების ნახვა'
+      viewAdditives: 'შეკვეთის მოდიფიკატორების ნახვა',
+      allOrderTypes: 'ყველა შეკვეთის ტიპი',
+      allAdditiveTypes: 'ყველა მოდიფიკატორის ტიპი',
+      allStatuses: 'ყველა სტატუსი',
+      active: 'აქტიური',
+      inactive: 'არააქტიური',
+      orderType: 'შეკვეთის ტიპი',
+      additiveType: 'მოდიფიკატორის ტიპი',
+      status: 'სტატუსი',
+      clearFilters: 'ფილტრების გასუფთავება'
     }
   };
 
@@ -109,14 +141,10 @@ export const AdditiveList = () => {
           if (selectedNetworkId) {
             const networkExists = networksData.some(n => n.id === selectedNetworkId);
             if (!networkExists && networksData.length > 0) {
-              // Если сохраненной сети нет в доступных, выбираем первую
               setSelectedNetworkId(networksData[0].id);
-              setFormData(prev => ({ ...prev, networkId: networksData[0].id }));
             }
           } else if (networksData.length === 1) {
-            // Если у пользователя только одна сеть, выбираем ее автоматически
             setSelectedNetworkId(networksData[0].id);
-            setFormData(prev => ({ ...prev, networkId: networksData[0].id }));
           }
         }
       } catch (error) {
@@ -137,35 +165,56 @@ export const AdditiveList = () => {
     } else {
       setAdditives([]);
     }
-  }, [selectedNetworkId]);
+  }, [selectedNetworkId, filters]);
 
   const fetchAdditives = async () => {
     if (!selectedNetworkId) return;
 
     setIsLoading(true);
     try {
-      const data = await AdditiveService.getByNetwork(selectedNetworkId);
-      setAdditives(data);
+      const data = await OrderAdditiveService.getByNetwork(
+        selectedNetworkId
+      );
+      // Применяем фильтры на клиенте для простоты
+      let filteredData = data;
+      
+      if (filters.orderType) {
+        filteredData = filteredData.filter(additive => 
+          additive.orderTypes.includes(filters.orderType!)
+        );
+      }
+      
+      if (filters.type) {
+        filteredData = filteredData.filter(additive => 
+          additive.type === filters.type
+        );
+      }
+      
+      if (filters.isActive !== undefined) {
+        filteredData = filteredData.filter(additive => 
+          additive.isActive === filters.isActive
+        );
+      }
+      
+      if (searchTerm) {
+        filteredData = filteredData.filter(additive =>
+          additive.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          additive.description?.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+      }
+      
+      setAdditives(filteredData);
     } catch (error) {
-      console.error('Error fetching additives:', error);
+      console.error('Error fetching order additives:', error);
       setAdditives([]);
-      toast.error(language === 'ru' ? 'Ошибка загрузки модификаторов' : 'მოდიფიკატორების ჩატვირთვის შეცდომა');
+      toast.error(language === 'ru' ? 'Ошибка загрузки модификаторов заказов' : 'შეკვეთის მოდიფიკატორების ჩატვირთვის შეცდომა');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: name === 'price' ? Number(value) : value,
-    }));
-  };
-
-
-  const handleSelectChange = (name: string, value: string) => {
-    setFormData((prev) => ({
+  const handleInputChange = (name: keyof CreateOrderAdditiveDto, value: any) => {
+    setFormData(prev => ({
       ...prev,
       [name]: value,
     }));
@@ -174,23 +223,31 @@ export const AdditiveList = () => {
   const openAddModal = () => {
     setFormData({
       title: '',
+      description: '',
       price: 0,
-      networkId: selectedNetworkId || '',
+      type: OrderAdditiveType.FIXED,
+      orderTypes: [],
       inventoryItemId: '',
-      ingredientQuantity: 0,
+      ingredientQuantity: 1.0,
+      networkId: selectedNetworkId || '',
+      isActive: true,
     });
     setCurrentAdditiveId(null);
     setIsModalOpen(true);
   };
 
-  const openEditModal = (additive: Additive) => {
+  const openEditModal = (additive: OrderAdditiveWithRelations) => {
     setCurrentAdditiveId(additive.id);
     setFormData({
       title: additive.title,
+      description: additive.description || '',
       price: additive.price,
-      networkId: additive.networkId || selectedNetworkId || '',
+      type: additive.type,
+      orderTypes: additive.orderTypes,
       inventoryItemId: additive.inventoryItemId || '',
-      ingredientQuantity: additive.ingredientQuantity,
+      ingredientQuantity: additive.ingredientQuantity || 1.0,
+      networkId: additive.networkId || selectedNetworkId || '',
+      isActive: additive.isActive ?? true,
     });
     setIsModalOpen(true);
   };
@@ -202,11 +259,11 @@ export const AdditiveList = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      await AdditiveService.delete(id);
+      await OrderAdditiveService.delete(id);
       fetchAdditives();
-      toast.success(language === 'ru' ? 'Модификатор удален' : 'მოდიფიკატორი წაიშალა');
+      toast.success(language === 'ru' ? 'Модификатор заказа удален' : 'შეკვეთის მოდიფიკატორი წაიშალა');
     } catch (error) {
-      console.error('Error deleting additive:', error);
+      console.error('Error deleting order additive:', error);
       toast.error(language === 'ru' ? 'Ошибка удаления' : 'წაშლის შეცდომა');
     }
   };
@@ -230,10 +287,14 @@ export const AdditiveList = () => {
     setShowNetworkSelector(true);
   };
 
-  // Фильтрация модификаторов по поиску
-  const filteredAdditives = additives.filter(additive =>
-    additive.title.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const handleFilterChange = (newFilters: typeof filters) => {
+    setFilters(newFilters);
+  };
+
+  const handleClearFilters = () => {
+    setFilters({});
+    setSearchTerm('');
+  };
 
   // Получаем текущую сеть
   const currentNetwork = networks.find(n => n.id === selectedNetworkId);
@@ -316,10 +377,11 @@ export const AdditiveList = () => {
           {networks.map((network) => (
             <Card
               key={network.id}
-              className={`cursor-pointer hover:shadow-md transition-shadow hover:border-primary/50 ${network.id === selectedNetworkId
-                ? 'border-primary border-2 bg-primary/5'
-                : ''
-                }`}
+              className={`cursor-pointer hover:shadow-md transition-shadow hover:border-primary/50 ${
+                network.id === selectedNetworkId
+                  ? 'border-primary border-2 bg-primary/5'
+                  : ''
+              }`}
               onClick={() => handleNetworkSelect(network.id)}
             >
               <CardHeader>
@@ -376,7 +438,7 @@ export const AdditiveList = () => {
     return (
       <div className="p-4">
         <div className="text-center py-12">
-          <Layers className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <Store className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-lg font-semibold mb-2">
             {t.noNetworks}
           </h3>
@@ -425,42 +487,44 @@ export const AdditiveList = () => {
             >
               <RefreshCw className="h-3 w-3" />
             </Button>
-
           </div>
         </div>
 
         <div className="flex gap-2">
-
           <Button onClick={openAddModal}>
             <Plus className="mr-2 h-4 w-4" />
-            {t.addAdditive}
+            {t.addOrderAdditive}
           </Button>
         </div>
       </div>
 
       {/* Фильтры */}
-      <AdditiveFilters
+      <OrderAdditiveFilters
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
+        filters={filters}
+        onFilterChange={handleFilterChange}
+        onClearFilters={handleClearFilters}
         language={language}
       />
 
       {/* Таблица модификаторов */}
-      <AdditiveTable
-        additives={filteredAdditives}
+      <OrderAdditiveTable
+        additives={additives}
         isLoading={isLoading && additives.length === 0}
         language={language}
         onEdit={openEditModal}
         onDelete={handleDelete}
       />
 
-      <AdditiveModal
+      <OrderAdditiveModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSubmitSuccess={handleSubmitSuccess}
         additiveId={currentAdditiveId}
         formData={formData}
-        onInputChange={handleInputChange as any}     language={language}
+        onInputChange={handleInputChange}
+        language={language}
         selectedNetworkId={selectedNetworkId}
       />
     </div>

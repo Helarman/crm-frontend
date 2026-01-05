@@ -17,6 +17,7 @@ export interface CategoryDto {
   metaTitle?: string;
   metaDescription?: string;
   metaKeywords?: string;
+  metaContent?: string;
   parentId?: any;
   order?: number;
   clientOrder?: number;

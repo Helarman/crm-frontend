@@ -24,6 +24,7 @@ import { useOrderWebSocket } from '@/lib/hooks/useOrderWebSocket'
 import { stringify } from 'querystring'
 import { NetworkService } from '@/lib/api/network.service'
 import { RestaurantService } from '@/lib/api/restaurant.service'
+import { AdditiveService } from '@/lib/api/additive.service'
 
 type OrderItemWithStatus = {
   id: string
@@ -62,6 +63,8 @@ type WriteOffItem = {
   name: string
   quantity: number
   unit: string
+  type?: 'product' | 'additive'
+  additiveName?: string
 }
 
 interface Ingredient {
@@ -132,7 +135,7 @@ const getStatusText = (status: OrderItemStatus, language: string): string => {
       [OrderItemStatus.PAUSED]: 'პაუზაზეა',
       [OrderItemStatus.COMPLETED]: 'მზადაა',
       [OrderItemStatus.CANCELLED]: 'გაუქმებული',
-       [OrderItemStatus.CONFIRMED]: '',
+      [OrderItemStatus.CONFIRMED]: '',
       [OrderItemStatus.REFUNDED]: 'დაბრუნებული'
     }
   }
@@ -145,14 +148,14 @@ type WarningMessage = {
   icon: React.ReactNode;
   color: string;
 };
-function formatUTC(dateString : any) {
+function formatUTC(dateString: any) {
   const date = new Date(dateString);
   const day = date.getUTCDate().toString().padStart(2, '0');
   const month = (date.getUTCMonth() + 1).toString().padStart(2, '0');
   const year = date.getUTCFullYear();
   const hours = date.getUTCHours().toString().padStart(2, '0');
   const minutes = date.getUTCMinutes().toString().padStart(2, '0');
-  
+
   return `${day}.${month}.${year} ${hours}:${minutes}`;
 }
 
@@ -231,9 +234,9 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
     if (item.status === OrderItemStatus.COMPLETED) return false;
 
     if (userWorkshopIds.length === 0) return true;
-    
+
     const itemWorkshopIds = item.product.workshops?.map((w: any) => w.workshop.id) || [];
-    
+
     return itemWorkshopIds.some((id: string) => userWorkshopIds.includes(id));
   });
 
@@ -375,7 +378,7 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
   const calculateItemsTotal = () => {
     return order.items.reduce((sum, item) => {
       if (item.isRefund) return sum;
-      
+
       const itemPrice = item.product.price;
       const additivesPrice = item.additives.reduce((addSum, additive) => addSum + additive.price, 0);
       return sum + (itemPrice + additivesPrice) * item.quantity;
@@ -385,7 +388,7 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
   const calculateRefundedTotal = () => {
     return order.items.reduce((sum, item) => {
       if (!item.isRefund) return sum;
-      
+
       const itemPrice = item.product.price;
       const additivesPrice = item.additives.reduce((addSum, additive) => addSum + additive.price, 0);
       return sum + (itemPrice + additivesPrice) * item.quantity;
@@ -394,7 +397,7 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
 
   const calculateSurchargesTotal = () => {
     if (!order.surcharges) return 0;
-    
+
     const itemsTotal = calculateItemsTotal();
     return order.surcharges.reduce((sum, surcharge) => {
       if (surcharge.type === 'FIXED') {
@@ -410,13 +413,13 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
     const surchargesTotal = calculateSurchargesTotal();
     const discountAmount = order.discountAmount || 0;
     const bonusPointsUsed = order.bonusPointsUsed || 0;
-    
+
     return itemsTotal + surchargesTotal - discountAmount - bonusPointsUsed;
   };
 
   const getWarningMessages = (): WarningMessage[] => {
     const warnings: WarningMessage[] = [];
-    
+
     if (order.attentionFlags?.isReordered) {
       if (order.status === 'PREPARING') {
         warnings.push({
@@ -465,21 +468,21 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
       setIsCommentOverflowing(commentRef.current.scrollHeight > maxHeight)
     }
   }, [order.comment])
-  
+
   useEffect(() => {
     if (warnings.length > 1) {
       const interval = setInterval(() => {
         setCurrentWarningIndex((prev) => (prev + 1) % warnings.length);
       }, 3000);
-      
+
       return () => clearInterval(interval);
     }
   }, [warnings.length]);
 
   useEffect(() => {
     if (contentRef.current) {
-      setContentHeight(showAllItems 
-        ? contentRef.current.scrollHeight 
+      setContentHeight(showAllItems
+        ? contentRef.current.scrollHeight
         : Math.min(contentRef.current.scrollHeight, MAX_VISIBLE_ITEMS * 64)
       )
     }
@@ -519,7 +522,7 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
     }
   }
 
-    useEffect(() => {
+  useEffect(() => {
     if (selectedRestaurantId) {
       loadRestaurantData()
     }
@@ -527,110 +530,145 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
 
   const handleCardClick = () => {
     const routePath = `/orders/${order.id}`
-    if(variant === 'default'){ 
+    if (variant === 'default') {
       router.push(routePath)
-    } 
+    }
   }
-  
+
   const createOrderLog = async (action: string) => {
     if (!orderId || !user) return;
-    
+
     try {
       await OrderService.createLog({
         orderId: orderId as string,
         action,
         userId: user.id,
       });
-      
+
     } catch (err) {
       console.error('Ошибка при создании лога:', err);
     }
   };
 
   const handleItemClick = async (itemId: string) => {
-  try {
-    const item = order.items.find(i => i.id === itemId)
-    if (!item) return
-    
-    if (!shouldUseWarehouse) {
+    try {
+      const item = order.items.find(i => i.id === itemId)
+      if (!item) return
+
+      if (!shouldUseWarehouse) {
+        setCurrentItemId(itemId)
+        setWriteOffDialogOpen(true)
+        setWriteOffItems([])
+        return
+      }
+
+      // Собираем все ингредиенты из блюда
+      const ingredientsToWriteOff = await Promise.all(
+        item.product.ingredients.map(async (ingredient: Ingredient) => {
+          try {
+            const inventoryItem = await WarehouseService.getInventoryItem(ingredient.inventoryItemId)
+            return {
+              id: ingredient.inventoryItemId,
+              name: inventoryItem.name,
+              quantity: ingredient.quantity * item.quantity,
+              unit: inventoryItem.unit,
+              type: 'product' as const
+            }
+          } catch (error) {
+            console.error(`Error processing ingredient ${ingredient.inventoryItemId}:`, error)
+            return null
+          }
+        })
+      )
+
+      // Собираем ингредиенты из модификаторов
+      const additiveIngredientsToWriteOff = await Promise.all(
+        item.additives.map(async (additive) => {
+          try {
+            // Получаем модификатор для проверки наличия инвентарного товара
+            const additiveDetails = await AdditiveService.getById(additive.id)
+
+            // Если у модификатора есть привязанный инвентарный товар и указано количество
+            if (additiveDetails?.inventoryItemId && additiveDetails?.ingredientQuantity) {
+              const inventoryItem = await WarehouseService.getInventoryItem(additiveDetails.inventoryItemId)
+              return {
+                id: additiveDetails.inventoryItemId,
+                name: inventoryItem.name,
+                quantity: additiveDetails.ingredientQuantity * item.quantity,
+                unit: inventoryItem.unit,
+                type: 'additive' as const,
+                additiveName: additive.title
+              }
+            }
+            return null
+          } catch (error) {
+            console.error(`Error processing additive ${additive.id}:`, error)
+            return null
+          }
+        })
+      )
+
+      // Фильтруем null значения и объединяем массивы
+      const validProductIngredients = ingredientsToWriteOff.filter(Boolean) as Array<WriteOffItem & { type: 'product' }>
+      const validAdditiveIngredients = additiveIngredientsToWriteOff.filter(Boolean) as Array<WriteOffItem & { type: 'additive', additiveName: string }>
+
+      const allIngredients = [...validProductIngredients, ...validAdditiveIngredients]
+
+      if (allIngredients.length === 0) {
+        toast.warning(t.ingredientsError)
+        return
+      }
+
+      setWriteOffItems(allIngredients)
       setCurrentItemId(itemId)
       setWriteOffDialogOpen(true)
-      setWriteOffItems([]) 
-      return
+    } catch (error) {
+      console.error('Error preparing write-off:', error)
+      toast.error(t.writeOffError)
     }
-
-    const ingredientsToWriteOff = await Promise.all(
-      item.product.ingredients.map(async (ingredient: Ingredient) => {
-        try {
-          const inventoryItem = await WarehouseService.getInventoryItem(ingredient.inventoryItemId)
-          return {
-            id: ingredient.inventoryItemId,
-            name: inventoryItem.name,
-            quantity: ingredient.quantity * item.quantity,
-            unit: inventoryItem.unit
-          }
-        } catch (error) {
-          console.error(`Error processing ingredient ${ingredient.inventoryItemId}:`, error)
-          return null
-        }
-      })
-    )
-
-    const validIngredients = ingredientsToWriteOff.filter(Boolean) as WriteOffItem[]
-    
-    if (validIngredients.length === 0) {
-      toast.warning(t.ingredientsError)
-      return
-    }
-
-    setWriteOffItems(validIngredients)
-    setCurrentItemId(itemId)
-    setWriteOffDialogOpen(true)
-  } catch (error) {
-    console.error('Error preparing write-off:', error)
-    toast.error(t.writeOffError)
   }
-}
 
-const handleConfirmWriteOff = async () => {
-  if (!currentItemId) return
+  const handleConfirmWriteOff = async () => {
+    if (!currentItemId) return
 
-  setIsWritingOff(true)
-  try {
-    if (shouldUseWarehouse && warehouse?.id) {
-      for (const writeOffItem of writeOffItems) {
-        await WarehouseService.createTransaction({
-          inventoryItemId: writeOffItem.id,
-          type: InventoryTransactionType.WRITE_OFF,
-          warehouseId: warehouse.id,
-          quantity: writeOffItem.quantity,
-          reason: 'Приготовление блюда',
-          userId: user?.id
-        })
+    setIsWritingOff(true)
+    try {
+      if (shouldUseWarehouse && warehouse?.id) {
+        for (const writeOffItem of writeOffItems) {
+          await WarehouseService.createTransaction({
+            inventoryItemId: writeOffItem.id,
+            type: InventoryTransactionType.WRITE_OFF,
+            warehouseId: warehouse.id,
+            quantity: writeOffItem.quantity,
+            reason: writeOffItem.type === 'additive'
+              ? `Модификатор "${writeOffItem.additiveName}" для блюда`
+              : 'Приготовление блюда',
+            userId: user?.id
+          })
+        }
       }
-    }
 
-    await handleStatusChange(currentItemId, OrderItemStatus.COMPLETED)
-    const completedItem = order.items.find(item => item.id === currentItemId);
-      if (completedItem?.product.printLabels && (order.type == EnumOrderType.TAKEAWAY || order.type == EnumOrderType.DELIVERY ) ) {
+      await handleStatusChange(currentItemId, OrderItemStatus.COMPLETED)
+      const completedItem = order.items.find(item => item.id === currentItemId);
+      if (completedItem?.product.printLabels && (order.type == EnumOrderType.TAKEAWAY || order.type == EnumOrderType.DELIVERY)) {
         printItemLabel(completedItem, order.number);
       }
 
-    setWriteOffDialogOpen(false)
-    
-    // Показываем соответствующее сообщение
-    if (shouldUseWarehouse) {
-      toast.success(t.writeOffSuccess)
-    } else {
-      toast.success(t.statusUpdated)
+      setWriteOffDialogOpen(false)
+
+      // Показываем соответствующее сообщение
+      if (shouldUseWarehouse) {
+        toast.success(t.writeOffSuccess)
+      } else {
+        toast.success(t.statusUpdated)
+      }
+    } catch (error) {
+      console.error('Error writing off inventory:', error)
+      toast.error(shouldUseWarehouse ? t.writeOffError : t.statusUpdateError)
+    } finally {
+      setIsWritingOff(false)
     }
-  } catch (error) {
-    console.error('Error writing off inventory:', error)
-    toast.error(shouldUseWarehouse ? t.writeOffError : t.statusUpdateError)
-  } finally {
-    setIsWritingOff(false)
   }
-}
 
   const handleStatusChange = async (itemId: string, newStatus: OrderItemStatus) => {
     if (!orderId || !user?.id || isUpdating) return;
@@ -639,15 +677,15 @@ const handleConfirmWriteOff = async () => {
 
     try {
       setIsUpdating(true);
-      
-      const updatedItems = items.map(item => 
-        item.id === itemId 
-          ? { 
-              ...item, 
-              currentStatus: newStatus,
-              status: newStatus,
-              assignedTo: newStatus === 'IN_PROGRESS' ? { id: user.id, name: user.name } : item.assignedTo
-            } 
+
+      const updatedItems = items.map(item =>
+        item.id === itemId
+          ? {
+            ...item,
+            currentStatus: newStatus,
+            status: newStatus,
+            assignedTo: newStatus === 'IN_PROGRESS' ? { id: user.id, name: user.name } : item.assignedTo
+          }
           : item
       );
       setItems(updatedItems);
@@ -655,7 +693,7 @@ const handleConfirmWriteOff = async () => {
       const updatedOrder = await OrderService.updateItemStatus(
         orderId,
         itemId,
-        { 
+        {
           status: newStatus,
           userId: newStatus === 'IN_PROGRESS' ? user.id : undefined
         }
@@ -663,7 +701,7 @@ const handleConfirmWriteOff = async () => {
 
       const fullOrder = await OrderService.getById(orderId);
       const itemsToCheck = fullOrder.items?.length > 0 ? fullOrder.items : updatedItems;
-      const allItemsCompleted = itemsToCheck.every(item => 
+      const allItemsCompleted = itemsToCheck.every(item =>
         ['COMPLETED', 'CANCELLED', 'REFUNDED'].includes(item.status)
       );
 
@@ -672,11 +710,11 @@ const handleConfirmWriteOff = async () => {
           orderId,
           { status: 'READY' }
         );
-        
+
         if (onStatusChange) onStatusChange(finalUpdatedOrder);
-        
-        toast.success(language === 'ru' 
-          ? 'Все блюда готовы! Заказ завершен.' 
+
+        toast.success(language === 'ru'
+          ? 'Все блюда готовы! Заказ завершен.'
           : 'ყველა კერძი მზადაა! შეკვეთა დასრულებულია.');
         return finalUpdatedOrder;
       }
@@ -694,46 +732,46 @@ const handleConfirmWriteOff = async () => {
     }
   }
   useEffect(() => {
-  if (selectedRestaurantId && shouldUseWarehouse) {
-    loadWarehouseData()
-  }
-}, [selectedRestaurantId, shouldUseWarehouse])
+    if (selectedRestaurantId && shouldUseWarehouse) {
+      loadWarehouseData()
+    }
+  }, [selectedRestaurantId, shouldUseWarehouse])
 
-const printItemLabel = (item: any, orderNumber: number) => {
-   const networkName = restaurantData?.network?.name || 'Appetit' 
-  const dishName = item.product.title;
-  const composition = item.product.composition || ""; 
-  
-  // Рассчитываем количество этикеток
-  const totalQuantity = item.quantity;
-  const packageQuantity = 5;
-  const fullPackages = Math.floor(totalQuantity / packageQuantity);
-  const remainder = totalQuantity % packageQuantity;
-  
-  // Печатаем этикетки для полных упаковок
-  for (let i = 0; i < fullPackages; i++) {
-    printLabel(networkName, orderNumber, dishName, packageQuantity, composition);
-  }
-  
-  // Печатаем этикетку для остатка
-  if (remainder > 0) {
-    printLabel(networkName, orderNumber, dishName, remainder, composition);
-  }
-};
+  const printItemLabel = (item: any, orderNumber: number) => {
+    const networkName = restaurantData?.network?.name || 'Appetit'
+    const dishName = item.product.title;
+    const composition = item.product.composition || "";
 
-const printLabel = (networkName: string, orderNumber: number, dishName: string, quantity: number, composition: string) => {
-  const labelContent = `
+    // Рассчитываем количество этикеток
+    const totalQuantity = item.quantity;
+    const packageQuantity = 5;
+    const fullPackages = Math.floor(totalQuantity / packageQuantity);
+    const remainder = totalQuantity % packageQuantity;
+
+    // Печатаем этикетки для полных упаковок
+    for (let i = 0; i < fullPackages; i++) {
+      printLabel(networkName, orderNumber, dishName, packageQuantity, composition);
+    }
+
+    // Печатаем этикетку для остатка
+    if (remainder > 0) {
+      printLabel(networkName, orderNumber, dishName, remainder, composition);
+    }
+  };
+
+  const printLabel = (networkName: string, orderNumber: number, dishName: string, quantity: number, composition: string) => {
+    const labelContent = `
 ${networkName} #${orderNumber}
 ---------------------------
 ${dishName} - ${quantity}
 -------------------------------
 ${composition}
   `;
-  
-  // Открываем новое окно для печати
-  const printWindow = window.open('', '_blank');
-  if (printWindow) {
-    printWindow.document.write(`
+
+    // Открываем новое окно для печати
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
       <html>
         <head>
           <title>Print Label</title>
@@ -752,24 +790,24 @@ ${composition}
         </body>
       </html>
     `);
-    printWindow.document.close();
-    printWindow.print();
-    printWindow.close();
-  }
-};
+      printWindow.document.close();
+      printWindow.print();
+      printWindow.close();
+    }
+  };
 
-const loadWarehouseData = async () => {
-  try {
-    const warehouseData = await WarehouseService.getRestaurantWarehouse(selectedRestaurantId as string)
-    setWarehouse(warehouseData)
-  } catch (error) {
-    console.error('Failed to load warehouse data:', error)
+  const loadWarehouseData = async () => {
+    try {
+      const warehouseData = await WarehouseService.getRestaurantWarehouse(selectedRestaurantId as string)
+      setWarehouse(warehouseData)
+    } catch (error) {
+      console.error('Failed to load warehouse data:', error)
+    }
   }
-}
   return (
     <div>
-        <Card 
-          className={cn(
+      <Card
+        className={cn(
           "flex flex-col h-full relative overflow-hidden",
           "border-l-4 cursor-pointer transition-all hover:shadow-md",
           currentStatusStyle.border,
@@ -779,11 +817,11 @@ const loadWarehouseData = async () => {
         )}
         onClick={handleCardClick}
       >
-        
+
         <div className="absolute top-0 left-0 w-full h-1" />
         <div className="flex flex-col flex-grow">
           <OrderHeader order={order} compact={variant === 'kitchen'} />
-          
+
           {/* Warning messages block */}
           {warnings.length > 0 && variant === 'default' && (
             <div className="px-3 pt-1">
@@ -801,7 +839,7 @@ const loadWarehouseData = async () => {
                 >
                   {warnings[currentWarningIndex]?.icon}
                   <span>{warnings[currentWarningIndex]?.text}</span>
-                  
+
                   {warnings.length > 1 && (
                     <div className="ml-auto flex gap-1">
                       {warnings.map((_, index) => (
@@ -816,11 +854,11 @@ const loadWarehouseData = async () => {
               </AnimatePresence>
             </div>
           )}
-          
+
           <div className="flex flex-col flex-grow p-3">
             {order.comment && (
               <div className="mb-3">
-                <div 
+                <div
                   ref={commentRef}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -856,11 +894,11 @@ const loadWarehouseData = async () => {
                 <div className="flex-grow">
                   {filteredItems.length > 0 ? (
                     filteredItems.map(item => (
-                      <div 
-                        key={item.id} 
+                      <div
+                        key={item.id}
                         className={cn(
                           "mb-2 last:mb-0 p-2 rounded-lg border border-dashed cursor-pointer py-7 transition-colors hover:bg-opacity-90 border-2",
-                          item.status === OrderItemStatus.COMPLETED ? "opacity-70" : "" , 
+                          item.status === OrderItemStatus.COMPLETED ? "opacity-70" : "",
                           item.isReordered ? 'border-red-500 ' : 'border-black'
                         )}
                         onClick={(e) => {
@@ -886,22 +924,22 @@ const loadWarehouseData = async () => {
                               </div>
                             )}
                           </div>
-                            <Badge variant="outline" className="text-xs">
-                              
-                              {item.status === OrderItemStatus.IN_PROGRESS && item.timestamps.startedAt ? (
-                                <>
-                                  {language === 'ru' ? 'Готовится' : 'მზადდება'}{' '}
-                                  {Math.round((new Date().getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
-                                </>
-                              ) : item.status === OrderItemStatus.COMPLETED && item.timestamps.startedAt && item.timestamps.completedAt ? (
-                                <>
-                                  {language === 'ru' ? 'Приготовлен за' : 'მზად იყო'}{' '}
-                                  {Math.round((new Date(item.timestamps.completedAt).getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
-                                </>
-                              ) : (
-                                getStatusText(item.status, language)
-                              )}
-                            </Badge>
+                          <Badge variant="outline" className="text-xs">
+
+                            {item.status === OrderItemStatus.IN_PROGRESS && item.timestamps.startedAt ? (
+                              <>
+                                {language === 'ru' ? 'Готовится' : 'მზადდება'}{' '}
+                                {Math.round((new Date().getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
+                              </>
+                            ) : item.status === OrderItemStatus.COMPLETED && item.timestamps.startedAt && item.timestamps.completedAt ? (
+                              <>
+                                {language === 'ru' ? 'Приготовлен за' : 'მზად იყო'}{' '}
+                                {Math.round((new Date(item.timestamps.completedAt).getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
+                              </>
+                            ) : (
+                              getStatusText(item.status, language)
+                            )}
+                          </Badge>
                         </div>
                       </div>
                     ))
@@ -910,17 +948,17 @@ const loadWarehouseData = async () => {
                       {t.noDishes}
                     </div>)
                   )}
-                  
+
                   {otherItems.length > 0 && (
                     <div className="mt-4">
-                      {kitchenArchive || variant === 'preorder' ? 
-                      <div className="mt-2 space-y-2">
+                      {kitchenArchive || variant === 'preorder' ?
+                        <div className="mt-2 space-y-2">
                           {otherItems.map(item => (
-                            <div 
-                              key={item.id} 
+                            <div
+                              key={item.id}
                               className={cn(
                                 "p-2 rounded-lg border border-dashed border-gray-300 py-4 ",
-                              
+
                               )}
                             >
                               <div className="flex justify-between items-start">
@@ -934,8 +972,59 @@ const loadWarehouseData = async () => {
                                     </div>
                                   )}
                                 </div>
-                                   <Badge variant="outline" className="text-xs">
-                                    
+                                <Badge variant="outline" className="text-xs">
+
+                                  {item.status === OrderItemStatus.IN_PROGRESS && item.timestamps.startedAt ? (
+                                    <>
+                                      {language === 'ru' ? 'Готовится' : 'მზადდება'}{' '}
+                                      {Math.round((new Date().getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
+                                    </>
+                                  ) : item.status === OrderItemStatus.COMPLETED && item.timestamps.startedAt && item.timestamps.completedAt ? (
+                                    <>
+                                      {language === 'ru' ? 'Приготовлен за' : 'მზად იყო'}{' '}
+                                      {Math.round((new Date(item.timestamps.completedAt).getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
+                                    </>
+                                  ) : (
+                                    getStatusText(item.status, language)
+                                  )}
+                                </Badge>
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {t.responsibleWorkshop}: {item.product.workshops?.[0]?.workshop.name || (language === 'ru' ? 'Не указан' : 'არ არის მითითებული')}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        :
+                        <details className="group">
+                          <summary className="flex items-center justify-between cursor-pointer list-none text-sm text-muted-foreground">
+                            <span>
+                              {t.otherDishes} ({otherItems.length})
+                            </span>
+                            <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                          </summary>
+                          <div className="mt-2 space-y-2">
+                            {otherItems.map(item => (
+                              <div
+                                key={item.id}
+                                className={cn(
+                                  "p-2 rounded-lg border border-dashed border-gray-300 py-4 opacity-70",
+                                  item.status === OrderItemStatus.COMPLETED ? "opacity-50" : ""
+                                )}
+                              >
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <div className="font-medium flex items-center gap-1">
+                                      {item.product.title} × {item.quantity}
+                                    </div>
+                                    {item.additives.length > 0 && (
+                                      <div className="text-xs text-muted-foreground">
+                                        {language === 'ru' ? 'Модификаторы:' : 'მოდიფიკატორები:'} {item.additives.map(a => a.title).join(', ')}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <Badge variant="outline" className="text-xs">
+
                                     {item.status === OrderItemStatus.IN_PROGRESS && item.timestamps.startedAt ? (
                                       <>
                                         {language === 'ru' ? 'Готовится' : 'მზადდება'}{' '}
@@ -950,70 +1039,19 @@ const loadWarehouseData = async () => {
                                       getStatusText(item.status, language)
                                     )}
                                   </Badge>
-                              </div>
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {t.responsibleWorkshop}: {item.product.workshops?.[0]?.workshop.name || (language === 'ru' ? 'Не указан' : 'არ არის მითითებული')}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        : 
-                      <details className="group">
-                        <summary className="flex items-center justify-between cursor-pointer list-none text-sm text-muted-foreground">
-                          <span>
-                            {t.otherDishes} ({otherItems.length})
-                          </span>
-                          <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
-                        </summary>
-                        <div className="mt-2 space-y-2">
-                          {otherItems.map(item => (
-                            <div 
-                              key={item.id} 
-                              className={cn(
-                                "p-2 rounded-lg border border-dashed border-gray-300 py-4 opacity-70",
-                                item.status === OrderItemStatus.COMPLETED ? "opacity-50" : ""
-                              )}
-                            >
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <div className="font-medium flex items-center gap-1">
-                                    {item.product.title} × {item.quantity}
-                                  </div>
-                                  {item.additives.length > 0 && (
-                                    <div className="text-xs text-muted-foreground">
-                                      {language === 'ru' ? 'Модификаторы:' : 'მოდიფიკატორები:'} {item.additives.map(a => a.title).join(', ')}
-                                    </div>
-                                  )}
                                 </div>
-                                  <Badge variant="outline" className="text-xs">
-                              
-                              {item.status === OrderItemStatus.IN_PROGRESS && item.timestamps.startedAt ? (
-                                <>
-                                  {language === 'ru' ? 'Готовится' : 'მზადდება'}{' '}
-                                  {Math.round((new Date().getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
-                                </>
-                              ) : item.status === OrderItemStatus.COMPLETED && item.timestamps.startedAt && item.timestamps.completedAt ? (
-                                <>
-                                  {language === 'ru' ? 'Приготовлен за' : 'მზად იყო'}{' '}
-                                  {Math.round((new Date(item.timestamps.completedAt).getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
-                                </>
-                              ) : (
-                                getStatusText(item.status, language)
-                              )}
-                            </Badge>
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {t.responsibleWorkshop}: {item.product.workshops?.[0]?.workshop.name || (language === 'ru' ? 'Не указан' : 'არ არის მითითებული')}
+                                </div>
                               </div>
-                              <div className="text-xs text-muted-foreground mt-1">
-                                {t.responsibleWorkshop}: {item.product.workshops?.[0]?.workshop.name || (language === 'ru' ? 'Не указан' : 'არ არის მითითებული')}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </details>
+                            ))}
+                          </div>
+                        </details>
                       }
                     </div>
                   )}
                 </div>
-              ) : ( <></>
+              ) : (<></>
               )
             )}
             {variant === 'default' || variant === 'preorder' && (order.scheduledAt || order.customer) ? (
@@ -1021,21 +1059,21 @@ const loadWarehouseData = async () => {
                 {(user?.role === 'SUPERVISOR' || user?.role === 'MANAGER') && order.customer && variant === 'default' && (
                   <OrderCustomerInfo customer={order.customer} compact />
                 )}
-               {order.scheduledAt &&
-                  <Badge 
+                {order.scheduledAt &&
+                  <Badge
                     variant="outline"
                     className="flex items-center gap-1 px-2 py-1 rounded-md border text-sm font-medium"
                   >
                     {language === 'ru' ? 'Отложено до' : 'გადაიდო'}
                     <span className="text-sm">
-                     {formatUTC(order.scheduledAt)}
+                      {formatUTC(order.scheduledAt)}
                     </span>
                   </Badge>
                 }
               </div>
             ) : null}
           </div>
-           
+
           {variant === 'default' && order.payment && (
             <div className="mt-auto border-t pt-2 px-3 pb-3">
               <OrderPaymentStatus payment={order.payment} order={order} />
@@ -1044,45 +1082,70 @@ const loadWarehouseData = async () => {
         </div>
       </Card>
 
-     <Dialog open={writeOffDialogOpen} onOpenChange={setWriteOffDialogOpen}>
-  <DialogContent>
-    <DialogHeader>
-      <DialogTitle className="flex items-center gap-2">
-        <Beef className="h-5 w-5" />
-        Блюдо   {currentItemId && (() => {
-          const item = order.items.find(i => i.id === currentItemId);
-          return item ? `${item.product.title}(${item.quantity}шт) готово?` : 'Блюдо готово?';
-        })()}
-      </DialogTitle>
-    </DialogHeader>
-    
-    <DialogFooter>
-      <Button 
-        variant="outline" 
-        onClick={() => setWriteOffDialogOpen(false)} 
-        disabled={isWritingOff}
-      >
-        {t.cancel}
-      </Button>
-      <Button 
-        onClick={handleConfirmWriteOff} 
-        disabled={isWritingOff}
-      >
-        {isWritingOff ? (
-          <>
-            <Clock className="mr-2 h-4 w-4 animate-spin" />
-            {t.completing}
-          </>
-        ) : (
-          <>
-            <Check className="mr-2 h-4 w-4" />
-            {t.confirmCompletion}
-          </>
-        )}
-      </Button>
-    </DialogFooter>
-  </DialogContent>
-</Dialog>
+      <Dialog open={writeOffDialogOpen} onOpenChange={setWriteOffDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Beef className="h-5 w-5" />
+              {t.confirmCompletion}
+            </DialogTitle>
+          </DialogHeader>
+
+          {writeOffItems.length > 0 && (
+            <div className="max-h-60 overflow-y-auto">
+              <p className="text-sm text-muted-foreground mb-3">{t.writeOffText}</p>
+              <div className="space-y-2">
+                {writeOffItems.map((item, index) => (
+                  <div
+                    key={`${item.id}-${index}`}
+                    className="flex justify-between items-center p-2 border rounded"
+                  >
+                    <div>
+                      <div className="font-medium">
+                        {item.name} {item.type === 'additive' && `(модификатор: ${item.additiveName})`}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {item.quantity} {item.unit}
+                      </div>
+                    </div>
+                    {item.type === 'additive' && (
+                      <Badge variant="outline" className="ml-2">
+                        Модификатор
+                      </Badge>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setWriteOffDialogOpen(false)}
+              disabled={isWritingOff}
+            >
+              {t.cancel}
+            </Button>
+            <Button
+              onClick={handleConfirmWriteOff}
+              disabled={isWritingOff}
+            >
+              {isWritingOff ? (
+                <>
+                  <Clock className="mr-2 h-4 w-4 animate-spin" />
+                  {t.writingOff}
+                </>
+              ) : (
+                <>
+                  <Check className="mr-2 h-4 w-4" />
+                  {t.confirmWriteOff}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

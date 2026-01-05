@@ -829,15 +829,25 @@ export default function NetworkInventoryPage() {
                                         <span className="font-medium truncate max-w-[80px]" title={restaurant.title}>
                                           {restaurant.title}
                                         </span>
+                                        {/* Добавляем подзаголовки для количества и стоимости */}
+                                        <div className="flex gap-4 text-xs">
+                                          <span className="text-muted-foreground">{t('quantity')}</span>
+                                          <span className="text-muted-foreground">{t('cost')}</span>
+                                        </div>
                                       </div>
                                     </TableHead>
                                   </React.Fragment>
                                 ))}
+                                {/* Добавляем столбец "Всего" */}
+                                <TableHead className="min-w-[100px] text-center">{t('total')}</TableHead>
                                 <TableHead className="min-w-[150px] text-right">{t('actions')}</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
                               {getCategoryItems(null).map((item) => {
+                                // Добавляем расчет общих значений
+                                const totalQuantity = getTotalNetworkQuantity(item);
+                                const totalValue = getTotalNetworkValue(item);
 
                                 return (
                                   <TableRow key={item.id}>
@@ -855,9 +865,27 @@ export default function NetworkInventoryPage() {
 
                                     {restaurants.map(restaurant => (
                                       <TableCell key={restaurant.id} className="text-center">
-                                        {getItemQuantityByRestaurant(item, restaurant.id)}
+                                        {/* Добавляем отображение цены для каждого ресторана */}
+                                        <div className="flex flex-col items-center">
+                                          <span className="font-medium">
+                                            {getItemQuantityByRestaurant(item, restaurant.id)}
+                                          </span>
+                                          <span className="text-xs text-muted-foreground">
+                                            {getItemCostByRestaurant(item, restaurant.id)}
+                                          </span>
+                                        </div>
                                       </TableCell>
                                     ))}
+
+                                    {/* Добавляем столбец "Всего" */}
+                                    <TableCell className="text-center">
+                                      <div className="flex flex-col items-center">
+                                        <span className="font-semibold">{totalQuantity}</span>
+                                        <span className="text-xs text-muted-foreground">
+                                          {totalValue > 0 ? `${totalValue.toFixed(2)}₽` : '-'}
+                                        </span>
+                                      </div>
+                                    </TableCell>
 
                                     <TableCell>
                                       <div className="flex justify-end gap-2">

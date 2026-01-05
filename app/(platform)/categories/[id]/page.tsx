@@ -29,33 +29,41 @@ import { useAuth } from '@/lib/hooks/useAuth'
 import SearchableSelect from '@/components/features/menu/product/SearchableSelect'
 import { Restaurant } from '@/lib/types/restaurant'
 import { HtmlTextarea } from '@/components/ui/html-textarea'
+import { ImageUploader } from '@/components/features/menu/product/ImageUploader' // Импортируем компонент загрузки изображений
 
-type FormStep = 'basic' | 'details' | 'seo' | 'restaurants'
+type FormStep = 'basic' | 'details' | 'images' | 'restaurants' | 'seo'
 
 const sections = [
-  { 
-    id: 'basic', 
+  {
+    id: 'basic',
     title: { ru: 'Основная информация', ka: 'ძირითადი ინფორმაცია' },
     icon: Info,
     color: 'bg-gradient-to-br from-blue-500 to-cyan-400',
     description: { ru: 'Название, описание, URL', ka: 'სახელი, აღწერა, URL' }
   },
-  { 
-    id: 'details', 
+  {
+    id: 'details',
     title: { ru: 'Детали', ka: 'დეტალები' },
     icon: ListCollapse,
     color: 'bg-gradient-to-br from-purple-500 to-pink-400',
-    description: { ru: 'Порядок, родительская категория', ka: 'რიგი, სურათი, მშობელი კატეგორია' }
+    description: { ru: 'Порядок, родительская категория', ka: 'რიგი, მშობელი კატეგორია' }
   },
-  { 
-    id: 'restaurants', 
+  {
+    id: 'images',
+    title: { ru: 'Изображения', ka: 'სურათები' },
+    icon: ImageIcon,
+    color: 'bg-gradient-to-br from-amber-500 to-orange-400',
+    description: { ru: 'Изображение категории', ka: 'კატეგორიის სურათი' }
+  },
+  {
+    id: 'restaurants',
     title: { ru: 'Рестораны', ka: 'რესტორნები' },
     icon: Store,
     color: 'bg-gradient-to-br from-emerald-500 to-green-400',
     description: { ru: 'Привязка к ресторанам', ka: 'რესტორნებთან დაკავშირება' }
   },
-  { 
-    id: 'seo', 
+  {
+    id: 'seo',
     title: { ru: 'SEO', ka: 'SEO' },
     icon: Globe,
     color: 'bg-gradient-to-br from-gray-600 to-gray-400',
@@ -69,7 +77,7 @@ const CategoryEditPage = () => {
   const { language } = useLanguageStore()
   const router = useRouter()
   const { user } = useAuth()
-  
+
   const [currentStep, setCurrentStep] = useState<FormStep>('basic')
   const [formData, setFormData] = useState({
     title: '',
@@ -77,6 +85,7 @@ const CategoryEditPage = () => {
     slug: '',
     metaTitle: '',
     metaDescription: '',
+    metaContent: '',
     metaKeywords: '',
     parentId: null as string | null,
     order: 0,
@@ -92,19 +101,34 @@ const CategoryEditPage = () => {
   const [isCategoriesLoading, setIsCategoriesLoading] = useState(false)
   const [isScrolling, setIsScrolling] = useState(false)
   const [networkId, setNetworkId] = useState<string>('')
-  
+
   // Состояния для полноэкранного редактора
   const [isFullscreenDialogOpen, setIsFullscreenDialogOpen] = useState(false)
   const [fullscreenTextareaValue, setFullscreenTextareaValue] = useState('')
   const [fullscreenTextareaName, setFullscreenTextareaName] = useState('')
   const [fullscreenTextareaLabel, setFullscreenTextareaLabel] = useState('')
   const [fullscreenTextareaLanguage, setFullscreenTextareaLanguage] = useState<'html' | 'text'>('text')
+  const flattenCategories = (categoriesData: any[],): { id: string; title: string; }[] => {
+    let result: { id: string; title: string }[] = []
 
+    categoriesData.forEach(category => {
+      result.push({
+        id: category.id,
+        title: category.title,
+      })
+
+      if (category.children && category.children.length > 0) {
+        result = result.concat(flattenCategories(category.children,))
+      }
+    })
+
+    return result
+  }
   useEffect(() => {
     loadData()
     loadCategories()
     loadRestaurants()
-    
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach(entry => {
@@ -136,7 +160,7 @@ const CategoryEditPage = () => {
     setIsScrolling(true);
     const element = document.getElementById(id);
     if (element) {
-      element.scrollIntoView({ 
+      element.scrollIntoView({
         behavior: 'smooth',
         block: 'start'
       });
@@ -147,10 +171,9 @@ const CategoryEditPage = () => {
   const loadRestaurants = async () => {
     setIsRestaurantsLoading(true)
     try {
-         const category = await CategoryService.getById(categoryId as string)
-        const userRestaurantsData = await RestaurantService.getByNetwork(category.networkId as string)
-        setRestaurants(userRestaurantsData)
-      
+      const category = await CategoryService.getById(categoryId as string)
+      const userRestaurantsData = await RestaurantService.getByNetwork(category.networkId as string)
+      setRestaurants(userRestaurantsData)
     } catch (error) {
       console.error('Failed to load restaurants', error)
       toast.error(language === 'ru' ? 'Ошибка загрузки ресторанов' : 'რესტორნების ჩატვირთვის შეცდომა')
@@ -164,17 +187,18 @@ const CategoryEditPage = () => {
       resetForm()
       return
     }
-    
+
     setIsLoading(true)
     try {
       const category = await CategoryService.getById(categoryId as string)
-      
+
       setFormData({
         title: category.title || '',
         description: category.description || '',
         slug: category.slug || '',
         metaTitle: category.metaTitle || '',
         metaDescription: category.metaDescription || '',
+        metaContent: category.metaContent || '',
         metaKeywords: category.metaKeywords || '',
         parentId: category.parentId || null,
         order: category.order || 0,
@@ -198,6 +222,7 @@ const CategoryEditPage = () => {
       slug: '',
       metaTitle: '',
       metaDescription: '',
+      metaContent: '',
       metaKeywords: '',
       parentId: null,
       order: 0,
@@ -209,10 +234,13 @@ const CategoryEditPage = () => {
   }
 
   const loadCategories = async () => {
+
     setIsCategoriesLoading(true)
     try {
-      const data = await CategoryService.getAll()
-      setCategories(data as any)
+      const category = await CategoryService.getById(categoryId as string)
+      const data = await CategoryService.getByNetwork(category.networkId as string)
+      const flattenedCategories = flattenCategories(data)
+      setCategories(flattenedCategories)
     } catch (error) {
       console.error('Failed to load categories', error)
     } finally {
@@ -246,10 +274,18 @@ const CategoryEditPage = () => {
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const title = e.target.value;
-    setFormData(prev => ({ 
-      ...prev, 
+    setFormData(prev => ({
+      ...prev,
       title,
       slug: !prev.slug ? generateSlug(title) : prev.slug
+    }));
+  };
+
+  // Обработчик изменения изображения
+  const handleImageChange = (images: string[]) => {
+    setFormData(prev => ({
+      ...prev,
+      image: images.length > 0 ? images[0] : ''
     }));
   };
 
@@ -286,7 +322,7 @@ const CategoryEditPage = () => {
 
   const validateForm = () => {
     const errors = []
-    
+
     if (!formData.title.trim()) {
       errors.push(language === 'ru' ? 'Название категории обязательно' : 'კატეგორიის სახელი სავალდებულოა')
     }
@@ -304,7 +340,7 @@ const CategoryEditPage = () => {
     if (formData.clientOrder < 0) {
       errors.push(language === 'ru' ? 'Порядок для клиентов должен быть числом не меньше 0' : 'კლიენტებისთვის რიგი უნდა იყოს რიცხვი არანაკლებ 0')
     }
-    
+
     if (errors.length > 0) {
       toast.error(errors.join('\n'))
       return false
@@ -317,11 +353,11 @@ const CategoryEditPage = () => {
     if (!validateForm()) return
 
     setIsLoading(true)
-    const category = await CategoryService.getById(categoryId as string)
     try {
+      const category = await CategoryService.getById(categoryId as string)
       const categoryData = {
         ...formData,
-        networkId: category.networkId,  
+        networkId: category.networkId,
         restaurantIds: selectedRestaurants,
         parentId: formData.parentId === 'null' ? null : formData.parentId,
       }
@@ -335,17 +371,17 @@ const CategoryEditPage = () => {
         toast.success(language === 'ru' ? 'Категория создана' : 'კატეგორია შექმნილია')
       }
 
-      router.back()
+      router.push('/menu?tab=categories')
     } catch (error: any) {
       console.error('Error saving category:', error)
-      
+
       if (error.response?.status === 409) {
-        toast.error(language === 'ru' 
-          ? 'Категория с таким URL-адресом уже существует' 
+        toast.error(language === 'ru'
+          ? 'Категория с таким URL-адресом уже существует'
           : 'კატეგორია ამ URL-მისამართით უკვე არსებობს')
       } else if (error.response?.status === 400) {
-        toast.error(language === 'ru' 
-          ? 'Неверные данные категории' 
+        toast.error(language === 'ru'
+          ? 'Неверные данные категории'
           : 'კატეგორიის არასწორი მონაცემები')
       } else if (error.response?.data?.message) {
         toast.error(error.response.data.message)
@@ -358,13 +394,13 @@ const CategoryEditPage = () => {
   }
 
   // Компонент Textarea с кнопкой развернуть
-  const EnhancedTextarea = ({ 
-    id, 
-    name, 
-    value, 
-    onChange, 
-    label, 
-    placeholder, 
+  const EnhancedTextarea = ({
+    id,
+    name,
+    value,
+    onChange,
+    label,
+    placeholder,
     className = '',
     rows = 3,
     required = false,
@@ -486,7 +522,7 @@ const CategoryEditPage = () => {
                     placeholder={language === 'ru' ? 'pizza' : 'pizza'}
                   />
                   <p className="text-xs text-muted-foreground">
-                    {language === 'ru' 
+                    {language === 'ru'
                       ? 'Только латинские буквы, цифры и дефисы. Пример: pizza, drinks, desserts'
                       : 'მხოლოდ ლათინური ასოები, ციფრები და ტირეები. მაგალითად: pizza, drinks, desserts'}
                   </p>
@@ -531,7 +567,7 @@ const CategoryEditPage = () => {
                           }))
                       ]}
                       value={formData.parentId ? [formData.parentId] : ['null']}
-                      onChange={([id]) => setFormData({...formData, parentId: id === 'null' ? null : id})}
+                      onChange={([id]) => setFormData({ ...formData, parentId: id === 'null' ? null : id })}
                       placeholder={language === 'ru' ? 'Выберите категорию' : 'აირჩიეთ კატეგორია'}
                       searchPlaceholder={language === 'ru' ? 'Поиск категорий...' : 'კატეგორიების ძებნა...'}
                       emptyText={language === 'ru' ? 'Категории не найдены' : 'კატეგორიები ვერ მოიძებნა'}
@@ -571,14 +607,36 @@ const CategoryEditPage = () => {
                     />
                   </div>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        )
+
+      case 'images':
+        return (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-sm">
+                    {language === 'ru' ? 'Изображение категории' : 'კატეგორიის სურათი'}
+                  </Label>
+                  <ImageUploader
+                    value={formData.image ? [formData.image] : []}
+                    onChange={handleImageChange}
+                    maxFiles={1} // Для категории достаточно одного изображения
+                    language={language}
+                  />
+                </div>
+
                 {formData.image && (
                   <div className="space-y-2">
                     <Label className="text-sm">
                       {language === 'ru' ? 'Предпросмотр изображения' : 'სურათის წინასწარი ნახვა'}
                     </Label>
                     <div className="relative h-48 w-full overflow-hidden rounded-lg border">
-                      <img 
-                        src={formData.image} 
+                      <img
+                        src={formData.image}
                         alt={formData.title}
                         className="h-full w-full object-cover"
                         onError={(e) => {
@@ -586,10 +644,13 @@ const CategoryEditPage = () => {
                         }}
                       />
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      {language === 'ru'
+                        ? 'Это изображение будет использоваться в меню и на сайте'
+                        : 'ეს სურათი გამოყენებული იქნება მენიუსა და საიტზე'}
+                    </p>
                   </div>
                 )}
-
-                
               </div>
             </CardContent>
           </Card>
@@ -619,7 +680,7 @@ const CategoryEditPage = () => {
                     />
                   )}
                   <p className="text-xs text-muted-foreground">
-                    {language === 'ru' 
+                    {language === 'ru'
                       ? 'Выберите хотя бы один ресторан'
                       : 'აირჩიეთ მინიმუმ ერთი რესტორანი'}
                   </p>
@@ -666,17 +727,29 @@ const CategoryEditPage = () => {
                     placeholder={language === 'ru' ? 'Мета-заголовок для SEO' : 'SEO-სთვის მეტა-სათაური'}
                   />
                 </div>
-                
+
                 <EnhancedTextarea
                   id="metaDescription"
                   name="metaDescription"
                   value={formData.metaDescription}
                   onChange={handleInputChange}
                   label={language === 'ru' ? 'Мета-описание' : 'მეტა-აღწერა'}
-                  placeholder={language === 'ru' 
-                    ? 'Мета-описание для поисковых систем' 
+                  placeholder={language === 'ru'
+                    ? 'Мета-описание для поисковых систем'
                     : 'ძებნის სისტემებისთვის მეტა-აღწერა'}
                   rows={3}
+                  languageType="html"
+                />
+                <EnhancedTextarea
+                  id="metaContent"
+                  name="metaContent"
+                  value={formData.metaContent}
+                  onChange={handleInputChange}
+                  label={language === 'ru' ? 'Мета-контент' : 'მეტა-კონტენტი'}
+                  placeholder={language === 'ru'
+                    ? 'Дополнительный контент для SEO (текст, HTML)'
+                    : 'დამატებითი კონტენტი SEO-სთვის (ტექსტი, HTML)'}
+                  rows={4}
                   languageType="html"
                 />
                 
@@ -686,8 +759,8 @@ const CategoryEditPage = () => {
                   value={formData.metaKeywords}
                   onChange={handleInputChange}
                   label={language === 'ru' ? 'Мета-ключевые слова' : 'მეტა-გასაღები სიტყვები'}
-                  placeholder={language === 'ru' 
-                    ? 'Ключевые слова через запятую' 
+                  placeholder={language === 'ru'
+                    ? 'Ключевые слова через запятую'
                     : 'გასაღები სიტყვები მძიმით გამოყოფილი'}
                   rows={2}
                 />
@@ -701,6 +774,14 @@ const CategoryEditPage = () => {
     }
   }
 
+  if (isLoading && categoryId) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen">
       {/* Навигация */}
@@ -708,20 +789,20 @@ const CategoryEditPage = () => {
         <div className="py-3">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold">
-              {categoryId 
+              {categoryId
                 ? (language === 'ru' ? 'Редактирование категории' : 'კატეგორიის რედაქტირება')
                 : (language === 'ru' ? 'Создание категории' : 'კატეგორიის შექმნა')}
             </h1>
             <div className="flex gap-2">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => router.back()}
                 disabled={isLoading}
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 {language === 'ru' ? 'Назад' : 'უკან'}
               </Button>
-              <Button 
+              <Button
                 onClick={handleSubmit}
                 disabled={isLoading}
               >
@@ -739,8 +820,8 @@ const CategoryEditPage = () => {
               </Button>
             </div>
           </div>
-          
-           <div className="mt-4 hidden md:flex">
+
+          <div className="mt-4 hidden md:flex">
             <NavigationMenu>
               <NavigationMenuList>
                 {sections.map(section => {
@@ -750,11 +831,10 @@ const CategoryEditPage = () => {
                       <Button
                         variant="ghost"
                         onClick={() => scrollToSection(section.id)}
-                        className={`relative gap-2 transition-all duration-300 ${
-                          currentStep === section.id 
-                            ? "text-gray-900 bg-gray-100" 
+                        className={`relative gap-2 transition-all duration-300 ${currentStep === section.id
+                            ? "text-gray-900 bg-gray-100"
                             : "text-gray-600 hover:text-gray-900"
-                        }`}
+                          }`}
                       >
                         <Icon className="h-4 w-4" />
                         {section.title[language]}
@@ -782,7 +862,7 @@ const CategoryEditPage = () => {
           {sections.map((section) => {
             const Icon = section.icon;
             const isActive = currentStep === section.id;
-            
+
             return (
               <div
                 key={section.id}
@@ -798,7 +878,7 @@ const CategoryEditPage = () => {
                     <p className="text-gray-600">{section.description[language]}</p>
                   </div>
                 </div>
-                
+
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={section.id}
@@ -810,7 +890,7 @@ const CategoryEditPage = () => {
                     {renderStepContent(section.id as FormStep)}
                   </motion.div>
                 </AnimatePresence>
-                
+
               </div>
             );
           })}
@@ -837,7 +917,7 @@ const CategoryEditPage = () => {
               </Button>
             </DialogTitle>
           </DialogHeader>
-          
+
           {/* Grid row с min-height: 0 для правильного сжатия */}
           <div className="px-6 min-h-0">
             {fullscreenTextareaLanguage === 'html' ? (
@@ -858,7 +938,7 @@ const CategoryEditPage = () => {
               />
             )}
           </div>
-          
+
           <div className="flex items-center justify-end gap-2 p-6 pt-4">
             <Button
               type="button"

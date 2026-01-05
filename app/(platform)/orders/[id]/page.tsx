@@ -61,7 +61,9 @@ import {
   Mic,
   Wifi,
   WifiOff,
-  Search
+  Search,
+  PackagePlus,
+  Filter
 } from 'lucide-react'
 import { Category, OrderItem, OrderState } from '@/lib/types/order'
 import { Product } from '@/lib/types/product'
@@ -89,12 +91,47 @@ import { CustomerService } from '@/lib/api/customer.service'
 import React from 'react'
 import { ShiftService } from '@/lib/api/shift.service'
 import { useOrderWebSocket } from '@/lib/hooks/useOrderWebSocket'
+import { OrderAdditiveService, OrderAdditiveWithRelations, OrderAdditiveType, EnumOrderType as AdditiveEnumOrderType } from '@/lib/api/order-additive.service'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { InventoryTransactionType, WarehouseService } from '@/lib/api/warehouse.service'
+import { RestaurantService } from '@/lib/api/restaurant.service'
 
 // Типы для навигации по категориям
 interface CategoryNavigation {
   currentCategory: Category | null
   parentCategory: Category | null
   breadcrumbs: Category[]
+}
+
+// Интерфейс для модификатора заказа в компоненте
+interface OrderAdditiveItem {
+  id: string;
+  title: string;
+  price: number;
+  type: OrderAdditiveType;
+  isActive: boolean;
+  orderTypes: AdditiveEnumOrderType[];
+  quantity?: number;
+  networkId?: string;
+  inventoryItem?: any | null;
+}
+
+// Интерфейс для связи заказа с модификатором
+interface OrderOrderAdditive {
+  id: string;
+  orderId: string;
+  orderAdditiveId: string;
+  orderAdditive: OrderAdditiveWithRelations;
+  quantity: number;
+  price: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export default function WaiterOrderPage() {
@@ -285,6 +322,29 @@ export default function WaiterOrderPage() {
         INACTIVE: "Неактивна",
         EXPIRED: "Истекла"
       },
+      orderAdditives: "Модификаторы заказа",
+      orderAdditivesDescription: "Добавьте дополнительные услуги или надбавки к заказу",
+      addOrderAdditive: "Добавить модификатор",
+      selectOrderAdditive: "Выберите модификатор...",
+      orderAdditivePrice: "Цена",
+      orderAdditiveType: "Тип",
+      orderAdditiveTypes: {
+        FIXED: "Фиксированная",
+        PER_PERSON: "За персону"
+      },
+      removeOrderAdditive: "Удалить",
+      orderAdditiveAdded: "Модификатор добавлен",
+      orderAdditiveRemoved: "Модификатор удален",
+      orderAdditiveError: "Ошибка при работе с модификатором",
+      noOrderAdditives: "Нет доступных модификаторов",
+      applyToAll: "Применяется ко всем",
+      applyPerPerson: "За каждого человека",
+      currentOrderAdditives: "Текущие модификаторы",
+      addNewOrderAdditive: "Добавить новый модификатор",
+      availableOrderAdditives: "Доступные модификаторы",
+      filterByType: "Фильтр по типу",
+      allTypes: "Все типы",
+      activeOnly: "Только активные",
       connection: {
         connected: "Соединение активно",
         disconnected: "Соединение потеряно",
@@ -437,7 +497,7 @@ export default function WaiterOrderPage() {
       period: "მოქმედების პერიოდი",
       unlimited: "შეუზღუდავი",
       promoCode: "პრომო კოდი",
-      minOrder: "მინიმალური შეკვეთა",
+      minOrder: "მინიმალური შэკვეთა",
       usesLeft: "დარჩენილი გამოყენება",
       discounts: {
         title: "აქტიური ფასდაკლებები",
@@ -473,6 +533,29 @@ export default function WaiterOrderPage() {
         INACTIVE: "არააქტიური",
         EXPIRED: "ვადაგასული"
       },
+      orderAdditives: "შეკვეთის მოდიფიკატორები",
+      orderAdditivesDescription: "დაამატეთ დამატებითი მომსახურება ან დანამატები შეკვეთას",
+      addOrderAdditive: "მოდიფიკატორის დამატება",
+      selectOrderAdditive: "აირჩიეთ მოდიფიკატორი...",
+      orderAdditivePrice: "ფასი",
+      orderAdditiveType: "ტიპი",
+      orderAdditiveTypes: {
+        FIXED: "ფიქსირებული",
+        PER_PERSON: "ერთი პირისთვის"
+      },
+      removeOrderAdditive: "წაშლა",
+      orderAdditiveAdded: "მოდიფიკატორი დამატებულია",
+      orderAdditiveRemoved: "მოდიფიკატორი წაშლილია",
+      orderAdditiveError: "მოდიფიკატორთან მუშაობის შეცდომა",
+      noOrderAdditives: "მოდიფიკატორები არ არის ხელმისაწვდომი",
+      applyToAll: "გამოიყენება ყველასთვის",
+      applyPerPerson: "ერთი პირისთვის",
+      currentOrderAdditives: "მიმდინარე მოდიფიკატორები",
+      addNewOrderAdditive: "ახალი მოდიფიკატორის დამატება",
+      availableOrderAdditives: "ხელმისაწვდომი მოდიფიკატორები",
+      filterByType: "ფილტრი ტიპის მიხედვით",
+      allTypes: "ყველა ტიპი",
+      activeOnly: "მხოლოდ აქტიური",
       connection: {
         connected: "კავშირი აქტიურია",
         disconnected: "კავშირი დაკარგულია",
@@ -482,7 +565,7 @@ export default function WaiterOrderPage() {
     }
   } as const;
 
-  const t = translations[language]; 
+  const t = translations[language];
   const [order, setOrder] = useState<OrderResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -544,6 +627,20 @@ export default function WaiterOrderPage() {
     breadcrumbs: []
   });
 
+  // Новые состояния для модификаторов заказа
+  const [orderAdditives, setOrderAdditives] = useState<OrderAdditiveItem[]>([]);
+  const [availableOrderAdditives, setAvailableOrderAdditives] = useState<OrderAdditiveItem[]>([]);
+  const [selectedOrderAdditive, setSelectedOrderAdditive] = useState<string>('');
+  const [orderAdditivesLoading, setOrderAdditivesLoading] = useState(false);
+  const [filterOrderAdditiveType, setFilterOrderAdditiveType] = useState<string>('all');
+  const [filterActiveOnly, setFilterActiveOnly] = useState<boolean>(true);
+  const [showOrderAdditives, setShowOrderAdditives] = useState(false);
+
+
+  const [warehouse, setWarehouse] = useState<any>(null);
+  const [restaurantData, setRestaurantData] = useState<any>(null);
+  const [isWritingOff, setIsWritingOff] = useState(false);
+
   const {
     isConnected: isWebSocketConnected,
     connectionError: webSocketError
@@ -581,50 +678,276 @@ export default function WaiterOrderPage() {
     enabled: true
   });
 
-  const isOrderEditable = order && !['DELIVERING', 'COMPLETED', 'CANCELLED','CONFIRMED'].includes(order.status);
-const orderRef = useRef<OrderResponse | null>(null);
+  const isOrderEditable = order && !['DELIVERING', 'COMPLETED', 'CANCELLED', 'CONFIRMED'].includes(order.status);
+  const orderRef = useRef<OrderResponse | null>(null);
 
   const mergeOrderStates = (serverOrder: OrderResponse, localOrder: OrderResponse | null): OrderResponse => {
-  if (!localOrder) {
-    return serverOrder;
-  }
-
-  // Глубокое слияние items с сохранением порядка и локальных данных
-  const mergedItems = serverOrder.items?.map(serverItem => {
-    const localItem = localOrder.items?.find(item => item.id === serverItem.id);
-    return localItem ? { ...serverItem, ...localItem } : serverItem;
-  }) || serverOrder.items || [];
-
-  return {
-    ...serverOrder,
-    attentionFlags: {
-      ...serverOrder.attentionFlags,
-      ...localOrder.attentionFlags
-    },
-    items: mergedItems,
-    ...(localOrder.customer && { customer: localOrder.customer }),
-    ...(localOrder.discountAmount && { discountAmount: localOrder.discountAmount }),
-  };
-};
-const searchInputRef = useRef<HTMLInputElement>(null);
-
-const focusSearchInput = useCallback(() => {
-  setTimeout(() => {
-    if (searchInputRef.current) {
-      searchInputRef.current.focus();
+    if (!localOrder) {
+      return serverOrder;
     }
-  }, 50);
-}, []);
+
+    // Глубокое слияние items с сохранением порядка и локальных данных
+    const mergedItems = serverOrder.items?.map(serverItem => {
+      const localItem = localOrder.items?.find(item => item.id === serverItem.id);
+      return localItem ? { ...serverItem, ...localItem } : serverItem;
+    }) || serverOrder.items || [];
+
+    return {
+      ...serverOrder,
+      attentionFlags: {
+        ...serverOrder.attentionFlags,
+        ...localOrder.attentionFlags
+      },
+      items: mergedItems,
+      ...(localOrder.customer && { customer: localOrder.customer }),
+      ...(localOrder.discountAmount && { discountAmount: localOrder.discountAmount }),
+    };
+  };
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const focusSearchInput = useCallback(() => {
+    setTimeout(() => {
+      if (searchInputRef.current) {
+        searchInputRef.current.focus();
+      }
+    }, 50);
+  }, []);
+
+  // Загрузка модификаторов заказа
+  const fetchOrderAdditives = async () => {
+    if (!order || !order.restaurant?.id) return;
+
+    try {
+      setOrderAdditivesLoading(true);
+
+      // Получаем доступные модификаторы для сети ресторана
+      let additives: OrderAdditiveWithRelations[] = [];
+
+      if (order.restaurant.network?.id) {
+        additives = await OrderAdditiveService.getByNetwork(order.restaurant.network.id);
+      } else {
+        additives = await OrderAdditiveService.getAll();
+      }
+
+      // Преобразуем в формат для компонента
+      const formattedAdditives: OrderAdditiveItem[] = additives
+        .filter(additive => {
+          // Фильтрация по типу (если включена)
+          const typeFilter = filterOrderAdditiveType === 'all' || additive.type === filterOrderAdditiveType;
+          // Фильтрация по активности (если включена)
+          const activeFilter = !filterActiveOnly || additive.isActive;
+          return typeFilter && activeFilter;
+        })
+        .map(additive => ({
+          id: additive.id || '',
+          title: additive.title,
+          price: additive.price,
+          type: additive.type,
+          isActive: additive.isActive || false,
+          orderTypes: additive.orderTypes,
+          networkId: additive.networkId || undefined,
+          inventoryItem: additive.inventoryItem || null
+        }));
+
+      setAvailableOrderAdditives(formattedAdditives);
+
+      // Загружаем текущие модификаторы заказа из данных заказа
+      if (order.orderAdditives && order.orderAdditives.length > 0) {
+        const currentAdditives: OrderAdditiveItem[] = order.orderAdditives
+          .filter((item: any) => item.orderAdditive && item.orderAdditive.id)
+          .map((item: any) => ({
+            id: item.orderAdditive.id,
+            title: item.orderAdditive.title,
+            price: item.price || item.orderAdditive.price || 0,
+            type: item.orderAdditive.type || OrderAdditiveType.FIXED,
+            isActive: true,
+            orderTypes: item.orderAdditive.orderTypes || [],
+            quantity: item.quantity || 1,
+            networkId: item.orderAdditive.networkId,
+            inventoryItem: item.orderAdditive.inventoryItem || null
+          }));
+
+        setOrderAdditives(currentAdditives);
+      } else {
+        setOrderAdditives([]);
+      }
+
+    } catch (error) {
+      console.error('Failed to fetch order additives:', error);
+      toast.error(t.orderAdditiveError);
+    } finally {
+      setOrderAdditivesLoading(false);
+    }
+  };
 
 
+  const loadWarehouseData = async () => {
+    if (!order?.restaurant?.id) return;
+
+    try {
+      const warehouseData = await WarehouseService.getRestaurantWarehouse(order.restaurant.id);
+      setWarehouse(warehouseData);
+    } catch (error) {
+      console.error('Failed to load warehouse data:', error);
+    }
+  };
+
+  const loadRestaurantData = async () => {
+    if (!order?.restaurant?.id) return;
+
+    try {
+      const restaurant = await RestaurantService.getById(order.restaurant.id);
+      setRestaurantData(restaurant);
+    } catch (error) {
+      console.error('Failed to load restaurant data:', error);
+    }
+  };
+  // Добавление модификатора к заказу
+  const handleAddOrderAdditive = async () => {
+    if (!selectedOrderAdditive || !order || !isOrderEditable) return;
+
+    try {
+      setIsUpdating(true);
+
+      const additiveToAdd = availableOrderAdditives.find(a => a.id === selectedOrderAdditive);
+      if (!additiveToAdd) return;
+
+      // Добавляем модификатор к заказу
+      await OrderAdditiveService.addToOrder(selectedOrderAdditive, order.id, Number(1));
+
+      // Обновляем список модификаторов
+      const updatedAdditive: OrderAdditiveItem = {
+        ...additiveToAdd,
+        quantity: 1
+      };
+
+      setOrderAdditives(prev => [...prev, updatedAdditive]);
+      setSelectedOrderAdditive('');
+
+      // Обновляем общую информацию о заказе
+      await fetchOrder();
+
+      toast.success(t.orderAdditiveAdded);
+
+      // Создаем лог
+      await createOrderLog(`${language === 'ru' ? 'Добавлен модификатор' : 'დამატებულია მოდიფიკატორი'}: ${additiveToAdd.title}`);
+
+    } catch (error) {
+      console.error('Failed to add order additive:', error);
+      toast.error(t.orderAdditiveError);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Удаление модификатора из заказа
+  const handleRemoveOrderAdditive = async (additiveId: string) => {
+    if (!order || !isOrderEditable) return;
+
+    try {
+      setIsUpdating(true);
+
+      const additiveToRemove = orderAdditives.find(a => a.id === additiveId);
+      if (!additiveToRemove) return;
+
+      // Удаляем модификатор из заказа
+      await OrderAdditiveService.removeFromOrder(additiveId, order.id);
+
+      // Обновляем список
+      setOrderAdditives(prev => prev.filter(a => a.id !== additiveId));
+
+      // Обновляем общую информацию о заказе
+      await fetchOrder();
+
+      toast.success(t.orderAdditiveRemoved);
+
+      // Создаем лог
+      await createOrderLog(`${language === 'ru' ? 'Удален модификатор' : 'წაშლილია მოდიფიკატორი'}: ${additiveToRemove.title}`);
+
+    } catch (error) {
+      console.error('Failed to remove order additive:', error);
+      toast.error(t.orderAdditiveError);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Обновление количества модификатора
+  const handleUpdateOrderAdditiveQuantity = async (additiveId: string, newQuantity: number) => {
+    if (!order || !isOrderEditable || newQuantity < 1) return;
+
+    try {
+      setIsUpdating(true);
+
+      const additive = orderAdditives.find(a => a.id === additiveId);
+      if (!additive) return;
+
+      // Сначала удаляем старый
+      await OrderAdditiveService.removeFromOrder(additiveId, order.id);
+
+      // Добавляем с новым количеством
+      if (newQuantity > 0) {
+        await OrderAdditiveService.addToOrder(additiveId, order.id, newQuantity);
+
+        // Обновляем в состоянии
+        setOrderAdditives(prev => prev.map(a =>
+          a.id === additiveId ? { ...a, quantity: newQuantity } : a
+        ));
+      } else {
+        // Если количество 0, удаляем
+        setOrderAdditives(prev => prev.filter(a => a.id !== additiveId));
+      }
+
+      // Обновляем общую информацию о заказу
+      await fetchOrder();
+
+    } catch (error) {
+      console.error('Failed to update additive quantity:', error);
+      toast.error(t.orderAdditiveError);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  // Расчет стоимости модификатора
+  const calculateAdditivePrice = (additive: OrderAdditiveItem): number => {
+    if (!order) return additive.price;
+
+    switch (additive.type) {
+      case OrderAdditiveType.FIXED:
+        return additive.price * (additive.quantity || 1);
+
+      case OrderAdditiveType.PER_PERSON:
+        const numberOfPeople = parseInt(order.numberOfPeople || '1');
+        return additive.price * numberOfPeople * (additive.quantity || 1);
+
+      default:
+        return additive.price * (additive.quantity || 1);
+    }
+  };
+
+  // Общая стоимость всех модификаторов
+  const calculateTotalOrderAdditivesPrice = (): number => {
+    return orderAdditives.reduce((total, additive) => {
+      return total + calculateAdditivePrice(additive);
+    }, 0);
+  };
+
+  // Фильтрация доступных модификаторов
+  const filteredAvailableOrderAdditives = availableOrderAdditives.filter(additive => {
+    // Исключаем уже добавленные
+    const isAlreadyAdded = orderAdditives.some(a => a.id === additive.id);
+    return !isAlreadyAdded;
+  });
 
   const checkAndCreateShift = async (restaurantId: string): Promise<string | null> => {
     try {
       setShiftLoading(true);
       const activeShift = await ShiftService.getActiveShiftsByRestaurant(restaurantId);
-      
+
       let shiftId: string;
-      
+
       if (!activeShift) {
         const newShift = await ShiftService.createShift({
           restaurantId: restaurantId,
@@ -637,7 +960,7 @@ const focusSearchInput = useCallback(() => {
         shiftId = activeShift.id;
         setActiveShiftId(activeShift.id);
       }
-      
+
       return shiftId;
     } catch (error) {
       console.error('Shift check error:', error);
@@ -652,103 +975,103 @@ const focusSearchInput = useCallback(() => {
       await OrderService.assignOrderToShift(orderId, shiftId);
       console.log('Order assigned to shift:', shiftId);
     } catch (error) {
-      console.error('Failed to assign order to shift:', error); 
+      console.error('Failed to assign order to shift:', error);
     }
   };
 
   // Функции для работы с категориями
- const handleCategoryClick = (category: Category) => {
-  const subcategories = categories.filter(cat => 
-    cat.parentId === category.id && 
-    hasProductsInCategory(cat.id) // Проверяем, есть ли товары в категории
-  );
+  const handleCategoryClick = (category: Category) => {
+    const subcategories = categories.filter(cat =>
+      cat.parentId === category.id &&
+      hasProductsInCategory(cat.id) // Проверяем, есть ли товары в категории
+    );
 
-  if (subcategories.length > 0) {
-    // Если есть подкатегории с товарами, переходим к ним
-    setCategoryNavigation(prev => ({
-      currentCategory: null,
-      parentCategory: category,
-      breadcrumbs: [...prev.breadcrumbs, category]
-    }));
-  } else {
-    // Если нет подкатегорий, показываем товары этой категории
-    setCategoryNavigation(prev => ({
-      currentCategory: category,
-      parentCategory: prev.parentCategory,
-      breadcrumbs: prev.breadcrumbs
-    }));
-  }
-};
-
-// Функция проверки наличия товаров в категории (включая подкатегории)
-const hasProductsInCategory = (categoryId: string): boolean => {
-  // Проверяем товары непосредственно в категории
-  const directProducts = products.filter(product => product.categoryId === categoryId);
-  if (directProducts.length > 0) return true;
-
-  // Проверяем подкатегории
-  const subcategories = categories.filter(cat => cat.parentId === categoryId);
-  
-  // Рекурсивно проверяем каждую подкатегорию
-  for (const subcategory of subcategories) {
-    if (hasProductsInCategory(subcategory.id)) {
-      return true;
+    if (subcategories.length > 0) {
+      // Если есть подкатегории с товарами, переходим к ним
+      setCategoryNavigation(prev => ({
+        currentCategory: null,
+        parentCategory: category,
+        breadcrumbs: [...prev.breadcrumbs, category]
+      }));
+    } else {
+      // Если нет подкатегорий, показываем товары этой категории
+      setCategoryNavigation(prev => ({
+        currentCategory: category,
+        parentCategory: prev.parentCategory,
+        breadcrumbs: prev.breadcrumbs
+      }));
     }
-  }
+  };
 
-  return false;
-};
+  // Функция проверки наличия товаров в категории (включая подкатегории)
+  const hasProductsInCategory = (categoryId: string): boolean => {
+    // Проверяем товары непосредственно в категории
+    const directProducts = products.filter(product => product.categoryId === categoryId);
+    if (directProducts.length > 0) return true;
 
-// Получаем категории для отображения (только те, в которых есть товары)
-const getDisplayCategories = () => {
-  let categoriesToDisplay: Category[] = [];
+    // Проверяем подкатегории
+    const subcategories = categories.filter(cat => cat.parentId === categoryId);
 
-  if (categoryNavigation.parentCategory) {
-    // Показываем подкатегории выбранной категории, в которых есть товары
-    categoriesToDisplay = categories.filter(cat => 
-      cat.parentId === categoryNavigation.parentCategory?.id && 
-      hasProductsInCategory(cat.id)
-    );
-  } else {
-    // Показываем корневые категории, в которых есть товары
-    categoriesToDisplay = categories.filter(cat => 
-      !cat.parentId && 
-      hasProductsInCategory(cat.id)
-    );
-  }
-
-  return categoriesToDisplay;
-};
-
-// Получаем товары для отображения
-const getDisplayProducts = () => {
-  if (categoryNavigation.currentCategory) {
-    // Показываем товары выбранной категории
-    return products.filter(product => product.categoryId === categoryNavigation.currentCategory?.id);
-  } else if (categoryNavigation.parentCategory) {
-    // Показываем все товары из всех подкатегорий родительской категории
-    const getAllSubcategoryIds = (categoryId: string): string[] => {
-      const subcategoryIds = categories
-        .filter(cat => cat.parentId === categoryId)
-        .map(cat => cat.id);
-      
-      let allIds = [categoryId]; // Включаем саму категорию
-      
-      // Рекурсивно получаем IDs всех вложенных подкатегорий
-      for (const subId of subcategoryIds) {
-        allIds = [...allIds, ...getAllSubcategoryIds(subId)];
+    // Рекурсивно проверяем каждую подкатегорию
+    for (const subcategory of subcategories) {
+      if (hasProductsInCategory(subcategory.id)) {
+        return true;
       }
-      
-      return allIds;
-    };
+    }
 
-    const allCategoryIds = getAllSubcategoryIds(categoryNavigation.parentCategory.id);
-    return products.filter(product => allCategoryIds.includes(product.categoryId));
-  } else {
-    // Показываем все товары
-    return products;
-  }
-};
+    return false;
+  };
+
+  // Получаем категории для отображения (только те, в которых есть товары)
+  const getDisplayCategories = () => {
+    let categoriesToDisplay: Category[] = [];
+
+    if (categoryNavigation.parentCategory) {
+      // Показываем подкатегории выбранной категории, в которых есть товары
+      categoriesToDisplay = categories.filter(cat =>
+        cat.parentId === categoryNavigation.parentCategory?.id &&
+        hasProductsInCategory(cat.id)
+      );
+    } else {
+      // Показываем корневые категории, в которых есть товары
+      categoriesToDisplay = categories.filter(cat =>
+        !cat.parentId &&
+        hasProductsInCategory(cat.id)
+      );
+    }
+
+    return categoriesToDisplay;
+  };
+
+  // Получаем товары для отображения
+  const getDisplayProducts = () => {
+    if (categoryNavigation.currentCategory) {
+      // Показываем товары выбранной категории
+      return products.filter(product => product.categoryId === categoryNavigation.currentCategory?.id);
+    } else if (categoryNavigation.parentCategory) {
+      // Показываем все товары из всех подкатегорий родительской категории
+      const getAllSubcategoryIds = (categoryId: string): string[] => {
+        const subcategoryIds = categories
+          .filter(cat => cat.parentId === categoryId)
+          .map(cat => cat.id);
+
+        let allIds = [categoryId]; // Включаем саму категорию
+
+        // Рекурсивно получаем IDs всех вложенных подкатегорий
+        for (const subId of subcategoryIds) {
+          allIds = [...allIds, ...getAllSubcategoryIds(subId)];
+        }
+
+        return allIds;
+      };
+
+      const allCategoryIds = getAllSubcategoryIds(categoryNavigation.parentCategory.id);
+      return products.filter(product => allCategoryIds.includes(product.categoryId));
+    } else {
+      // Показываем все товары
+      return products;
+    }
+  };
 
   const handleBackToCategories = () => {
     if (categoryNavigation.breadcrumbs.length > 0) {
@@ -799,8 +1122,12 @@ const getDisplayProducts = () => {
   useEffect(() => {
     if (order?.restaurant?.id) {
       fetchDiscounts();
+      fetchOrderAdditives();
+
+      loadRestaurantData();
+      loadWarehouseData();
     }
-  }, [order?.restaurant?.id]);
+  }, [order?.restaurant?.id, filterOrderAdditiveType, filterActiveOnly]);
 
   const recalculateDiscount = async () => {
     if (!orderId || !order?.customer) return;
@@ -812,7 +1139,58 @@ const getDisplayProducts = () => {
       console.error('Ошибка при пересчете скидки:', error);
     }
   };
+  const writeOffOrderAdditives = async (orderAdditives: OrderAdditiveItem[]) => {
+    if (!warehouse?.id || !order || !user) return;
 
+    try {
+      setIsWritingOff(true);
+
+      const writeOffPromises: Promise<any>[] = [];
+
+      // Проходим по всем модификаторам заказа
+      for (const additive of orderAdditives) {
+        if (additive.inventoryItem && additive.quantity) {
+          // Рассчитываем количество для списания
+          let quantityToWriteOff = additive.quantity;
+
+          // Для модификаторов PER_PERSON умножаем на количество персон
+          if (additive.type === OrderAdditiveType.PER_PERSON) {
+            const numberOfPeople = parseInt(order.numberOfPeople || '1');
+            quantityToWriteOff = additive.quantity * numberOfPeople;
+          }
+
+          // Создаем транзакцию списания
+          writeOffPromises.push(
+            WarehouseService.createTransaction({
+              inventoryItemId: additive.inventoryItem.id,
+              type: InventoryTransactionType.WRITE_OFF,
+              warehouseId: warehouse.id,
+              quantity: quantityToWriteOff,
+              reason: `Модификатор заказа: ${additive.title} (заказ №${order.number})`,
+              userId: user.id
+            })
+          );
+        }
+      }
+
+      // Выполняем все списания
+      if (writeOffPromises.length > 0) {
+        await Promise.all(writeOffPromises);
+        toast.success(language === 'ru'
+          ? 'Инвентарные товары модификаторов списаны'
+          : 'მოდიფიკატორების ინვენტარის ნივთები ჩაიწერა');
+      }
+
+    } catch (error) {
+      console.error('Error writing off order additives:', error);
+      toast.error(language === 'ru'
+        ? 'Ошибка списания инвентарных товаров модификаторов'
+        : 'მოდიფიკატორების ინვენტარის ნივთების ჩამოწერის შეცდომა');
+      throw error; // Пробрасываем ошибку дальше
+    } finally {
+      setIsWritingOff(false);
+    }
+  };
   const createOrderLog = async (action: string) => {
     if (!orderId || !user) return;
 
@@ -924,48 +1302,48 @@ const getDisplayProducts = () => {
     }
   };
 
-const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => {
-  if (!order || newQuantity < 0 || !isOrderEditable) return;
-  
-  // Явная проверка что можно редактировать только CREATED items
-  if (item.status !== OrderItemStatus.CREATED) {
-    toast.error(language === 'ru' 
-      ? 'Можно изменять только неподтвержденные позиции' 
-      : 'მხოლოდ დაუდასტურებელი პოზიციების შეცვლა შეიძლება');
-    return;
-  }
+  const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => {
+    if (!order || newQuantity < 0 || !isOrderEditable) return;
 
-  try {
-    setIsUpdating(true);
-
-    if (newQuantity === 0) {
-      await OrderService.removeItemFromOrder(order.id, item.id);
-      await createOrderLog(`${t.logs.itemRemoved}: ${item.product.title}`);
-    } else {
-      await OrderService.updateOrderItemQuantity(
-        order.id,
-        item.id,
-        newQuantity,
-        user?.id
-      );
-      await createOrderLog(
-        `${language === 'ru' ? 'Изменено количество' : 'რაოდენობა შეიცვალა'}: ${item.product.title} → ${newQuantity}`
-      );
+    // Явная проверка что можно редактировать только CREATED items
+    if (item.status !== OrderItemStatus.CREATED) {
+      toast.error(language === 'ru'
+        ? 'Можно изменять только неподтвержденные позиции'
+        : 'მხოლოდ დაუდასტურებელი პოზიციების შეცვლა შეიძლება');
+      return;
     }
 
-    const updatedOrder = await OrderService.getById(order.id);
-    setOrder(updatedOrder);
+    try {
+      setIsUpdating(true);
 
-  } catch (error) {
-    toast.error(
-      language === 'ru'
-        ? 'Ошибка изменения количества'
-        : 'რაოდენობის შეცვლის შეცდომა'
-    );
-  } finally {
-    setIsUpdating(false);
-  }
-};
+      if (newQuantity === 0) {
+        await OrderService.removeItemFromOrder(order.id, item.id);
+        await createOrderLog(`${t.logs.itemRemoved}: ${item.product.title}`);
+      } else {
+        await OrderService.updateOrderItemQuantity(
+          order.id,
+          item.id,
+          newQuantity,
+          user?.id
+        );
+        await createOrderLog(
+          `${language === 'ru' ? 'Изменено количество' : 'რაოდენობა შეიცვალა'}: ${item.product.title} → ${newQuantity}`
+        );
+      }
+
+      const updatedOrder = await OrderService.getById(order.id);
+      setOrder(updatedOrder);
+
+    } catch (error) {
+      toast.error(
+        language === 'ru'
+          ? 'Ошибка изменения количества'
+          : 'რაოდენობის შეცვლის შეცდომა'
+      );
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   const handleRouteChange = (path: string) => {
     if (order?.status === 'CREATED') {
@@ -994,34 +1372,29 @@ const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => 
     try {
       setIsUpdating(true);
 
-       const targetStatus = order.scheduledAt ? 'CONFIRMED' : 'PREPARING';
-    
-    const updatedOrder = await OrderService.updateStatus(order.id, { status: targetStatus });
+      const targetStatus = order.scheduledAt ? 'CONFIRMED' : 'PREPARING';
 
-       const createdItems = getOrderItems().filter(item => item.status === OrderItemStatus.CREATED);
-    
-      if(!order.scheduledAt ){
+      const updatedOrder = await OrderService.updateStatus(order.id, { status: targetStatus });
+
+      const createdItems = getOrderItems().filter(item => item.status === OrderItemStatus.CREATED);
+
+      if (!order.scheduledAt) {
         await Promise.all(
-        createdItems.map(item =>
-          OrderService.updateItemStatus(order.id, item.id, { status: OrderItemStatus.IN_PROGRESS })
-        )
-        
-      );
-    }
+          createdItems.map(item =>
+            OrderService.updateItemStatus(order.id, item.id, { status: OrderItemStatus.IN_PROGRESS })
+          )
+
+        );
+      }
       const refreshedOrder = await OrderService.getById(order.id);
       setOrder(refreshedOrder);
 
       await createOrderLog(
-        !order.scheduledAt 
-          ? `${language === 'ru' ? 'Заказ рассчитан' : 'შეკვეთა გათვლილია'}` 
+        !order.scheduledAt
+          ? `${language === 'ru' ? 'Заказ рассчитан' : 'შეკვეთა გათვლილია'}`
           : t.logs.orderConfirmed
       );
 
-      toast.success(
-        !order.scheduledAt
-          ? (language === 'ru' ? 'Заказ рассчитан' : 'შეკვეთა გათვლილია')
-          : (language === 'ru' ? 'Заказ подтвержден' : 'შეკვეთა დადასტურებულია')
-      );
     } catch (error) {
       toast.error(
         !order.scheduledAt
@@ -1069,9 +1442,10 @@ const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => 
   const confirmCompleteOrder = async () => {
     if (!order) return;
     if (!order.attentionFlags.isPrecheck) return;
+
     try {
       setIsUpdating(true);
-      
+
       let currentShiftId = activeShiftId;
       if (!currentShiftId) {
         const shiftId = await checkAndCreateShift(order.restaurant.id);
@@ -1081,12 +1455,24 @@ const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => 
         }
         currentShiftId = shiftId;
       }
-  
+
       // Привязываем заказ к смене
       if (currentShiftId) {
         await assignOrderToShift(order.id, currentShiftId);
       }
-      
+
+      // Если ресторан использует склад и есть модификаторы с инвентарными товарами
+      if (restaurantData?.useWarehouse && orderAdditives.length > 0) {
+        // Фильтруем модификаторы с инвентарными товарами
+        const additivesWithInventory = orderAdditives.filter(
+          additive => additive.inventoryItem && additive.quantity && additive.quantity > 0
+        );
+
+        if (additivesWithInventory.length > 0) {
+          await writeOffOrderAdditives(additivesWithInventory);
+        }
+      }
+
       const updatedOrder = await OrderService.updateStatus(order.id, { status: 'COMPLETED' });
       setOrder(updatedOrder);
 
@@ -1096,23 +1482,23 @@ const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => 
       setShowCompleteDialog(false);
       setShowPaymentDialog(false);
     } catch (error) {
+      console.error('Error completing order:', error);
       toast.error(language === 'ru'
         ? 'Ошибка завершения заказа'
         : 'შეკვეთის დასრულების შეცდომა');
     } finally {
       setIsUpdating(false);
     }
-  };  
+  };
 
   const handleCalculateOrder = async () => {
     if (!order) return;
 
     try {
       setIsUpdating(true);
-      
-      // Проверяем и создаем смену перед расчетом
+
       let currentShiftId = activeShiftId;
-      
+
       if (!currentShiftId) {
         const shiftId = await checkAndCreateShift(order.restaurant.id);
         if (!shiftId) {
@@ -1134,7 +1520,7 @@ const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => 
         setIsUpdating(false);
         return;
       }
-      
+
       // Вызываем завершение заказа (расчет)
       setShowCompleteDialog(true);
     } catch (error) {
@@ -1154,7 +1540,7 @@ const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => 
 
   const handleCancelOrder = () => {
     setShowCancelDialog(true);
-    
+
   };
 
   const confirmCancelOrder = async () => {
@@ -1326,57 +1712,60 @@ const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => 
   };
 
   const getOrderItems = () => {
-  return order?.items || [];
-};
+    return order?.items || [];
+  };
 
-const getOriginalItems = () => {
-  return getOrderItems().filter(item => !item.isRefund);
-};
+  const getOriginalItems = () => {
+    return getOrderItems().filter(item => !item.isRefund);
+  };
 
-const getRefundedItems = () => {
-  return getOrderItems().filter(item => item.isRefund);
-};
+  const getRefundedItems = () => {
+    return getOrderItems().filter(item => item.isRefund);
+  };
 
-const getCreatedItemsCount = () => {
-  return getOrderItems().filter(item => item.status === OrderItemStatus.CREATED).length;
-};
+  const getCreatedItemsCount = () => {
+    return getOrderItems().filter(item => item.status === OrderItemStatus.CREATED).length;
+  };
 
-const hasRefundedItems = () => {
-  return getOrderItems().some(item => item.isRefund);
-};
+  const hasRefundedItems = () => {
+    return getOrderItems().some(item => item.isRefund);
+  };
 
-const hasCreatedItems = () => {
-  return getOrderItems().some(item => item.status === OrderItemStatus.CREATED);
-};
+  const hasCreatedItems = () => {
+    return getOrderItems().some(item => item.status === OrderItemStatus.CREATED);
+  };
 
-const calculateOrderTotal = () => {
-  if (!order || !getOrderItems()) return 0; 
-  const items = getOrderItems();
-  const itemsTotal = items.reduce((sum, item) => {
-    return sum + calculateItemPrice(item);
-  }, 0);
+  const calculateOrderTotal = () => {
+    if (!order || !getOrderItems()) return 0;
+    const items = getOrderItems();
+    const itemsTotal = items.reduce((sum, item) => {
+      return sum + calculateItemPrice(item);
+    }, 0);
 
-  // Исправление: проверка на существование surcharges
-  const surchargesTotal = (order.surcharges || []).reduce((sum, surcharge) => {
-    if (surcharge.type === 'FIXED') {
-      return sum + surcharge.amount;
-    } else {
-      return sum + (itemsTotal * surcharge.amount) / 100;
+    // Исправление: проверка на существование surcharges
+    const surchargesTotal = (order.surcharges || []).reduce((sum, surcharge) => {
+      if (surcharge.type === 'FIXED') {
+        return sum + surcharge.amount;
+      } else {
+        return sum + (itemsTotal * surcharge.amount) / 100;
+      }
+    }, 0) || 0;
+
+    // Добавляем стоимость модификаторов заказа
+    const orderAdditivesTotal = calculateTotalOrderAdditivesPrice();
+
+    let total = itemsTotal + surchargesTotal + orderAdditivesTotal;
+
+    if (order.discountAmount && order.discountAmount > 0) {
+      total = Math.max(0, total - order.discountAmount);
     }
-  }, 0) || 0;
 
-  let total = itemsTotal + surchargesTotal;
+    if (order.bonusPointsUsed && order.bonusPointsUsed > 0) {
+      total = Math.max(0, total - order.bonusPointsUsed);
+    }
 
-  if (order.discountAmount && order.discountAmount > 0) {
-    total = Math.max(0, total - order.discountAmount);
-  }
-
-  if (order.bonusPointsUsed && order.bonusPointsUsed > 0) {
-    total = Math.max(0, total - order.bonusPointsUsed);
-  }
-
-  return total;
-};
+    return total;
+  };
 
   const handleReorderItem = async (item: OrderItem) => {
     if (!order) return;
@@ -1415,112 +1804,112 @@ const calculateOrderTotal = () => {
       setIsUpdating(false);
     }
   };
-const handleQuantityChange = useCallback(async (product: Product, newQuantity: number, additives: string[], comment: string) => {
-  if (!orderId || !isOrderEditable || !order || !getOrderItems()) return;
 
-  const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`;
+  const handleQuantityChange = useCallback(async (product: Product, newQuantity: number, additives: string[], comment: string) => {
+    if (!orderId || !isOrderEditable || !order || !getOrderItems()) return;
 
-  if (pendingAdditions[key]?.timer) {
-    clearTimeout(pendingAdditions[key].timer!);
-  }
+    const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`;
 
-  if (newQuantity === 0) {
-    setPendingAdditions(prev => {
-      const newState = { ...prev };
-      delete newState[key];
-      return newState;
-    });
-    return;
-  }
+    if (pendingAdditions[key]?.timer) {
+      clearTimeout(pendingAdditions[key].timer!);
+    }
 
-  const timer = setTimeout(async () => {
-    try {
-      setIsUpdating(true);
-
-      const existingItem = getOrderItems().find(item =>
-        item.product.id === product.id &&
-        JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
-        item.comment === comment &&
-        item.status === OrderItemStatus.CREATED
-      );
-
-      if (existingItem) {
-        await OrderService.updateOrderItemQuantity(
-          orderId as string,
-          existingItem.id,
-          newQuantity
-        );
-      } else {
-        await OrderService.addItemToOrder(
-          orderId as string,
-          {
-            productId: product.id,
-            quantity: newQuantity,
-            additiveIds: additives,
-            comment,
-          }
-        );
-      }
-
-      const updatedOrder = await OrderService.getById(orderId as string);
-      const orderWithPreservedFlags = {
-        ...updatedOrder,
-        attentionFlags: updatedOrder.attentionFlags || {} // Добавьте fallback
-      };
-      
-      setOrder(orderWithPreservedFlags);
-
-      await applyAutoDiscounts(orderWithPreservedFlags);
-
-      await createOrderLog(
-        existingItem
-          ? `${language === 'ru' ? 'Обновлено количество' : 'რაოდენობა განახლდა'}: ${product.title} → ${newQuantity}`
-          : `${t.logs.itemAdded}: ${product.title} x ${newQuantity}`
-      );
-
+    if (newQuantity === 0) {
       setPendingAdditions(prev => {
         const newState = { ...prev };
         delete newState[key];
         return newState;
       });
-    } catch (err) {
-      toast.error(language === 'ru' ? 'Ошибка при обновлении заказа' : 'შეკვეთის განახლების შეცდომა');
-      console.error('Error:', err);
-    } finally {
-      setIsUpdating(false);
+      return;
     }
-  }, 1000);
 
-  setPendingAdditions(prev => ({
-    ...prev,
-    [key]: {
-      quantity: newQuantity,
-      additives,
-      comment,
-      timer,
-    },
-  }));
-}, [orderId, isOrderEditable, language, order]);
+    const timer = setTimeout(async () => {
+      try {
+        setIsUpdating(true);
 
-const getDisplayQuantity = (product: Product, additives: string[], comment: string) => {
-  const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`
+        const existingItem = getOrderItems().find(item =>
+          item.product.id === product.id &&
+          JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
+          item.comment === comment &&
+          item.status === OrderItemStatus.CREATED
+        );
 
-  // Сначала проверяем pending additions
-  if (pendingAdditions[key]) {
-    return pendingAdditions[key].quantity
+        if (existingItem) {
+          await OrderService.updateOrderItemQuantity(
+            orderId as string,
+            existingItem.id,
+            newQuantity
+          );
+        } else {
+          await OrderService.addItemToOrder(
+            orderId as string,
+            {
+              productId: product.id,
+              quantity: newQuantity,
+              additiveIds: additives,
+              comment,
+            }
+          );
+        }
+
+        const updatedOrder = await OrderService.getById(orderId as string);
+        const orderWithPreservedFlags = {
+          ...updatedOrder,
+          attentionFlags: updatedOrder.attentionFlags || {} // Добавьте fallback
+        };
+
+        setOrder(orderWithPreservedFlags);
+
+        await applyAutoDiscounts(orderWithPreservedFlags);
+
+        await createOrderLog(
+          existingItem
+            ? `${language === 'ru' ? 'Обновлено количество' : 'რაოდენობა განახლდა'}: ${product.title} → ${newQuantity}`
+            : `${t.logs.itemAdded}: ${product.title} x ${newQuantity}`
+        );
+
+        setPendingAdditions(prev => {
+          const newState = { ...prev };
+          delete newState[key];
+          return newState;
+        });
+      } catch (err) {
+        toast.error(language === 'ru' ? 'Ошибка при обновлении заказа' : 'შეკვეთის განახლების შეცდომა');
+        console.error('Error:', err);
+      } finally {
+        setIsUpdating(false);
+      }
+    }, 1000);
+
+    setPendingAdditions(prev => ({
+      ...prev,
+      [key]: {
+        quantity: newQuantity,
+        additives,
+        comment,
+        timer,
+      },
+    }));
+  }, [orderId, isOrderEditable, language, order]);
+
+  const getDisplayQuantity = (product: Product, additives: string[], comment: string) => {
+    const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`
+
+    // Сначала проверяем pending additions
+    if (pendingAdditions[key]) {
+      return pendingAdditions[key].quantity
+    }
+
+    // Затем проверяем существующие items только со статусом CREATED
+    const existingItem = order?.items?.find(item =>
+      item.product.id === product.id &&
+      JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
+      item.comment === comment &&
+      item.status === OrderItemStatus.CREATED
+    );
+
+    return existingItem ? existingItem.quantity : 0;
   }
-
-  // Затем проверяем существующие items только со статусом CREATED
-  const existingItem = order?.items?.find(item =>
-    item.product.id === product.id &&
-    JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
-    item.comment === comment &&
-    item.status === OrderItemStatus.CREATED
-  );
-
-  return existingItem ? existingItem.quantity : 0;
-}
-
 
   const handleAdditivesChange = (productId: string, newAdditives: string[]) => {
     setProductAdditives(prev => ({
@@ -1540,7 +1929,6 @@ const getDisplayQuantity = (product: Product, additives: string[], comment: stri
     try {
       setLoading(true);
       const data = await OrderService.getById(orderId as string);
-
 
       setOrder(data);
 
@@ -1740,20 +2128,22 @@ const getDisplayQuantity = (product: Product, additives: string[], comment: stri
       setIsUpdating(false);
     }
   };
-useEffect(() => {
-  if (searchQuery && !isSearching) {
-    focusSearchInput();
-  }
-}, [searchQuery, isSearching]);
 
-useEffect(() => {
-  if (showMenu) {
-    const timer = setTimeout(() => {
+  useEffect(() => {
+    if (searchQuery && !isSearching) {
       focusSearchInput();
-    }, 400);
-    return () => clearTimeout(timer);
-  }
-}, [showMenu]);
+    }
+  }, [searchQuery, isSearching]);
+
+  useEffect(() => {
+    if (showMenu) {
+      const timer = setTimeout(() => {
+        focusSearchInput();
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+  }, [showMenu]);
+
   useEffect(() => {
     if (!orderId) {
       setError('Order ID is missing');
@@ -1773,10 +2163,10 @@ useEffect(() => {
         variant = 'secondary';
         text = t.statusCreated;
         break;
-         case OrderItemStatus.CONFIRMED: 
-      variant = 'default';
-      text = language === 'ru' ? 'Подтвержден' : 'გათვლილია';
-      break;
+      case OrderItemStatus.CONFIRMED:
+        variant = 'default';
+        text = language === 'ru' ? 'Подтвержден' : 'გათვლილია';
+        break;
       case OrderItemStatus.IN_PROGRESS:
         variant = 'default';
         text = t.statusPreparing;
@@ -1801,186 +2191,186 @@ useEffect(() => {
     return <Badge variant={variant} className="text-xs">{text}</Badge>;
   };
 
-const SearchInput = () => {
-  const handleClearSearch = () => {
-    setSearchQuery('');
-    setSearchResults([]);
-    setIsSearching(false);
-    focusSearchInput();
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const query = e.target.value;
-    setSearchQuery(query);
-    
-    if (!query.trim()) {
+  const SearchInput = () => {
+    const handleClearSearch = () => {
+      setSearchQuery('');
       setSearchResults([]);
       setIsSearching(false);
-      return;
-    }
+      focusSearchInput();
+    };
 
-    setIsSearching(true);
-    
-    // Используем debounce для поиска
-    const timeoutId = setTimeout(() => {
-      const filtered = products.filter(product =>
-        product.title.toLowerCase().includes(query.toLowerCase())
-      );
-      
-      setSearchResults(filtered);
-      setIsSearching(false);
-    }, 300);
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const query = e.target.value;
+      setSearchQuery(query);
 
-    return () => clearTimeout(timeoutId);
-  };
+      if (!query.trim()) {
+        setSearchResults([]);
+        setIsSearching(false);
+        return;
+      }
 
-  return (
-    <div className="mb-6">
-      <div className="relative">
-        <Input
-          ref={searchInputRef}
-          type="text"
-          placeholder={language === 'ru' ? "Поиск продуктов..." : "პროდუქტების ძებნა..."}
-          value={searchQuery}
-          onChange={handleInputChange}
-          className="pl-10 pr-4 py-2 text-base"
-        />
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        {searchQuery && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
-            onClick={handleClearSearch}
-            type="button"
-          >
-            <X className="h-3 w-3" />
-          </Button>
-        )}
-      </div>
-      
-      {isSearching && (
-        <div className="flex justify-center py-4">
-          <Loader2 className="h-5 w-5 animate-spin" />
-        </div>
-      )}
-    </div>
-  );
-};
+      setIsSearching(true);
 
-  interface ProductCardProps {
-  product: Product;
-  additives: string[];
-  comment: string;
-  quantity: number;
-  onAdditivesChange: (additives: string[]) => void;
-  onQuantityChange: (quantity: number) => void;
-  isOrderEditable: boolean;
-  getProductPrice: (product: Product) => number;
-  t: any;
-  language: 'ru' | 'ka';
-}
+      // Используем debounce для поиска
+      const timeoutId = setTimeout(() => {
+        const filtered = products.filter(product =>
+          product.title.toLowerCase().includes(query.toLowerCase())
+        );
 
-const ProductCard: React.FC<ProductCardProps> = ({
-  product,
-  additives,
-  comment,
-  quantity,
-  onAdditivesChange,
-  onQuantityChange,
-  isOrderEditable,
-  getProductPrice,
-  t,
-  language
-}) => {
-  return (
-    <div className="bg-card rounded-xl shadow-sm overflow-hidden border hover:shadow-md transition-shadow flex flex-col h-full">
-      <div className="relative aspect-square">
-        {product.images?.[0] ? (
-          <Image
-            src={product.images[0]}
-            alt={product.title}
-            width={300}
-            height={300}
-            className="w-full h-full object-cover"
+        setSearchResults(filtered);
+        setIsSearching(false);
+      }, 300);
+
+      return () => clearTimeout(timeoutId);
+    };
+
+    return (
+      <div className="mb-6">
+        <div className="relative">
+          <Input
+            ref={searchInputRef}
+            type="text"
+            placeholder={language === 'ru' ? "Поиск продуктов..." : "პროდუქტების ძებნა..."}
+            value={searchQuery}
+            onChange={handleInputChange}
+            className="pl-10 pr-4 py-2 text-base"
           />
-        ) : (
-          <div className="w-full h-full bg-muted flex items-center justify-center">
-            <Utensils className="h-12 w-12 text-muted-foreground" />
-          </div>
-        )}
-      </div>
-      <div className="p-4 flex flex-col flex-grow">
-        <div className="flex-grow">
-          <div className="mb-2">
-            <h3 className="font-semibold text-lg">
-              {product.title}
-            </h3>
-            <p className="text-lg font-bold text-green-600 dark:text-green-400">
-              {getProductPrice(product)} ₽
-            </p>
-          </div>
-
-          {product.additives && product.additives.length > 0 && (
-            <div className="mb-3">
-              <div className="text-sm font-medium text-muted-foreground mb-1">
-                {t.additives}
-              </div>
-              <SearchableSelect
-                options={product.additives.map(additive => ({
-                  id: additive.id,
-                  label: `${additive.title} (+${additive.price} ₽)`
-                }))}
-                value={additives}
-                onChange={onAdditivesChange}
-                placeholder={t.selectAdditives}
-                searchPlaceholder={t.searchAdditives}
-                emptyText={t.noAdditivesFound}
-                multiple={true}
-                disabled={!isOrderEditable}
-              />
-            </div>
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          {searchQuery && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+              onClick={handleClearSearch}
+              type="button"
+            >
+              <X className="h-3 w-3" />
+            </Button>
           )}
         </div>
 
-        <div className="mt-auto">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={() => {
-                  const newQuantity = Math.max(0, quantity - 1)
-                  onQuantityChange(newQuantity)
-                }}
-                disabled={quantity === 0 || !isOrderEditable}
-              >
-                <Minus className="h-4 w-4" />
-              </Button>
-              <span className="font-medium w-8 text-center">{quantity}</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={() => {
-                  const newQuantity = quantity + 1
-                  onQuantityChange(newQuantity)
-                }}
-                disabled={!isOrderEditable}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
+        {isSearching && (
+          <div className="flex justify-center py-4">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  interface ProductCardProps {
+    product: Product;
+    additives: string[];
+    comment: string;
+    quantity: number;
+    onAdditivesChange: (additives: string[]) => void;
+    onQuantityChange: (quantity: number) => void;
+    isOrderEditable: boolean;
+    getProductPrice: (product: Product) => number;
+    t: any;
+    language: 'ru' | 'ka';
+  }
+
+  const ProductCard: React.FC<ProductCardProps> = ({
+    product,
+    additives,
+    comment,
+    quantity,
+    onAdditivesChange,
+    onQuantityChange,
+    isOrderEditable,
+    getProductPrice,
+    t,
+    language
+  }) => {
+    return (
+      <div className="bg-card rounded-xl shadow-sm overflow-hidden border hover:shadow-md transition-shadow flex flex-col h-full">
+        <div className="relative aspect-square">
+          {product.images?.[0] ? (
+            <Image
+              src={product.images[0]}
+              alt={product.title}
+              width={300}
+              height={300}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full bg-muted flex items-center justify-center">
+              <Utensils className="h-12 w-12 text-muted-foreground" />
             </div>
-            <span className="text-lg font-bold">
-              {getProductPrice(product) * quantity} ₽
-            </span>
+          )}
+        </div>
+        <div className="p-4 flex flex-col flex-grow">
+          <div className="flex-grow">
+            <div className="mb-2">
+              <h3 className="font-semibold text-lg">
+                {product.title}
+              </h3>
+              <p className="text-lg font-bold text-green-600 dark:text-green-400">
+                {getProductPrice(product)} ₽
+              </p>
+            </div>
+
+            {product.additives && product.additives.length > 0 && (
+              <div className="mb-3">
+                <div className="text-sm font-medium text-muted-foreground mb-1">
+                  {t.additives}
+                </div>
+                <SearchableSelect
+                  options={product.additives.map(additive => ({
+                    id: additive.id,
+                    label: `${additive.title} (+${additive.price} ₽)`
+                  }))}
+                  value={additives}
+                  onChange={onAdditivesChange}
+                  placeholder={t.selectAdditives}
+                  searchPlaceholder={t.searchAdditives}
+                  emptyText={t.noAdditivesFound}
+                  multiple={true}
+                  disabled={!isOrderEditable}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="mt-auto">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => {
+                    const newQuantity = Math.max(0, quantity - 1)
+                    onQuantityChange(newQuantity)
+                  }}
+                  disabled={quantity === 0 || !isOrderEditable}
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <span className="font-medium w-8 text-center">{quantity}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => {
+                    const newQuantity = quantity + 1
+                    onQuantityChange(newQuantity)
+                  }}
+                  disabled={!isOrderEditable}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+              <span className="text-lg font-bold">
+                {getProductPrice(product) * quantity} ₽
+              </span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
   const renderItemActions = (item: OrderItem) => {
     if (!order) return null;
@@ -2030,25 +2420,25 @@ const ProductCard: React.FC<ProductCardProps> = ({
           )}
           {canReorder && (
             <div className='flex justify-end text-right'>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-blue-500 hover:text-blue-600 hidden 2xl:flex"
-              onClick={() => handleReorderItem(item)}
-              disabled={isUpdating}
-            >
-              <RefreshCw className="h-4 w-4 mr-1" />
-              {language === 'ru' ? 'Дозаказ' : 'დამატებითი შეკვეთა'}
-            </Button>
               <Button
-              variant="outline"
-              size="sm"
-              className="text-blue-500 hover:text-blue-600 2xl:hidden flex"
-              onClick={() => handleReorderItem(item)}
-              disabled={isUpdating}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+                variant="ghost"
+                size="sm"
+                className="text-blue-500 hover:text-blue-600 hidden 2xl:flex"
+                onClick={() => handleReorderItem(item)}
+                disabled={isUpdating}
+              >
+                <RefreshCw className="h-4 w-4 mr-1" />
+                {language === 'ru' ? 'Дозаказ' : 'დამატებითი შეკვეთა'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-blue-500 hover:text-blue-600 2xl:hidden flex"
+                onClick={() => handleReorderItem(item)}
+                disabled={isUpdating}
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
             </div>
           )}
 
@@ -2570,156 +2960,232 @@ const ProductCard: React.FC<ProductCardProps> = ({
     );
   };
 
-  // Рендер карточек категорий с горизонтальной прокруткой
-const renderCategoryCards = () => {
-  const displayCategories = getDisplayCategories();
-  const displayProducts = searchQuery ? searchResults : getDisplayProducts();
+  // Компонент для отображения модификаторов заказа
+  const renderOrderAdditivesBlock = () => {
+    if (!order?.restaurant?.id) return null;
 
-  return (
-    <div className="space-y-4">
-      {/* Поиск */}
-      <SearchInput />
-
-      {/* Показываем результаты поиска */}
-      {searchQuery && (
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold">
-              {language === 'ru' ? 'Результаты поиска' : 'ძებნის შედეგები'} 
-              {searchResults.length > 0 && ` (${searchResults.length})`}
-            </h3>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSearchQuery('');
-                setSearchResults([]);
-              }}
-            >
-              {language === 'ru' ? 'Очистить поиск' : 'ძებნის გასუფთავება'}
-            </Button>
-          </div>
-
-          {searchResults.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              {language === 'ru' ? 'Продукты не найдены' : 'პროდუქტები ვერ მოიძებნა'}
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {searchResults.map((product) => {
-                const additives = productAdditives[product.id] || []
-                const comment = productComments[product.id] || ''
-                const quantity = getDisplayQuantity(product, additives, comment)
-
-                return (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    additives={additives}
-                    comment={comment}
-                    quantity={quantity}
-                    onAdditivesChange={(newAdditives) => {
-                      handleAdditivesChange(product.id, newAdditives)
-                      if (quantity > 0) {
-                        handleQuantityChange(product, quantity, newAdditives, comment)
-                      }
-                    }}
-                    onQuantityChange={(newQuantity) => 
-                      handleQuantityChange(product, newQuantity, additives, comment)
-                    }
-                    isOrderEditable={isOrderEditable!}
-                    getProductPrice={getProductPrice}
-                    t={t}
-                    language={language}
-                  />
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Обычное отображение категорий (только если нет поиска) */}
-      {!searchQuery && (
-        <>
-          {/* Заголовок раздела */}
-          <div className="mb-4 text-center">
-            <h3 className="text-lg font-semibold">
-              {categoryNavigation.parentCategory
-                ? categoryNavigation.parentCategory.title
-                : categoryNavigation.currentCategory
-                  ? categoryNavigation.currentCategory.title
-                  : t.allCategories
-              }
-            </h3>
-          </div>
-
-          {/* Горизонтальная прокрутка категорий */}
-          {(displayCategories.length > 0 || categoryNavigation.parentCategory) && (
-            <div className="relative">
-              <div className="flex overflow-x-auto pb-4 scrollbar-hide gap-4 px-2">
-                {/* Кнопка назад */}
-                {(categoryNavigation.parentCategory || categoryNavigation.breadcrumbs.length > 0) && (
-                  <Card
-                    className="flex-shrink-0 w-64 h-32 cursor-pointer hover:shadow-lg transition-shadow duration-200 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30"
-                    onClick={handleBackToCategories}
-                  >
-                    <div className="p-4 h-full flex flex-col justify-between">
-                      <div className="text-center">
-                        <h4 className="font-semibold text-lg text-blue-600 dark:text-blue-400">
-                          {t.backToCategories}
-                        </h4>
-                      </div>
-                      <div className="flex justify-center">
-                        <ChevronLeft className="h-4 w-4 text-blue-400" />
-                      </div>
-                    </div>
-                  </Card>
+    return (
+      <Card className="p-0">
+        <Collapsible open={showOrderAdditives} onOpenChange={setShowOrderAdditives}>
+          <CollapsibleTrigger asChild>
+            <div className="p-4 hover:bg-muted/50 cursor-pointer">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <PackagePlus className="h-5 w-5" />
+                  <h3 className="text-lg font-semibold">{t.orderAdditives}</h3>
+                </div>
+                {showOrderAdditives ? (
+                  <ChevronUp className="h-5 w-5" />
+                ) : (
+                  <ChevronDown className="h-5 w-5" />
                 )}
-
-                {/* Карточки категорий */}
-                {displayCategories.map((category) => {
-                  const productsInCategory = getDisplayProducts().filter(
-                    product => product.categoryId === category.id
-                  );
-                  
-                  return (
-                    <Card
-                      key={category.id}
-                      className="flex-shrink-0 w-64 h-32 cursor-pointer hover:shadow-lg transition-shadow duration-200"
-                      onClick={() => handleCategoryClick(category)}
-                    >
-                      <div className="p-4 h-full flex flex-col justify-between">
-                        <div className="text-center">
-                          <h4 className="font-semibold text-lg mb-2">{category.title}</h4>
-                        </div>
-                        <div className="flex justify-center">
-                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                      </div>
-                    </Card>
-                  );
-                })}
               </div>
             </div>
-          )}
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="p-4 border-t space-y-6">
 
-          {/* Сообщение когда нет категорий с товарами */}
-          {displayCategories.length === 0 && !categoryNavigation.parentCategory && (
-            <div className="text-center py-8 text-muted-foreground">
-              {t.noProductsFound}
+
+              {/* Добавление нового модификатора */}
+              <div className="space-y-4">
+
+                {/* Фильтры */}
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <Select
+                      value={filterOrderAdditiveType}
+                      onValueChange={setFilterOrderAdditiveType}
+                    >
+                      <SelectTrigger className='w-full sm:w-2/12'>
+                        <SelectValue placeholder={t.filterByType} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">{t.allTypes}</SelectItem>
+                        <SelectItem value={OrderAdditiveType.FIXED}>
+                          {t.orderAdditiveTypes.FIXED}
+                        </SelectItem>
+                        <SelectItem value={OrderAdditiveType.PER_PERSON}>
+                          {t.orderAdditiveTypes.PER_PERSON}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Список доступных модификаторов */}
+                {orderAdditivesLoading ? (
+                  <div className="flex justify-center py-4">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  </div>
+                ) : filteredAvailableOrderAdditives.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      {filteredAvailableOrderAdditives.map(additive => (
+                        <div key={additive.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/30">
+                          <div>
+                            <p className="font-medium">{additive.title}</p>
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                              <span>
+                                {t.orderAdditivePrice}: {additive.price} ₽
+                              </span>
+                              <span>
+                                {t.orderAdditiveType}: {t.orderAdditiveTypes[additive.type] || additive.type}
+                              </span>
+                              {additive.type === OrderAdditiveType.PER_PERSON && (
+                                <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
+                                  {t.applyPerPerson}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              setSelectedOrderAdditive(additive.id);
+                              handleAddOrderAdditive();
+                            }}
+                            disabled={!isOrderEditable || isUpdating}
+                          >
+                            <Plus className="h-4 w-4 mr-1" />
+                            {t.addOrderAdditive}
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-muted-foreground">
+                    {t.noOrderAdditives}
+                  </div>
+                )}
+              </div>
+              {/* Текущие модификаторы */}
+              {orderAdditives.length > 0 && (
+                <div className="space-y-4">
+                  <h4 className="font-medium">{t.currentOrderAdditives}</h4>
+                  <div className="space-y-3">
+                    {orderAdditives.map(additive => (
+                      <div key={additive.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium">{additive.title}</p>
+                              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                <span>
+                                  {t.orderAdditiveType}: {t.orderAdditiveTypes[additive.type] || additive.type}
+                                </span>
+                                <span>
+                                  {t.orderAdditivePrice}: {calculateAdditivePrice(additive)} ₽
+                                </span>
+                                {additive.type === OrderAdditiveType.PER_PERSON && (
+                                  <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
+                                    {t.applyPerPerson}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-6 w-6 p-0"
+                                  onClick={() => handleUpdateOrderAdditiveQuantity(
+                                    additive.id,
+                                    (additive.quantity || 1) - 1
+                                  )}
+                                  disabled={!isOrderEditable || (additive.quantity || 1) <= 1}
+                                >
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <span className="font-medium w-6 text-center">
+                                  {additive.quantity || 1}
+                                </span>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-6 w-6 p-0"
+                                  onClick={() => handleUpdateOrderAdditiveQuantity(
+                                    additive.id,
+                                    (additive.quantity || 1) + 1
+                                  )}
+                                  disabled={!isOrderEditable}
+                                >
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-500 hover:text-red-600"
+                                onClick={() => handleRemoveOrderAdditive(additive.id)}
+                                disabled={!isOrderEditable}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Итоговая стоимость модификаторов */}
+              {orderAdditives.length > 0 && (
+                <div className="pt-4 border-t">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">{t.orderAdditives}:</span>
+                    <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                      {calculateTotalOrderAdditivesPrice()} ₽
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </CollapsibleContent>
+        </Collapsible>
+      </Card>
+    );
+  };
 
-          {/* Товары отображаются ТОЛЬКО когда выбрана конкретная категория */}
-          {categoryNavigation.currentCategory && displayProducts.length > 0 && (
-            <div className="mt-8">
-              <h4 className="text-lg font-semibold mb-4 text-center">
-                {categoryNavigation.currentCategory.title}
-              </h4>
+  // Рендер карточек категорий с горизонтальной прокруткой
+  const renderCategoryCards = () => {
+    const displayCategories = getDisplayCategories();
+    const displayProducts = searchQuery ? searchResults : getDisplayProducts();
 
+    return (
+      <div className="space-y-4">
+        {/* Поиск */}
+        <SearchInput />
+
+        {/* Показываем результаты поиска */}
+        {searchQuery && (
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">
+                {language === 'ru' ? 'Результаты поиска' : 'ძებნის შედეგები'}
+                {searchResults.length > 0 && ` (${searchResults.length})`}
+              </h3>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSearchQuery('');
+                  setSearchResults([]);
+                }}
+              >
+                {language === 'ru' ? 'Очистить поиск' : 'ძებნის გასუფთავება'}
+              </Button>
+            </div>
+
+            {searchResults.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                {language === 'ru' ? 'Продукты не найдены' : 'პროდუქტები ვერ მოიძებნა'}
+              </div>
+            ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                {displayProducts.map((product) => {
+                {searchResults.map((product) => {
                   const additives = productAdditives[product.id] || []
                   const comment = productComments[product.id] || ''
                   const quantity = getDisplayQuantity(product, additives, comment)
@@ -2737,7 +3203,7 @@ const renderCategoryCards = () => {
                           handleQuantityChange(product, quantity, newAdditives, comment)
                         }
                       }}
-                      onQuantityChange={(newQuantity) => 
+                      onQuantityChange={(newQuantity) =>
                         handleQuantityChange(product, newQuantity, additives, comment)
                       }
                       isOrderEditable={isOrderEditable!}
@@ -2748,20 +3214,133 @@ const renderCategoryCards = () => {
                   );
                 })}
               </div>
-            </div>
-          )}
+            )}
+          </div>
+        )}
 
-          {/* Сообщение когда выбрана категория но нет товаров */}
-          {categoryNavigation.currentCategory && displayProducts.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">
-              {t.noProductsFound}
+        {/* Обычное отображение категорий (только если нет поиска) */}
+        {!searchQuery && (
+          <>
+            {/* Заголовок раздела */}
+            <div className="mb-4 text-center">
+              <h3 className="text-lg font-semibold">
+                {categoryNavigation.parentCategory
+                  ? categoryNavigation.parentCategory.title
+                  : categoryNavigation.currentCategory
+                    ? categoryNavigation.currentCategory.title
+                    : t.allCategories
+                }
+              </h3>
             </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-};
+
+            {/* Горизонтальная прокрутка категорий */}
+            {(displayCategories.length > 0 || categoryNavigation.parentCategory) && (
+              <div className="relative">
+                <div className="flex overflow-x-auto pb-4 scrollbar-hide gap-4 px-2">
+                  {/* Кнопка назад */}
+                  {(categoryNavigation.parentCategory || categoryNavigation.breadcrumbs.length > 0) && (
+                    <Card
+                      className="flex-shrink-0 w-64 h-32 cursor-pointer hover:shadow-lg transition-shadow duration-200 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30"
+                      onClick={handleBackToCategories}
+                    >
+                      <div className="p-4 h-full flex flex-col justify-between">
+                        <div className="text-center">
+                          <h4 className="font-semibold text-lg text-blue-600 dark:text-blue-400">
+                            {t.backToCategories}
+                          </h4>
+                        </div>
+                        <div className="flex justify-center">
+                          <ChevronLeft className="h-4 w-4 text-blue-400" />
+                        </div>
+                      </div>
+                    </Card>
+                  )}
+
+                  {/* Карточки категорий */}
+                  {displayCategories.map((category) => {
+                    const productsInCategory = getDisplayProducts().filter(
+                      product => product.categoryId === category.id
+                    );
+
+                    return (
+                      <Card
+                        key={category.id}
+                        className="flex-shrink-0 w-64 h-32 cursor-pointer hover:shadow-lg transition-shadow duration-200"
+                        onClick={() => handleCategoryClick(category)}
+                      >
+                        <div className="p-4 h-full flex flex-col justify-between">
+                          <div className="text-center">
+                            <h4 className="font-semibold text-lg mb-2">{category.title}</h4>
+                          </div>
+                          <div className="flex justify-center">
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Сообщение когда нет категорий с товарами */}
+            {displayCategories.length === 0 && !categoryNavigation.parentCategory && (
+              <div className="text-center py-8 text-muted-foreground">
+                {t.noProductsFound}
+              </div>
+            )}
+
+            {/* Товары отображаются ТОЛЬКО когда выбрана конкретная категория */}
+            {categoryNavigation.currentCategory && displayProducts.length > 0 && (
+              <div className="mt-8">
+                <h4 className="text-lg font-semibold mb-4 text-center">
+                  {categoryNavigation.currentCategory.title}
+                </h4>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {displayProducts.map((product) => {
+                    const additives = productAdditives[product.id] || []
+                    const comment = productComments[product.id] || ''
+                    const quantity = getDisplayQuantity(product, additives, comment)
+
+                    return (
+                      <ProductCard
+                        key={product.id}
+                        product={product}
+                        additives={additives}
+                        comment={comment}
+                        quantity={quantity}
+                        onAdditivesChange={(newAdditives) => {
+                          handleAdditivesChange(product.id, newAdditives)
+                          if (quantity > 0) {
+                            handleQuantityChange(product, quantity, newAdditives, comment)
+                          }
+                        }}
+                        onQuantityChange={(newQuantity) =>
+                          handleQuantityChange(product, newQuantity, additives, comment)
+                        }
+                        isOrderEditable={isOrderEditable!}
+                        getProductPrice={getProductPrice}
+                        t={t}
+                        language={language}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Сообщение когда выбрана категория но нет товаров */}
+            {categoryNavigation.currentCategory && displayProducts.length === 0 && (
+              <div className="text-center py-8 text-muted-foreground">
+                {t.noProductsFound}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -2789,8 +3368,7 @@ const renderCategoryCards = () => {
         <Button onClick={() => router.push('/orders')}>
           <ArrowLeft className="h-4 w-4 mr-2" />
           {t.back}
-        </Button>\
-        
+        </Button>
       </div>
     );
   }
@@ -2811,30 +3389,6 @@ const renderCategoryCards = () => {
   return (
     <AccessCheck allowedRoles={['WAITER', 'MANAGER', 'SUPERVISOR']}>
       <div className="space-y-6">
-        {/* WebSocket Connection Status 
-        <div className={`flex items-center justify-center p-2 rounded-lg text-sm font-medium ${
-          isWebSocketConnected 
-            ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400' 
-            : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-        }`}>
-          <div className="flex items-center gap-2">
-            {isWebSocketConnected ? (
-              <>
-                <Wifi className="h-4 w-4" />
-                <span>{t.connection.connected}</span>
-              </>
-            ) : (
-              <>
-                <WifiOff className="h-4 w-4" />
-                <span>{t.connection.disconnected}</span>
-                {webSocketError && (
-                  <span className="text-xs opacity-75">({webSocketError})</span>
-                )}
-              </>
-            )}
-          </div>
-        </div>*/}
-
         <div className="flex items-center justify-between mb-6">
           <Button
             variant="outline"
@@ -2846,7 +3400,6 @@ const renderCategoryCards = () => {
           </Button>
 
           <div className="flex items-center gap-3">
-
             <div className="relative flex bg-muted/50 rounded-xl p-1 border">
               <div
                 className={`absolute top-1 bottom-1 w-1/2 bg-background rounded-lg shadow-sm transition-transform duration-200 ${viewMode === 'standard' ? 'translate-x-0' : 'translate-x-full'
@@ -2856,8 +3409,8 @@ const renderCategoryCards = () => {
               <button
                 onClick={() => setViewMode('standard')}
                 className={`relative z-10 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'standard'
-                    ? 'text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
                   }`}
               >
                 <LayoutTemplate className="h-4 w-4" />
@@ -2869,8 +3422,8 @@ const renderCategoryCards = () => {
               <button
                 onClick={() => setViewMode('compact')}
                 className={`relative z-10 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${viewMode === 'compact'
-                    ? 'text-foreground'
-                    : 'text-muted-foreground hover:text-foreground'
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
                   }`}
               >
                 <LayoutGrid className="h-4 w-4" />
@@ -2883,9 +3436,11 @@ const renderCategoryCards = () => {
         </div>
         <OrderHeader order={order} />
 
+
+
         <Card className="p-0">
-          <Collapsible 
-            open={showMenu} 
+          <Collapsible
+            open={showMenu}
             onOpenChange={(open) => {
               setShowMenu(open);
               if (open) {
@@ -2926,8 +3481,9 @@ const renderCategoryCards = () => {
             </CollapsibleContent>
           </Collapsible>
         </Card>
-
-        {/* Остальная часть компонента остается без изменений */}
+        {/* Модификаторы заказа */}
+        {renderOrderAdditivesBlock()}
+        {/* Остальная часть компонента */}
         <Card className="p-0">
           <Collapsible defaultOpen>
             <CollapsibleTrigger asChild>
@@ -3076,35 +3632,45 @@ const renderCategoryCards = () => {
                               {t.total}: {calculateOrderTotal().toFixed(2)} ₽
                             </h3>
                           </div>
-                         {((order.surcharges && order.surcharges.length > 0) || order.discountAmount > 0) && (
-  <Collapsible>
-    <CollapsibleTrigger asChild>
-      <Button variant="ghost" size="sm" className="h-8 px-2">
-        <ChevronDown className="h-4 w-4" />
-      </Button>
-    </CollapsibleTrigger>
-  </Collapsible>
-)}
+                          {((order.surcharges && order.surcharges.length > 0) || order.discountAmount > 0) && (
+                            <Collapsible>
+                              <CollapsibleTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-8 px-2">
+                                  <ChevronDown className="h-4 w-4" />
+                                </Button>
+                              </CollapsibleTrigger>
+                            </Collapsible>
+                          )}
                         </div>
                       </div>
-                        {((order.surcharges && order.surcharges.length > 0) || order.discountAmount > 0) && (
-                          <CollapsibleContent>
-                            <div className="p-4 border-t space-y-2">
-                              {order.surcharges && order.surcharges.length > 0 && (
-                                <div className="space-y-1">
-                                  <div className="text-sm font-medium text-muted-foreground">{t.surcharges}:</div>
-                                  {order.surcharges.map(surcharge => (
-                                    <div key={surcharge.id} className="flex justify-between text-sm">
-                                      <span>{surcharge.title}</span>
-                                      <span className="font-medium text-red-600">
-                                        {surcharge.type === 'FIXED'
-                                          ? `+${surcharge.amount.toFixed(2)} ₽`
-                                          : `+${surcharge.amount}%`}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                      {((order.surcharges && order.surcharges.length > 0) || order.discountAmount > 0) && (
+                        <CollapsibleContent>
+                          <div className="p-4 border-t space-y-2">
+                            {order.surcharges && order.surcharges.length > 0 && (
+                              <div className="space-y-1">
+                                <div className="text-sm font-medium text-muted-foreground">{t.surcharges}:</div>
+                                {order.surcharges.map(surcharge => (
+                                  <div key={surcharge.id} className="flex justify-between text-sm">
+                                    <span>{surcharge.title}</span>
+                                    <span className="font-medium text-red-600">
+                                      {surcharge.type === 'FIXED'
+                                        ? `+${surcharge.amount.toFixed(2)} ₽`
+                                        : `+${surcharge.amount}%`}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Добавляем стоимость модификаторов в детализацию */}
+                            {calculateTotalOrderAdditivesPrice() > 0 && (
+                              <div className="flex justify-between text-sm">
+                                <span>{t.orderAdditives}:</span>
+                                <span className="font-medium text-blue-600 dark:text-blue-400">
+                                  +{calculateTotalOrderAdditivesPrice().toFixed(2)} ₽
+                                </span>
+                              </div>
+                            )}
 
                             {order.discountAmount > 0 && (
                               <div className="flex justify-between text-sm">
@@ -3135,8 +3701,8 @@ const renderCategoryCards = () => {
                           onClick={handlePrecheck}
                           variant={order.attentionFlags?.isPrecheck ? "default" : "outline"}
                           className={`gap-2 w-full text-lg h-14 ${order.attentionFlags?.isPrecheck
-                              ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 hover:bg-green-100 dark:hover:bg-green-900/30'
-                              : ''
+                            ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 hover:bg-green-100 dark:hover:bg-green-900/30'
+                            : ''
                             }`}
                         >
                           {isUpdating ? (
@@ -3150,24 +3716,24 @@ const renderCategoryCards = () => {
                         </Button>
                       )}
                       {getOrderItems().some(item => item.status === OrderItemStatus.CREATED) && (
-                            <Button
-                              disabled={isUpdating || getOrderItems().length === 0}
-                              onClick={handleConfirmOrder}
-                              variant="secondary"
-                              className="bg-emerald-500 hover:bg-emerald-400 text-white gap-2 w-full text-lg h-14"
-                            >
-                              {isUpdating ? (
-                                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                              ) : (
-                                <Check className="h-4 w-4 mr-1" />
-                              )}
-                                {order.scheduledAt ?  'Подтвердить'  : t.confirm } 
-                                ({getOrderItems().filter(item => item.status === OrderItemStatus.CREATED).length})
-                            </Button>
+                        <Button
+                          disabled={isUpdating || getOrderItems().length === 0}
+                          onClick={handleConfirmOrder}
+                          variant="secondary"
+                          className="bg-emerald-500 hover:bg-emerald-400 text-white gap-2 w-full text-lg h-14"
+                        >
+                          {isUpdating ? (
+                            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          ) : (
+                            <Check className="h-4 w-4 mr-1" />
                           )}
+                          {order.scheduledAt ? 'Подтвердить' : t.confirm}
+                          ({getOrderItems().filter(item => item.status === OrderItemStatus.CREATED).length})
+                        </Button>
+                      )}
                       {order.status === 'CREATED' && (
                         <>
-                          
+
                           <Button
                             disabled={isUpdating}
                             onClick={handleCancelOrder}
@@ -3184,8 +3750,8 @@ const renderCategoryCards = () => {
                         </>
                       )}
 
-                     {(order.status === 'READY' && order.type != 'DELIVERY') && (
-                      <Button
+                      {(order.status === 'READY' && order.type != 'DELIVERY') && (
+                        <Button
                           disabled={isUpdating || shiftLoading || !order.attentionFlags.isPrecheck}
                           onClick={handleCalculateOrder}
                           variant="secondary"
@@ -3467,30 +4033,44 @@ const renderCategoryCards = () => {
           </AlertDialogContent>
         </AlertDialog>
 
-       <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t.confirmation}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t.confirmCalculate} 
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>
-              {t.cancel}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmCompleteOrder} 
-              disabled={isUpdating}
-            >
-              {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {t.calculate} 
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {t.confirmation}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {t.confirmCalculate}
+
+                {/* Добавить информацию о списании */}
+                {restaurantData?.useWarehouse && orderAdditives.some(a => a.inventoryItem) && (
+                  <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-md">
+                    <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                      <AlertCircle className="h-4 w-4 inline mr-2" />
+                      {language === 'ru'
+                        ? 'Будут списаны инвентарные товары из модификаторов заказа'
+                        : 'შეკვეთის მოდიფიკატორების ინვენტარის ნივთები ჩაიწერება'}
+                    </p>
+                  </div>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>
+                {t.cancel}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={confirmCompleteOrder}
+                disabled={isUpdating || isWritingOff}
+              >
+                {(isUpdating || isWritingOff) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isWritingOff
+                  ? (language === 'ru' ? 'Списание...' : 'იწერება...')
+                  : t.calculate}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
           <AlertDialogContent>
@@ -3547,5 +4127,3 @@ const renderCategoryCards = () => {
     </AccessCheck>
   );
 }
-
-

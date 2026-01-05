@@ -587,14 +587,14 @@ const BulkMoveToCategoryDialog = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent className="w-[90vh]">
         <DialogHeader>
           <DialogTitle>{translations.bulkMoveToCategory[language]}</DialogTitle>
           <DialogDescription>
             {translations.selectedCount[language](selectedCount)}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 h-[70vh]">
           <div className="space-y-2">
             <Label>{translations.selectCategory[language]}</Label>
             <SearchableSelect
@@ -661,14 +661,14 @@ const BulkAssignWorkshopsDialog = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent className='h-[90vh]'>
         <DialogHeader>
           <DialogTitle>{translations.bulkAssignWorkshops[language]}</DialogTitle>
           <DialogDescription>
             {translations.selectedCount[language](selectedCount)}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 h-[70vh]">
           <div className="space-y-2">
             <Label>{translations.selectWorkshops[language]}</Label>
             <SearchableSelect
@@ -735,14 +735,14 @@ const BulkAssignAdditivesDialog = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent className='h-[90vh]'>
         <DialogHeader>
           <DialogTitle>{translations.bulkAssignAdditives[language]}</DialogTitle>
           <DialogDescription>
             {translations.selectedCount[language](selectedCount)}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 h-[70vh]">
           <div className="space-y-2">
             <Label>{translations.selectAdditives[language]}</Label>
             <SearchableSelect

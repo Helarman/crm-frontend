@@ -291,7 +291,7 @@
     totalAmount: number
     discountAmount: number
     bonusPointsUsed: number
-    
+    orderAdditives: any
     source: string
     tableNumber?: string;
     numberOfPeople?: string;
