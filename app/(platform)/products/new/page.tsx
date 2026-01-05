@@ -401,8 +401,8 @@ const ProductCreatePage = () => {
   const loadAdditives = async () => {
     setIsAdditivesLoading(true)
     try {
-      const data = await AdditiveService.getAll()
-      setAdditives(data)
+      const data = await AdditiveService.getByNetwork(selectedNetworkId as string)
+      setAdditives(data as any)
     } catch (error) {
       console.error('Failed to load additives', error)
       toast.error(language === 'ru' ? 'Ошибка загрузки модификаторов' : 'მოდიფიკატორების ჩატვირთვის შეცდომა')

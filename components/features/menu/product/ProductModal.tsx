@@ -306,7 +306,7 @@ export const ProductModal = ({
         content: product.content || '',
       });
 
-      setSelectedAdditives(productAdditives.map((a: Additive) => a.id));
+      //setSelectedAdditives(productAdditives.map((a: Additive) => a.id));
       setRestaurantPrices(prices);
       setSelectedRestaurants(prices.map((p: RestaurantPrice) => p.restaurantId));
       setSelectedWorkshops(product.workshops?.map((w: WorkshopIn) => w.workshop.id) || []);
@@ -376,7 +376,7 @@ export const ProductModal = ({
     setIsAdditivesLoading(true);
     try {
       const data = await AdditiveService.getAll();
-      setAdditives(data);
+      //setAdditives(data);
     } catch (error) {
       console.error('Failed to load additives', error);
     } finally {
