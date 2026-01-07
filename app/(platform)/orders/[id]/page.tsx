@@ -189,9 +189,12 @@ export default function WaiterOrderPage() {
       itemReturned: "Возвращено",
       originalItems: "Основной заказ",
       orderDetails: "Детали заказа",
+      maxOrder: "Максимальный заказ",
+      maxOrderAmount: "Максимальная сумма заказа: {amount} ₽",
       statusCreated: "Создан",
       statusPreparing: "Готовится",
       statusReady: "Готов",
+
       statusDelivering: "Доставляется",
       statusCompleted: "Завершен",
       statusCancelled: "Отменен",
@@ -385,6 +388,8 @@ export default function WaiterOrderPage() {
       saving: "ინახება...",
       orderHistory: "შეკვეთის ისტორია",
       noHistory: "ისტორია ცარიელია",
+      maxOrder: "მაქსიმალური შეკვეთა",
+      maxOrderAmount: "მაქსიმალური შეკვეთის თანხა: {amount} ₽",
       confirmComplete: "დარწმუნებული ხართ, რომ გსურთ შეკვეთის დასრულება?",
       confirmCancel: "დარწმუნებული ხართ, რომ გსურთ შეკვეთის გაუქმება?",
       paymentRequired: "ჯერ გადახდა უნდა დაადასტუროთ",
@@ -1640,8 +1645,15 @@ export default function WaiterOrderPage() {
 
       const discount = await DiscountService.getByPromoCode(promoCode);
 
+      // Проверка минимальной суммы заказа
       if (discount.minOrderAmount && calculateOrderTotal() < discount.minOrderAmount) {
         setPromoCodeError(t.discountMinAmount.replace('{amount}', discount.minOrderAmount.toString()));
+        return;
+      }
+
+      // ПРОВЕРКА МАКСИМАЛЬНОЙ СУММЫ ЗАКАЗА
+      if (discount.maxOrderAmount && calculateOrderTotal() > discount.maxOrderAmount) {
+        setPromoCodeError(t.maxOrderAmount.replace('{amount}', discount.maxOrderAmount.toString()));
         return;
       }
 
@@ -2000,12 +2012,15 @@ export default function WaiterOrderPage() {
       }
 
       const activeDiscounts = await DiscountService.getByRestaurant(currentOrder.restaurant.id);
+      const orderTotal = calculateOrderTotal();
+
       const applicableDiscounts = activeDiscounts.filter(discount => {
         const now = new Date();
         const isActive = !discount.endDate || new Date(discount.endDate) > now;
-        const meetsMinAmount = !discount.minOrderAmount ||
-          calculateOrderTotal() >= discount.minOrderAmount;
-        return isActive && meetsMinAmount;
+        const meetsMinAmount = !discount.minOrderAmount || orderTotal >= discount.minOrderAmount;
+        const meetsMaxAmount = !discount.maxOrderAmount || orderTotal <= discount.maxOrderAmount; // Добавлено
+
+        return isActive && meetsMinAmount && meetsMaxAmount; // Обновлено
       });
 
       if (applicableDiscounts.length > 0) {

@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import useSWR, { mutate } from 'swr'
-import { PlusIcon, PencilIcon, TrashIcon, Check, ChevronsUpDown, X } from 'lucide-react'
+import { PlusIcon, PencilIcon, TrashIcon, Check, ChevronsUpDown, X, Layers, Store, RefreshCw } from 'lucide-react'
 import { SurchargeDto, SurchargeResponse, SurchargeService } from '@/lib/api/surcharge.service'
 import { RestaurantService } from '@/lib/api/restaurant.service'
+import { NetworkService } from '@/lib/api/network.service'
 import {
   Table,
   TableBody,
@@ -54,12 +55,21 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAuth } from '@/lib/hooks/useAuth'
 
 type OrderType = "DINE_IN" | "TAKEAWAY" | "DELIVERY" | "BANQUET";
 
 interface Restaurant {
   id: string;
   title: string;
+}
+
+interface Network {
+  id: string;
+  name: string;
+  description?: string;
+  restaurants?: any[];
 }
 
 interface OrderTypeOption {
@@ -108,7 +118,43 @@ const translations: Translations = {
     delivery: 'Доставка',
     banquet: 'Банкет',
     selected: 'выбрано',
-    toggleStatus: 'Активировать/деактивировать'
+    toggleStatus: 'Активировать/деактивировать',
+    selectNetwork: 'Выберите сеть',
+    selectNetworkDescription: 'Выберите сеть для управления надбавками',
+    noNetworks: 'Нет доступных сетей',
+    noNetworksDescription: 'У вас нет доступа к каким-либо сетям ресторанов',
+    manageNetworks: 'Управление сетями',
+    networkManagement: 'Управление надбавками сети',
+    loading: 'Загрузка...',
+    changeNetwork: 'Сменить сеть',
+    currentNetwork: 'Текущая сеть',
+    hideSelector: 'Скрыть выбор сети',
+    clearNetworkSelection: 'Очистить выбор сети',
+    refresh: 'Обновить',
+    networkRestaurants: `ресторан(ов)`,
+    surchargesCount: `надбавок`,
+    backToNetworks: 'Сети',
+    viewSurcharges: 'Просмотр надбавок',
+    surchargeManagement: 'Управление надбавками',
+    network: 'Сеть',
+    selectStartDate: 'Выберите дату начала',
+    selectEndDate: 'Выберите дату окончания',
+    isActive: 'Активна',
+    noRestaurants: 'Нет ресторанов',
+    allRestaurants: 'Все рестораны',
+    edit: 'Редактировать',
+    delete: 'Удалить',
+    confirm: 'Подтвердить',
+    search: 'Поиск',
+    noResults: 'Результатов не найдено',
+    close: 'Закрыть',
+    yes: 'Да',
+    no: 'Нет',
+    apply: 'Применить',
+    clear: 'Очистить',
+    saveChanges: 'Сохранить изменения',
+    required: 'Обязательное поле',
+    optional: 'Необязательно',
   },
   ka: {
     title: 'სახელი',
@@ -144,13 +190,57 @@ const translations: Translations = {
     delivery: 'მიტანა',
     banquet: 'ბანკეტი',
     selected: 'selected',
-    toggleStatus: 'გააქტიურება/გამორთვა'
+    toggleStatus: 'გააქტიურება/გამორთვა',
+    selectNetwork: 'აირჩიეთ ქსელი',
+    selectNetworkDescription: 'აირჩიეთ ქსელი დანამატების მართვისთვის',
+    noNetworks: 'წვდომადი ქსელები არ არის',
+    noNetworksDescription: 'თქვენ არ გაქვთ წვდომა რესტორნების ქსელებზე',
+    manageNetworks: 'ქსელების მართვა',
+    networkManagement: 'ქსელის დანამატების მართვა',
+    loading: 'იტვირთება...',
+    changeNetwork: 'ქსელის შეცვლა',
+    currentNetwork: 'მიმდინარე ქსელი',
+    hideSelector: 'ქსელის არჩევის დამალვა',
+    clearNetworkSelection: 'ქსელის არჩევის გასუფთავება',
+    refresh: 'განახლება',
+    networkRestaurants: `რესტორნი`,
+    surchargesCount: `დანამატი`,
+    backToNetworks: 'ქსელები',
+    viewSurcharges: 'დანამატების ნახვა',
+    surchargeManagement: 'დანამატების მართვა',
+    network: 'ქსელი',
+    selectStartDate: 'აირჩიეთ დაწყების თარიღი',
+    selectEndDate: 'აირჩიეთ დამთავრების თარიღი',
+    isActive: 'აქტიურია',
+    noRestaurants: 'რესტორნები არ არის',
+    allRestaurants: 'ყველა რესტორანი',
+    edit: 'რედაქტირება',
+    delete: 'წაშლა',
+    confirm: 'დადასტურება',
+    search: 'ძებნა',
+    noResults: 'შედეგები ვერ მოიძებნა',
+    close: 'დახურვა',
+    yes: 'დიახ',
+    no: 'არა',
+    apply: 'გამოყენება',
+    clear: 'გასუფთავება',
+    saveChanges: 'ცვლილებების შენახვა',
+    required: 'სავალდებულო ველი',
+    optional: 'არასავალდებულო',
   }
 };
 
+const STORAGE_KEY = 'selected_network_id';
+
 const SurchargesTable = () => {
   const { language } = useLanguageStore();
+  const { user } = useAuth();
   const t = translations[language];
+
+  const [showNetworkSelector, setShowNetworkSelector] = useState<boolean>(false);
+  const [selectedNetworkId, setSelectedNetworkId] = useState<string | null>(null);
+  const [networks, setNetworks] = useState<Network[]>([]);
+  const [isNetworksLoading, setIsNetworksLoading] = useState<boolean>(true);
 
   const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false);
   const [editingSurcharge, setEditingSurcharge] = useState<SurchargeResponse | null>(null);
@@ -168,14 +258,71 @@ const SurchargesTable = () => {
   const [openRestaurantsDialog, setOpenRestaurantsDialog] = useState<boolean>(false);
   const [searchValue, setSearchValue] = useState<string>('');
 
-  const { data: surcharges, error: surchargesError, isLoading } = useSWR<SurchargeResponse[]>('surcharges', () => SurchargeService.getAll());
-  const { data: restaurants, error: restaurantsError } = useSWR<Restaurant[]>('restaurants', () => RestaurantService.getAll());
+  // Загрузка сохраненной сети из localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedNetworkId = localStorage.getItem(STORAGE_KEY);
+      if (savedNetworkId) {
+        setSelectedNetworkId(savedNetworkId);
+      }
+    }
+  }, []);
+
+  // Сохранение выбранной сети в localStorage
+  useEffect(() => {
+    if (selectedNetworkId && typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, selectedNetworkId);
+    }
+  }, [selectedNetworkId]);
+
+  // Загрузка сетей пользователя
+  useEffect(() => {
+    const loadNetworks = async () => {
+      setIsNetworksLoading(true);
+      try {
+        if (user?.id) {
+          const networksData = await NetworkService.getByUser(user.id);
+          setNetworks(networksData);
+
+          // Если есть сохраненная сеть, проверяем доступность
+          if (selectedNetworkId) {
+            const networkExists = networksData.some((n: Network) => n.id === selectedNetworkId);
+            if (!networkExists && networksData.length > 0) {
+              // Если сохраненной сети нет в доступных, выбираем первую
+              setSelectedNetworkId(networksData[0].id);
+            }
+          } else if (networksData.length === 1) {
+            // Если у пользователя только одна сеть, выбираем ее автоматически
+            setSelectedNetworkId(networksData[0].id);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching networks:', error);
+        toast.error(language === 'ru' ? 'Ошибка загрузки сетей' : 'ქსელების ჩატვირთვის შეცდომა');
+      } finally {
+        setIsNetworksLoading(false);
+      }
+    };
+
+    loadNetworks();
+  }, [user?.id, language]);
+
+  // Загрузка надбавок при выборе сети
+  const { data: surcharges, error: surchargesError, isLoading: isLoadingSurcharges } = useSWR<SurchargeResponse[]>(
+    selectedNetworkId ? `surcharges-network-${selectedNetworkId}` : null,
+    () => SurchargeService.getByNetwork(selectedNetworkId!)
+  );
+
+  const { data: restaurants, error: restaurantsError } = useSWR<Restaurant[]>(
+    selectedNetworkId ? `restaurants-network-${selectedNetworkId}` : null,
+    () => RestaurantService.getByNetwork(selectedNetworkId!)
+  );
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const { name, value } = e.target;
-    setFormData(prev => ({ 
-      ...prev, 
-      [name]: name === 'amount' ? Number(value) : value 
+    setFormData(prev => ({
+      ...prev,
+      [name]: name === 'amount' ? Number(value) : value
     }));
   };
 
@@ -207,17 +354,20 @@ const SurchargesTable = () => {
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
-    
+
     try {
       if (editingSurcharge) {
         await SurchargeService.update(editingSurcharge.id, formData as SurchargeDto);
         toast.success(language === 'ru' ? 'Надбавка успешно обновлена' : 'დანამატი წარმატებით განახლდა');
       } else {
-        await SurchargeService.create(formData as SurchargeDto);
+        await SurchargeService.create({
+          ...formData as SurchargeDto,
+          networkId: selectedNetworkId!
+        });
         toast.success(language === 'ru' ? 'Надбавка успешно создана' : 'დანამატი წარმატებით შეიქმნა');
       }
-      
-      mutate('surcharges');
+
+      mutate(selectedNetworkId ? `surcharges-network-${selectedNetworkId}` : null);
       setIsDialogOpen(false);
       setEditingSurcharge(null);
       setFormData({
@@ -238,7 +388,7 @@ const SurchargesTable = () => {
   const handleDelete = async (id: string): Promise<void> => {
     try {
       await SurchargeService.delete(id);
-      mutate('surcharges');
+      mutate(selectedNetworkId ? `surcharges-network-${selectedNetworkId}` : null);
       toast.success(language === 'ru' ? 'Надбавка успешно удалена' : 'დანამატი წარმატებით წაიშალა');
     } catch (error) {
       console.error('Error deleting surcharge:', error);
@@ -249,10 +399,10 @@ const SurchargesTable = () => {
   const toggleStatus = async (id: string, isActive: boolean): Promise<void> => {
     try {
       await SurchargeService.toggleStatus(id, !isActive);
-      mutate('surcharges');
+      mutate(selectedNetworkId ? `surcharges-network-${selectedNetworkId}` : null);
       toast.success(
-        language === 'ru' 
-          ? `Надбавка ${!isActive ? 'активирована' : 'деактивирована'}` 
+        language === 'ru'
+          ? `Надбавка ${!isActive ? 'активирована' : 'деактивирована'}`
           : `დანამატი ${!isActive ? 'გააქტიურდა' : 'გათიშულია'}`
       );
     } catch (error) {
@@ -260,6 +410,172 @@ const SurchargesTable = () => {
       toast.error(language === 'ru' ? 'Ошибка изменения статуса' : 'სტატუსის შეცვლის შეცდომა');
     }
   };
+
+  const handleNetworkSelect = (networkId: string) => {
+    setSelectedNetworkId(networkId);
+    setShowNetworkSelector(false);
+  };
+
+  const handleClearNetwork = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+    setSelectedNetworkId(null);
+    setShowNetworkSelector(true);
+  };
+
+  // Получаем текущую сеть
+  const currentNetwork = networks.find(n => n.id === selectedNetworkId);
+
+  // Если загружаются сети и нет выбранной сети
+  if (isNetworksLoading && !selectedNetworkId) {
+    return (
+      <div className="p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i}>
+              <CardHeader>
+                <div className="h-6 bg-gray-200 rounded w-3/4 mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Если показываем селектор сетей или нет выбранной сети
+  if (showNetworkSelector || !selectedNetworkId) {
+    return (
+      <div className="p-4">
+        <div className="mb-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold mb-2">
+              {t.selectNetwork}
+            </h2>
+            {selectedNetworkId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowNetworkSelector(false)}
+                className="h-auto p-0 text-muted-foreground hover:text-foreground flex items-center gap-1"
+              >
+                <X className="h-4 w-4" />
+                {t.hideSelector}
+              </Button>
+            )}
+          </div>
+          <p className="text-muted-foreground">
+            {t.selectNetworkDescription}
+          </p>
+        </div>
+
+        {selectedNetworkId && currentNetwork && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Store className="h-5 w-5" />
+                {t.currentNetwork}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">{currentNetwork.name}</p>
+                  {currentNetwork.description && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {currentNetwork.description}
+                    </p>
+                  )}
+                </div>
+                <Badge variant="outline">
+                  {currentNetwork.restaurants?.length} {t.networkRestaurants}
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {networks.map((network) => (
+            <Card
+              key={network.id}
+              className={`cursor-pointer hover:shadow-md transition-shadow hover:border-primary/50 ${network.id === selectedNetworkId
+                ? 'border-primary border-2 bg-primary/5'
+                : ''
+                }`}
+              onClick={() => handleNetworkSelect(network.id)}
+            >
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">{network.name}</CardTitle>
+                  {network.id === selectedNetworkId && (
+                    <Badge className="bg-primary text-primary-foreground">
+                      {language === 'ru' ? 'Текущая' : 'მიმდინარე'}
+                    </Badge>
+                  )}
+                </div>
+                <CardDescription>
+                  {language === 'ru' ? 'Сеть ресторанов' : 'რესტორნების ქსელი'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      {language === 'ru' ? 'Рестораны:' : 'რესტორნები:'}
+                    </span>
+                    <Badge variant="outline">
+                      {network.restaurants?.length || 0}
+                    </Badge>
+                  </div>
+                  {network.description && (
+                    <p className="text-sm text-muted-foreground line-clamp-2 mt-2">
+                      {network.description}
+                    </p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {selectedNetworkId && (
+          <div className="mt-6 pt-6 border-t">
+            <Button
+              variant="outline"
+              onClick={handleClearNetwork}
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              {t.clearNetworkSelection}
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Если нет сетей
+  if (networks.length === 0) {
+    return (
+      <div className="p-4">
+        <div className="text-center py-12">
+          <Layers className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">
+            {t.noNetworks}
+          </h3>
+          <p className="text-muted-foreground mb-4">
+            {t.noNetworksDescription}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (surchargesError || restaurantsError) {
     return <div className="text-red-500">{t.loadingError}</div>;
@@ -272,10 +588,50 @@ const SurchargesTable = () => {
     { value: 'BANQUET', label: t.banquet },
   ];
 
+  const fetchSurcharges = () => {
+    mutate(selectedNetworkId ? `surcharges-network-${selectedNetworkId}` : null);
+  };
+
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">{t.surchargeTitle}</h1>
+    <div className="p-4 space-y-4">
+      {/* Хлебные крошки и информация о сети */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            {networks.length > 1 && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowNetworkSelector(true)}
+                  className="h-auto p-0 text-muted-foreground hover:text-foreground flex items-center gap-1"
+                >
+                  <Store className="h-3 w-3" />
+                  {t.changeNetwork}
+                </Button>
+                <span className="text-muted-foreground">/</span>
+              </>
+            )}
+            <h2 className="text-xl font-semibold">
+              {currentNetwork?.name}
+            </h2>
+          </div>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-muted-foreground">
+              {t.surchargeManagement} • {surcharges?.length} {t.surchargesCount}
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={fetchSurcharges}
+              className="h-6 w-6 p-0"
+              title={t.refresh}
+            >
+              <RefreshCw className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button onClick={() => setEditingSurcharge(null)}>
@@ -348,18 +704,18 @@ const SurchargesTable = () => {
                     : t.selectOrderTypes}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
-                
+
                 {openOrderTypesDialog && (
-                  <div 
+                  <div
                     className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4"
                     onClick={() => setOpenOrderTypesDialog(false)}
                   >
-                    <div 
+                    <div
                       className="bg-background rounded-lg border shadow-lg w-full max-w-md max-h-[80vh] overflow-hidden"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <Command shouldFilter={false} className="h-full">
-                        <CommandInput 
+                        <CommandInput
                           placeholder={t.selectOrderTypes}
                           onValueChange={(value: string) => setSearchValue(value)}
                         />
@@ -369,7 +725,7 @@ const SurchargesTable = () => {
                           </CommandEmpty>
                           <CommandGroup className="max-h-[300px] overflow-y-auto">
                             {orderTypeOptions
-                              .filter(option => 
+                              .filter(option =>
                                 option.label.toLowerCase().includes(searchValue.toLowerCase())
                               )
                               .map((option) => (
@@ -378,7 +734,7 @@ const SurchargesTable = () => {
                                   value={option.value}
                                   onSelect={() => {
                                     const newOrderTypes = toggleSelection(
-                                      formData.orderTypes || [], 
+                                      formData.orderTypes || [],
                                       option.value
                                     );
                                     handleSelectChange('orderTypes', newOrderTypes);
@@ -407,8 +763,8 @@ const SurchargesTable = () => {
                     {formData.orderTypes.map(type => {
                       const label = orderTypeOptions.find(o => o.value === type)?.label;
                       return (
-                        <Badge 
-                          key={type} 
+                        <Badge
+                          key={type}
                           variant="secondary"
                           className="flex items-center gap-1"
                         >
@@ -447,18 +803,18 @@ const SurchargesTable = () => {
                     : t.selectRestaurants}
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
-                
+
                 {openRestaurantsDialog && (
-                  <div 
+                  <div
                     className="fixed inset-0 z-50 bg-black/30 backdrop-blur-sm flex items-center justify-center p-4"
                     onClick={() => setOpenRestaurantsDialog(false)}
                   >
-                    <div 
+                    <div
                       className="bg-background rounded-lg border shadow-lg w-full max-w-md max-h-[80vh] overflow-hidden"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <Command shouldFilter={false} className="h-full">
-                        <CommandInput 
+                        <CommandInput
                           placeholder={t.selectRestaurants}
                           onValueChange={(value: string) => setSearchValue(value)}
                         />
@@ -468,7 +824,7 @@ const SurchargesTable = () => {
                           </CommandEmpty>
                           <CommandGroup className="max-h-[300px] overflow-y-auto">
                             {restaurants
-                              ?.filter(restaurant => 
+                              ?.filter(restaurant =>
                                 restaurant.title.toLowerCase().includes(searchValue.toLowerCase())
                               )
                               .map((restaurant) => (
@@ -477,7 +833,7 @@ const SurchargesTable = () => {
                                   value={restaurant.id}
                                   onSelect={() => {
                                     const newRestaurantIds = toggleSelection(
-                                      formData.restaurantIds || [], 
+                                      formData.restaurantIds || [],
                                       restaurant.id
                                     );
                                     handleSelectChange('restaurantIds', newRestaurantIds);
@@ -506,8 +862,8 @@ const SurchargesTable = () => {
                     {formData.restaurantIds.map(id => {
                       const restaurant = restaurants?.find(r => r.id === id);
                       return restaurant ? (
-                        <Badge 
-                          key={id} 
+                        <Badge
+                          key={id}
                           variant="secondary"
                           className="flex items-center gap-1"
                         >
@@ -557,6 +913,7 @@ const SurchargesTable = () => {
         </Dialog>
       </div>
 
+      {/* Таблица надбавок */}
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -571,7 +928,7 @@ const SurchargesTable = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
+            {isLoadingSurcharges ? (
               <TableRow>
                 <TableCell colSpan={7}>
                   <div className="space-y-2">
@@ -638,7 +995,7 @@ const SurchargesTable = () => {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center space-x-2">
-                      <div 
+                      <div
                         className={`w-3 h-3 rounded-full ${surcharge.isActive ? 'bg-green-500' : 'bg-gray-300'}`}
                       />
                       <span className="text-sm">
@@ -655,7 +1012,7 @@ const SurchargesTable = () => {
                       >
                         <PencilIcon className="h-4 w-4" />
                       </Button>
-                      
+
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button variant="ghost" size="icon">
@@ -666,8 +1023,8 @@ const SurchargesTable = () => {
                           <AlertDialogHeader>
                             <AlertDialogTitle>{t.deleteConfirm}</AlertDialogTitle>
                             <AlertDialogDescription>
-                              {language === 'ru' 
-                                ? 'Это действие нельзя отменить. Надбавка будет удалена безвозвратно.' 
+                              {language === 'ru'
+                                ? 'Это действие нельзя отменить. Надбавка будет удалена безвозвратно.'
                                 : 'ამ მოქმედების გაუქმება შეუძლებელია. დანამატი სამუდამოდ წაიშლება.'}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
@@ -675,7 +1032,7 @@ const SurchargesTable = () => {
                             <AlertDialogCancel>
                               {t.cancel}
                             </AlertDialogCancel>
-                            <AlertDialogAction 
+                            <AlertDialogAction
                               onClick={() => handleDelete(surcharge.id)}
                               className="bg-red-500 hover:bg-red-600"
                             >

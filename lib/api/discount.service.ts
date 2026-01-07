@@ -9,12 +9,13 @@ const api = axios.create({
 
 
 export type DiscountType = 'PERCENTAGE' | 'FIXED';
-export type DiscountTargetType = 'ALL' | 'RESTAURANT' | 'CATEGORY' | 'PRODUCT' | 'ORDER_TYPE';
+export type DiscountTargetType = 'ALL' | 'PRODUCT';
 export type OrderType = 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET';
 
 export interface CreateDiscountDto {
   title?: string;
   description?: string;
+  maxOrderAmount?: number;
   restaurantIds?: string[];
   productIds?: string[];
   type?: DiscountType;
@@ -35,7 +36,7 @@ export interface CreateDiscountDto {
   isActive?: boolean;
 }
 
-export interface UpdateDiscountDto extends Partial<CreateDiscountDto> {}
+export interface UpdateDiscountDto extends Partial<CreateDiscountDto> { }
 
 export interface DiscountFormState extends Omit<Partial<CreateDiscountDto>, 'restaurants' | 'categories' | 'products'> {
   restaurantIds: string[];
@@ -53,6 +54,80 @@ export interface DiscountResponseDto {
   value: number;
   targetType: DiscountTargetType;
   minOrderAmount?: number;
+  orderTypes: OrderType[];
+  daysOfWeek: number[];
+  isActive: boolean;
+  code?: string;
+  maxUses?: number;
+  maxOrderAmount?: number;
+  currentUses: number;
+  startDate?: Date;
+  endDate?: Date;
+  startTime: number;
+  endTime: number;
+  restaurants?: {
+    restaurant: {
+      id: string;
+      title: string;
+    };
+  }[];
+  categories?: {
+    category: {
+      id: string;
+      title: string;
+    };
+  }[];
+  products?: {
+    product: {
+      id: string;
+      title: string;
+    };
+  }[];
+}
+export interface CreateDiscountDto {
+  title?: string;
+  description?: string;
+  restaurantIds?: string[];
+  productIds?: string[];
+  type?: DiscountType;
+  value?: number;
+  targetType?: DiscountTargetType;
+  minOrderAmount?: number;
+  maxOrderAmount?: number;
+  restaurants?: { restaurantId: string }[];
+  categories?: { categoryId: string }[];
+  products?: { productId: string }[];
+  orderTypes?: OrderType[];
+  daysOfWeek?: number[];
+  code?: string;
+  startTime?: number;
+  endTime?: number;
+  maxUses?: number;
+  startDate?: Date | null;
+  endDate?: Date | null;
+  isActive?: boolean;
+  networkId?: string;
+}
+
+export interface UpdateDiscountDto extends Partial<CreateDiscountDto> { }
+
+export interface DiscountFormState extends Omit<Partial<CreateDiscountDto>, 'restaurants' | 'categories' | 'products'> {
+  restaurantIds: string[];
+  categoryIds: string[];
+  productIds: string[];
+}
+
+export interface DiscountResponseDto {
+  id: string;
+  createdAt: Date;
+  updatedAt: Date;
+  title: string;
+  description?: string;
+  type: DiscountType;
+  value: number;
+  targetType: DiscountTargetType;
+  minOrderAmount?: number;
+  maxOrderAmount?: number;
   orderTypes: OrderType[];
   daysOfWeek: number[];
   isActive: boolean;
@@ -82,6 +157,19 @@ export interface DiscountResponseDto {
     };
   }[];
 }
+
+export interface FindDiscountsByNetworkParams {
+  includeInactive?: boolean;
+  onlyActive?: boolean;
+}
+
+export interface FindAvailableDiscountsForNetworkParams {
+  includeCodeDiscounts?: boolean;
+  targetType?: DiscountTargetType;
+  orderType?: string;
+  minAmount?: number;
+}
+
 export const DiscountService = {
   /**
    * Создание новой скидки
@@ -154,7 +242,7 @@ export const DiscountService = {
   getByRestaurant: async (restaurantId: string): Promise<DiscountResponseDto[]> => {
     try {
       const { data } = await api.get<DiscountResponseDto[]>(`/discounts/restaurant/${restaurantId}`);
-       return data.filter(discount => !discount.code || discount.code === "");
+      return data.filter(discount => !discount.code || discount.code === "");
     } catch (error) {
       console.error(`Failed to get discounts for restaurant ${restaurantId}:`, error);
       throw error;
@@ -196,6 +284,78 @@ export const DiscountService = {
       return data;
     } catch (error) {
       console.error(`Failed to get discount by promo code ${code}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Получение скидок по сети
+   * @param networkId - ID сети
+   * @param params - параметры фильтрации
+   * @returns Список скидок для указанной сети
+   */
+  getByNetwork: async (
+    networkId: string,
+    params?: FindDiscountsByNetworkParams
+  ): Promise<DiscountResponseDto[]> => {
+    try {
+      const queryParams = new URLSearchParams();
+
+      if (params?.includeInactive !== undefined) {
+        queryParams.append('includeInactive', params.includeInactive.toString());
+      }
+
+      if (params?.onlyActive !== undefined) {
+        queryParams.append('onlyActive', params.onlyActive.toString());
+      }
+
+      const queryString = queryParams.toString();
+      const url = `/discounts/network/${networkId}${queryString ? `?${queryString}` : ''}`;
+
+      const { data } = await api.get<DiscountResponseDto[]>(url);
+      return data;
+    } catch (error) {
+      console.error(`Failed to get discounts for network ${networkId}:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * Получение доступных скидок для сети
+   * @param networkId - ID сети
+   * @param params - параметры фильтрации
+   * @returns Список доступных скидок
+   */
+  getAvailableForNetwork: async (
+    networkId: string,
+    params?: FindAvailableDiscountsForNetworkParams
+  ): Promise<DiscountResponseDto[]> => {
+    try {
+      const queryParams = new URLSearchParams();
+
+      if (params?.includeCodeDiscounts !== undefined) {
+        queryParams.append('includeCodeDiscounts', params.includeCodeDiscounts.toString());
+      }
+
+      if (params?.targetType) {
+        queryParams.append('targetType', params.targetType);
+      }
+
+      if (params?.orderType) {
+        queryParams.append('orderType', params.orderType);
+      }
+
+      if (params?.minAmount !== undefined) {
+        queryParams.append('minAmount', params.minAmount.toString());
+      }
+
+      const queryString = queryParams.toString();
+      const url = `/discounts/network/${networkId}/available${queryString ? `?${queryString}` : ''}`;
+
+      const { data } = await api.get<DiscountResponseDto[]>(url);
+      return data;
+    } catch (error) {
+      console.error(`Failed to get available discounts for network ${networkId}:`, error);
       throw error;
     }
   },

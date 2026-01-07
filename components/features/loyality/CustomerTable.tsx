@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import useSWR, { mutate } from 'swr'
-import { 
-  PlusIcon, 
+import {
+  PlusIcon,
   SearchIcon,
   UserIcon,
   PhoneIcon,
@@ -35,7 +35,10 @@ import {
   TrendingDownIcon,
   MinusIcon,
   SaveIcon,
-  AlertTriangleIcon
+  AlertTriangleIcon,
+  Store,
+  Layers,
+  RefreshCw
 } from 'lucide-react'
 import { CustomerService, CustomerDto, PersonalDiscountDto, BonusTransactionDto, NetworkCustomerInfo } from '@/lib/api/customer.service'
 import { NetworkService } from '@/lib/api/network.service'
@@ -119,6 +122,7 @@ interface Network {
   id: string
   name: string
   description?: string
+  restaurants?: Restaurant[]
 }
 
 interface Restaurant {
@@ -139,6 +143,7 @@ const translations: Translations = {
   ru: {
     title: 'Клиенты',
     selectNetwork: 'Выберите сеть',
+    selectNetworkDescription: 'Выберите сеть для управления клиентами',
     searchCustomer: 'Поиск клиента...',
     phone: 'Телефон',
     name: 'Имя',
@@ -291,11 +296,24 @@ const translations: Translations = {
     last30Days: 'Последние 30 дней',
     thisMonth: 'Текущий месяц',
     lastMonth: 'Прошлый месяц',
-    customRange: 'Произвольный диапазон'
+    customRange: 'Произвольный диапазон',
+    noNetworks: 'Нет доступных сетей',
+    noNetworksDescription: 'У вас нет доступа к каким-либо сетям ресторанов',
+    networkManagement: 'Управление клиентами сети',
+    changeNetwork: 'Сменить сеть',
+    currentNetwork: 'Текущая сеть',
+    hideSelector: 'Скрыть выбор сети',
+    clearNetworkSelection: 'Очистить выбор сети',
+    networkRestaurants: `ресторан(ов)`,
+    discountsCount: `скидка(ок)`,
+    backToNetworks: 'Сети',
+    viewDiscounts: 'Просмотр скидок',
+    manageNetworks: 'Управление сетями'
   },
   ka: {
     title: 'კლიენტები',
     selectNetwork: 'აირჩიეთ ქსელი',
+    selectNetworkDescription: 'აირჩიეთ ქსელი კლიენტების მართვისთვის',
     searchCustomer: 'მოძებნეთ კლიენტი...',
     phone: 'ტელეფონი',
     name: 'სახელი',
@@ -448,13 +466,25 @@ const translations: Translations = {
     last30Days: 'ბოლო 30 დღე',
     thisMonth: 'მიმდინარე თვე',
     lastMonth: 'წინა თვე',
-    customRange: 'მორგებული დიაპაზონი'
+    customRange: 'მორგებული დიაპაზონი',
+    noNetworks: 'წვდომადი ქსელები არ არის',
+    noNetworksDescription: 'თქვენ არ გაქვთ წვდომა რესტორნების ქსელებზე',
+    networkManagement: 'ქსელის კლიენტების მართვა',
+    changeNetwork: 'ქსელის შეცვლა',
+    currentNetwork: 'მიმდინარე ქსელი',
+    hideSelector: 'ქსელის არჩევის დამალვა',
+    clearNetworkSelection: 'ქსელის არჩევის გასუფთავება',
+    networkRestaurants: `რესტორნი`,
+    discountsCount: `ფასდაკლება`,
+    backToNetworks: 'ქსელები',
+    viewDiscounts: 'ფასდაკლების ნახვა',
+    manageNetworks: 'ქსელების მართვა'
   }
 }
 
 // Константы для ключей localStorage
 const STORAGE_KEYS = {
-  SELECTED_NETWORK: 'customer-table-selected-network',
+  SELECTED_NETWORK: 'selected-network_id',
   SEARCH_PHONE: 'customer-table-search-phone',
   SEARCH_NAME: 'customer-table-search-name',
   PAGE: 'customer-table-page',
@@ -464,7 +494,7 @@ const STORAGE_KEYS = {
 // Функции для работы с localStorage
 const getStoredValue = <T,>(key: string, defaultValue: T): T => {
   if (typeof window === 'undefined') return defaultValue
-  
+
   try {
     const item = localStorage.getItem(key)
     return item ? JSON.parse(item) : defaultValue
@@ -476,7 +506,7 @@ const getStoredValue = <T,>(key: string, defaultValue: T): T => {
 
 const setStoredValue = <T,>(key: string, value: T): void => {
   if (typeof window === 'undefined') return
-  
+
   try {
     localStorage.setItem(key, JSON.stringify(value))
   } catch (error) {
@@ -484,22 +514,26 @@ const setStoredValue = <T,>(key: string, value: T): void => {
   }
 }
 
-const CustomerTable = () => {
+const CustomerTable: React.FC = () => {
   const { language } = useLanguageStore()
   const t = translations[language]
   const { user } = useAuth()
-  
+
   // Инициализация состояния из localStorage
-  const [selectedNetwork, setSelectedNetwork] = useState<string>(() => 
-    getStoredValue(STORAGE_KEYS.SELECTED_NETWORK, '')
+  const [selectedNetworkId, setSelectedNetworkId] = useState<string | null>(() =>
+    getStoredValue(STORAGE_KEYS.SELECTED_NETWORK, null)
   )
-  const [searchPhone, setSearchPhone] = useState<string>(() => 
+  const [showNetworkSelector, setShowNetworkSelector] = useState(false)
+  const [isNetworksLoading, setIsNetworksLoading] = useState(true)
+  const [networks, setNetworks] = useState<Network[]>([])
+
+  const [searchPhone, setSearchPhone] = useState<string>(() =>
     getStoredValue(STORAGE_KEYS.SEARCH_PHONE, '')
   )
-  const [searchName, setSearchName] = useState<string>(() => 
+  const [searchName, setSearchName] = useState<string>(() =>
     getStoredValue(STORAGE_KEYS.SEARCH_NAME, '')
   )
-  const [page, setPage] = useState<number>(() => 
+  const [page, setPage] = useState<number>(() =>
     getStoredValue(STORAGE_KEYS.PAGE, 1)
   )
   const [limit] = useState<number>(10)
@@ -532,14 +566,16 @@ const CustomerTable = () => {
     toDate?: Date
     type?: string
     search?: string
-  }>(() => 
+  }>(() =>
     getStoredValue(STORAGE_KEYS.TRANSACTION_FILTERS, {})
   )
 
-  // Сохранение состояния в localStorage при изменениях
+  // Сохранение выбранной сети в localStorage
   useEffect(() => {
-    setStoredValue(STORAGE_KEYS.SELECTED_NETWORK, selectedNetwork)
-  }, [selectedNetwork])
+    if (selectedNetworkId) {
+      setStoredValue(STORAGE_KEYS.SELECTED_NETWORK, selectedNetworkId)
+    }
+  }, [selectedNetworkId])
 
   useEffect(() => {
     setStoredValue(STORAGE_KEYS.SEARCH_PHONE, searchPhone)
@@ -557,22 +593,52 @@ const CustomerTable = () => {
     setStoredValue(STORAGE_KEYS.TRANSACTION_FILTERS, transactionFilters)
   }, [transactionFilters])
 
+  // Загрузка сетей пользователя
+  useEffect(() => {
+    const loadNetworks = async () => {
+      setIsNetworksLoading(true)
+      try {
+        if (user?.id) {
+          const networksData = await NetworkService.getByUser(user.id)
+          setNetworks(networksData as any)
+
+          if (selectedNetworkId) {
+            const networkExists = networksData.some((n: any) => n.id === selectedNetworkId)
+            if (!networkExists && networksData.length > 0) {
+              // Если сохраненной сети нет в доступных, выбираем первую
+              setSelectedNetworkId(networksData[0].id)
+            }
+          } else if (networksData.length === 1) {
+            // Если у пользователя только одна сеть, выбираем ее автоматически
+            setSelectedNetworkId(networksData[0].id)
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching networks:', error)
+        toast.error(language === 'ru' ? 'Ошибка загрузки сетей' : 'ქსელების ჩატვირთვის შეცდომა')
+      } finally {
+        setIsNetworksLoading(false)
+      }
+    }
+
+    loadNetworks()
+  }, [user?.id, language])
+
   // Получаем доступные сети для пользователя
   const { data: userNetworks, error: networksError } = useSWR(
     user ? `user-networks-${user.id}` : null,
     () => NetworkService.getByUser(user!.id)
   )
 
-  // Получаем клиентов выбранной сети
   const { data: customersData, error: customersError, isLoading: isLoadingCustomers } = useSWR(
-    selectedNetwork ? `customers-network-${selectedNetwork}-page-${page}-limit-${limit}` : null,
-    () => CustomerService.getAllByNetwork(selectedNetwork, page, limit)
-  )
+    selectedNetworkId ? `customers-network-${selectedNetworkId}-page-${page}-limit-${limit}` : null,
+    () => CustomerService.getAllByNetwork(selectedNetworkId!, page, limit)
+  );
 
   // Получаем рестораны выбранной сети
   const { data: restaurants, isLoading: isLoadingRestaurants } = useSWR(
-    selectedNetwork ? `restaurants-network-${selectedNetwork}` : null,
-    () => NetworkService.getRestaurants(selectedNetwork)
+    selectedNetworkId ? `restaurants-network-${selectedNetworkId}` : null,
+    () => NetworkService.getRestaurants(selectedNetworkId!)
   )
 
   // Поиск клиента по телефону
@@ -584,38 +650,17 @@ const CustomerTable = () => {
     }
   )
 
-  // Автоматический выбор сети при загрузке
   useEffect(() => {
-    if (userNetworks && userNetworks.length > 0) {
-      // Если в localStorage есть выбранная сеть, проверяем что она все еще доступна
-      if (selectedNetwork) {
-        const networkExists = userNetworks.some((n: Network) => n.id === selectedNetwork)
-        if (!networkExists) {
-          // Если сети больше нет в списке, выбираем первую доступную
-          const newNetworkId = userNetworks[0].id
-          setSelectedNetwork(newNetworkId)
-          setPage(1)
-        }
-      } else {
-        // Если нет сохраненной сети, выбираем первую
-        const firstNetworkId = userNetworks[0].id
-        setSelectedNetwork(firstNetworkId)
-        setPage(1)
-      }
-    }
-  }, [userNetworks, selectedNetwork])
-
-  useEffect(() => {
-    if (selectedCustomer && selectedNetwork) {
+    if (selectedCustomer && selectedNetworkId) {
       loadCustomerDiscounts()
       loadCustomerTransactions()
       loadCustomerBalance()
     }
-  }, [selectedCustomer, selectedNetwork])
+  }, [selectedCustomer, selectedNetworkId])
 
   const loadCustomerDiscounts = async () => {
     if (!selectedCustomer) return
-    
+
     setIsLoadingDiscounts(true)
     try {
       const discounts = await CustomerService.getPersonalDiscounts(selectedCustomer.id)
@@ -629,13 +674,13 @@ const CustomerTable = () => {
   }
 
   const loadCustomerTransactions = async () => {
-    if (!selectedCustomer || !selectedNetwork) return
-    
+    if (!selectedCustomer || !selectedNetworkId) return
+
     setIsLoadingTransactions(true)
     try {
       const response = await CustomerService.getTransactions(
         selectedCustomer.id,
-        selectedNetwork,
+        selectedNetworkId,
         1,
         50
       )
@@ -649,11 +694,11 @@ const CustomerTable = () => {
   }
 
   const loadCustomerBalance = async () => {
-    if (!selectedCustomer || !selectedNetwork) return
-    
+    if (!selectedCustomer || !selectedNetworkId) return
+
     setIsLoadingBalance(true)
     try {
-      const balanceInfo = await CustomerService.getBonusBalance(selectedCustomer.id, selectedNetwork)
+      const balanceInfo = await CustomerService.getBonusBalance(selectedCustomer.id, selectedNetworkId)
       setCustomerBalanceInfo(balanceInfo)
     } catch (error) {
       console.error('Error loading balance:', error)
@@ -663,10 +708,23 @@ const CustomerTable = () => {
     }
   }
 
-  const handleNetworkChange = (networkId: string) => {
-    setSelectedNetwork(networkId)
+  const handleNetworkSelect = (networkId: string) => {
+    setSelectedNetworkId(networkId)
+    setShowNetworkSelector(false)
     setPage(1)
     setSelectedCustomers(new Set())
+  }
+
+  const handleChangeNetworkClick = () => {
+    setShowNetworkSelector(true)
+  }
+
+  const handleClearNetwork = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEYS.SELECTED_NETWORK)
+    }
+    setSelectedNetworkId(null)
+    setShowNetworkSelector(true)
   }
 
   const handleSearch = (e: React.FormEvent) => {
@@ -694,19 +752,19 @@ const CustomerTable = () => {
 
   const handleDiscountSave = async (restaurantId: string) => {
     if (!selectedCustomer) return
-    
+
     const value = tempDiscountValue[restaurantId]
     if (!value || isNaN(Number(value))) return
-    
+
     const discount = Math.min(50, Math.max(0, parseInt(value)))
-    
+
     try {
       await CustomerService.setPersonalDiscount(selectedCustomer.id, restaurantId, discount)
-      
+
       setCustomerDiscounts(prev => {
         const existing = prev.find(d => d.restaurantId === restaurantId)
         if (existing) {
-          return prev.map(d => 
+          return prev.map(d =>
             d.restaurantId === restaurantId ? { ...d, discount } : d
           )
         } else {
@@ -738,10 +796,10 @@ const CustomerTable = () => {
 
   const handleDeleteDiscount = async (restaurantId: string) => {
     if (!selectedCustomer) return
-    
+
     try {
       await CustomerService.setPersonalDiscount(selectedCustomer.id, restaurantId, 0)
-      
+
       setCustomerDiscounts(prev => prev.filter(d => d.restaurantId !== restaurantId))
       setDeleteDiscountConfirm(null)
       toast.success(t.discountDeleted)
@@ -753,15 +811,15 @@ const CustomerTable = () => {
 
   const handleQuickDiscount = async (restaurantId: string, discount: number) => {
     if (!selectedCustomer) return
-    
+
     try {
       await CustomerService.setPersonalDiscount(selectedCustomer.id, restaurantId, discount)
-      
+
       setCustomerDiscounts(prev => {
         const existing = prev.find(d => d.restaurantId === restaurantId)
         const restaurant = restaurants?.find(r => r.id === restaurantId)
         if (existing) {
-          return prev.map(d => 
+          return prev.map(d =>
             d.restaurantId === restaurantId ? { ...d, discount } : d
           )
         } else {
@@ -791,9 +849,9 @@ const CustomerTable = () => {
       const promises = restaurants.map(restaurant =>
         CustomerService.setPersonalDiscount(selectedCustomer.id, restaurant.id, globalDiscount)
       )
-      
+
       await Promise.all(promises)
-      
+
       const newDiscounts = restaurants.map(restaurant => ({
         id: `temp-${restaurant.id}`,
         customerId: selectedCustomer.id,
@@ -803,7 +861,7 @@ const CustomerTable = () => {
         createdAt: new Date(),
         updatedAt: new Date()
       }))
-      
+
       setCustomerDiscounts(newDiscounts)
       setIsApplyAllDialogOpen(false)
       toast.success(t.appliedToAll)
@@ -826,11 +884,11 @@ const CustomerTable = () => {
 
   const handleSaveCustomerInfo = async () => {
     if (!selectedCustomer) return
-    
+
     try {
       // Здесь должен быть вызов API для обновления информации о клиенте
       // await CustomerService.updateCustomer(selectedCustomer.id, editedCustomer)
-      
+
       setSelectedCustomer(prev => prev ? { ...prev, ...editedCustomer } : null)
       setIsEditingInfo(false)
       toast.success(t.infoUpdated)
@@ -841,23 +899,23 @@ const CustomerTable = () => {
   }
 
   const handleBalanceAction = async () => {
-    if (!selectedCustomer || !selectedNetwork || !balanceAmount) return
-    
+    if (!selectedCustomer || !selectedNetworkId || !balanceAmount) return
+
     try {
       let transaction: BonusTransactionDto
-      
+
       switch (balanceAction) {
         case 'earn':
           transaction = await CustomerService.earnBonusPoints(
             selectedCustomer.id,
-            selectedNetwork,
+            selectedNetworkId,
             balanceAmount,
           )
           break
         case 'spend':
           transaction = await CustomerService.spendBonusPoints(
             selectedCustomer.id,
-            selectedNetwork,
+            selectedNetworkId,
             balanceAmount,
           )
           break
@@ -868,31 +926,31 @@ const CustomerTable = () => {
           }
           transaction = await CustomerService.adjustBonusBalance(
             selectedCustomer.id,
-            selectedNetwork,
+            selectedNetworkId,
             balanceAmount,
             balanceReason
           )
           break
       }
-      
+
       // Обновляем информацию о балансе и транзакциях
       await Promise.all([
         loadCustomerTransactions(),
         loadCustomerBalance()
       ])
-      
+
       // Обновляем данные клиента в списке
       if (customersData) {
-        mutate(`customers-network-${selectedNetwork}-page-${page}-limit-${limit}`)
+        mutate(`customers-network-${selectedNetworkId}-page-${page}-limit-${limit}`)
       }
-      
+
       // Сбрасываем форму
       setBalanceAmount(0)
       setBalanceReason('')
       setTransactionOrderId('')
       setTransactionDescription('')
       setIsBalanceDialogOpen(false)
-      
+
       toast.success(t.transactionSuccess)
     } catch (error) {
       console.error('Error performing balance action:', error)
@@ -919,7 +977,7 @@ const CustomerTable = () => {
 
   const handleSelectAll = () => {
     if (!customersData?.data) return
-    
+
     if (selectedCustomers.size === customersData.data.length) {
       setSelectedCustomers(new Set())
     } else {
@@ -930,25 +988,25 @@ const CustomerTable = () => {
 
   // Функция очистки всех сохраненных фильтров
   const handleClearAllStorage = () => {
-    if (window.confirm(language === 'ru' 
-      ? 'Очистить все сохраненные фильтры и настройки?' 
+    if (window.confirm(language === 'ru'
+      ? 'Очистить все сохраненные фильтры и настройки?'
       : 'გაასუფთავოთ ყველა შენახული ფილტრი და პარამეტრი?')) {
-      
+
       localStorage.removeItem(STORAGE_KEYS.SELECTED_NETWORK)
       localStorage.removeItem(STORAGE_KEYS.SEARCH_PHONE)
       localStorage.removeItem(STORAGE_KEYS.SEARCH_NAME)
       localStorage.removeItem(STORAGE_KEYS.PAGE)
       localStorage.removeItem(STORAGE_KEYS.TRANSACTION_FILTERS)
-      
-      setSelectedNetwork('')
+
+      setSelectedNetworkId(null)
       setSearchPhone('')
       setSearchName('')
       setPage(1)
       setTransactionFilters({})
       setSelectedCustomers(new Set())
-      
-      toast.success(language === 'ru' 
-        ? 'Фильтры очищены' 
+
+      toast.success(language === 'ru'
+        ? 'Фильтры очищены'
         : 'ფილტრები გასუფთავდა')
     }
   }
@@ -1026,174 +1084,334 @@ const CustomerTable = () => {
     return true
   })
 
-  if (networksError || customersError) {
-    return <div className="text-red-500">{t.loadingError}</div>
-  }
-
   const filteredCustomers = customersData?.data.filter(customer => {
     const matchesPhone = !searchPhone || customer.phone.includes(searchPhone.replace(/\D/g, ''))
-    const matchesName = !searchName || 
+    const matchesName = !searchName ||
       customer.firstName?.toLowerCase().includes(searchName.toLowerCase()) ||
       customer.lastName?.toLowerCase().includes(searchName.toLowerCase())
     return matchesPhone && matchesName
   }) || []
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold">{t.title}</h1>
-            <p className="text-muted-foreground">
-              {selectedNetwork && userNetworks?.find(n => n.id === selectedNetwork)?.name}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {userNetworks && userNetworks.length > 0 && (
-              <Select value={selectedNetwork} onValueChange={handleNetworkChange}>
-                <SelectTrigger className="w-[200px]">
-                  <SelectValue placeholder={t.selectNetwork} />
-                </SelectTrigger>
-                <SelectContent>
-                  {userNetworks.map((network: Network) => (
-                    <SelectItem key={network.id} value={network.id}>
-                      {network.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+  // Получаем текущую сеть
+  const currentNetwork = networks.find(n => n.id === selectedNetworkId)
+
+  // Если загружаются сети и нет выбранной сети
+  if (isNetworksLoading && !selectedNetworkId) {
+    return (
+      <div className="p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i}>
+              <CardHeader>
+                <div className="h-6 bg-gray-200 rounded w-3/4 mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Если показываем селектор сетей или нет выбранной сети
+  if (showNetworkSelector || !selectedNetworkId) {
+    return (
+      <div className="p-4">
+        <div className="mb-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold mb-2">
+              {t.selectNetwork}
+            </h2>
+            {selectedNetworkId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowNetworkSelector(false)}
+                className="h-auto p-0 text-muted-foreground hover:text-foreground flex items-center gap-1"
+              >
+                <X className="h-4 w-4" />
+                {t.hideSelector}
+              </Button>
             )}
           </div>
+          <p className="text-muted-foreground">
+            {t.selectNetworkDescription}
+          </p>
         </div>
 
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1">
-            <form onSubmit={handleSearch} className="flex gap-2">
-              <Input
-                placeholder={t.phoneSearch}
-                value={searchPhone}
-                onChange={(e) => setSearchPhone(e.target.value)}
-              />
-            </form>
-          </div>
-          <div className="flex items-end gap-2">
-            <Button variant="outline" onClick={handleClearFilters}>
-              {t.clearFilters}
-            </Button>
-          </div>
-        </div>
-
-        {/* Результаты поиска */}
-        {searchResults && searchResults.length > 0 && (
-          <Card>
+        {selectedNetworkId && currentNetwork && (
+          <Card className="mb-6">
             <CardHeader>
-              <CardTitle>{t.searchResults}</CardTitle>
-              <CardDescription>
-                {language === 'ru' 
-                  ? 'Найдено в других сетях' 
-                  : 'ნაპოვნია სხვა ქსელებში'}
-              </CardDescription>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Store className="h-5 w-5" />
+                {t.currentNetwork}
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <ScrollArea className="h-[200px]">
-                <div className="space-y-2">
-                  {searchResults.map((customer) => (
-                    <div
-                      key={customer.id}
-                      className="flex items-center justify-between p-3 border rounded-lg"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div>
-                          <div className="text-sm text-muted-foreground">
-                            {formatPhone(customer.phone)}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        {!customer.networks?.some(n => n.networkId === selectedNetwork) && (
-                          <TooltipProvider>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => {
-                                    toast.success(t.addedToNetwork)
-                                  }}
-                                >
-                                  <PlusIcon className="h-4 w-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>{t.addToNetwork}</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        )}
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEditDiscounts(customer)}
-                              >
-                                <SettingsIcon className="h-4 w-4" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>{t.settings}</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Выбранные клиенты */}
-        {selectedCustomers.size > 0 && (
-          <Card>
-            <CardContent className="pt-6">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <Badge variant="secondary">
-                    {t.selectedCount.replace('{count}', selectedCustomers.size.toString())}
-                  </Badge>
-                  <Button variant="outline" size="sm" onClick={() => setSelectedCustomers(new Set())}>
-                    {t.clearSelection}
-                  </Button>
+                <div>
+                  <p className="font-medium">{currentNetwork.name}</p>
+                  {currentNetwork.description && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {currentNetwork.description}
+                    </p>
+                  )}
                 </div>
-                <div className="flex gap-2">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        {t.bulkOperations}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent>
-                      <DropdownMenuLabel>{t.bulkOperations}</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem>
-                        <BellIcon className="mr-2 h-4 w-4" />
-                        {t.sendBulkNotification}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <DownloadIcon className="mr-2 h-4 w-4" />
-                        {t.exportSelected}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                <Badge variant="outline">
+                  {currentNetwork.restaurants?.length}{t.networkRestaurants}
+                </Badge>
               </div>
             </CardContent>
           </Card>
         )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {networks.map((network) => (
+            <Card
+              key={network.id}
+              className={`cursor-pointer hover:shadow-md transition-shadow hover:border-primary/50 ${network.id === selectedNetworkId
+                ? 'border-primary border-2 bg-primary/5'
+                : ''
+                }`}
+              onClick={() => handleNetworkSelect(network.id)}
+            >
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">{network.name}</CardTitle>
+                  {network.id === selectedNetworkId && (
+                    <Badge className="bg-primary text-primary-foreground">
+                      {language === 'ru' ? 'Текущая' : 'მიმდინარე'}
+                    </Badge>
+                  )}
+                </div>
+                <CardDescription>
+                  {language === 'ru' ? 'Сеть ресторанов' : 'რესტორნების ქსელი'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      {language === 'ru' ? 'Рестораны:' : 'რესტორნები:'}
+                    </span>
+                    <Badge variant="outline">
+                      {network.restaurants?.length || 0}
+                    </Badge>
+                  </div>
+                  {network.description && (
+                    <p className="text-sm text-muted-foreground line-clamp-2 mt-2">
+                      {network.description}
+                    </p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {networks.length === 0 && (
+          <div className="text-center py-12">
+            <Layers className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">
+              {t.noNetworks}
+            </h3>
+            <p className="text-muted-foreground mb-4">
+              {t.noNetworksDescription}
+            </p>
+          </div>
+        )}
+
+        {selectedNetworkId && (
+          <div className="mt-6 pt-6 border-t">
+            <Button
+              variant="outline"
+              onClick={handleClearNetwork}
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              {t.clearNetworkSelection}
+            </Button>
+          </div>
+        )}
       </div>
+    );
+  }
+
+  if (networksError || customersError) {
+    return <div className="text-red-500">{t.loadingError}</div>
+  }
+
+  return (
+    <div className="p-4 space-y-4">
+      {/* Хлебные крошки и информация о сети */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            {networks.length > 1 && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleChangeNetworkClick}
+                  className="h-auto p-0 text-muted-foreground hover:text-foreground flex items-center gap-1"
+                >
+                  <Store className="h-3 w-3" />
+                  {t.changeNetwork}
+                </Button>
+                <span className="text-muted-foreground">/</span>
+              </>
+            )}
+            <h2 className="text-xl font-semibold">
+              {currentNetwork?.name}
+            </h2>
+          </div>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-muted-foreground">
+              {t.networkManagement}
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => window.location.reload()}
+              className="h-6 w-6 p-0"
+              title={t.refresh}
+            >
+              <RefreshCw className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col md:flex-row gap-4">
+        <div className="flex-1">
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <Input
+              placeholder={t.phoneSearch}
+              value={searchPhone}
+              onChange={(e) => setSearchPhone(e.target.value)}
+            />
+          </form>
+        </div>
+        <div className="flex items-end gap-2">
+          <Button variant="outline" onClick={handleClearFilters}>
+            {t.clearFilters}
+          </Button>
+        </div>
+      </div>
+
+      {/* Результаты поиска */}
+      {searchResults && searchResults.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t.searchResults}</CardTitle>
+            <CardDescription>
+              {language === 'ru'
+                ? 'Найдено в других сетях'
+                : 'ნაპოვნია სხვა ქსელებში'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[200px]">
+              <div className="space-y-2">
+                {searchResults.map((customer) => (
+                  <div
+                    key={customer.id}
+                    className="flex items-center justify-between p-3 border rounded-lg"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div>
+                        <div className="text-sm text-muted-foreground">
+                          {formatPhone(customer.phone)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      {!customer.networks?.some(n => n.networkId === selectedNetworkId) && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  toast.success(t.addedToNetwork)
+                                }}
+                              >
+                                <PlusIcon className="h-4 w-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{t.addToNetwork}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditDiscounts(customer)}
+                            >
+                              <SettingsIcon className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{t.settings}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Выбранные клиенты */}
+      {selectedCustomers.size > 0 && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <Badge variant="secondary">
+                  {t.selectedCount.replace('{count}', selectedCustomers.size.toString())}
+                </Badge>
+                <Button variant="outline" size="sm" onClick={() => setSelectedCustomers(new Set())}>
+                  {t.clearSelection}
+                </Button>
+              </div>
+              <div className="flex gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      {t.bulkOperations}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuLabel>{t.bulkOperations}</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem>
+                      <BellIcon className="mr-2 h-4 w-4" />
+                      {t.sendBulkNotification}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <DownloadIcon className="mr-2 h-4 w-4" />
+                      {t.exportSelected}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="rounded-md border">
         <Table>
@@ -1237,16 +1455,15 @@ const CustomerTable = () => {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <div 
-                        className={`w-2 h-2 rounded-full ${
-                          customer.lastLogin && 
+                      <div
+                        className={`w-2 h-2 rounded-full ${customer.lastLogin &&
                           new Date(customer.lastLogin).getTime() > Date.now() - 30 * 24 * 60 * 60 * 1000
-                            ? 'bg-green-500'
-                            : 'bg-gray-300'
-                        }`}
+                          ? 'bg-green-500'
+                          : 'bg-gray-300'
+                          }`}
                       />
                       <span className="text-sm">
-                        {customer.lastLogin 
+                        {customer.lastLogin
                           ? formatDate(customer.lastLogin)
                           : language === 'ru' ? 'Не было' : 'არ ყოფილა'
                         }
@@ -1284,7 +1501,7 @@ const CustomerTable = () => {
       {customersData && customersData.pagination.totalPages > 1 && (
         <div className="flex items-center justify-between mt-4">
           <div className="text-sm text-muted-foreground">
-            {language === 'ru' 
+            {language === 'ru'
               ? `Показано ${(page - 1) * limit + 1}-${Math.min(page * limit, customersData.pagination.total)} из ${customersData.pagination.total}`
               : `ნაჩვენებია ${(page - 1) * limit + 1}-${Math.min(page * limit, customersData.pagination.total)} ${customersData.pagination.total}-დან`}
           </div>
@@ -1368,7 +1585,7 @@ const CustomerTable = () => {
                 <TabsTrigger value="bonus">{t.balanceManagement}</TabsTrigger>
                 <TabsTrigger value="transactions">{t.transactionsHistory}</TabsTrigger>
               </TabsList>
-              
+
               {/* Вкладка скидок */}
               <TabsContent value="discounts" className="space-y-4">
                 <div className="space-y-4">
@@ -1415,7 +1632,7 @@ const CustomerTable = () => {
                           </Button>
                         </div>
                       </div>
-                      
+
                       <ScrollArea className="h-[400px] pr-4">
                         <div className="space-y-3">
                           {restaurants.map((restaurant) => {
@@ -1453,7 +1670,7 @@ const CustomerTable = () => {
                                       <Button
                                         size="sm"
                                         onClick={() => handleDiscountSave(restaurant.id)}
-                                        disabled={!tempDiscountValue[restaurant.id] || 
+                                        disabled={!tempDiscountValue[restaurant.id] ||
                                           isNaN(Number(tempDiscountValue[restaurant.id])) ||
                                           Number(tempDiscountValue[restaurant.id]) < 0 ||
                                           Number(tempDiscountValue[restaurant.id]) > 50
@@ -1573,7 +1790,7 @@ const CustomerTable = () => {
                     </CardHeader>
                     <CardContent>
                       <div className="text-xl font-semibold">
-                        {customerTransactions.length > 0 
+                        {customerTransactions.length > 0
                           ? formatDate(customerTransactions[0].createdAt)
                           : language === 'ru' ? 'Нет транзакций' : 'ტრანზაქციები არ არის'
                         }
@@ -1615,7 +1832,7 @@ const CustomerTable = () => {
                       </CardContent>
                     </Card>
 
-                    
+
                   </div>
                 </div>
               </TabsContent>
@@ -1632,24 +1849,24 @@ const CustomerTable = () => {
                         onChange={(e) => setTransactionFilters(prev => ({ ...prev, search: e.target.value }))}
                         className="w-48"
                       />
-                    <Select
-                      value={transactionFilters.type || ""}
-                      onValueChange={(value) => setTransactionFilters(prev => ({ 
-                        ...prev, 
-                        type: value === "all" ? undefined : value 
-                      }))}
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue placeholder={t.filterByType} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">{t.allTypes}</SelectItem>
-                        <SelectItem value="EARN">{t.earn}</SelectItem>
-                        <SelectItem value="SPEND">{t.spend}</SelectItem>
-                        <SelectItem value="ADJUSTMENT">{t.adjustment}</SelectItem>
-                        <SelectItem value="EXPIRATION">{t.expiration}</SelectItem>
-                      </SelectContent>
-                    </Select>
+                      <Select
+                        value={transactionFilters.type || ""}
+                        onValueChange={(value) => setTransactionFilters(prev => ({
+                          ...prev,
+                          type: value === "all" ? undefined : value
+                        }))}
+                      >
+                        <SelectTrigger className="w-32">
+                          <SelectValue placeholder={t.filterByType} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t.allTypes}</SelectItem>
+                          <SelectItem value="EARN">{t.earn}</SelectItem>
+                          <SelectItem value="SPEND">{t.spend}</SelectItem>
+                          <SelectItem value="ADJUSTMENT">{t.adjustment}</SelectItem>
+                          <SelectItem value="EXPIRATION">{t.expiration}</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button variant="outline" size="sm">
@@ -1795,8 +2012,8 @@ const CustomerTable = () => {
               {balanceAction === 'spend' && <TrendingDownIcon className="h-5 w-5 text-red-500" />}
               {balanceAction === 'adjust' && <EditIcon className="h-5 w-5 text-blue-500" />}
               {balanceAction === 'earn' ? t.addPoints :
-               balanceAction === 'spend' ? t.spendPoints :
-               t.adjustPoints}
+                balanceAction === 'spend' ? t.spendPoints :
+                  t.adjustPoints}
             </DialogTitle>
             <div>
               {selectedCustomer && (
@@ -1812,8 +2029,8 @@ const CustomerTable = () => {
             <div className="space-y-2">
               <Label htmlFor="amount">
                 {balanceAction === 'earn' ? t.addPoints :
-                 balanceAction === 'spend' ? t.spendPoints :
-                 t.adjustPoints}
+                  balanceAction === 'spend' ? t.spendPoints :
+                    t.adjustPoints}
               </Label>
               <Input
                 id="amount"
@@ -1851,8 +2068,8 @@ const CustomerTable = () => {
             </Button>
             <Button onClick={handleBalanceAction} disabled={!balanceAmount || (balanceAction === 'adjust' && !balanceReason)}>
               {balanceAction === 'earn' ? t.addPoints :
-               balanceAction === 'spend' ? t.spendPoints :
-               t.adjustPoints}
+                balanceAction === 'spend' ? t.spendPoints :
+                  t.adjustPoints}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import useSWR, { mutate } from 'swr'
-import { PlusIcon, PencilIcon, TrashIcon, Check, ChevronsUpDown, CalendarIcon } from 'lucide-react'
+import { PlusIcon, PencilIcon, TrashIcon, Check, ChevronsUpDown, CalendarIcon, Store, RefreshCw, X, Layers } from 'lucide-react'
 import { CreateDiscountDto, DiscountFormState, DiscountResponseDto, DiscountService } from '@/lib/api/discount.service'
 import { RestaurantService } from '@/lib/api/restaurant.service'
+import { NetworkService } from '@/lib/api/network.service'
+import { ProductService } from '@/lib/api/product.service'
 import {
   Table,
   TableBody,
@@ -46,7 +48,6 @@ import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useLanguageStore } from '@/lib/stores/language-store'
 import { toast } from 'sonner'
-import { ProductService } from '@/lib/api/product.service'
 import { Switch } from '@/components/ui/switch'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import {
@@ -54,6 +55,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useAuth } from '@/lib/hooks/useAuth'
+import { useRouter } from 'next/navigation'
 
 type DiscountType = "FIXED" | "PERCENTAGE";
 type DiscountTargetType = "ALL" | "PRODUCT";
@@ -66,6 +70,13 @@ interface Product {
 interface Restaurant {
   id: string;
   title: string;
+}
+
+interface Network {
+  id: string;
+  name: string;
+  description?: string;
+  restaurants?: Restaurant[];
 }
 
 interface Translations {
@@ -125,7 +136,23 @@ const translations: Translations = {
     restaurantsRequired: 'Необходимо выбрать хотя бы один ресторан',
     datesRequired: 'Необходимо указать даты начала и окончания',
     invalidDateRange: 'Дата окончания должна быть после даты начала',
-    invalidTimeRange: 'Время окончания должно быть после времени начала'
+    invalidTimeRange: 'Время окончания должно быть после времени начала',
+    selectNetwork: 'Выберите сеть',
+    selectNetworkDescription: 'Выберите сеть для управления скидками',
+    noNetworks: 'Нет доступных сетей',
+    noNetworksDescription: 'У вас нет доступа к каким-либо сетям ресторанов',
+    networkManagement: 'Управление скидками сети',
+    loading: 'Загрузка...',
+    changeNetwork: 'Сменить сеть',
+    currentNetwork: 'Текущая сеть',
+    hideSelector: 'Скрыть выбор сети',
+    clearNetworkSelection: 'Очистить выбор сети',
+    refresh: 'Обновить',
+    networkRestaurants: `ресторан(ов)`,
+    discountsCount: `скидка(ок)`,
+    backToNetworks: 'Сети',
+    viewDiscounts: 'Просмотр скидок',
+    manageNetworks: 'Управление сетями'
   },
   ka: {
     title: 'სახელი',
@@ -177,7 +204,23 @@ const translations: Translations = {
     restaurantsRequired: 'მინიმუმ ერთი რესტორანი უნდა აირჩიოთ',
     datesRequired: 'დაწყების და დასრულების თარიღები აუცილებელია',
     invalidDateRange: 'დასრულების თარიღი უნდა იყოს დაწყების თარიღის შემდეგ',
-    invalidTimeRange: 'დასრულების დრო უნდა იყოს დაწყების დროის შემდეგ'
+    invalidTimeRange: 'დასრულების დრო უნდა იყოს დაწყების დროის შემდეგ',
+    selectNetwork: 'აირჩიეთ ქსელი',
+    selectNetworkDescription: 'აირჩიეთ ქსელი ფასდაკლების მართვისთვის',
+    noNetworks: 'წვდომადი ქსელები არ არის',
+    noNetworksDescription: 'თქვენ არ გაქვთ წვდომა რესტორნების ქსელებზე',
+    networkManagement: 'ქსელის ფასდაკლებების მართვა',
+    loading: 'იტვირთება...',
+    changeNetwork: 'ქსელის შეცვლა',
+    currentNetwork: 'მიმდინარე ქსელი',
+    hideSelector: 'ქსელის არჩევის დამალვა',
+    clearNetworkSelection: 'ქსელის არჩევის გასუფთავება',
+    refresh: 'განახლება',
+    networkRestaurants: `რესტორნი`,
+    discountsCount: `ფასდაკლება`,
+    backToNetworks: 'ქსელები',
+    viewDiscounts: 'ფასდაკლების ნახვა',
+    manageNetworks: 'ქსელების მართვა'
   }
 };
 
@@ -204,14 +247,14 @@ const DatePickerWithTime = ({
     const [hours, minutes] = timeValue.split(':').map(Number);
     const newDate = new Date(selectedDate);
     newDate.setHours(hours, minutes);
-    
+
     onChange(newDate);
   };
 
   const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = e.target.value;
     setTimeValue(time);
-    
+
     if (date) {
       const [hours, minutes] = time.split(':').map(Number);
       const newDate = new Date(date);
@@ -297,6 +340,8 @@ const SearchableSelect = ({
     }
   };
 
+  const t = translations[useLanguageStore.getState().language];
+
   return (
     <div className="space-y-1">
       <Popover open={open} onOpenChange={setOpen}>
@@ -308,9 +353,9 @@ const SearchableSelect = ({
             role="combobox"
             aria-expanded={open}
           >
-            {value.length > 0 
-              ? multiple 
-                ? `${value.length} ${translations[useLanguageStore.getState().language].selected}`
+            {value.length > 0
+              ? multiple
+                ? `${value.length} ${t.selected}`
                 : options.find(opt => opt.id === value[0])?.label || placeholder
               : placeholder}
             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -318,8 +363,8 @@ const SearchableSelect = ({
         </PopoverTrigger>
         <PopoverContent className="w-full p-0">
           <Command shouldFilter={false}>
-            <CommandInput 
-              placeholder={searchPlaceholder} 
+            <CommandInput
+              placeholder={searchPlaceholder}
               value={searchValue}
               onValueChange={setSearchValue}
             />
@@ -352,11 +397,21 @@ const SearchableSelect = ({
   );
 };
 
-const DiscountsTable = () => {
+const STORAGE_KEY = 'selected_network_id';
+
+const DiscountsTable: React.FC = () => {
   const { language } = useLanguageStore();
+  const { user } = useAuth();
   const t = translations[language];
   const locale = language === 'ka' ? ka : ru;
 
+  // Состояние для выбора сети
+  const [networks, setNetworks] = useState<Network[]>([]);
+  const [selectedNetworkId, setSelectedNetworkId] = useState<string | null>(null);
+  const [showNetworkSelector, setShowNetworkSelector] = useState(false);
+  const [isNetworksLoading, setIsNetworksLoading] = useState(true);
+
+  // Существующие состояния
   const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false);
   const [editingDiscount, setEditingDiscount] = useState<DiscountResponseDto | null>(null);
   const [formData, setFormData] = useState<Partial<DiscountFormState>>({
@@ -378,9 +433,70 @@ const DiscountsTable = () => {
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  const { data: discounts, error: discountsError, isLoading } = useSWR<DiscountResponseDto[]>('discounts', () => DiscountService.getAll());
-  const { data: restaurants, error: restaurantsError } = useSWR<Restaurant[]>('restaurants', () => RestaurantService.getAll());
-  const { data: products } = useSWR<Product[]>('products', () => ProductService.getAll());
+  // Загрузка сохраненной сети из localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedNetworkId = localStorage.getItem(STORAGE_KEY);
+      if (savedNetworkId) {
+        setSelectedNetworkId(savedNetworkId);
+      }
+    }
+  }, []);
+
+  // Сохранение выбранной сети в localStorage
+  useEffect(() => {
+    if (selectedNetworkId && typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, selectedNetworkId);
+    }
+  }, [selectedNetworkId]);
+
+  // Загрузка сетей пользователя
+  useEffect(() => {
+    const loadNetworks = async () => {
+      setIsNetworksLoading(true);
+      try {
+        if (user?.id) {
+          const networksData = await NetworkService.getByUser(user.id);
+          setNetworks(networksData);
+
+          // Если есть сохраненная сеть, проверяем доступность
+          if (selectedNetworkId) {
+            const networkExists = networksData.some(n => n.id === selectedNetworkId);
+            if (!networkExists && networksData.length > 0) {
+              // Если сохраненной сети нет в доступных, выбираем первую
+              setSelectedNetworkId(networksData[0].id);
+            }
+          } else if (networksData.length === 1) {
+            // Если у пользователя только одна сеть, выбираем ее автоматически
+            setSelectedNetworkId(networksData[0].id);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching networks:', error);
+        toast.error(language === 'ru' ? 'Ошибка загрузки сетей' : 'ქსელების ჩატვირთვის შეცდომა');
+      } finally {
+        setIsNetworksLoading(false);
+      }
+    };
+
+    loadNetworks();
+  }, [user?.id, language]);
+  const router = useRouter()
+  // Загрузка скидок при выборе сети
+  const { data: discounts, error: discountsError, isLoading: discountsLoading, mutate } = useSWR<DiscountResponseDto[]>(
+    selectedNetworkId ? `discounts-network-${selectedNetworkId}` : null,
+    () => selectedNetworkId ? DiscountService.getByNetwork(selectedNetworkId) : []
+  );
+
+  const { data: restaurants, error: restaurantsError } = useSWR<Restaurant[]>(
+    selectedNetworkId ? `restaurants-network-${selectedNetworkId}` : null,
+    () => selectedNetworkId ? RestaurantService.getByNetwork(selectedNetworkId) : []
+  );
+
+  const { data: products } = useSWR<Product[]>(
+    selectedNetworkId ? `products-network-${selectedNetworkId}` : null,
+    () => selectedNetworkId ? ProductService.getByNetwork(selectedNetworkId) : []
+  );
 
   const targetTypeOptions = [
     { value: 'ALL', label: t.all },
@@ -389,56 +505,56 @@ const DiscountsTable = () => {
 
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
-    
+
     if (!formData.title) {
       errors.title = t.requiredField;
     }
-    
+
     if (!formData.startDate) {
       errors.startDate = t.requiredField;
     }
-    
+
     if (!formData.endDate) {
       errors.endDate = t.requiredField;
     }
-    
+
     if (formData.startDate && formData.endDate && formData.startDate >= formData.endDate) {
       errors.endDate = t.invalidDateRange;
     }
-    
+
     if (formData.startTime !== undefined && formData.endTime !== undefined && formData.startTime >= formData.endTime) {
       errors.endTime = t.invalidTimeRange;
     }
-    
+
     if (!formData.restaurantIds || formData.restaurantIds.length === 0) {
       errors.restaurantIds = t.restaurantsRequired;
     }
-    
+
     if (formData.targetType === 'PRODUCT' && (!formData.productIds || formData.productIds.length === 0)) {
       errors.productIds = t.requiredField;
     }
-    
+
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const { name, value } = e.target;
-    setFormData((prev : any) => ({ 
-      ...prev, 
+    setFormData((prev: any) => ({
+      ...prev,
       [name]: name === 'value' || name === 'minOrderAmount' || name === 'maxUses' || name === 'startTime' || name === 'endTime'
-        ? Number(value) 
-        : value 
+        ? Number(value)
+        : value
     }));
     setFormErrors(prev => ({ ...prev, [name]: '' }));
   };
 
   const handleSelectChange = (name: string, value: any): void => {
-    setFormData((prev : any) => ({ ...prev, [name]: value }));
+    setFormData((prev: any) => ({ ...prev, [name]: value }));
     setFormErrors(prev => ({ ...prev, [name]: '' }));
-    
+
     if (name === 'targetType') {
-      setFormData((prev : any) => ({
+      setFormData((prev: any) => ({
         ...prev,
         productIds: []
       }));
@@ -446,7 +562,7 @@ const DiscountsTable = () => {
   };
 
   const handleDateChange = (name: string, date: Date | undefined): void => {
-    setFormData((prev : any) => ({ ...prev, [name]: date }));
+    setFormData((prev: any) => ({ ...prev, [name]: date }));
     setFormErrors(prev => ({ ...prev, [name]: '' }));
   };
 
@@ -475,10 +591,10 @@ const DiscountsTable = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) return;
 
-    const restaurantIds = Array.isArray(formData.restaurantIds) 
+    const restaurantIds = Array.isArray(formData.restaurantIds)
       ? formData.restaurantIds.filter(Boolean)
       : [];
 
@@ -488,6 +604,7 @@ const DiscountsTable = () => {
 
     const requestData: CreateDiscountDto = {
       ...formData,
+      networkId: selectedNetworkId as string,
       restaurantIds: restaurantIds.length > 0 ? restaurantIds : undefined,
       productIds,
       startDate: formData.startDate,
@@ -502,8 +619,8 @@ const DiscountsTable = () => {
         await DiscountService.create(requestData);
         toast.success(language === 'ru' ? 'Скидка успешно создана' : 'ფასდაკლება წარმატებით შეიქმნა');
       }
-      
-      mutate('discounts');
+
+      mutate();
       setIsDialogOpen(false);
       setEditingDiscount(null);
       resetForm();
@@ -537,7 +654,7 @@ const DiscountsTable = () => {
   const handleDelete = async (id: string): Promise<void> => {
     try {
       await DiscountService.delete(id);
-      mutate('discounts');
+      mutate();
       toast.success(language === 'ru' ? 'Скидка успешно удалена' : 'ფასდაკლება წარმატებით წაიშალა');
     } catch (error) {
       console.error('Error deleting discount:', error);
@@ -548,10 +665,10 @@ const DiscountsTable = () => {
   const toggleStatus = async (id: string, isActive: boolean): Promise<void> => {
     try {
       await DiscountService.update(id, { isActive: !isActive });
-      mutate('discounts');
+      mutate();
       toast.success(
-        language === 'ru' 
-          ? `Скидка ${!isActive ? 'активирована' : 'деактивирована'}` 
+        language === 'ru'
+          ? `Скидка ${!isActive ? 'активирована' : 'деактивирована'}`
           : `ფასდაკლება ${!isActive ? 'გააქტიურდა' : 'გათიშულია'}`
       );
     } catch (error) {
@@ -560,257 +677,223 @@ const DiscountsTable = () => {
     }
   };
 
-  if (discountsError || restaurantsError) {
-    return <div className="text-red-500">{t.loadingError}</div>;
+  const handleNetworkSelect = (networkId: string) => {
+    setSelectedNetworkId(networkId);
+    setShowNetworkSelector(false);
+    setFormData(prev => ({ ...prev, networkId }));
+  };
+
+  const handleChangeNetworkClick = () => {
+    setShowNetworkSelector(true);
+  };
+
+  const handleClearNetwork = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+    setSelectedNetworkId(null);
+    setShowNetworkSelector(true);
+  };
+
+  const refreshData = () => {
+    mutate();
+  };
+
+  // Получаем текущую сеть
+  const currentNetwork = networks.find(n => n.id === selectedNetworkId);
+
+  // Если загружаются сети и нет выбранной сети
+  if (isNetworksLoading && !selectedNetworkId) {
+    return (
+      <div className="p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i}>
+              <CardHeader>
+                <div className="h-6 bg-gray-200 rounded w-3/4 mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+              </CardHeader>
+              <CardContent>
+                <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
   }
 
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">{t.discountTitle}</h1>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => {
-              setEditingDiscount(null);
-              resetForm();
-            }}>
-              <PlusIcon className="mr-2 h-4 w-4" />
-              {t.addDiscount}
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[700px] overflow-y-auto max-h-[90vh]">
-            <DialogHeader>
-              <DialogTitle>
-                {editingDiscount ? t.editDiscount : t.addDiscount}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+  // Если показываем селектор сетей или нет выбранной сети
+  if (showNetworkSelector || !selectedNetworkId) {
+    return (
+      <div className="p-4">
+        <div className="mb-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold mb-2">
+              {t.selectNetwork}
+            </h2>
+            {selectedNetworkId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowNetworkSelector(false)}
+                className="h-auto p-0 text-muted-foreground hover:text-foreground flex items-center gap-1"
+              >
+                <X className="h-4 w-4" />
+                {t.hideSelector}
+              </Button>
+            )}
+          </div>
+          <p className="text-muted-foreground">
+            {t.selectNetworkDescription}
+          </p>
+        </div>
+
+        {selectedNetworkId && currentNetwork && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Store className="h-5 w-5" />
+                {t.currentNetwork}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
                 <div>
-                  <Label className="mb-2" htmlFor="title">{t.title}</Label>
-                  <Input
-                    id="title"
-                    name="title"
-                    value={formData.title}
-                    onChange={handleInputChange}
-                    required
-                    className={formErrors.title ? 'border-red-500' : ''}
-                  />
-                  {formErrors.title && (
-                    <p className="mt-1 text-sm text-red-500">{formErrors.title}</p>
+                  <p className="font-medium">{currentNetwork.name}</p>
+                  {currentNetwork.description && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {currentNetwork.description}
+                    </p>
                   )}
                 </div>
-                <div>
-                  <Label className="mb-2" htmlFor="type">{t.type}</Label>
-                  <Select
-                    value={formData.type}
-                    onValueChange={(value: DiscountType) => handleSelectChange('type', value)}
-                  >
-                    <SelectTrigger className='w-full'>
-                      <SelectValue placeholder={t.selectType} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="FIXED">{t.fixed}</SelectItem>
-                      <SelectItem value="PERCENTAGE">{t.percentage}</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <Badge variant="outline">
+                  {currentNetwork.restaurants?.length} {t.networkRestaurants}
+                </Badge>
               </div>
+            </CardContent>
+          </Card>
+        )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="mb-2" htmlFor="value">
-                    {t.value} ({formData.type === 'FIXED' ? '₽' : '%'})
-                  </Label>
-                  <Input
-                    id="value"
-                    name="value"
-                    type="number"
-                    value={formData.value}
-                    onChange={handleInputChange}
-                    required
-                    min="0"
-                  />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {networks.map((network) => (
+            <Card
+              key={network.id}
+              className={`cursor-pointer hover:shadow-md transition-shadow hover:border-primary/50 ${network.id === selectedNetworkId
+                ? 'border-primary border-2 bg-primary/5'
+                : ''
+                }`}
+              onClick={() => handleNetworkSelect(network.id)}
+            >
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">{network.name}</CardTitle>
+                  {network.id === selectedNetworkId && (
+                    <Badge className="bg-primary text-primary-foreground">
+                      {language === 'ru' ? 'Текущая' : 'მიმდინარე'}
+                    </Badge>
+                  )}
                 </div>
-                <div>
-                  <Label className="mb-2" htmlFor="targetType">{t.targetType}</Label>
-                  <Select
-                    value={formData.targetType}
-                    onValueChange={(value: DiscountTargetType) => handleSelectChange('targetType', value)}
-                  >
-                    <SelectTrigger className='w-full'>
-                      <SelectValue placeholder={t.selectTargetType} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {targetTypeOptions.map(option => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div>
-                <Label className="mb-2">{t.restaurants}</Label>
-                <SearchableSelect
-                  options={restaurants?.map(r => ({ id: r.id, label: r.title })) || []}
-                  value={formData.restaurantIds || []}
-                  onChange={(ids) => {
-                    handleSelectChange('restaurantIds', ids);
-                  }}
-                  placeholder={t.selectRestaurants}
-                  searchPlaceholder={t.searchPlaceholder}
-                  emptyText={t.noResults}
-                  error={formErrors.restaurantIds}
-                />
-              </div>
-
-              {formData.targetType === 'PRODUCT' && (
-                <div>
-                  <Label className="mb-2">{t.products}</Label>
-                  <SearchableSelect
-                    options={products?.map(p => ({ id: p.id, label: p.title })) || []}
-                    value={formData.productIds || []}
-                    onChange={(ids) => {
-                      handleSelectChange('productIds', ids);
-                    }}
-                    placeholder={t.selectProducts}
-                    searchPlaceholder={t.searchPlaceholder}
-                    emptyText={t.noResults}
-                    error={formErrors.productIds}
-                  />
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <Label>{t.activePeriod}</Label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="mb-2">{t.startDate}</Label>
-                    <DatePickerWithTime
-                      date={formData.startDate}
-                      onChange={(date) => handleDateChange('startDate', date)}
-                      placeholder={t.selectDate}
-                      locale={locale}
-                      error={formErrors.startDate}
-                    />
+                <CardDescription>
+                  {language === 'ru' ? 'Сеть ресторанов' : 'რესტორნების ქსელი'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      {language === 'ru' ? 'Рестораны:' : 'რესტორნები:'}
+                    </span>
+                    <Badge variant="outline">
+                      {network.restaurants?.length || 0}
+                    </Badge>
                   </div>
-                  <div>
-                    <Label className="mb-2">{t.endDate}</Label>
-                    <DatePickerWithTime
-                      date={formData.endDate}
-                      onChange={(date) => handleDateChange('endDate', date)}
-                      placeholder={t.selectDate}
-                      locale={locale}
-                      error={formErrors.endDate}
-                    />
-                  </div>
+                  {network.description && (
+                    <p className="text-sm text-muted-foreground line-clamp-2 mt-2">
+                      {network.description}
+                    </p>
+                  )}
                 </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="mb-2" htmlFor="startTime">{t.startTime}</Label>
-                    <Input
-                      id="startTime"
-                      name="startTime"
-                      type="number"
-                      min="0"
-                      max="23"
-                      value={formData.startTime}
-                      onChange={handleInputChange}
-                      placeholder="0-23"
-                    />
-                    {formErrors.startTime && (
-                      <p className="mt-1 text-sm text-red-500">{formErrors.startTime}</p>
-                    )}
-                  </div>
-                  <div>
-                    <Label className="mb-2" htmlFor="endTime">{t.endTime}</Label>
-                    <Input
-                      id="endTime"
-                      name="endTime"
-                      type="number"
-                      min="0"
-                      max="23"
-                      value={formData.endTime}
-                      onChange={handleInputChange}
-                      placeholder="0-23"
-                    />
-                    {formErrors.endTime && (
-                      <p className="mt-1 text-sm text-red-500">{formErrors.endTime}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
+        {networks.length === 0 && (
+          <div className="text-center py-12">
+            <Layers className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">
+              {t.noNetworks}
+            </h3>
+            <p className="text-muted-foreground mb-4">
+              {t.noNetworksDescription}
+            </p>
+          </div>
+        )}
 
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="mb-2" htmlFor="code">{t.code}</Label>
-                    <Input
-                      id="code"
-                      name="code"
-                      value={formData.code}
-                      onChange={handleInputChange}
-                      placeholder={t.code}
-                    />
-                  </div>
-                  <div>
-                    <Label className="mb-2" htmlFor="maxUses">{t.maxUses}</Label>
-                    <Input
-                      id="maxUses"
-                      name="maxUses"
-                      type="number"
-                      value={formData.maxUses}
-                      onChange={handleInputChange}
-                      min="0"
-                      placeholder="0 - без ограничений"
-                    />
-                  </div>
-                </div>
-              </div>
+        {selectedNetworkId && (
+          <div className="mt-6 pt-6 border-t">
+            <Button
+              variant="outline"
+              onClick={handleClearNetwork}
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              {t.clearNetworkSelection}
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
-              <div>
-                <Label className="mb-2" htmlFor="minOrderAmount">{t.minOrderAmount}</Label>
-                <Input
-                  id="minOrderAmount"
-                  name="minOrderAmount"
-                  type="number"
-                  value={formData.minOrderAmount}
-                  onChange={handleInputChange}
-                  min="0"
-                />
-              </div>
-
-              <div>
-                <Label className="mb-2" htmlFor="description">{t.description}</Label>
-                <Input
-                  id="description"
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                />
-              </div>
-
-              <div className="flex justify-end space-x-2">
+  // Основной интерфейс со скидками
+  return (
+    <div className="p-4 space-y-4">
+      {/* Хлебные крошки и информация о сети */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            {networks.length > 1 && (
+              <>
                 <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsDialogOpen(false)}
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleChangeNetworkClick}
+                  className="h-auto p-0 text-muted-foreground hover:text-foreground flex items-center gap-1"
                 >
-                  {t.cancel}
+                  <Store className="h-3 w-3" />
+                  {t.changeNetwork}
                 </Button>
-                <Button type="submit">
-                  {editingDiscount ? t.save : t.add}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+                <span className="text-muted-foreground">/</span>
+              </>
+            )}
+            <h2 className="text-xl font-semibold">
+              {currentNetwork?.name}
+            </h2>
+          </div>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-muted-foreground">
+              {t.networkManagement} • {discounts?.length} {t.discountsCount}
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={refreshData}
+              className="h-6 w-6 p-0"
+              title={t.refresh}
+            >
+              <RefreshCw className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+        <Button onClick={() => router.push('/discounts/new')}>
+          <PlusIcon className="mr-2 h-4 w-4" />
+          {t.addDiscount}
+        </Button>
       </div>
 
+      {/* Таблица скидок */}
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -827,7 +910,7 @@ const DiscountsTable = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
+            {discountsLoading ? (
               <TableRow>
                 <TableCell colSpan={9}>
                   <div className="space-y-2">
@@ -885,12 +968,12 @@ const DiscountsTable = () => {
                   <TableCell>
                     <div className="flex flex-col gap-1">
                       <div className="text-sm">
-                        {discount.startDate 
-                          ? format(new Date(discount.startDate), 'PP', { locale }) 
+                        {discount.startDate
+                          ? format(new Date(discount.startDate), 'PP', { locale })
                           : '-'}
                         {' → '}
-                        {discount.endDate 
-                          ? format(new Date(discount.endDate), 'PP', { locale }) 
+                        {discount.endDate
+                          ? format(new Date(discount.endDate), 'PP', { locale })
                           : '-'}
                       </div>
                       {discount.startTime !== undefined && discount.endTime !== undefined && (
@@ -938,11 +1021,11 @@ const DiscountsTable = () => {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleEdit(discount)}
+                        onClick={() => router.push(`/discounts/${discount.id}`)}
                       >
                         <PencilIcon className="h-4 w-4" />
                       </Button>
-                      
+
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <Button variant="ghost" size="icon">
@@ -953,8 +1036,8 @@ const DiscountsTable = () => {
                           <AlertDialogHeader>
                             <AlertDialogTitle>{t.deleteConfirm}</AlertDialogTitle>
                             <AlertDialogDescription>
-                              {language === 'ru' 
-                                ? 'Это действие нельзя отменить. Скидка будет удалена безвозвратно.' 
+                              {language === 'ru'
+                                ? 'Это действие нельзя отменить. Скидка будет удалена безвозвратно.'
                                 : 'ამ მოქმედების გაუქმება შეუძლებელია. ფასდაკლება სამუდამოდ წაიშლება.'}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
@@ -962,7 +1045,7 @@ const DiscountsTable = () => {
                             <AlertDialogCancel>
                               {t.cancel}
                             </AlertDialogCancel>
-                            <AlertDialogAction 
+                            <AlertDialogAction
                               onClick={() => handleDelete(discount.id)}
                               className="bg-red-500 hover:bg-red-600"
                             >

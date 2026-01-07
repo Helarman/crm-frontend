@@ -1,6 +1,4 @@
-
 import axios from 'axios';
-import { EventEmitter } from 'events'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -9,6 +7,10 @@ const api = axios.create({
   withCredentials: true,
 });
 
+export interface NetworkInfo {
+  id: string;
+  name: string;
+}
 
 export interface SurchargeDto {
   id?: string;
@@ -21,6 +23,7 @@ export interface SurchargeDto {
   startDate?: string | null;
   endDate?: string | null;
   restaurantIds?: string[];
+  networkId?: string;
 }
 
 export interface SurchargeResponse {
@@ -33,25 +36,36 @@ export interface SurchargeResponse {
   isActive: boolean;
   startDate: string | null;
   endDate: string | null;
+  networkId: string | null; 
   createdAt: string;
   updatedAt: string;
-  restaurants?:{
+  network?: NetworkInfo; 
+  restaurants?: Array<{
     restaurant: {
       id: string;
       title: string;
-    }
-  }[]
+    };
+  }>;
 }
 
 export interface AssignRestaurantsDto {
   restaurantIds: string[];
 }
 
+export interface GetForOrderParams {
+  orderType: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET';
+  restaurantId?: string;
+  networkId?: string;
+}
+
 export const SurchargeService = {
-  // Получение всех надбавок
-  getAll: async (searchTerm?: string): Promise<SurchargeResponse[]> => {
+  // Получение всех надбавок с фильтрацией по сети
+  getAll: async (networkId?: string, searchTerm?: string): Promise<SurchargeResponse[]> => {
     const { data } = await api.get('/surcharges', {
-      params: { searchTerm }
+      params: { 
+        networkId,
+        searchTerm 
+      }
     });
     return data;
   },
@@ -69,7 +83,7 @@ export const SurchargeService = {
   },
 
   // Обновление надбавки
-  update: async (id: string, dto: SurchargeDto): Promise<SurchargeResponse> => {
+  update: async (id: string, dto: Partial<SurchargeDto>): Promise<SurchargeResponse> => {
     const { data } = await api.patch(`/surcharges/${id}`, dto);
     return data;
   },
@@ -81,11 +95,24 @@ export const SurchargeService = {
 
   // Получение надбавок для типа заказа
   getForOrderType: async (
-    orderType: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET',
-    restaurantId?: string
+    params: GetForOrderParams
   ): Promise<SurchargeResponse[]> => {
-    const { data } = await api.get(`/surcharges/for-order/${orderType}`, {
-      params: { restaurantId }
+    const { data } = await api.get(`/surcharges/for-order/${params.orderType}`, {
+      params: { 
+        restaurantId: params.restaurantId,
+        networkId: params.networkId
+      }
+    });
+    return data;
+  },
+
+  // НОВЫЙ МЕТОД: Получение надбавок по сети
+  getByNetwork: async (
+    networkId: string, 
+    activeOnly: boolean = true
+  ): Promise<SurchargeResponse[]> => {
+    const { data } = await api.get(`/surcharges/network/${networkId}`, {
+      params: { activeOnly }
     });
     return data;
   },
@@ -125,5 +152,27 @@ export const SurchargeService = {
   // Получение доступных типов заказов
   getOrderTypes: async (): Promise<Array<'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET'>> => {
     return ['DINE_IN', 'TAKEAWAY', 'DELIVERY', 'BANQUET'];
-  }
+  },
+
+  // Вспомогательный метод: проверка активности надбавки
+  isSurchargeActive: (surcharge: SurchargeResponse): boolean => {
+    if (!surcharge.isActive) return false;
+    
+    const now = new Date();
+    
+    // Проверка даты начала
+    if (surcharge.startDate) {
+      const startDate = new Date(surcharge.startDate);
+      if (now < startDate) return false;
+    }
+    
+    // Проверка даты окончания
+    if (surcharge.endDate) {
+      const endDate = new Date(surcharge.endDate);
+      if (now > endDate) return false;
+    }
+    
+    return true;
+  },
+
 };
