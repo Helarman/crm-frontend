@@ -15,7 +15,7 @@ export const useSurcharges = (orderType: OrderType, restaurantId: string) => {
       setError(null)
       
       try {
-        const data = await SurchargeService.getForOrderType(orderType, restaurantId)
+        const data = await SurchargeService.getForOrderType({orderType, restaurantId})
         setSurcharges(data.map(s => ({
           id: s.id,
           title: s.title,
