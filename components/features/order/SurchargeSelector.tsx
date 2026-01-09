@@ -28,8 +28,8 @@ export const SurchargeSelector = ({
       setLoading(true)
       try {
         const surcharges = await SurchargeService.getForOrderType(
-          orderType,
-          restaurantId
+          {orderType,
+          restaurantId}
         )
         setAvailableSurcharges(surcharges)
       } catch (error) {
