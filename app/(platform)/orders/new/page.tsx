@@ -310,41 +310,6 @@ export default function NewOrderPage() {
   return (
     <AccessCheck allowedRoles={['WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR']}>
       <div className="py-6">
-        {/* Большая желтая плашка когда ресторан закрыт (только для незапланированных заказов) */}
-        {!order.isScheduled && selectedRestaurant && restaurantStatus && !restaurantStatus.isOpen && (
-          <div className="w-full bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="w-6 h-6 text-amber-600" />
-              <div>
-                <h3 className="text-amber-800 font-semibold text-lg">
-                  {language === 'ru' ? 'Ресторан закрыт' : 'რესტორანი დახურულია'}
-                </h3>
-                <p className="text-amber-700 text-sm">
-                  {restaurantStatus.message}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Плашка для запланированных заказов */}
-        {order.isScheduled && selectedRestaurant && restaurantStatus && !restaurantStatus.isOpen && (
-          <div className="w-full bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <div className="flex items-center gap-3">
-              <Clock className="w-6 h-6 text-blue-600" />
-              <div>
-                <h3 className="text-blue-800 font-semibold text-lg">
-                  {language === 'ru' ? 'Заказ запланирован' : 'შეკვეთა დაგეგმილია'}
-                </h3>
-                <p className="text-blue-700 text-sm">
-                  {language === 'ru' 
-                    ? 'Заказ будет создан в рабочее время ресторана' 
-                    : 'შეკვეთა შეიქმნება რესტორანის სამუშაო საათებში'}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
         <OrderInfoStep
           order={order}

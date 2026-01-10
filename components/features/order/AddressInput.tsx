@@ -134,7 +134,7 @@ export const AddressInput = ({
           value={value}
           onChange={handleAddressChange}
           placeholder={language === 'ka' ? 'შეიყვანეთ მისამართი' : 'Введите адрес'}
-          className="pl-10"
+          className="pl-10 h-14"
         />
       </div>
       {suggestions.length > 0 && (
