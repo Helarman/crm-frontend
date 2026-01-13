@@ -2464,7 +2464,7 @@
       }
 
       return (
-        <div className="space-y-4 h-96 overflow-y-auto">
+        <div>
           {logs.map((log) => (
             <div key={log.id} className="pb-4 px-2 last:pb-0">
               <div className="flex items-start gap-4">
