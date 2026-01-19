@@ -1963,7 +1963,7 @@
           text = status;
       }
 
-      return <Badge variant={variant} className="text-xs">{text}</Badge>;
+      return <Badge variant={variant} className="text-xs w-1/2 2xl:w-1/4">{text}</Badge>;
     };
 
     const SearchInput = () => {
@@ -2249,194 +2249,189 @@
       );
     };
 
-    const renderCompactItemCard = (item: OrderItem) => {
-      const getCookingTime = () => {
-        if (!item.timestamps.startedAt) return null;
+  const renderCompactItemCard = (item: OrderItem) => {
+  const getCookingTime = () => {
+    if (!item.timestamps.startedAt) return null;
 
-        const startTime = new Date(item.timestamps.startedAt).getTime();
-        let endTime = item.timestamps.completedAt
-          ? new Date(item.timestamps.completedAt).getTime()
-          : Date.now();
+    const startTime = new Date(item.timestamps.startedAt).getTime();
+    let endTime = item.timestamps.completedAt
+      ? new Date(item.timestamps.completedAt).getTime()
+      : Date.now();
 
-        const cookingTimeMinutes = Math.round((endTime - startTime) / (1000 * 60));
+    const cookingTimeMinutes = Math.round((endTime - startTime) / (1000 * 60));
 
-        return cookingTimeMinutes;
-      };
+    return cookingTimeMinutes;
+  };
 
-      const cookingTime = getCookingTime();
-      const canEditQuantity = item.status === OrderItemStatus.CREATED && isOrderEditable;
-      const canReorder = [
-        OrderItemStatus.COMPLETED,
-        OrderItemStatus.IN_PROGRESS,
-        OrderItemStatus.CREATED,
-      ].includes(item.status) && isOrderEditable && !item.isRefund;
+  const cookingTime = getCookingTime();
+  const canEditQuantity = item.status === OrderItemStatus.CREATED && isOrderEditable;
+  const canReorder = [
+    OrderItemStatus.COMPLETED,
+    OrderItemStatus.IN_PROGRESS,
+    OrderItemStatus.CREATED,
+  ].includes(item.status) && isOrderEditable && !item.isRefund;
 
-      const canRefund = ['COMPLETED', 'DELIVERING', 'PREPARING'].includes(order?.status || '') && !item.isRefund;
-      const canRefundItem = [
-        OrderItemStatus.COMPLETED,
-        OrderItemStatus.IN_PROGRESS
-      ].includes(item.status) && isOrderEditable && !item.isRefund;
+  const canRefund = ['COMPLETED', 'DELIVERING', 'PREPARING'].includes(order?.status || '') && !item.isRefund;
+  const canRefundItem = [
+    OrderItemStatus.COMPLETED,
+    OrderItemStatus.IN_PROGRESS
+  ].includes(item.status) && isOrderEditable && !item.isRefund;
 
-      return (
-        <div
-          key={item.id}
-          className={`bg-white rounded-xl p-4 shadow-sm ${item.isReordered ? 'border-l-4 border-blue-500' : ''} ${item.isRefund ? 'bg-red-50' : ''}`}
-        >
-          <div className="flex items-center gap-4">
-            {/* Изображение продукта */}
-            <div className="flex-shrink-0 w-20 h-20 relative">
-              {item.product.image ? (
-                <Image
-                  src={item.product.image}
-                  alt={item.product.title}
-                  width={80}
-                  height={80}
-                  className="w-20 h-20 object-cover rounded-lg"
-                />
-              ) : (
-                <div className="w-20 h-20 bg-gray-100 rounded-lg flex items-center justify-center">
-                  <Utensils className="h-8 w-8 text-gray-400" />
-                </div>
-              )}
+  return (
+    <div
+      key={item.id}
+      className={`bg-white rounded-xl p-3 2xl:p-4 shadow-sm ${item.isReordered ? 'border-l-4 border-blue-500' : ''} ${item.isRefund ? 'bg-red-50' : ''}`}
+    >
+      <div className="flex items-start gap-3 2xl:gap-4">
+        {/* Изображение продукта */}
+        <div className="flex-shrink-0 w-12 h-12 2xl:w-16 2xl:h-16 relative">
+          {item.product.image ? (
+            <Image
+              src={item.product.image}
+              alt={item.product.title}
+              width={50}
+              height={50}
+              className="w-12 h-12 2xl:w-16 2xl:h-16 object-cover rounded-lg"
+            />
+          ) : (
+            <div className="w-12 h-12 2xl:w-16 2xl:h-16 bg-gray-100 rounded-lg flex items-center justify-center">
+              <Utensils className="h-5 w-5 2xl:h-8 2xl:w-8 text-gray-400" />
+            </div>
+          )}
+        </div>
+
+        {/* Основная информация */}
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-col gap-2 ">
+            {/* Заголовок и цена */}
+            <div className="flex justify-between items-start gap-2">
+              <h3 className="font-bold text-sm 2xl:text-md xl:text-md truncate flex-1">
+                {item.product.title}
+              </h3>
+              <p className="text-md 2xl:text-lg font-bold whitespace-nowrap ml-2">
+                {calculateItemPrice(item)} ₽
+              </p>
             </div>
 
-            {/* Основная информация */}
-            <div className="flex-1 min-w-0">
-              <div className="flex  flex-col gap-4">
-                <div className="flex flex-col min-w-0 justify-between">
-                  <div className="flex gap-3 mb-2 justify-between w-full">
-                    <h3 className="font-bold text-lg truncate">
-                      {item.product.title} 
-                    </h3>
-                    <p className="text-lg font-bold items-center mb-2 flex">
-                      {calculateItemPrice(item)} ₽
-                    </p>
-                  </div>
-
+            {/* Дополнения и комментарии */}
+            <div className="space-y-1 2xl:space-y-2">
+              {item.additives.length > 0 && (
+                <div className="text-xs 2xl:text-sm text-gray-600 flex items-start">
+                  <Plus className="h-3 w-3 2xl:h-4 2xl:w-4 mr-1 2xl:mr-2 mt-0.5 flex-shrink-0" />
+                  <span className="truncate">{item.additives.map(a => a.title).join(', ')}</span>
+                </div>
+              )}
+              {item.comment && (
+                <div className="text-xs 2xl:text-sm text-gray-600 flex items-start">
+                  <MessageSquare className="h-3 w-3 2xl:h-4 2xl:w-4 mr-1 2xl:mr-2 mt-0.5 flex-shrink-0" />
+                  <span className="truncate">{item.comment}</span>
+                </div>
+              )}
+              {item.isRefund && item.refundReason && (
+                <div className="text-xs 2xl:text-sm text-red-500 flex items-start">
+                  <AlertCircle className="h-3 w-3 2xl:h-4 2xl:w-4 mr-1 2xl:mr-2 mt-0.5 flex-shrink-0" />
+                  <span className="truncate">{item.refundReason}</span>
+                </div>
+              )}
+              <div className="flex">
+                {getStatusBadge(item.status)}
+              </div>
+            </div>
+            
+            {/* Статус и элементы управления */}
+            <div className="flex items-center justify-between gap-2 mt-1">
+              {/* Бейдж статуса */}
               
 
-                  {/* Дополнения и комментарии */}
-                  <div className="flex space-y-2">
-                    {item.additives.length > 0 && (
-                      <div className="text-sm text-gray-600 flex items-start">
-                        <Plus className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
-                        <span className="truncate">{item.additives.map(a => a.title).join(', ')}</span>
-                      </div>
-                    )}
-                    {item.comment && (
-                      <div className="text-sm text-gray-600 flex items-start">
-                        <MessageSquare className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
-                        <span className="truncate">{item.comment}</span>
-                      </div>
-                    )}
-                    {item.isRefund && item.refundReason && (
-                      <div className="text-sm text-red-500 flex items-start">
-                        <AlertCircle className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
-                        <span className="truncate">{item.refundReason}</span>
-                      </div>
-                    )}
+              {/* Время приготовления или счетчик */}
+              <div className="flex min-w-0">
+                {canEditQuantity ? (
+                  <div className="flex items-center justify-end gap-2 2xl:gap-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-8 2xl:h-10 2xl:w-10 p-0"
+                      onClick={() => handleQuantitItemChange(item, item.quantity - 1)}
+                      disabled={item.quantity <= 1}
+                    >
+                      <Minus className="h-3 w-3 2xl:h-5 2xl:w-5" />
+                    </Button>
+                    <span className="text-xl 2xl:text-2xl font-bold w-6 2xl:w-10 text-center">
+                      {item.quantity}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-8 2xl:h-10 2xl:w-10 p-0"
+                      onClick={() => handleQuantitItemChange(item, item.quantity + 1)}
+                    >
+                      <Plus className="h-3 w-3 2xl:h-5 2xl:w-5" />
+                    </Button>
                   </div>
-                </div>
+                ) : (
+                  item.timestamps.startedAt && cookingTime !== null && (
+                    <p className="text-xs 2xl:text-sm text-gray-600 text-right whitespace-nowrap">
+                      {item.timestamps.completedAt
+                        ? `${t.cookedIn} ${getCookingTimeText(cookingTime)}`
+                        : `${t.cookingFor} ${getCookingTimeText(cookingTime)}`}
+                    </p>
+                  )
+                )}
+              </div>
 
-                {/* Правая часть - элементы управления */}
-                <div className="flex items-center gap-4 flex-shrink-0 justify-between">
+              {/* Кнопки действий */}
+              <div className="flex items-center gap-1 2xl:gap-3 flex-shrink-0">
+                {/* Дозаказ */}
+                {canReorder && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
+                    onClick={() => handleReorderItem(item)}
+                    disabled={isUpdating}
+                  >
+                    <RefreshCw className="h-4 w-4 2xl:h-5 2xl:w-5" />
+                  </Button>
+                )}
 
-                  {/* Счетчик количества и кнопки */}
-                  <div className="flex items-center gap-4 justify-between w-full">
-                    {/* Счетчик количества */}
-                    <div className="flex-shrink-0 justify-between">
-                      {getStatusBadge(item.status)}
-                    </div>
-                    {canEditQuantity ? (
-                      <div className="flex items-center gap-3">
-                        <Button
-                          variant="outline"
-                          size="lg"
-                          className="h-10 w-10 p-0"
-                          onClick={() => handleQuantitItemChange(item, item.quantity - 1)}
-                          disabled={item.quantity <= 1}
-                        >
-                          <Minus className="h-5 w-5" />
-                        </Button>
-                        <span className="text-2xl font-bold w-10 text-center">
-                          {item.quantity}
-                        </span>
-                        <Button
-                          variant="outline"
-                          size="lg"
-                          className="h-10 w-10 p-0"
-                          onClick={() => handleQuantitItemChange(item, item.quantity + 1)}
-                        >
-                          <Plus className="h-5 w-5" />
-                        </Button>
-                      </div>
-                      )
-                      :
-                      (<div className="flex items-center gap-3">
-                        {item.timestamps.startedAt && cookingTime !== null && (
-                          <p className="text-sm text-gray-600 mb-2">
-                            {item.timestamps.completedAt
-                              ? `${t.cookedIn} ${getCookingTimeText(cookingTime)}`
-                              : `${t.cookingFor} ${getCookingTimeText(cookingTime)}`}
-                          </p>
-                        )}
-                      </div>
-                    )}
+                {/* Возврат */}
+                {canRefund && canRefundItem && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                    onClick={() => {
+                      setSelectedItemForRefund(item);
+                      setMaxRefundQuantity(item.quantity);
+                      setRefundQuantity(1);
+                      setShowRefundDialog(true);
+                    }}
+                    disabled={isUpdating}
+                  >
+                    <Undo className="h-4 w-4 2xl:h-5 2xl:w-5" />
+                  </Button>
+                )}
 
-                    {/* Кнопки действий */}
-                    <div className="flex items-center gap-3">
-                      {/* Дозаказ */}
-                      {canReorder && (
-                        <Button
-                          variant="ghost"
-                          size="lg"
-                          className="h-11 w-11 p-0 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
-                          onClick={() => handleReorderItem(item)}
-                          disabled={isUpdating}
-                        >
-                          <RefreshCw className="h-5 w-5" />
-                        </Button>
-                      )}
-
-                      {/* Возврат */}
-                      {canRefund && canRefundItem && (
-                        <Button
-                          variant="ghost"
-                          size="lg"
-                          className="h-11 w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-                          onClick={() => {
-                            setSelectedItemForRefund(item);
-                            setMaxRefundQuantity(item.quantity);
-                            setRefundQuantity(1);
-                            setShowRefundDialog(true);
-                          }}
-                          disabled={isUpdating}
-                        >
-                          <Undo className="h-5 w-5" />
-                        </Button>
-                      )}
-
-                      {/* Удаление */}
-                      {canEditQuantity && (
-                        <Button
-                          variant="ghost"
-                          size="lg"
-                          className="h-11 w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-                          onClick={() => handleQuantitItemChange(item, 0)}
-                          disabled={isUpdating}
-                        >
-                          <X className="h-5 w-5" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                {/* Удаление */}
+                {canEditQuantity && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                    onClick={() => handleQuantitItemChange(item, 0)}
+                    disabled={isUpdating}
+                  >
+                    <X className="h-4 w-4 2xl:h-5 2xl:w-5" />
+                  </Button>
+                )}
               </div>
             </div>
           </div>
         </div>
-      );
-    };
+      </div>
+    </div>
+  );
+};
 
 
     const formatDate = (dateString: string) => {
@@ -2989,147 +2984,304 @@
       ka: 'გაუქმებული'
     }
   }
+    const renderTotalWithButtons = () =>{
+      return(
+                <div className="bg-white rounded-2xl  shadow-lg flex-shrink-0">
+  <div className="flex-col items-center justify-between mb-4">
+    {(!((order.surcharges && order.surcharges.length > 0) || order.discountAmount > 0 || calculateTotalOrderAdditivesPrice() > 0)) && <div className="flex items-center gap-3">
+      <Receipt className="h-6 w-6 text-green-600" />
+      <h3 className="text-2xl font-bold">
+        {t.total}: {calculateOrderTotal().toFixed(2)} ₽
+      </h3>
+    </div>
+  }
+    {((order.surcharges && order.surcharges.length > 0) || order.discountAmount > 0 || calculateTotalOrderAdditivesPrice() > 0) && (
+      <Collapsible>
+        <CollapsibleTrigger asChild>
+          {/* Обернули заголовок в триггер */}
+          <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded-lg transition-colors">
+            <div className="flex items-center gap-3 flex-1">
+              <Receipt className="h-6 w-6 text-green-600" />
+              <h3 className="text-2xl font-bold">
+                {t.total}: {calculateOrderTotal().toFixed(2)} ₽
+              </h3>
+            </div>
+            <Button variant="ghost" size="lg" className="h-10 px-3">
+              <ChevronDown className="h-5 w-5" />
+            </Button>
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="pt-4 border-t space-y-3">
+            {order.surcharges && order.surcharges.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-lg font-semibold text-gray-600">{t.surcharges}:</div>
+                {order.surcharges.map(surcharge => (
+                  <div key={surcharge.id} className="flex justify-between text-lg">
+                    <span>{surcharge.title}</span>
+                    <span className="font-bold text-red-600">
+                      {surcharge.type === 'FIXED'
+                        ? `+${surcharge.amount.toFixed(2)} ₽`
+                        : `+${surcharge.amount}%`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
 
+            {/* Добавляем стоимость модификаторов в детализацию */}
+            {calculateTotalOrderAdditivesPrice() > 0 && (
+              <div className="flex justify-between text-lg">
+                <span>{t.orderAdditives}:</span>
+                <span className="font-bold text-blue-600">
+                  +{calculateTotalOrderAdditivesPrice().toFixed(2)} ₽
+                </span>
+              </div>
+            )}
+
+            {order.discountAmount > 0 && (
+              <div className="flex justify-between text-lg">
+                <span>{t.discount}:</span>
+                <span className="font-bold text-green-600">
+                  -{order.discountAmount.toFixed(2)} ₽
+                </span>
+              </div>
+            )}
+
+            {order.bonusPointsUsed > 0 && (
+              <div className="flex justify-between text-lg">
+                <span>{t.bonusPoints}:</span>
+                <span className="font-bold text-green-600">
+                  - {order.bonusPointsUsed.toFixed(2)} ₽
+                </span>
+              </div>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    )}
+  </div>
+  
+  <div className='space-y-4'>
+    {order.status !== 'CANCELLED' && (
+      <Button
+        disabled={isUpdating}
+        onClick={handlePrecheck}
+        variant={order.attentionFlags?.isPrecheck ? "default" : "outline"}
+        className={`gap-3 w-full h-16 text-2xl font-bold ${order.attentionFlags?.isPrecheck
+          ? 'bg-green-100 text-green-800 hover:bg-green-100'
+          : ''
+          }`}
+      >
+        {isUpdating ? (
+          <Loader2 className="h-6 w-6 animate-spin" />
+        ) : order.attentionFlags?.isPrecheck ? (
+          <CheckCircle className="h-6 w-6" />
+        ) : (
+          <Check className="h-6 w-6" />
+        )}
+        {order.attentionFlags?.isPrecheck ? t.precheckFormed : t.formPrecheck}
+      </Button>
+    )}
+
+    {getOrderItems().some(item => item.status === OrderItemStatus.CREATED) && (
+      <Button
+        disabled={isUpdating || getOrderItems().length === 0}
+        onClick={handleConfirmOrder}
+        variant="default"
+        className="bg-emerald-500 hover:bg-emerald-400 text-white gap-3 w-full h-16 text-2xl font-bold shadow-lg hover:shadow-xl transition-shadow"
+      >
+        {isUpdating ? (
+          <Loader2 className="h-6 w-6 mr-1 animate-spin" />
+        ) : (
+          <Check className="h-6 w-6 mr-1" />
+        )}
+        {order.scheduledAt ? 'Подтвердить' : t.confirm}
+        ({getOrderItems().filter(item => item.status === OrderItemStatus.CREATED).length})
+      </Button>
+    )}
+
+    {order.status === 'CREATED' && (
+      <Button
+        disabled={isUpdating}
+        onClick={handleCancelOrder}
+        variant="default"
+        className="bg-red-500 hover:bg-red-400 text-white gap-3 w-full h-16 text-2xl font-bold shadow-lg hover:shadow-xl transition-shadow"
+      >
+        {isUpdating ? (
+          <Loader2 className="h-6 w-6 mr-1 animate-spin" />
+        ) : (
+          <X className="h-6 w-6 mr-1" />
+        )}
+        {t.cancel}
+      </Button>
+    )}
+
+    {(order.status === 'READY' && order.type != 'DELIVERY') && (
+      <Button
+        disabled={
+          isUpdating || 
+          shiftLoading || 
+          !order.attentionFlags.isPrecheck || 
+          // Проверяем, что все блюда в заказе готовы
+          getOrderItems().some(item => item.status !== OrderItemStatus.COMPLETED)
+        }
+        onClick={handleCalculateOrder}
+        variant="default"
+        className={`gap-3 w-full h-16 text-2xl font-bold shadow-lg hover:shadow-xl transition-shadow ${
+          getOrderItems().some(item => item.status !== OrderItemStatus.COMPLETED)
+            ? 'hidden'
+            : 'bg-emerald-500 hover:bg-emerald-400'
+        }`}
+      >
+        {isUpdating || shiftLoading ? (
+          <Loader2 className="h-6 w-6 animate-spin" />
+        ) : getOrderItems().some(item => item.status !== OrderItemStatus.COMPLETED) ? (
+          <Clock className="h-6 w-6" />
+        ) : (
+          <CheckCircle className="h-6 w-6" />
+        )}
+        { t.calculate }
+      </Button>
+    )}
+  </div>
+</div>
+      )
+    }
     return (
       <AccessCheck allowedRoles={['WAITER', 'MANAGER', 'SUPERVISOR']}>
-        <div >
-          {/* Шапка с названием ресторана */}
-          <div className='flex flex-col md:flex-row md:items-center justify-between gap-4'>
-            <div className='flex flex-row items-center'>
-              <h1 className="text-3xl md:text-4xl font-bold text-gray-900">
-                Заказ {order.number}
-              </h1>
-              
-            </div>
-            <div className="flex gap-4 justify-center mt-6 text-center p-3">
-                    {order.type === 'DINE_IN' && <div
-                      className={`flex flex-col items-center p-3 rounded-lg ${order.tableNumber ? 'bg-blue-50 border-2 border-blue-200' : 'bg-gray-100'}`}
-                      title={order.tableNumber ? `Стол ${order.tableNumber}` : 'Без стола'}
-                    >
-                      <div className="flex items-center justify-center h-6 w-6">
-                        <span className={`font-bold ${order.tableNumber ? 'text-blue-600' : 'text-gray-500'}`}>
-                          {order.tableNumber || '—'}
-                        </span>
-                      </div>
-                      <span className="text-sm font-semibold mt-1">Стол</span>
-                    </div>
-                    }
-                    {/* Количество персон */}
-                    <div
-                      className={`flex flex-col items-center p-3 rounded-lg ${order.numberOfPeople ? 'bg-green-50 border-2 border-green-200' : 'bg-gray-100'}`}
-                      title={order.numberOfPeople ? `${order.numberOfPeople} персон` : ''}
-                    >
-                      <div className="flex items-center justify-center h-6 w-6">
-                        <span className={`font-bold ${order.numberOfPeople ? 'text-green-600' : 'text-gray-500'}`}>
-                          {order.numberOfPeople || '—'}
-                        </span>
-                      </div>
-                      <span className="text-sm font-semibold mt-1">Персон</span>
-                    </div>
-
-                    {/* Статус заказа */}
-                    <div
-                      className={`flex flex-col items-center p-3 rounded-lg border-2 ${
-                          order.status === 'CREATED' ? 'border-amber-200 bg-amber-50' :
-                          order.status === 'CONFIRMED' ? 'border-blue-200 bg-blue-50' :
-                          order.status === 'PREPARING' ? 'border-purple-200 bg-purple-50' :
-                          order.status === 'READY' ? 'border-green-200 bg-green-50' :
-                          order.status === 'DELIVERING' ? 'border-cyan-200 bg-cyan-50' :
-                          order.status === 'COMPLETED' ? 'border-gray-200 bg-gray-50' :
-                          'bg-red-500'
-                        }`}
-                      title={order.status ? order.status : ''}
-                    >
-                      {order.status && (
-                        <div className={`h-6 w-6 rounded-full flex items-center justify-center ${
-                          order.status === 'CREATED' ? 'bg-amber-500' :
-                          order.status === 'CONFIRMED' ? 'bg-blue-500' :
-                          order.status === 'PREPARING' ? 'bg-purple-500' :
-                          order.status === 'READY' ? 'bg-green-500' :
-                          order.status === 'DELIVERING' ? 'bg-cyan-500' :
-                          order.status === 'COMPLETED' ? 'bg-gray-500' :
-                          'bg-red-500'
-                        }`}>
-                          <span className="text-white text-xs font-bold">
-                            {order.status.charAt(0)}
-                          </span>
-                        </div>
-                      )}
-                      <span className="text-sm font-semibold mt-1">{statusTranslations[order.status]?.[language] || order.status}</span>
-                    </div>
-
-                    {/* Время создания */}
-                    <div
-                      className={`flex flex-col items-center p-3 rounded-lg ${order.createdAt ? 'bg-orange-50 border-2 border-orange-200' : 'bg-gray-100'}`}
-                      title={order.createdAt ? new Date(order.createdAt).toLocaleTimeString() : ''}
-                    >
-                      <Clock className={`h-6 w-6 ${order.createdAt ? 'text-orange-600' : 'text-gray-500'}`} />
-                      <span className="text-sm font-semibold mt-1">
-                        {order.createdAt ? format(new Date(order.createdAt), 'HH:mm') : '—'}
-                      </span>
-                    </div>
-                  <div
-                    className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags?.isReordered ? 'bg-blue-50 border-2 border-blue-200' : 'bg-gray-100'}`}
-                    title={order.attentionFlags?.isReordered ? t.reorder : ''}
-                  >
-                    <ShoppingBag
-                      className={`h-6 w-6 ${order.attentionFlags?.isReordered ? 'text-blue-600' : 'text-gray-500'}`}
-                    />
-                    <span className="text-sm font-semibold mt-1">{t.reorder}</span>
-                  </div>
-
-                  <div
-                    className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags?.hasDiscount ? 'bg-green-50 border-2 border-green-200' : 'bg-gray-100'}`}
-                    title={order.attentionFlags?.hasDiscount ? t.discount : ''}
-                  >
-                    <Tag
-                      className={`h-6 w-6 ${order.attentionFlags?.hasDiscount ? 'text-green-600' : 'text-gray-500'}`}
-                    />
-                    <span className="text-sm font-semibold mt-1">{t.discount}</span>
-                  </div>
-
-                  <div
-                    className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags?.discountCanceled ? 'bg-red-50 border-2 border-red-200' : 'bg-gray-100'}`}
-                    title={order.attentionFlags?.discountCanceled ? t.discountCanceled : ''}
-                  >
-                    <Ban
-                      className={`h-6 w-6 ${order.attentionFlags?.discountCanceled ? 'text-red-600' : 'text-gray-500'}`}
-                    />
-                    <span className="text-sm font-semibold mt-1">{t.discountCanceled}</span>
-                  </div>
-
-                  <div
-                    className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags?.isPrecheck ? 'bg-purple-50 border-2 border-purple-200' : 'bg-gray-100'}`}
-                    title={order.attentionFlags?.isPrecheck ? t.precheck : ''}
-                  >
-                    <Receipt
-                      className={`h-6 w-6 ${order.attentionFlags?.isPrecheck ? 'text-purple-600' : 'text-gray-500'}`}
-                    />
-                    <span className="text-sm font-semibold mt-1">{t.precheck}</span>
-                  </div>
-
-                  <div
-                    className={`flex flex-col items-center p-3 rounded-lg ${order.attentionFlags?.isRefund ? 'bg-orange-50 border-2 border-orange-200' : 'bg-gray-100'}`}
-                    title={order.attentionFlags?.isRefund ? t.refund : ''}
-                  >
-                    <RefreshCw
-                      className={`h-6 w-6 ${order.attentionFlags?.isRefund ? 'text-orange-600' : 'text-gray-500'}`}
-                    />
-                    <span className="text-sm font-semibold mt-1">{t.refund}</span>
-                  </div>
-            </div>
-          </div>
+        <div className='absolute top-0'>
           {/* Основная сетка */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[100vh] mt-0 pt-0">
             {/* Левая колонка - Меню */}
             <div className="lg:col-span-2">
-              <div className="bg-white rounded-2xl shadow-lg sticky top-4 h-[calc(100vh-2rem)] flex flex-col">
+              <div className="bg-white rounded-2xl shadow-lg sticky h-[100vh] flex flex-col">
                 {/* Заголовок меню - sticky */}
-                <div className="sticky top-0 z-10 bg-white border-b px-6 py-4 rounded-t-2xl">
-                  <h2 className="text-2xl font-bold flex items-center gap-3">
+                <div className="sticky top-0 z-10 bg-white border-b px-6 py-4 rounded-t-2xl flex justify-between">
+                  <h2 className="text-2xl font-bold flex items-center gap-3 flex ">
                     <Utensils className="h-8 w-8 text-blue-600" />
                     Меню
                   </h2>
+                  <div className="flex gap-2 justify-cente text-center p-2 sm:p-3">
+                  {order.type === 'DINE_IN' && (
+                    <div
+                      className={`flex flex-col items-center p-1 sm:p-2 2xl:p-3 rounded-lg ${order.tableNumber ? 'bg-blue-50 border-1 2xl:border-2 border-blue-200' : 'bg-gray-100'}`}
+                      title={order.tableNumber ? `Стол ${order.tableNumber}` : 'Без стола'}
+                    >
+                      <div className="flex items-center justify-center h-5 w-5 sm:h-6 sm:w-6">
+                        <span className={`font-bold ${order.tableNumber ? 'text-blue-600' : 'text-gray-500'} text-sm sm:text-base`}>
+                          {order.tableNumber || '—'}
+                        </span>
+                      </div>
+                      <span className="text-xs sm:text-sm font-semibold mt-1 hidden 2xl:block">Стол</span>
+                    </div>
+                  )}
+                  
+                  {/* Количество персон */}
+                  <div
+                    className={`flex flex-col items-center p-1 sm:p-2 2xl:p-3 rounded-lg ${order.numberOfPeople ? 'bg-green-50 border-1 2xl:border-2 border-green-200' : 'bg-gray-100'}`}
+                    title={order.numberOfPeople ? `${order.numberOfPeople} персон` : ''}
+                  >
+                    <div className="flex items-center justify-center h-5 w-5 sm:h-6 sm:w-6">
+                      <span className={`font-bold ${order.numberOfPeople ? 'text-green-600' : 'text-gray-500'} text-sm sm:text-base`}>
+                        {order.numberOfPeople || '—'}
+                      </span>
+                    </div>
+                    <span className="text-xs sm:text-sm font-semibold mt-1 hidden 2xl:block">Персон</span>
+                  </div>
+
+                  {/* Статус заказа */}
+                  <div
+                    className={`flex flex-col items-center p-1 sm:p-2 2xl:p-3 rounded-lg border-1 2xl:border-2 ${
+                        order.status === 'CREATED' ? 'border-amber-200 bg-amber-50' :
+                        order.status === 'CONFIRMED' ? 'border-blue-200 bg-blue-50' :
+                        order.status === 'PREPARING' ? 'border-purple-200 bg-purple-50' :
+                        order.status === 'READY' ? 'border-green-200 bg-green-50' :
+                        order.status === 'DELIVERING' ? 'border-cyan-200 bg-cyan-50' :
+                        order.status === 'COMPLETED' ? 'border-gray-200 bg-gray-50' :
+                        'bg-red-500'
+                      }`}
+                    title={order.status ? order.status : ''}
+                  >
+                    {order.status && (
+                      <div className={`h-5 w-5 sm:h-6 sm:w-6 rounded-full flex items-center justify-center ${
+                        order.status === 'CREATED' ? 'bg-amber-500' :
+                        order.status === 'CONFIRMED' ? 'bg-blue-500' :
+                        order.status === 'PREPARING' ? 'bg-purple-500' :
+                        order.status === 'READY' ? 'bg-green-500' :
+                        order.status === 'DELIVERING' ? 'bg-cyan-500' :
+                        order.status === 'COMPLETED' ? 'bg-gray-500' :
+                        'bg-red-500'
+                      }`}>
+                        <span className="text-white text-xs font-bold">
+                          {order.status.charAt(0)}
+                        </span>
+                      </div>
+                    )}
+                    <span className="text-xs sm:text-sm font-semibold mt-1 hidden 2xl:block">{statusTranslations[order.status]?.[language] || order.status}</span>
+                  </div>
+
+                  {/* Время создания */}
+                  <div
+                    className={`flex flex-col items-center p-1 sm:p-2 2xl:p-3 rounded-lg ${order.createdAt ? 'bg-orange-50 border-1 2xl:border-2 border-orange-200' : 'bg-gray-100'}`}
+                    title={order.createdAt ? new Date(order.createdAt).toLocaleTimeString() : ''}
+                  >
+                    <Clock className={`h-5 w-5 sm:h-6 sm:w-6 ${order.createdAt ? 'text-orange-600' : 'text-gray-500'}`} />
+                    <span className="text-xs sm:text-sm font-semibold mt-1 hidden 2xl:block">
+                      {order.createdAt ? format(new Date(order.createdAt), 'HH:mm') : '—'}
+                    </span>
+                  </div>
+                  
+                  <div
+                    className={`flex flex-col items-center p-1 sm:p-2 2xl:p-3 rounded-lg ${order.attentionFlags?.isReordered ? 'bg-blue-50 border-1 2xl:border-2 border-blue-200' : 'bg-gray-100'}`}
+                    title={order.attentionFlags?.isReordered ? t.reorder : ''}
+                  >
+                    <ShoppingBag
+                      className={`h-5 w-5 sm:h-6 sm:w-6 ${order.attentionFlags?.isReordered ? 'text-blue-600' : 'text-gray-500'}`}
+                    />
+                    <span className="text-xs sm:text-sm font-semibold mt-1 hidden 2xl:block">{t.reorder}</span>
+                  </div>
+
+                  <div
+                    className={`flex flex-col items-center p-1 sm:p-2 2xl:p-3 rounded-lg ${order.attentionFlags?.hasDiscount ? 'bg-green-50 border-1 2xl:border-2 border-green-200' : 'bg-gray-100'}`}
+                    title={order.attentionFlags?.hasDiscount ? t.discount : ''}
+                  >
+                    <Tag
+                      className={`h-5 w-5 sm:h-6 sm:w-6 ${order.attentionFlags?.hasDiscount ? 'text-green-600' : 'text-gray-500'}`}
+                    />
+                    <span className="text-xs sm:text-sm font-semibold mt-1 hidden 2xl:block">{t.discount}</span>
+                  </div>
+
+                  <div
+                    className={`flex flex-col items-center p-1 sm:p-2 2xl:p-3 rounded-lg ${order.attentionFlags?.discountCanceled ? 'bg-red-50 border-1 2xl:border-2 border-red-200' : 'bg-gray-100'}`}
+                    title={order.attentionFlags?.discountCanceled ? t.discountCanceled : ''}
+                  >
+                    <Ban
+                      className={`h-5 w-5 sm:h-6 sm:w-6 ${order.attentionFlags?.discountCanceled ? 'text-red-600' : 'text-gray-500'}`}
+                    />
+                    <span className="text-xs sm:text-sm font-semibold mt-1 hidden 2xl:block">{t.discountCanceled}</span>
+                  </div>
+
+                  <div
+                    className={`flex flex-col items-center p-1 sm:p-2 2xl:p-3 rounded-lg ${order.attentionFlags?.isPrecheck ? 'bg-purple-50 border-1 2xl:border-2 border-purple-200' : 'bg-gray-100'}`}
+                    title={order.attentionFlags?.isPrecheck ? t.precheck : ''}
+                  >
+                    <Receipt
+                      className={`h-5 w-5 sm:h-6 sm:w-6 ${order.attentionFlags?.isPrecheck ? 'text-purple-600' : 'text-gray-500'}`}
+                    />
+                    <span className="text-xs sm:text-sm font-semibold mt-1 hidden 2xl:block">{t.precheck}</span>
+                  </div>
+
+                  <div
+                    className={`flex flex-col items-center p-1 sm:p-2 2xl:p-3 rounded-lg ${order.attentionFlags?.isRefund ? 'bg-orange-50 border-1 2xl:border-2 border-orange-200' : 'bg-gray-100'}`}
+                    title={order.attentionFlags?.isRefund ? t.refund : ''}
+                  >
+                    <RefreshCw
+                      className={`h-5 w-5 sm:h-6 sm:w-6 ${order.attentionFlags?.isRefund ? 'text-orange-600' : 'text-gray-500'}`}
+                    />
+                    <span className="text-xs sm:text-sm font-semibold mt-1 hidden 2xl:block">{t.refund}</span>
+                  </div>
+                </div>
                 </div>
                 
                 <div className="flex-1 overflow-y-auto px-6 py-4">
@@ -3147,10 +3299,13 @@
               </div>
 
             {/* Правая колонка - Информация о заказе */}
-<div className="space-y-8 h-[calc(100vh-2rem)] flex flex-col">
+<div className="h-[100vh] flex flex-col">
   
   {/* Карточка с табами - фиксированной высоты со скроллом */}
   <div className="bg-white rounded-2xl p-6 shadow-lg flex-1 flex flex-col min-h-0">
+      <h1 className="text-xl md:text-2xl font-bold text-gray-900">
+                Заказ {order.number}
+              </h1>
     <Tabs defaultValue='order' className='w-full flex flex-col flex-1 min-h-0'>
       <TabsList className="w-full flex flex-row gap-2 mb-4 bg-white flex-shrink-0">
         <TabsTrigger value="order" className="w-full text-lg font-semibold flex flex-col items-center justify-center p-4  rounded-lg border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 data-[state=active]:border-blue-600 data-[state=active]:bg-blue-50 transition-all">
@@ -3172,6 +3327,7 @@
       
       <TabsContent value="order" className="flex-1 min-h-0 overflow-y-auto space-y-4 overflow-x-hidden">
         {getOrderItems().filter(item => !item.isRefund).map(renderCompactItemCard)}
+      {renderTotalWithButtons()}
       </TabsContent>
 
       <TabsContent value="history" className="flex-1 min-h-0 overflow-y-auto">
@@ -3452,163 +3608,11 @@
           )}
         </div>
       </TabsContent>
+
     </Tabs>
   </div>
 
-  {/* Карточка "Итого" - фиксированной высоты */}
-  <div className="bg-white rounded-2xl p-6 shadow-lg flex-shrink-0">
-    <div className="flex items-center justify-between mb-4">
-      <div className="flex items-center gap-3">
-        <Receipt className="h-6 w-6 text-green-600" />
-        <h3 className="text-2xl font-bold">
-          {t.total}: {calculateOrderTotal().toFixed(2)} ₽
-        </h3>
-      </div>
-      {((order.surcharges && order.surcharges.length > 0) || order.discountAmount > 0 || calculateTotalOrderAdditivesPrice() > 0) && (
-        <Collapsible>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="lg" className="h-10 px-3">
-              <ChevronDown className="h-5 w-5" />
-            </Button>
-          </CollapsibleTrigger>
-        </Collapsible>
-      )}
-    </div>
-    
-    {((order.surcharges && order.surcharges.length > 0) || order.discountAmount > 0 || calculateTotalOrderAdditivesPrice() > 0) && (
-      <CollapsibleContent>
-        <div className="pt-4 border-t space-y-3">
-          {order.surcharges && order.surcharges.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-lg font-semibold text-gray-600">{t.surcharges}:</div>
-              {order.surcharges.map(surcharge => (
-                <div key={surcharge.id} className="flex justify-between text-lg">
-                  <span>{surcharge.title}</span>
-                  <span className="font-bold text-red-600">
-                    {surcharge.type === 'FIXED'
-                      ? `+${surcharge.amount.toFixed(2)} ₽`
-                      : `+${surcharge.amount}%`}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Добавляем стоимость модификаторов в детализацию */}
-          {calculateTotalOrderAdditivesPrice() > 0 && (
-            <div className="flex justify-between text-lg">
-              <span>{t.orderAdditives}:</span>
-              <span className="font-bold text-blue-600">
-                +{calculateTotalOrderAdditivesPrice().toFixed(2)} ₽
-              </span>
-            </div>
-          )}
-
-          {order.discountAmount > 0 && (
-            <div className="flex justify-between text-lg">
-              <span>{t.discount}:</span>
-              <span className="font-bold text-green-600">
-                -{order.discountAmount.toFixed(2)} ₽
-              </span>
-            </div>
-          )}
-
-          {order.bonusPointsUsed > 0 && (
-            <div className="flex justify-between text-lg">
-              <span>{t.bonusPoints}:</span>
-              <span className="font-bold text-green-600">
-                - {order.bonusPointsUsed.toFixed(2)} ₽
-              </span>
-            </div>
-          )}
-        </div>
-      </CollapsibleContent>
-    )}
-     <div className='space-y-4'>
-    {order.status !== 'CANCELLED' && (
-      <Button
-        disabled={isUpdating}
-        onClick={handlePrecheck}
-        variant={order.attentionFlags?.isPrecheck ? "default" : "outline"}
-        className={`gap-3 w-full h-16 text-2xl font-bold ${order.attentionFlags?.isPrecheck
-          ? 'bg-green-100 text-green-800 hover:bg-green-100'
-          : ''
-          }`}
-      >
-        {isUpdating ? (
-          <Loader2 className="h-6 w-6 animate-spin" />
-        ) : order.attentionFlags?.isPrecheck ? (
-          <CheckCircle className="h-6 w-6" />
-        ) : (
-          <Check className="h-6 w-6" />
-        )}
-        {order.attentionFlags?.isPrecheck ? t.precheckFormed : t.formPrecheck}
-      </Button>
-    )}
-
-    {getOrderItems().some(item => item.status === OrderItemStatus.CREATED) && (
-      <Button
-        disabled={isUpdating || getOrderItems().length === 0}
-        onClick={handleConfirmOrder}
-        variant="default"
-        className="bg-emerald-500 hover:bg-emerald-400 text-white gap-3 w-full h-16 text-2xl font-bold shadow-lg hover:shadow-xl transition-shadow"
-      >
-        {isUpdating ? (
-          <Loader2 className="h-6 w-6 mr-1 animate-spin" />
-        ) : (
-          <Check className="h-6 w-6 mr-1" />
-        )}
-        {order.scheduledAt ? 'Подтвердить' : t.confirm}
-        ({getOrderItems().filter(item => item.status === OrderItemStatus.CREATED).length})
-      </Button>
-    )}
-
-    {order.status === 'CREATED' && (
-      <Button
-        disabled={isUpdating}
-        onClick={handleCancelOrder}
-        variant="default"
-        className="bg-red-500 hover:bg-red-400 text-white gap-3 w-full h-16 text-2xl font-bold shadow-lg hover:shadow-xl transition-shadow"
-      >
-        {isUpdating ? (
-          <Loader2 className="h-6 w-6 mr-1 animate-spin" />
-        ) : (
-          <X className="h-6 w-6 mr-1" />
-        )}
-        {t.cancel}
-      </Button>
-    )}
-
-   {(order.status === 'READY' && order.type != 'DELIVERY') && (
-  <Button
-    disabled={
-      isUpdating || 
-      shiftLoading || 
-      !order.attentionFlags.isPrecheck || 
-      // Проверяем, что все блюда в заказе готовы
-      getOrderItems().some(item => item.status !== OrderItemStatus.COMPLETED)
-    }
-    onClick={handleCalculateOrder}
-    variant="default"
-    className={`gap-3 w-full h-16 text-2xl font-bold shadow-lg hover:shadow-xl transition-shadow ${
-      getOrderItems().some(item => item.status !== OrderItemStatus.COMPLETED)
-        ? 'hidden'
-        : 'bg-emerald-500 hover:bg-emerald-400'
-    }`}
-  >
-    {isUpdating || shiftLoading ? (
-      <Loader2 className="h-6 w-6 animate-spin" />
-    ) : getOrderItems().some(item => item.status !== OrderItemStatus.COMPLETED) ? (
-      <Clock className="h-6 w-6" />
-    ) : (
-      <CheckCircle className="h-6 w-6" />
-    )}
-    { t.calculate
-    }
-  </Button>
-)}
-  </div>
-  </div>
+ {/* Карточка "Итого" - фиксированной высоты */}
 
  
 </div>

@@ -69,14 +69,16 @@ const hasAccess = (role: string | undefined, requiredRoles: string[]) => {
 }
 
 // Компонент для отображения информации о пользователе
-// Компонент для отображения информации о пользователе
-function UserInfo({ collapsed, handleLogout }: { collapsed: boolean, handleLogout: any }) {
+function UserInfo({ collapsed, handleLogout, t }: { 
+  collapsed: boolean, 
+  handleLogout: any,
+  t: any 
+}) {
   const { user } = useAuth()
   const { language } = useLanguageStore()
   const { theme, setTheme } = useTheme()
   const { setLanguage } = useLanguageStore()
-  const t = sideTranslations[language]
-
+  const router = useRouter()
   const roleColor = ROLE_COLORS[user?.role as keyof typeof ROLE_COLORS] || 'text-gray-500 dark:text-gray-400'
 
   const getRoleTranslation = (role: string) => {
@@ -103,85 +105,13 @@ function UserInfo({ collapsed, handleLogout }: { collapsed: boolean, handleLogou
         
         {/* Настройки и выход в collapsed режиме */}
         <div className="flex space-x-1 w-full justify-center">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
+            <button
+              onClick={() => router.push('/settings')}
                 className="flex justify-center p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 title={t.settings}
               >
                 <SettingsIcon className="w-5 h-5" />
               </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56 dark:bg-gray-800" align="start">
-              {/* Переключение темы */}
-              <div className="px-2 py-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.theme}</span>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
-                        {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                        <span className="text-sm">
-                          {theme === 'light' ? t.light : theme === 'dark' ? t.dark : t.system}
-                        </span>
-                        <ChevronDown className="w-3 h-3" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-40 dark:bg-gray-800">
-                      <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
-                        <DropdownMenuRadioItem value="light" className="dark:hover:bg-gray-700">
-                          <Sun className="w-4 h-4 mr-2" />
-                          {t.light}
-                        </DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="dark" className="dark:hover:bg-gray-700">
-                          <Moon className="w-4 h-4 mr-2" />
-                          {t.dark}
-                        </DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="glass" className="dark:hover:bg-gray-700">
-                          <Moon className="w-4 h-4 mr-2" />
-                          Glass
-                        </DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="system" className="dark:hover:bg-gray-700">
-                          <SettingsIcon className="w-4 h-4 mr-2" />
-                          {t.system}
-                        </DropdownMenuRadioItem>
-                      </DropdownMenuRadioGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-
-              <DropdownMenuSeparator className="dark:bg-gray-700" />
-
-              {/* Переключение языка */}
-              <div className="px-2 py-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.language}</span>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
-                        <Languages className="w-4 h-4" />
-                        <span className="text-sm">
-                          {language === 'ru' ? 'Русский' : 'ქართული'}
-                        </span>
-                        <ChevronDown className="w-3 h-3" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-40 dark:bg-gray-800">
-                      <DropdownMenuRadioGroup value={language} onValueChange={(value) => setLanguage(value as Language)}>
-                        <DropdownMenuRadioItem value="ru" className="dark:hover:bg-gray-700">
-                          🇷🇺 {t.russian}
-                        </DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="ka" className="dark:hover:bg-gray-700">
-                          🇬🇪 {t.georgian}
-                        </DropdownMenuRadioItem>
-                      </DropdownMenuRadioGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
 
           <button
             onClick={handleLogout}
@@ -214,85 +144,13 @@ function UserInfo({ collapsed, handleLogout }: { collapsed: boolean, handleLogou
         
         {/* Кнопки настроек и выхода в не-collapsed режиме */}
         <div className="flex space-x-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="flex items-center justify-center p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          <button
+              onClick={() => router.push('/settings')}
+                className="flex justify-center p-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 title={t.settings}
               >
                 <SettingsIcon className="w-5 h-5" />
               </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56 dark:bg-gray-800" align="end">
-              {/* Переключение темы */}
-              <div className="px-2 py-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.theme}</span>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
-                        {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                        <span className="text-sm">
-                          {theme === 'light' ? t.light : theme === 'dark' ? t.dark : t.system}
-                        </span>
-                        <ChevronDown className="w-3 h-3" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-40 dark:bg-gray-800">
-                      <DropdownMenuRadioGroup value={theme} onValueChange={setTheme}>
-                        <DropdownMenuRadioItem value="light" className="dark:hover:bg-gray-700">
-                          <Sun className="w-4 h-4 mr-2" />
-                          {t.light}
-                        </DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="dark" className="dark:hover:bg-gray-700">
-                          <Moon className="w-4 h-4 mr-2" />
-                          {t.dark}
-                        </DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="glass" className="dark:hover:bg-gray-700">
-                          <Moon className="w-4 h-4 mr-2" />
-                          Glass
-                        </DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="system" className="dark:hover:bg-gray-700">
-                          <SettingsIcon className="w-4 h-4 mr-2" />
-                          {t.system}
-                        </DropdownMenuRadioItem>
-                      </DropdownMenuRadioGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-
-              <DropdownMenuSeparator className="dark:bg-gray-700" />
-
-              {/* Переключение языка */}
-              <div className="px-2 py-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t.language}</span>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
-                        <Languages className="w-4 h-4" />
-                        <span className="text-sm">
-                          {language === 'ru' ? 'Русский' : 'ქართული'}
-                        </span>
-                        <ChevronDown className="w-3 h-3" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-40 dark:bg-gray-800">
-                      <DropdownMenuRadioGroup value={language} onValueChange={(value) => setLanguage(value as Language)}>
-                        <DropdownMenuRadioItem value="ru" className="dark:hover:bg-gray-700">
-                          🇷🇺 {t.russian}
-                        </DropdownMenuRadioItem>
-                        <DropdownMenuRadioItem value="ka" className="dark:hover:bg-gray-700">
-                          🇬🇪 {t.georgian}
-                        </DropdownMenuRadioItem>
-                      </DropdownMenuRadioGroup>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
 
           <button
             onClick={handleLogout}
@@ -327,8 +185,9 @@ function Logo({ collapsed, toggleCollapse }: { collapsed: boolean; toggleCollaps
 
       <button
         onClick={toggleCollapse}
-        className={`w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200 active:scale-95 ${collapsed ? 'absolute left-1/2 transform -translate-x-1/2' : ''
-          }`}
+        className={`w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-all duration-200 active:scale-95 ${
+          collapsed ? 'absolute left-1/2 transform -translate-x-1/2' : ''
+        }`}
       >
         <Menu className="w-5 h-5 text-gray-600 dark:text-gray-400" />
       </button>
@@ -340,17 +199,22 @@ function DesktopSidebar({
   collapsed,
   toggleCollapse,
   activeItems,
-  pathname
+  pathname,
+  t
 }: {
   collapsed: boolean
   toggleCollapse: () => void
   activeItems: any[]
   pathname: string
+  t: any
 }) {
   const { language } = useLanguageStore();
-  const t = sideTranslations[language];
   const router = useRouter();
   const { setUser, mutate } = useAuth();
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isHoveringRef = useRef(false);
+  const isDropdownOpenRef = useRef(false);
 
   // Реф для навигационного меню
   const navRef = useRef<HTMLElement>(null);
@@ -373,9 +237,65 @@ function DesktopSidebar({
   // Функция для проверки наличия скролла
   const checkScroll = () => {
     if (navRef.current) {
-      // Сравниваем scrollHeight с clientHeight
       const hasVerticalScroll = navRef.current.scrollHeight > navRef.current.clientHeight;
       setHasScroll(hasVerticalScroll);
+    }
+  };
+
+  // Обработчик клика вне сайдбара
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        sidebarRef.current && 
+        !sidebarRef.current.contains(event.target as Node) &&
+        !isDropdownOpenRef.current &&
+        !collapsed
+      ) {
+        toggleCollapse();
+      }
+    };
+
+    if (!collapsed) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [collapsed, toggleCollapse]);
+
+  // Обработчики для дропдаунов
+  const handleDropdownOpenChange = (open: boolean) => {
+    isDropdownOpenRef.current = open;
+  };
+
+  const handleMouseEnter = () => {
+    isHoveringRef.current = true;
+    
+    if (collapsed) {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+      
+      hoverTimeoutRef.current = setTimeout(() => {
+        if (isHoveringRef.current && !isDropdownOpenRef.current) {
+          toggleCollapse();
+        }
+      }, 30); 
+    }
+  };
+
+  const handleMouseLeave = () => {
+    isHoveringRef.current = false;
+    
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    
+    // Не сворачиваем при уходе мыши, если открыт дропдаун
+    if (!collapsed && !isDropdownOpenRef.current) {
+      // Только сворачиваем при клике вне сайдбара
     }
   };
 
@@ -392,14 +312,21 @@ function DesktopSidebar({
   }, [collapsed, activeItems]);
 
   return (
-    <div className={`bg-white dark:bg-gray-900 border-r flex flex-col h-screen sticky top-0 transition-all duration-300 ${collapsed ? 'w-24' : 'w-80'}`}>
+    <div 
+      ref={sidebarRef}
+      className={`bg-white dark:bg-gray-900 border-r flex flex-col h-screen sticky top-0 transition-all duration-300 ${
+        collapsed ? 'w-24' : 'w-80'
+      }`}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
       <Logo collapsed={collapsed} toggleCollapse={toggleCollapse} />
 
       {/* Навигационное меню */}
       <nav
         ref={navRef}
         className="flex-1 px-2 py-2 overflow-y-auto text-xl scrollbar-hide"
-        onLoad={checkScroll} // Проверяем при загрузке
+        onLoad={checkScroll}
       >
         <ul className={`space-y-1 ${collapsed ? 'flex flex-col items-center' : ''} ${hasScroll && collapsed ? 'pr-2' : ''}`}>
           {activeItems.map((item) => {
@@ -408,10 +335,13 @@ function DesktopSidebar({
               <li key={item.href} className={`${collapsed ? 'w-full flex justify-center' : ''}`}>
                 <Link
                   href={item.href}
-                  className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg transition-colors ${collapsed ? 'w-12 h-12 mx-auto' : 'mx-1'} ${isActive
-                    ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-primary-foreground font-medium'
-                    : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
-                    }`}
+                  className={`flex items-center ${collapsed ? 'justify-center' : ''} gap-3 px-3 py-3 rounded-lg transition-colors ${
+                    collapsed ? 'w-12 h-12 mx-auto' : 'mx-1'
+                  } ${
+                    isActive
+                      ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-primary-foreground font-medium'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
+                  }`}
                   title={collapsed ? item.name : undefined}
                 >
                   <span className={isActive ? 'text-primary dark:text-primary-foreground' : 'text-gray-500 dark:text-gray-400'}>
@@ -430,8 +360,13 @@ function DesktopSidebar({
       </nav>
 
       <div className={`p-2 border-t dark:border-gray-700 ${collapsed ? '' : ''}`}>
-        {/* UserInfo теперь содержит и настройки и выход */}
-        <UserInfo collapsed={collapsed} handleLogout={handleLogout} />
+        {/* Оборачиваем UserInfo для отслеживания дропдаунов */}
+        <div 
+          onMouseEnter={(e) => e.stopPropagation()}
+          onMouseLeave={(e) => e.stopPropagation()}
+        >
+          <UserInfo collapsed={collapsed} handleLogout={handleLogout} t={t} />
+        </div>
 
         {!collapsed && (
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 px-3 text-center">{t.version} 0.1.0</p>
@@ -441,10 +376,17 @@ function DesktopSidebar({
   )
 }
 
-function MobileBottomBar({ activeItems, pathname }: { activeItems: any[], pathname: string }) {
+function MobileBottomBar({ 
+  activeItems, 
+  pathname, 
+  t 
+}: { 
+  activeItems: any[], 
+  pathname: string,
+  t: any 
+}) {
   const { theme, setTheme } = useTheme();
   const { language, setLanguage } = useLanguageStore();
-  const t = sideTranslations[language];
   const router = useRouter();
   const { setUser, user, mutate } = useAuth();
 
@@ -471,10 +413,11 @@ function MobileBottomBar({ activeItems, pathname }: { activeItems: any[], pathna
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex flex-col items-center justify-center min-w-16 px-3 py-2 rounded-lg transition-colors flex-shrink-0 ${isActive
-                  ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-primary-foreground'
-                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
-                  }`}
+                className={`flex flex-col items-center justify-center min-w-16 px-3 py-2 rounded-lg transition-colors flex-shrink-0 ${
+                  isActive
+                    ? 'bg-primary/10 dark:bg-primary/20 text-primary dark:text-primary-foreground'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                }`}
               >
                 <span className={`${isActive ? 'text-primary dark:text-primary-foreground' : 'text-gray-500 dark:text-gray-400'}`}>
                   {item.icon}
@@ -556,8 +499,7 @@ export default function Side() {
   const pathname = usePathname()
   const [collapsed, setCollapsed] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
-  const { theme, setTheme } = useTheme();
-  const { language, setLanguage } = useLanguageStore();
+  const { language } = useLanguageStore();
   const t = sideTranslations[language];
 
   const handleLogout = async () => {
@@ -679,7 +621,7 @@ export default function Side() {
   }
 
   if (isMobile) {
-    return <MobileBottomBar activeItems={activeItems} pathname={pathname} />
+    return <MobileBottomBar activeItems={activeItems} pathname={pathname} t={t} />
   }
 
   return (
@@ -688,6 +630,7 @@ export default function Side() {
       toggleCollapse={toggleCollapse}
       activeItems={activeItems}
       pathname={pathname}
+      t={t}
     />
   )
 }
