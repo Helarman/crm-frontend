@@ -78,7 +78,9 @@
     HistoryIcon,
     ShoppingCart,
     PlusSquare,
-    Info
+    Info,
+    WandSparkles,
+    ArrowRight
   } from 'lucide-react'
   import { Category, OrderItem, OrderState } from '@/lib/types/order'
   import { Product } from '@/lib/types/product'
@@ -116,6 +118,16 @@
   } from "@/components/ui/select"
   import { InventoryTransactionType, WarehouseService } from '@/lib/api/warehouse.service'
   import { RestaurantService } from '@/lib/api/restaurant.service'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogClose,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { motion, useAnimationControls } from 'framer-motion'
 
   // Типы для навигации по категориям
   interface CategoryNavigation {
@@ -157,7 +169,7 @@
 
     const translations = {
       ru: {
-        back: "Назад к списку заказов",
+        back: "Назад",
         calculate: "Рассчитать",
         confirmCalculate: "Вы уверены, что хотите рассчитать заказ?",
         menu: "Меню",
@@ -168,7 +180,7 @@
         paymentMethod: "Способ оплаты",
         orderType: "Тип заказа",
         table: "Стол",
-        persons: "Количество",
+        persons: "Персоны",
         confirm: "Готовить",
         complete: "Завершить",
         cancel: "Отменить",
@@ -233,14 +245,14 @@
         confirmation: "Подтверждение",
         customerCode: "Код клиента",
         enterCustomerCode: "Введите 4-значный код клиента",
-        applyCustomer: "Применить клиента",
+        applyCustomer: "Применить",
         customerApplied: "Клиент применен",
         customerNotFound: "Клиент не найден",
         customerDiscount: "Персональная скидка",
         bonusPoints: "Бонусные баллы",
         useBonusPoints: "Использовать баллы",
         pointsAvailable: "Доступно баллов",
-        applyDiscount: "Применить скидку",
+        applyDiscount: "Применить",
         removeCustomer: "Удалить клиента",
         customerInfo: "Информация о клиенте",
         phoneNumber: "Телефон",
@@ -249,7 +261,7 @@
         usePoints: "Использовать баллы",
         pointsToUse: "Количество баллов",
         maxPointsToUse: "Максимум можно использовать",
-        applyPoints: "Применить баллы",
+        applyPoints: "Применить",
         removePoints: "Сбросить баллы",
         discountApplied: "Скидка применена",
         pointsApplied: "Баллы применены",
@@ -259,7 +271,7 @@
         minutesForm1: 'минуту',
         minutesForm2: 'минуты',
         minutesForm5: 'минут',
-        backToCategories: "Назад к категориям",
+        backToCategories: "Назад",
         allCategories: "Все категории",
         subcategories: "Подкатегории",
         noSubcategories: "Нет подкатегорий",
@@ -287,7 +299,7 @@
         },
         discountCode: "Промокод",
         enterDiscountCode: "Введите промокод",
-        applyCode: "Применить код",
+        applyCode: "Применить",
         discountRemoved: "Скидка удалена",
         discountError: "Ошибка применения скидки",
         discountNotFound: "Скидка не найдена",
@@ -346,7 +358,7 @@
         orderAdditivePrice: "Цена",
         orderAdditiveType: "Тип",
         orderAdditiveTypes: {
-          FIXED: "Фиксированная",
+          FIXED: "Фикс",
           PER_PERSON: "За персону"
         },
         removeOrderAdditive: "Удалить",
@@ -446,7 +458,8 @@
     const [warehouse, setWarehouse] = useState<any>(null);
     const [restaurantData, setRestaurantData] = useState<any>(null);
     const [isWritingOff, setIsWritingOff] = useState(false);
-
+    const [activeTab, setActiveTab] = useState<any>('order');
+    const [isRightColCollapsed, setIsRightColCollapsed] = useState(false)
     const {
       isConnected: isWebSocketConnected,
       connectionError: webSocketError
@@ -1413,6 +1426,18 @@
         setIsUpdating(false);
       }
     };
+    type OrderTypes = 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET';
+    const getOrderType = (type: OrderTypes): string => {
+    const translations: Record<OrderTypes, string> = {
+      'DINE_IN': 'В ресторане',
+      'TAKEAWAY': 'На вынос',
+      'DELIVERY': 'Доставка',
+      'BANQUET': 'Банкет'
+    };
+    
+    return translations[type] || type;
+  }
+
 
     const handleApplyPromoCode = async () => {
       if (!orderId || !promoCode.trim()) return;
@@ -2043,103 +2068,233 @@
       getProductPrice: (product: Product) => number;
     }
 
-    const ProductCard: React.FC<ProductCardProps> = ({
-      product,
-      additives,
-      comment,
-      quantity,
-      onAdditivesChange,
-      onQuantityChange,
-      isOrderEditable,
-      getProductPrice
-    }) => {
-      return (
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden border hover:shadow-xl transition-all hover:scale-[1.02] flex flex-col h-full">
-          <div className="relative aspect-square">
-            {product.images?.[0] ? (
-              <Image
-                src={product.images[0]}
-                alt={product.title}
-                width={300}
-                height={300}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                <Utensils className="h-12 w-12 text-gray-400" />
-              </div>
-            )}
+const ProductCard: React.FC<ProductCardProps> = ({
+  product,
+  additives,
+  comment,
+  quantity,
+  onAdditivesChange,
+  onQuantityChange,
+  isOrderEditable,
+  getProductPrice
+}) => {
+  const titleRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  const [isInView, setIsInView] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const controls = useAnimationControls();
+
+  // Проверка переполнения текста
+  useEffect(() => {
+    const checkOverflow = () => {
+      if (titleRef.current) {
+        const element = titleRef.current;
+        setIsOverflowing(element.scrollWidth > element.clientWidth);
+      }
+    };
+
+    checkOverflow();
+    window.addEventListener('resize', checkOverflow);
+    return () => window.removeEventListener('resize', checkOverflow);
+  }, [product.title]);
+
+  // Intersection Observer для отслеживания попадания в область видимости
+  useEffect(() => {
+    if (!containerRef.current || !isOverflowing) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        setIsInView(entry.isIntersecting);
+      },
+      {
+        threshold: 0.1,
+        rootMargin: '0px'
+      }
+    );
+
+    observer.observe(containerRef.current);
+
+    return () => {
+      if (containerRef.current) {
+        observer.unobserve(containerRef.current);
+      }
+    };
+  }, [isOverflowing]);
+
+  // Управление анимацией
+  useEffect(() => {
+    if (!isOverflowing || !isInView) {
+      controls.stop();
+      controls.set({ x: 0 });
+      return;
+    }
+
+    if (isHovered) {
+      // При наведении - останавливаем анимацию
+      controls.stop();
+      return;
+    }
+
+    // Рассчитываем параметры анимации
+    const element = titleRef.current;
+    if (!element) return;
+
+    const scrollDistance = element.scrollWidth - element.clientWidth;
+    const duration = Math.max(scrollDistance * 0.03, 3); // Минимальная длительность 3 секунды
+
+    // Плавная анимация с паузами
+    const sequence = async () => {
+      // Начальная пауза
+      await controls.start({ 
+        x: 0,
+        transition: { duration: 1 }
+      });
+
+      // Плавный старт анимации
+      await controls.start({
+        x: -scrollDistance,
+        transition: {
+          duration: duration,
+          ease: "linear"
+        }
+      });
+
+      // Пауза в конце
+      await controls.start({ 
+        x: -scrollDistance,
+        transition: { duration: 1 }
+      });
+
+      // Возврат к началу с паузой
+      await controls.start({ 
+        x: 0,
+        transition: { 
+          duration: 1,
+          ease: "easeInOut"
+        }
+      });
+
+      // Бесконечный цикл
+      if (isOverflowing && isInView && !isHovered) {
+        sequence();
+      }
+    };
+
+    sequence();
+
+    return () => {
+      controls.stop();
+    };
+  }, [isOverflowing, isInView, isHovered, controls, product.title]);
+
+  // Обработчики наведения
+  const handleHoverStart = () => {
+    setIsHovered(true);
+  };
+
+  const handleHoverEnd = () => {
+    setIsHovered(false);
+  };
+
+  return (
+    <div 
+      ref={containerRef}
+      className="group bg-white rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-green-100 transition-all duration-200 flex flex-col h-full"
+    >
+      <div className="relative aspect-square overflow-hidden">
+        {product.images?.[0] ? (
+          <Image
+            src={product.images[0]}
+            alt={product.title}
+            width={280}
+            height={280}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+            <Utensils className="h-8 w-8 text-gray-300" />
           </div>
-          <div className="p-4 flex flex-col flex-grow">
-            <div className="flex-grow">
-              <div className="mb-3">
-                <h3 className="font-bold text-lg">
-                  {product.title}
-                </h3>
-                <p className="text-xl font-bold text-green-600">
-                  {getProductPrice(product)} ₽
-                </p>
-              </div>
-
-              {product.additives && product.additives.length > 0 && (
-                <div className="mb-4">
-                  <div className="text-sm font-semibold text-gray-600 mb-2">
-                    {t.additives}
-                  </div>
-                  <SearchableSelect
-                    options={product.additives.map(additive => ({
-                      id: additive.id,
-                      label: `${additive.title} (+${additive.price} ₽)`
-                    }))}
-                    value={additives}
-                    onChange={onAdditivesChange}
-                    placeholder={t.selectAdditives}
-                    searchPlaceholder={t.searchAdditives}
-                    emptyText={t.noAdditivesFound}
-                    multiple={true}
-                    disabled={!isOrderEditable}
-                  />
-                </div>
-              )}
+        )}
+        
+        {product.additives && product.additives.length > 0 && (
+          <AdditivesDialog
+            product={product}
+            selectedAdditives={additives}
+            onAdditivesChange={onAdditivesChange}
+            disabled={!isOrderEditable}
+          />
+        )}
+        
+        {quantity > 0 && (
+          <div className="absolute top-2 right-2 bg-green-500 text-white text-md font-bold rounded-lg h-8 w-8 flex items-center justify-center">
+            {quantity}
+          </div>
+        )}
+      </div>
+      
+      <div className="p-3 flex flex-col flex-grow">
+        {/* Заголовок и цена */}
+        <div className="flex justify-between items-start mb-2">
+          <div 
+            ref={titleRef}
+            className="flex-1 mr-2 overflow-hidden relative"
+            onMouseEnter={handleHoverStart}
+            onMouseLeave={handleHoverEnd}
+          >
+            <div className="w-max">
+              <motion.h3
+                animate={controls}
+                className="font-semibold text-base whitespace-nowrap cursor-default"
+                title={product.title}
+              >
+                {product.title}
+              </motion.h3>
             </div>
+          </div>
+          <p className="text-lg font-bold text-green-600 whitespace-nowrap">
+            {getProductPrice(product)} ₽
+          </p>
+        </div>
 
-            <div className="mt-auto">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center justify-between gap-3 w-full">
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="h-10 w-10 p-0"
-                    onClick={() => {
-                      const newQuantity = Math.max(0, quantity - 1)
-                      onQuantityChange(newQuantity)
-                    }}
-                    disabled={quantity === 0 || !isOrderEditable}
-                  >
-                    <Minus className="h-5 w-5" />
-                  </Button>
-                  <span className="font-bold text-xl w-10 text-center">{quantity}</span>
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="h-10 w-10 p-0"
-                    onClick={() => {
-                      const newQuantity = quantity + 1
-                      onQuantityChange(newQuantity)
-                    }}
-                    disabled={!isOrderEditable}
-                  >
-                    <Plus className="h-5 w-5" />
-                  </Button>
-                </div>
-                
-              </div>
-          
+        {/* Управление количеством */}
+        <div className="mt-auto border-t border-gray-50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 w-full">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0 w-1/2"
+                onClick={() => {
+                  const newQuantity = Math.max(0, quantity - 1)
+                  onQuantityChange(newQuantity)
+                }}
+                disabled={quantity === 0 || !isOrderEditable}
+              >
+                <Minus className="h-4 w-4" />
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0 w-1/2"
+                onClick={() => {
+                  const newQuantity = quantity + 1
+                  onQuantityChange(newQuantity)
+                }}
+                disabled={!isOrderEditable}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </div>
-      );
-    };
+      </div>
+    </div>
+  );
+};
+
 
     const renderItemActions = (item: OrderItem) => {
       if (!order) return null;
@@ -2284,14 +2439,12 @@
     >
       <div className="flex items-start gap-3 2xl:gap-4">
         {/* Изображение продукта */}
-        <div className="flex-shrink-0 w-12 h-12 2xl:w-16 2xl:h-16 relative">
+        <div className="flex-shrink-0 w-12 h-12 2xl:w-16 2xl:h-16 relative  bg-gray-100 rounded-lg">
           {item.product.image ? (
-            <Image
+            <img
               src={item.product.image}
               alt={item.product.title}
-              width={50}
-              height={50}
-              className="w-12 h-12 2xl:w-16 2xl:h-16 object-cover rounded-lg"
+              className="h-full object-cover rounded-lg"
             />
           ) : (
             <div className="w-12 h-12 2xl:w-16 2xl:h-16 bg-gray-100 rounded-lg flex items-center justify-center">
@@ -2302,7 +2455,7 @@
 
         {/* Основная информация */}
         <div className="flex-1 min-w-0">
-          <div className="flex flex-col gap-2 ">
+          <div className="flex flex-col ">
             {/* Заголовок и цена */}
             <div className="flex justify-between items-start gap-2">
               <h3 className="font-bold text-sm 2xl:text-md xl:text-md truncate flex-1">
@@ -2333,39 +2486,38 @@
                   <span className="truncate">{item.refundReason}</span>
                 </div>
               )}
-              <div className="flex">
+              {/*<div className="flex">
                 {getStatusBadge(item.status)}
-              </div>
+              </div>*/}
             </div>
             
             {/* Статус и элементы управления */}
-            <div className="flex items-center justify-between gap-2 mt-1">
+            <div className="flex items-center justify-between gap-2 ">
               {/* Бейдж статуса */}
-              
 
               {/* Время приготовления или счетчик */}
               <div className="flex min-w-0">
                 {canEditQuantity ? (
-                  <div className="flex items-center justify-end gap-2 2xl:gap-3">
+                  <div className="flex items-center justify-end gap-1">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-8 w-8 2xl:h-10 2xl:w-10 p-0"
+                     className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 "
                       onClick={() => handleQuantitItemChange(item, item.quantity - 1)}
                       disabled={item.quantity <= 1}
                     >
-                      <Minus className="h-3 w-3 2xl:h-5 2xl:w-5" />
+                      <Minus className="h-4 w-4 2xl:h-5 2xl:w-5" />
                     </Button>
-                    <span className="text-xl 2xl:text-2xl font-bold w-6 2xl:w-10 text-center">
+                    <span className="text-lg 2xl:text-xl font-bold w-6 2xl:w-10 text-center">
                       {item.quantity}
                     </span>
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-8 w-8 2xl:h-10 2xl:w-10 p-0"
+                      className="h-9 w-9 2xl:h-11 2xl:w-11 p-0"
                       onClick={() => handleQuantitItemChange(item, item.quantity + 1)}
                     >
-                      <Plus className="h-3 w-3 2xl:h-5 2xl:w-5" />
+                      <Plus className="h-4 w-4 2xl:h-5 2xl:w-5" />
                     </Button>
                   </div>
                 ) : (
@@ -2384,7 +2536,7 @@
                 {/* Дозаказ */}
                 {canReorder && (
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
                     onClick={() => handleReorderItem(item)}
@@ -2397,7 +2549,7 @@
                 {/* Возврат */}
                 {canRefund && canRefundItem && (
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
                     onClick={() => {
@@ -2415,7 +2567,7 @@
                 {/* Удаление */}
                 {canEditQuantity && (
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
                     onClick={() => handleQuantitItemChange(item, 0)}
@@ -2441,55 +2593,48 @@
       });
     };
 
-    const renderLogs = () => {
-      if (logsLoading) {
-        return (
-          <div className="flex justify-center py-4">
-            <Loader2 className="h-6 w-6 animate-spin" />
-          </div>
-        );
-      }
+   const renderLogs = () => {
+  if (logsLoading) {
+    return (
+      <div className="flex justify-center py-4">
+        <Loader2 className="h-6 w-6 animate-spin" />
+      </div>
+    );
+  }
 
-      if (logs.length === 0) {
-        return (
-          <div className="text-center py-8 text-gray-600">
-            {t.noHistory}
-          </div>
-        );
-      }
+  if (logs.length === 0) {
+    return (
+      <div className="text-center py-8 text-gray-600">
+        {t.noHistory}
+      </div>
+    );
+  }
 
-      return (
-        <div>
-          {logs.map((log) => (
-            <div key={log.id} className="pb-4 px-2 last:pb-0">
-              <div className="flex items-start gap-4">
-                <div className="flex-1 flex justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-lg">{log.action}</div>
-                    {log.userName && (
-                      <div className="text-lg text-gray-600 flex items-center gap-2 mt-2">
-                        <User className="h-4 w-4" />
-                        {log.userName}
-                      </div>
-                    )}
-                    {log.details && (
-                      <div className="mt-3 text-lg bg-gray-100 p-3 rounded-lg">
-                        <pre className="whitespace-pre-wrap break-words">
-                          {JSON.stringify(log.details, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-shrink-0 text-lg text-gray-600 w-32 text-center">
-                    {formatDate(log.createdAt)}
-                  </div>
+  const sortedLogs = [...logs].sort((a, b) => {
+  const dateA = new Date(a.createdAt).getTime();
+  const dateB = new Date(b.createdAt).getTime();
+  return dateA - dateB; // от старых к новым
+});
+
+  return (
+    <div>
+      {sortedLogs.map((log) => (
+        log.userName && <div key={log.id} className="mb-4 pb-2 px-2 last:pb-0 border-b-1">
+          <div className="flex items-start">
+            <div className="flex-1 flex justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="ext-center">
+                  {log.userName}, {formatDate(log.createdAt)}
                 </div>
+                <div className="font-bold text-lg">{log.action}</div>
               </div>
             </div>
-          ))}
+          </div>
         </div>
-      );
-    };
+      ))}
+    </div>
+  );
+};
 
     const renderDiscountsBlock = () => {
       if (!order?.restaurant?.id) return null;
@@ -2515,9 +2660,9 @@
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="space-y-3">
+              <div className="space-y-3 ">
                 <Label className="text-lg font-semibold">{t.enterDiscountCode}</Label>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-col 2xl:flex-row">
                   <Input
                     value={promoCode}
                     onChange={(e) => {
@@ -2531,7 +2676,7 @@
                   <Button
                     onClick={handleApplyPromoCode}
                     disabled={!isOrderEditable || promoCodeLoading || !promoCode.trim()}
-                    className="h-12 px-6"
+                    className="h-12 px-6 w-full 2xl:w-1/5"
                   >
                     {promoCodeLoading ? (
                       <Loader2 className="h-5 w-5 animate-spin" />
@@ -2547,7 +2692,7 @@
 
               <div className="space-y-3">
                 <Label className="text-lg font-semibold">{t.enterCustomerCode}</Label>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-col 2xl:flex-row">
                   <Input
                     value={customerCode}
                     onChange={(e) => setCustomerCode(e.target.value)}
@@ -2559,7 +2704,7 @@
                   <Button
                     onClick={handleApplyCustomer}
                     disabled={!isOrderEditable || customerLoading || customerCode.length !== 4}
-                    className="h-12 px-6"
+                    className="h-12 px-6 w-full 2xl:w-1/5"
                   >
                     {customerLoading ? (
                       <Loader2 className="h-5 w-5 animate-spin" />
@@ -2576,164 +2721,219 @@
     };
 
     // Компонент для отображения модификаторов заказа
-    const renderOrderAdditivesBlock = () => {
-      if (!order?.restaurant?.id) return null;
+const renderOrderAdditivesBlock = () => {
+  if (!order?.restaurant?.id) return null;
 
-      return (
-        <div className="space-y-6">
-          {/* Фильтры */}
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <Select
-                value={filterOrderAdditiveType}
-                onValueChange={setFilterOrderAdditiveType}
-              >
-                <SelectTrigger className='w-full h-12 text-lg'>
-                  <SelectValue placeholder={t.filterByType} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all" className="text-lg py-3">{t.allTypes}</SelectItem>
-                  <SelectItem value={OrderAdditiveType.FIXED} className="text-lg py-3">
-                    {t.orderAdditiveTypes.FIXED}
-                  </SelectItem>
-                  <SelectItem value={OrderAdditiveType.PER_PERSON} className="text-lg py-3">
-                    {t.orderAdditiveTypes.PER_PERSON}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Список доступных модификаторов */}
-          {orderAdditivesLoading ? (
-            <div className="flex justify-center py-4">
-              <Loader2 className="h-6 w-6 animate-spin" />
-            </div>
-          ) : filteredAvailableOrderAdditives.length > 0 ? (
-            <div className="space-y-4">
-              <div className="space-y-3">
-                {filteredAvailableOrderAdditives.map(additive => (
-                  <div key={additive.id} className="flex items-center justify-between p-4 border-2 rounded-xl hover:bg-gray-50 transition-all">
-                    <div>
-                      <p className="font-bold text-lg">{additive.title}</p>
-                      <div className="flex items-center gap-6 text-lg text-gray-600 mt-2">
-                        <span>
-                          {t.orderAdditivePrice}: {additive.price} ₽
-                        </span>
-                        <span>
-                          {t.orderAdditiveType}: {t.orderAdditiveTypes[additive.type] || additive.type}
-                        </span>
-                      </div>
-                    </div>
-                    <Button
-                      size="lg"
-                      onClick={() => {
-                        setSelectedOrderAdditive(additive.id);
-                        handleAddOrderAdditive();
-                      }}
-                      disabled={!isOrderEditable || isUpdating}
-                      className="h-12 px-6"
-                    >
-                      <Plus className="h-5 w-5 mr-2" />
-                      {t.addOrderAdditive}
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-600 text-lg">
-              {t.noOrderAdditives}
-            </div>
-          )}
-
-          {/* Текущие модификаторы */}
-          {orderAdditives.length > 0 && (
-            <div className="space-y-6">
-              <h4 className="font-bold text-2xl">{t.currentOrderAdditives}</h4>
-              <div className="space-y-4">
-                {orderAdditives.map(additive => (
-                  <div key={additive.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-bold text-lg">{additive.title}</p>
-                          <div className="flex items-center gap-6 text-lg text-gray-600 mt-2">
-                            <span>
-                              {t.orderAdditiveType}: {t.orderAdditiveTypes[additive.type] || additive.type}
-                            </span>
-                            <span>
-                              {t.orderAdditivePrice}: {calculateAdditivePrice(additive)} ₽
-                            </span>
-                            {additive.type === OrderAdditiveType.PER_PERSON && (
-                              <span className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded-full">
-                                {t.applyPerPerson}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="flex items-center gap-3">
-                            <Button
-                              variant="outline"
-                              size="lg"
-                              className="h-8 w-8 p-0"
-                              onClick={() => handleUpdateOrderAdditiveQuantity(
-                                additive.id,
-                                (additive.quantity || 1) - 1
-                              )}
-                              disabled={!isOrderEditable || (additive.quantity || 1) <= 1}
-                            >
-                              <Minus className="h-4 w-4" />
-                            </Button>
-                            <span className="font-bold text-xl w-8 text-center">
-                              {additive.quantity || 1}
-                            </span>
-                            <Button
-                              variant="outline"
-                              size="lg"
-                              className="h-8 w-8 p-0"
-                              onClick={() => handleUpdateOrderAdditiveQuantity(
-                                additive.id,
-                                (additive.quantity || 1) + 1
-                              )}
-                              disabled={!isOrderEditable}
-                            >
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="lg"
-                            className="text-red-500 hover:text-red-600 h-10"
-                            onClick={() => handleRemoveOrderAdditive(additive.id)}
-                            disabled={!isOrderEditable}
-                          >
-                            <X className="h-5 w-5" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Итоговая стоимость модификаторов */}
-          {orderAdditives.length > 0 && (
-            <div className="pt-6 border-t">
-              <div className="flex justify-between items-center">
-                <span className="font-bold text-xl">{t.orderAdditives}:</span>
-                <span className="text-2xl font-bold text-green-600">
-                  {calculateTotalOrderAdditivesPrice()} ₽
-                </span>
-              </div>
-            </div>
-          )}
+  return (
+    <div className="space-y-6">
+      {/* Фильтры */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+        <div className="w-full sm:flex-1">
+          <Select
+            value={filterOrderAdditiveType}
+            onValueChange={setFilterOrderAdditiveType}
+          >
+            <SelectTrigger className='w-full h-12 text-base sm:text-lg'>
+              <SelectValue placeholder={t.filterByType} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="text-base sm:text-lg py-3">{t.allTypes}</SelectItem>
+              <SelectItem value={OrderAdditiveType.FIXED} className="text-base sm:text-lg py-3">
+                {t.orderAdditiveTypes.FIXED}
+              </SelectItem>
+              <SelectItem value={OrderAdditiveType.PER_PERSON} className="text-base sm:text-lg py-3">
+                {t.orderAdditiveTypes.PER_PERSON}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
-      );
-    };
+      </div>
+
+      {/* Список доступных модификаторов */}
+      {orderAdditivesLoading ? (
+        <div className="flex justify-center py-4">
+          <Loader2 className="h-6 w-6 animate-spin" />
+        </div>
+      ) : filteredAvailableOrderAdditives.length > 0 ? (
+        <div className="space-y-4">
+          <div className="space-y-3">
+            {filteredAvailableOrderAdditives.map(additive => (
+             <div 
+  key={additive.id} 
+  className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-6 border border-gray-200 rounded-xl hover:bg-gray-50/50 transition-all duration-200 hover:shadow-sm gap-3 sm:gap-4"
+>
+  {/* Левая часть - контент */}
+  <div className="w-full sm:w-auto sm:flex-1">
+    <p className="font-semibold text-gray-900 text-base sm:text-lg mb-2 sm:mb-3">
+      {additive.title}
+    </p>
+    
+    <div className="flex flex-wrap items-center gap-2">
+      {/* Бейдж с ценой */}
+      <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-100">
+        <span className="text-emerald-700 font-medium text-sm">
+          {additive.price} ₽
+        </span>
+      </div>
+      
+      {/* Бейдж с типом */}
+      <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-blue-50 border border-blue-100">
+        <span className="text-blue-700 font-medium text-sm">
+          {t.orderAdditiveTypes[additive.type] || additive.type}
+        </span>
+      </div>
+    </div>
+  </div>
+  
+  {/* Правая часть - кнопка */}
+  <div className="w-full sm:w-auto self-stretch sm:self-center">
+    <Button
+      size="lg"
+      variant="outline"
+      onClick={() => {
+        setSelectedOrderAdditive(additive.id);
+        handleAddOrderAdditive();
+      }}
+      disabled={!isOrderEditable || isUpdating}
+      className="h-12 w-full sm:w-12 sm:h-12 p-0 sm:p-0 border-gray-300 hover:bg-gray-100 hover:border-gray-400 transition-colors"
+      title={t.addOrderAdditive}
+    >
+      {/* На мобильных показываем текст, на десктопе только иконку */}
+      <div className="flex items-center justify-center sm:justify-center w-full">
+        <Plus className="h-5 w-5" />
+        <span className="ml-2 sm:hidden">
+          {t.addOrderAdditive}
+        </span>
+      </div>
+    </Button>
+  </div>
+</div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="text-center py-8 text-gray-600 text-base sm:text-lg">
+          {t.noOrderAdditives}
+        </div>
+      )}
+
+      {/* Текущие модификаторы */}
+      {orderAdditives.length > 0 && (
+        <div className="space-y-6">
+          <h4 className="font-bold text-xl sm:text-2xl">{t.currentOrderAdditives}</h4>
+          <div className="space-y-4">
+            
+            {orderAdditives.map(additive => (
+             <div 
+  key={additive.id} 
+  className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-6 border border-gray-200 rounded-xl hover:bg-gray-50/50 transition-all duration-200 hover:shadow-sm gap-3 sm:gap-4"
+>
+  {/* Левая часть - контент */}
+  <div className="w-full sm:w-auto sm:flex-1">
+    <p className="font-semibold text-gray-900 text-base sm:text-lg mb-2 sm:mb-3">
+      {additive.title}
+    </p>
+    
+    <div className="flex flex-wrap items-center gap-2">
+      {/* Бейдж с ценой */}
+      <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-100">
+        <span className="text-emerald-700 font-medium text-sm">
+          {calculateAdditivePrice(additive)} ₽
+        </span>
+      </div>
+      
+      {/* Бейдж с типом */}
+      <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-blue-50 border border-blue-100">
+        <span className="text-blue-700 font-medium text-sm">
+          {t.orderAdditiveTypes[additive.type] || additive.type}
+        </span>
+      </div>
+
+      {/* Бейдж "на человека" */}
+      {additive.type === OrderAdditiveType.PER_PERSON && (
+        <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-100">
+          <span className="text-indigo-700 font-medium text-sm">
+            {t.applyPerPerson}
+          </span>
+        </div>
+      )}
+    </div>
+  </div>
+  
+  {/* Правая часть - управление количеством */}
+  <div className="w-full sm:w-auto self-stretch sm:self-center">
+    <div className="flex flex-col sm:flex-row items-center justify-end gap-3 w-full">
+      {/* Управление количеством */}
+      <div className="flex items-center gap-3">
+        <Button
+          variant="outline"
+          size="lg"
+          className="h-10 w-10 p-0 border-gray-300 hover:bg-gray-100 hover:border-gray-400 transition-colors"
+          onClick={() => handleUpdateOrderAdditiveQuantity(
+            additive.id,
+            (additive.quantity || 1) - 1
+          )}
+          disabled={!isOrderEditable || (additive.quantity || 1) <= 1}
+          title="+"
+        >
+          <Minus className="h-4 w-4" />
+        </Button>
+        
+        <div className="w-10 flex items-center justify-center">
+          <span className="font-bold text-lg text-gray-900">
+            {additive.quantity || 1}
+          </span>
+        </div>
+        
+        <Button
+          variant="outline"
+          size="lg"
+          className="h-10 w-10 p-0 border-gray-300 hover:bg-gray-100 hover:border-gray-400 transition-colors"
+          onClick={() => handleUpdateOrderAdditiveQuantity(
+            additive.id,
+            (additive.quantity || 1) + 1
+          )}
+          disabled={!isOrderEditable}
+          title="-"
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </div>
+      
+      {/* Кнопка удаления */}
+         <Button
+          variant="outline"
+          size="lg"
+          className="h-10 w-10 p-0 border-red-200 text-red-600 hover:text-red-700 hover:bg-red-50 hover:border-red-300 transition-colors"
+        
+          onClick={() => handleRemoveOrderAdditive(additive.id)}
+        disabled={!isOrderEditable}
+          title="-"
+        >
+          <X className="h-4 w-4" />
+        </Button>
+    </div>
+  </div>
+</div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Итоговая стоимость модификаторов */}
+      {orderAdditives.length > 0 && (
+        <div className="pt-6 border-t">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0">
+            <span className="font-bold text-lg sm:text-xl">{t.orderAdditives}:</span>
+            <span className="text-xl sm:text-2xl font-bold text-green-600">
+              {calculateTotalOrderAdditivesPrice()} ₽
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
     // Рендер карточек категорий с горизонтальной прокруткой
     const renderCategoryCards = () => {
@@ -2814,12 +3014,9 @@
                       {(categoryNavigation.parentCategory || categoryNavigation.breadcrumbs.length > 0) && (
                         <div
                           onClick={handleBackToCategories}
-                          className={`transition-all flex flex-col items-center justify-center p-6 rounded-xl border-2 transition-all border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50`}
+                          className={`transition-all flex flex-col text-lg font-semibold items-center text-center justify-center p-6 rounded-xl border-2 transition-all border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50`}
                         >
-                          <div className={`p-3 rounded-full mb-3 bg-gray-100 text-gray-600`}>
-                            <ChevronLeft/>
-                          </div>
-                          <span className="text-xl font-semibold mb-1 text-center"> {t.backToCategories}</span>
+                          {t.backToCategories}
                         </div>
                       )}
 
@@ -2833,20 +3030,13 @@
                           <div
                             onClick={() => handleCategoryClick(category)}
                             key={category.id}
-                            className={`flex flex-col items-center between transition-all  p-6 rounded-xl border-2 ${
+                            className={`flex flex-col text-lg font-semibold items-center text-center justify-center transition-all  p-6 rounded-xl border-2 ${
                               categoryNavigation.currentCategory && category.id === categoryNavigation.currentCategory!.id
                                 ? 'border-blue-600 bg-blue-50 text-blue-700'
                                 : 'border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50'
                             }`}
                           >
-                            <div className={`p-3 rounded-full mb-3 ${
-                              categoryNavigation.currentCategory && category.id === categoryNavigation.currentCategory!.id 
-                                ? 'bg-blue-100 text-blue-600'
-                                : 'bg-gray-100 text-gray-600'
-                            }`}>
-                              <Utensils/>
-                            </div>
-                            <span className="text-xl font-semibold mb-1 text-center">{category.title}</span>
+                          {category.title}
                           </div>
                         );
                       })}
@@ -2984,9 +3174,15 @@
       ka: 'გაუქმებული'
     }
   }
-    const renderTotalWithButtons = () =>{
-      return(
-                <div className="bg-white rounded-2xl  shadow-lg flex-shrink-0">
+
+  // Обновленная функция renderTotalWithButtons
+const renderTotalWithButtons = () => {
+  if (isRightColCollapsed) {
+    return null
+  }
+
+  return (
+              <div className="bg-white rounded-2xl  shadow-lg flex-shrink-0">
   <div className="flex-col items-center justify-between mb-4">
     {(!((order.surcharges && order.surcharges.length > 0) || order.discountAmount > 0 || calculateTotalOrderAdditivesPrice() > 0)) && <div className="flex items-center gap-3">
       <Receipt className="h-6 w-6 text-green-600" />
@@ -3146,22 +3342,31 @@
     )}
   </div>
 </div>
-      )
-    }
+  );
+};
+
+    
     return (
       <AccessCheck allowedRoles={['WAITER', 'MANAGER', 'SUPERVISOR']}>
         <div className='absolute top-0'>
           {/* Основная сетка */}
-         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[100vh] mt-0 pt-0">
+         <div className={`grid ${isRightColCollapsed ? 'grid-cols-1 lg:grid-cols-12' : 'grid-cols-1 lg:grid-cols-3' }  gap-8 h-[100vh] mt-0 pt-0 `}>
             {/* Левая колонка - Меню */}
-            <div className="lg:col-span-2">
+            <div className={isRightColCollapsed ? 'lg:col-span-11' : 'lg:col-span-2'}>
               <div className="bg-white rounded-2xl shadow-lg sticky h-[100vh] flex flex-col">
                 {/* Заголовок меню - sticky */}
-                <div className="sticky top-0 z-10 bg-white border-b px-6 py-4 rounded-t-2xl flex justify-between">
-                  <h2 className="text-2xl font-bold flex items-center gap-3 flex ">
-                    <Utensils className="h-8 w-8 text-blue-600" />
-                    Меню
-                  </h2>
+                <div className="sticky top-0 z-10 bg-white border-b px-6 pb-4  flex justify-between">
+                  <div className='flex flex-col  justify-center items-start gap-2'>
+                 
+                    <h2 className="text-2xl font-bold flex items-center gap-3 flex ">
+                      <Utensils className="h-8 w-8 text-blue-600" />
+                      Меню
+                     </h2>
+                        <Button onClick={() => router.push('/orders')} variant="outline">
+                              <ArrowLeft className="h-4 w-4 mr-2" />
+                              {t.back}
+                            </Button>
+                  </div>
                   <div className="flex gap-2 justify-cente text-center p-2 sm:p-3">
                   {order.type === 'DINE_IN' && (
                     <div
@@ -3299,55 +3504,164 @@
               </div>
 
             {/* Правая колонка - Информация о заказе */}
-<div className="h-[100vh] flex flex-col">
-  
+          <div className={`h-[100vh] flex flex-col w-full`}>
   {/* Карточка с табами - фиксированной высоты со скроллом */}
-  <div className="bg-white rounded-2xl p-6 shadow-lg flex-1 flex flex-col min-h-0">
-      <h1 className="text-xl md:text-2xl font-bold text-gray-900">
-                Заказ {order.number}
-              </h1>
-    <Tabs defaultValue='order' className='w-full flex flex-col flex-1 min-h-0'>
-      <TabsList className="w-full flex flex-row gap-2 mb-4 bg-white flex-shrink-0">
-        <TabsTrigger value="order" className="w-full text-lg font-semibold flex flex-col items-center justify-center p-4  rounded-lg border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 data-[state=active]:border-blue-600 data-[state=active]:bg-blue-50 transition-all">
-          <ShoppingCart className="w-6 h-6" />
-        </TabsTrigger>
-        <TabsTrigger value="history" className="w-full text-lg font-semibold flex flex-col items-center justify-center p-4   rounded-lg border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 data-[state=active]:border-blue-600 data-[state=active]:bg-blue-50 transition-all">
-          <History className="w-6 h-6" />
-        </TabsTrigger>
-        <TabsTrigger value="discount" className="w-full text-lg font-semibold flex flex-col items-center justify-center p-4   rounded-lg border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 data-[state=active]:border-blue-600 data-[state=active]:bg-blue-50 transition-all">
-          <Tag className="w-6 h-6" />
-        </TabsTrigger>
-        <TabsTrigger value="additives" className="w-full text-lg font-semibold flex flex-col items-center justify-center p-4   rounded-lg border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 data-[state=active]:border-blue-600 data-[state=active]:bg-blue-50 transition-all">
-          <PlusSquare className="w-6 h-6" />
-        </TabsTrigger>
-        <TabsTrigger value="info" className="w-full text-lg font-semibold flex flex-col items-center justify-center p-4  rounded-lg border-2 border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 data-[state=active]:border-blue-600 data-[state=active]:bg-blue-50 transition-all">
-          <Info className="w-6 h-6" />
-        </TabsTrigger>
-      </TabsList>
+  <div className="bg-white rounded-2xl pb-4 shadow-lg flex-1 flex flex-col min-h-0 px-6 justify-between">
+    {!isRightColCollapsed && <h1 className={`text-xl md:text-2xl font-bold text-gray-900 py-4 ${isRightColCollapsed ? 'text-center': 'text-left'}`}>
+      Заказ {order.number}
+    </h1>
+  }
+    {/* Кастомная реализация табов */}
+    <div className={`w-full flex flex-col flex-1 min-h-0 ${isRightColCollapsed ? 'pt-4 justify-center' : ''}`}>
+      {/* Навигация табов */}
+   <div className={`grid ${isRightColCollapsed ? 'grid-cols-1' : 'grid-cols-4 sm:grid-cols-6'} gap-2 mb-4 bg-white`}>
+  <button 
+    className={`aspect-square text-lg font-semibold flex flex-col items-center justify-center p-2 sm:p-3 md:p-4 rounded-lg border-2 transition-all`}
+    onClick={() => {setIsRightColCollapsed(!isRightColCollapsed); setActiveTab(isRightColCollapsed ? 'order' : null)}}
+  >
+    {!isRightColCollapsed ? <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" /> : <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6"/>}
+  </button>
+  
+  {[
+    { id: 'order', icon: ShoppingCart, label: 'Заказ' },
+    { id: 'history', icon: History, label: 'История' },
+    { id: 'discount', icon: Tag, label: 'Скидки' },
+    { id: 'additives', icon: PlusSquare, label: 'Добавки' },
+    { id: 'info', icon: Info, label: 'Инфо' },
+  ].map((tab) => (
+    <button
+      key={tab.id}
+      onClick={() => {setActiveTab(tab.id); setIsRightColCollapsed(false) }}
+      className={`aspect-square text-lg font-semibold flex flex-col items-center justify-center p-2 sm:p-3 md:p-4 rounded-lg border-2 transition-all ${
+        activeTab === tab.id
+          ? 'border-blue-600 bg-blue-50 text-blue-700'
+          : 'border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 text-gray-700'
+      }`}
+    >
+      <tab.icon className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
+    </button>
+  ))}
+          { isRightColCollapsed &&  <button
+              disabled={isUpdating}
+              onClick={handlePrecheck}
+              className={`aspect-square text-lg font-semibold flex flex-col items-center justify-center p-2 sm:p-3 md:p-4 rounded-lg border-2 transition-all ${
+                order.attentionFlags?.isPrecheck
+                  ? 'border-green-600 bg-green-50 text-green-700'
+                  : 'border-gray-200 bg-white hover:border-green-400 hover:bg-green-50'
+              }`}
+              title={order.attentionFlags?.isPrecheck ? t.precheckFormed : t.formPrecheck}
+            >
+              {isUpdating ? (
+                <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 animate-spin" />
+              ) : order.attentionFlags?.isPrecheck ? (
+                <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
+              ) : (
+                <Check className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
+              )}
+            </button>
+  }
+            {/* 2. Рассчитать/Подтвердить */}
+            {getOrderItems().some(item => item.status === OrderItemStatus.CREATED) &&  isRightColCollapsed && (
+              <button
+                disabled={isUpdating || getOrderItems().length === 0}
+                onClick={handleConfirmOrder}
+                className="aspect-square text-lg font-semibold flex flex-col items-center justify-center p-2 sm:p-3 md:p-4 rounded-lg border-2 transition-all bg-emerald-500 hover:bg-emerald-400 text-white"
+                title={order.scheduledAt ? 'Подтвердить' : t.confirm}
+              >
+                {isUpdating ? (
+                  <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
+                )}
+              </button>
+            )}
+
+            {/* 3. Отменить (только для статуса CREATED) */}
+            {order.status === 'CREATED' && isRightColCollapsed && (
+              <button
+                disabled={isUpdating}
+                onClick={handleCancelOrder}
+                className="aspect-square text-lg font-semibold flex flex-col items-center justify-center p-2 sm:p-3 md:p-4 rounded-lg border-2 transition-all bg-red-500 hover:bg-red-400 text-white"
+                title={t.cancel}
+              >
+                {isUpdating ? (
+                  <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 animate-spin" />
+                ) : (
+                  <X className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
+                )}
+              </button>
+            )}
+
+            {/* 4. Рассчитать (для статуса READY) */}
+            {(order.status === 'READY' && order.type !== 'DELIVERY') && isRightColCollapsed &&  (
+              <button
+                disabled={
+                  isUpdating || 
+                  shiftLoading || 
+                  !order.attentionFlags.isPrecheck || 
+                  getOrderItems().some(item => item.status !== OrderItemStatus.COMPLETED)
+                }
+                onClick={handleCalculateOrder}
+                className={`aspect-square text-lg font-semibold flex flex-col items-center justify-center p-2 sm:p-3 md:p-4 rounded-lg border-2 transition-all ${
+                  getOrderItems().some(item => item.status !== OrderItemStatus.COMPLETED)
+                    ? 'hidden'
+                    : 'bg-emerald-500 hover:bg-emerald-400 text-white'
+                }`}
+                title={t.calculate}
+              >
+                {(isUpdating || shiftLoading) ? (
+                  <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 animate-spin" />
+                ) : getOrderItems().some(item => item.status !== OrderItemStatus.COMPLETED) ? (
+                  <Clock className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
+                ) : (
+                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
+                )}
+              </button>
+            )}
+
+            {/* 5. Итого */}
+           
+</div>
       
-      <TabsContent value="order" className="flex-1 min-h-0 overflow-y-auto space-y-4 overflow-x-hidden">
-        {getOrderItems().filter(item => !item.isRefund).map(renderCompactItemCard)}
-      {renderTotalWithButtons()}
-      </TabsContent>
-
-      <TabsContent value="history" className="flex-1 min-h-0 overflow-y-auto">
-        {renderLogs()}
-      </TabsContent>
-
-      <TabsContent value="discount" className="flex-1 min-h-0 overflow-y-auto">
-        {renderDiscountsBlock()}
-      </TabsContent>
-
-      <TabsContent value="additives" className="flex-1 min-h-0 overflow-y-auto">
-        {renderOrderAdditivesBlock()}
-      </TabsContent>
-
-      <TabsContent value="info" className="flex-1 min-h-0 overflow-y-auto">
-        <div className="space-y-8">
+      {/* Контент табов */}
+      {!isRightColCollapsed &&
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {/* Таб "Заказ" */}
+        {activeTab === 'order' && (
+          <div className="h-full overflow-y-auto space-y-4 overflow-x-hidden">
+            {getOrderItems().filter(item => !item.isRefund).map(renderCompactItemCard)}
+            {renderTotalWithButtons()}
+          </div>
+        )}
+        
+        {/* Таб "История" */}
+        {activeTab === 'history' && (
+          <div className="h-full overflow-y-auto">
+            {renderLogs()}
+          </div>
+        )}
+        
+        {/* Таб "Скидки" */}
+        {activeTab === 'discount' && (
+          <div className="h-full overflow-y-auto">
+            {renderDiscountsBlock()}
+          </div>
+        )}
+        
+        {/* Таб "Добавки" */}
+        {activeTab === 'additives' && (
+          <div className="h-full overflow-y-auto">
+            {renderOrderAdditivesBlock()}
+          </div>
+        )}
+        
+        {/* Таб "Инфо" */}
+        {activeTab === 'info' && (
+          <div className="space-y-8">
           {/* Тип заказа */}
           <div>
-            <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-              {t.orderType}
+            <h2 className="text-xl font-bold mb-6 flex items-center gap-3">
+             {getOrderType(editFormData.type)}
             </h2>
             
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -3381,20 +3695,19 @@
                     tableNumber: (type.value === 'TAKEAWAY' || type.value === 'DELIVERY') ? '0' : editFormData.tableNumber
                   })}
                   disabled={!isOrderEditable}
-                  className={`flex flex-col items-center justify-center p-6 rounded-xl border-2 transition-all hover:scale-[1.02] ${
+                  className={`flex flex-col items-center justify-center  rounded-xl border-2  ${
                     editFormData.type === type.value
                       ? 'border-blue-600 bg-blue-50 text-blue-700'
                       : 'border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50'
                   } ${!isOrderEditable ? 'opacity-60 cursor-not-allowed' : ''}`}
                 >
-                  <div className={`p-3 rounded-full mb-3 ${
+                  <div className={`p-3 rounded-full items-center ${
                     editFormData.type === type.value
-                      ? 'bg-blue-100 text-blue-600'
-                      : 'bg-gray-100 text-gray-600'
+                      ? ' text-blue-600'
+                      : ' text-gray-600'
                   }`}>
                     {type.icon}
                   </div>
-                  <span className="text-sm font-semibold mb-1">{type.label}</span>
                 </button>
               ))}
             </div>
@@ -3406,7 +3719,56 @@
               Детали заказа
             </h2>
             
-            <div className="flex flex-col md:flex-row gap-6 mb-6">
+            <div className="flex flex-col 2xl:flex-row gap-6 mb-6">
+              {editFormData.type === 'DINE_IN' && (
+                <div className="flex-1 min-w-0">
+                  <div className="space-y-3">
+                    <Label className="text-xl font-semibold flex items-center gap-3">
+                      <Table className="h-6 w-6 text-gray-600" />
+                      {t.table}
+                    </Label>
+                    <div className="flex items-center">
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        className="h-14 w-14 flex-shrink-0 text-2xl"
+                        onClick={() => setEditFormData({
+                          ...editFormData,
+                          tableNumber: Math.max(0, parseInt(editFormData.tableNumber) - 1).toString()
+                        })}
+                        disabled={!isOrderEditable}
+                      >
+                        <Minus className='h-8 w-8'/>
+                      </Button>
+                      <div className="flex-1 mx-2">
+                        <Input
+                          type="number"
+                          min="0"
+                          value={editFormData.tableNumber}
+                          onChange={(e) => setEditFormData({
+                            ...editFormData,
+                            tableNumber: (parseInt(e.target.value) || 0).toString()
+                          })}
+                          disabled={!isOrderEditable}
+                          className="h-14 text-2xl text-center font-bold"
+                        />
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        className="h-14 w-14 flex-shrink-0 text-2xl"
+                        onClick={() => setEditFormData({
+                          ...editFormData,
+                          tableNumber: (parseInt(editFormData.tableNumber) + 1).toString()
+                        })}
+                        disabled={!isOrderEditable}
+                      >
+                        <Plus className='h-8 w-8'/>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* Количество людей */}
               <div className="flex-1 min-w-0">
                 <div className="space-y-3">
@@ -3457,61 +3819,13 @@
               </div>
 
               {/* Номер стола (только для DINE_IN) */}
-              {editFormData.type === 'DINE_IN' && (
-                <div className="flex-1 min-w-0">
-                  <div className="space-y-3">
-                    <Label className="text-xl font-semibold flex items-center gap-3">
-                      <Table className="h-6 w-6 text-gray-600" />
-                      {t.table}
-                    </Label>
-                    <div className="flex items-center">
-                      <Button
-                        variant="outline"
-                        size="lg"
-                        className="h-14 w-14 flex-shrink-0 text-2xl"
-                        onClick={() => setEditFormData({
-                          ...editFormData,
-                          tableNumber: Math.max(0, parseInt(editFormData.tableNumber) - 1).toString()
-                        })}
-                        disabled={!isOrderEditable}
-                      >
-                        <Minus className='h-8 w-8'/>
-                      </Button>
-                      <div className="flex-1 mx-2">
-                        <Input
-                          type="number"
-                          min="0"
-                          value={editFormData.tableNumber}
-                          onChange={(e) => setEditFormData({
-                            ...editFormData,
-                            tableNumber: (parseInt(e.target.value) || 0).toString()
-                          })}
-                          disabled={!isOrderEditable}
-                          className="h-14 text-2xl text-center font-bold"
-                        />
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="lg"
-                        className="h-14 w-14 flex-shrink-0 text-2xl"
-                        onClick={() => setEditFormData({
-                          ...editFormData,
-                          tableNumber: (parseInt(editFormData.tableNumber) + 1).toString()
-                        })}
-                        disabled={!isOrderEditable}
-                      >
-                        <Plus className='h-8 w-8'/>
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )}
+              
             </div>
 
             {/* Доставка */}
             {editFormData.type === 'DELIVERY' && (
               <div className="space-y-6 mb-6">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 gap-6">
                   <div className="space-y-3">
                     <Label className="text-xl font-semibold flex items-center gap-3">
                       <MapPin className="h-6 w-6 text-orange-600" />
@@ -3607,15 +3921,21 @@
             </div>
           )}
         </div>
-      </TabsContent>
-
-    </Tabs>
+        )}
+      </div>
+      }
+    </div>
+     { isRightColCollapsed && <div className=" text-lg font-semibold flex flex-col items-center justify-center ">
+      Итого:
+              <span className="text-lg font-bold ">
+                <p>{calculateOrderTotal().toFixed(0)}₽</p>
+              </span>
+            </div>
+  }
   </div>
-
- {/* Карточка "Итого" - фиксированной высоты */}
-
- 
+  
 </div>
+
           </div>
 
           {/* Диалоговые окна */}
@@ -3815,6 +4135,114 @@
             onClose={() => setShowPrecheckDialog(false)}
           />
         )}
+
+        
       </AccessCheck>
     );
   }
+
+
+  interface AdditivesDialogProps {
+  product: Product;
+  selectedAdditives: string[];
+  onAdditivesChange: (additives: string[]) => void;
+  disabled?: boolean;
+}
+
+const AdditivesDialog: React.FC<AdditivesDialogProps> = ({
+  product,
+  selectedAdditives,
+  onAdditivesChange,
+  disabled
+}) => {
+  const [open, setOpen] = useState(false);
+  const [localSelected, setLocalSelected] = useState<string[]>(selectedAdditives);
+
+  const handleAdditiveToggle = (additiveId: string) => {
+    setLocalSelected(prev => {
+      if (prev.includes(additiveId)) {
+        return prev.filter(id => id !== additiveId);
+      } else {
+        return [...prev, additiveId];
+      }
+    });
+  };
+
+  const handleSave = () => {
+    onAdditivesChange(localSelected);
+    setOpen(false);
+  };
+
+  const handleCancel = () => {
+    setLocalSelected(selectedAdditives);
+    setOpen(false);
+  };
+
+  if (!product.additives || product.additives.length === 0) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+  <DialogTrigger asChild>
+    <Button 
+      variant="outline" 
+      size="sm"
+      className="absolute top-2 left-2 text-md font-bold rounded-lg h-8 w-8 flex items-center justify-center bg-white/90 backdrop-blur-sm"
+      disabled={disabled}
+    >
+      <WandSparkles className="h-4 w-4" />
+    </Button>
+  </DialogTrigger>
+  
+  <DialogContent className="max-w-md max-h-[90vh] flex flex-col">
+    <DialogHeader className="shrink-0">
+      <DialogTitle className="text-xl flex items-center gap-2">
+        Добавки для {product.title}
+      </DialogTitle>
+    </DialogHeader>
+    
+    <div className="flex-1 overflow-y-auto py-4">
+      <div className="space-y-4">
+        {product.additives.map(additive => {
+          const isSelected = localSelected.includes(additive.id);
+          const price = additive.price;
+          
+          return (
+            <div
+              key={additive.id}
+              className={`flex items-center justify-between p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                isSelected
+                  ? 'border-green-500 bg-green-50'
+                  : 'border-gray-200 hover:border-gray-300'
+              }`}
+              onClick={() => handleAdditiveToggle(additive.id)}
+            >
+              <div className="flex items-center gap-3">
+                <div>
+                  <p className="font-semid">{additive.title}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="font-bold text-green-600">+{price} ₽</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+
+
+    
+    <DialogFooter className="shrink-0 gap-2 pt-4 border-t">
+      <DialogClose asChild>
+        <Button variant="outline" onClick={handleCancel}>
+          Отмена
+        </Button>
+      </DialogClose>
+      <Button onClick={handleSave}>
+        Сохранить
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+  );
+};
