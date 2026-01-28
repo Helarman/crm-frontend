@@ -1,4 +1,4 @@
-// app/page.tsx
+ //@ts-nocheck
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -8,7 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Square, Ruler, Trash2, Download, Grid, MousePointer, ZoomIn, ZoomOut, Move, Minus, Plus, Maximize2 } from "lucide-react";
+import { 
+  Square, Ruler, Trash2, Download, Grid, MousePointer, ZoomIn, ZoomOut, Move, 
+  Minus, Plus, Maximize2, Eye, Edit, Magnet, DoorOpen, AppWindow as Window,
+  MoveLeft, HelpCircle, Grid3X3, MinusCircle, SquareIcon, RotateCcw
+} from "lucide-react";
 
 // Типы
 type WallSegment = {
@@ -19,143 +23,867 @@ type WallSegment = {
   y2: number;
   length: number;
   isHorizontal: boolean;
+  isDiagonal: boolean;
+  angle?: number;
+};
+
+type Door = {
+  id: string;
+  wallId: string;
+  position: number;
+  width: number;
+  offset: number;
+  isPlacing: boolean;
+  orientation?: 'horizontal' | 'vertical' | 'diagonal'; // НОВОЕ: ориентация двери
+  angle?: number; // НОВОЕ: угол двери для диагональных стен
+};
+
+type Window = {
+  id: string;
+  wallId: string;
+  position: number;
+  width: number;
+  offset: number;
+  isPlacing: boolean;
+  orientation?: 'horizontal' | 'vertical' | 'diagonal'; // НОВОЕ: ориентация окна
+  angle?: number; // НОВОЕ: угол окна для диагональных стен
+};
+
+type GuideLine = {
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  isHorizontal: boolean;
+  isDiagonal: boolean;
+  angle?: number;
 };
 
 type GridSettings = {
-  cellSize: number;
+  displayCellSize: number;
+  snapGridSize: number;
   showGrid: boolean;
   snapToGrid: boolean;
+  snapToWalls: boolean;
+  snapToGuides: boolean;
+  showGuides: boolean;
+  forceOrthogonal: boolean;
 };
 
-type DrawingMode = "wall" | "select" | "measure";
+type DrawingMode = "wall" | "select" | "measure" | "door" | "window" | "guide";
+type WallDrawingMode = "orthogonal" | "diagonal" | "free";
+type ViewMode = "edit" | "view";
 type ViewTransform = {
   scale: number;
   translateX: number;
   translateY: number;
 };
 
+type SnapPoint = {
+  x: number;
+  y: number;
+  type: 'start' | 'end' | 'intersection' | 'guide';
+  wallId?: string;
+  guideId?: string;
+};
+
+// Вспомогательная функция для расчета длины и угла
+const calculateLengthAndAngle = (x1: number, y1: number, x2: number, y2: number) => {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+  return { length, angle };
+};
+
+// Вспомогательная функция для расчета точки на линии по параметру t (0-1)
+const getPointOnLine = (x1: number, y1: number, x2: number, y2: number, t: number) => {
+  return {
+    x: x1 + (x2 - x1) * t,
+    y: y1 + (y2 - y1) * t
+  };
+};
+
+// Вспомогательная функция для расчета перпендикулярного вектора
+const getPerpendicularVector = (dx: number, dy: number, length: number) => {
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  if (distance === 0) return { x: 0, y: 0 };
+  const normalizedX = dx / distance;
+  const normalizedY = dy / distance;
+  return {
+    x: -normalizedY * length,
+    y: normalizedX * length
+  };
+};
+
 // Компонент стены
-function Wall({ wall, cellSize, isSelected, onClick, viewTransform }: { 
+function Wall({ wall, displayCellSize, isSelected, onClick, viewTransform, showDimensions }: { 
   wall: WallSegment; 
-  cellSize: number; 
+  displayCellSize: number; 
   isSelected: boolean; 
   onClick: () => void;
   viewTransform: ViewTransform;
+  showDimensions: boolean;
 }) {
-  const { x1, y1, x2, y2, isHorizontal } = wall;
+  const { x1, y1, x2, y2, isHorizontal, isDiagonal, length, angle } = wall;
   
-  // Вычисляем координаты для отрисовки с учетом трансформации
-  const left = Math.min(x1, x2) * cellSize * viewTransform.scale;
-  const top = Math.min(y1, y2) * cellSize * viewTransform.scale;
-  const width = isHorizontal ? Math.abs(x2 - x1) * cellSize * viewTransform.scale + 10 : 10;
-  const height = isHorizontal ? 10 : Math.abs(y2 - y1) * cellSize * viewTransform.scale + 10;
+  const left = Math.min(x1, x2) * displayCellSize * viewTransform.scale;
+  const top = Math.min(y1, y2) * displayCellSize * viewTransform.scale;
+  const width = Math.abs(x2 - x1) * displayCellSize * viewTransform.scale;
+  const height = Math.abs(y2 - y1) * displayCellSize * viewTransform.scale;
   
-  // Определяем центр для метки длины
+  if (isDiagonal) {
+    const centerX = (x1 + x2) / 2 * displayCellSize * viewTransform.scale;
+    const centerY = (y1 + y2) / 2 * displayCellSize * viewTransform.scale;
+    
+    return (
+      <>
+        <div
+          className={`absolute bg-gray-600 hover:bg-gray-500 rounded-md transition-all ${isSelected ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}
+          style={{
+            left: `${centerX - (length * displayCellSize * viewTransform.scale) / 2 + viewTransform.translateX}px`,
+            top: `${centerY - 5 + viewTransform.translateY}px`,
+            width: `${length * displayCellSize * viewTransform.scale}px`,
+            height: `10px`,
+            transform: `rotate(${angle}deg)`,
+            transformOrigin: 'center center',
+            cursor: showDimensions ? 'default' : 'pointer',
+          }}
+          onClick={onClick}
+        />
+        
+        {showDimensions && (
+          <div
+            className="absolute bg-blue-600 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none"
+            style={{
+              left: `${centerX + viewTransform.translateX}px`,
+              top: `${centerY - 25 + viewTransform.translateY}px`,
+              transform: 'translateX(-50%)',
+            }}
+          >
+            {length.toFixed(1)} м {angle && `(${Math.round(angle)}°)`}
+          </div>
+        )}
+        
+        {isDiagonal && (
+          <>
+            <div
+              className="absolute w-2 h-2 bg-blue-500 rounded-full border border-white"
+              style={{
+                left: `${x1 * displayCellSize * viewTransform.scale + viewTransform.translateX - 4}px`,
+                top: `${y1 * displayCellSize * viewTransform.scale + viewTransform.translateY - 4}px`,
+              }}
+            />
+            <div
+              className="absolute w-2 h-2 bg-blue-500 rounded-full border border-white"
+              style={{
+                left: `${x2 * displayCellSize * viewTransform.scale + viewTransform.translateX - 4}px`,
+                top: `${y2 * displayCellSize * viewTransform.scale + viewTransform.translateY - 4}px`,
+              }}
+            />
+          </>
+        )}
+      </>
+    );
+  }
+  
+  const wallWidth = isHorizontal ? width + 10 : 10;
+  const wallHeight = isHorizontal ? 10 : height + 10;
   const centerX = left + (width / 2);
   const centerY = top + (height / 2);
   
   return (
     <>
       <div
-        className={`absolute bg-gray-800 hover:bg-gray-700 cursor-pointer rounded-md transition-all ${isSelected ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}
+        className={`absolute bg-gray-600 hover:bg-gray-500 rounded-md transition-all ${isSelected ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}
         style={{
           left: `${left + viewTransform.translateX}px`,
           top: `${top + viewTransform.translateY}px`,
-          width: `${width}px`,
-          height: `${height}px`,
+          width: `${wallWidth}px`,
+          height: `${wallHeight}px`,
+          cursor: showDimensions ? 'default' : 'pointer',
         }}
         onClick={onClick}
       />
       
-      {/* Метка с длиной */}
+      {showDimensions && (
+        <div
+          className="absolute bg-blue-600 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none"
+          style={{
+            left: `${centerX + viewTransform.translateX}px`,
+            top: `${centerY - 25 + viewTransform.translateY}px`,
+            transform: 'translateX(-50%)',
+          }}
+        >
+          {wall.length.toFixed(1)} м
+        </div>
+      )}
+    </>
+  );
+}
+
+// Компонент вспомогательной линии
+function GuideLineComponent({ guide, displayCellSize, isSelected, onClick, viewTransform, showGuides }: { 
+  guide: GuideLine; 
+  displayCellSize: number; 
+  isSelected: boolean; 
+  onClick: () => void;
+  viewTransform: ViewTransform;
+  showGuides: boolean;
+}) {
+  const { x1, y1, x2, y2, isHorizontal, isDiagonal, angle } = guide;
+  
+  const left = Math.min(x1, x2) * displayCellSize * viewTransform.scale;
+  const top = Math.min(y1, y2) * displayCellSize * viewTransform.scale;
+  const width = Math.abs(x2 - x1) * displayCellSize * viewTransform.scale;
+  const height = Math.abs(y2 - y1) * displayCellSize * viewTransform.scale;
+  
+  if (isDiagonal) {
+    const centerX = (x1 + x2) / 2 * displayCellSize * viewTransform.scale;
+    const centerY = (y1 + y2) / 2 * displayCellSize * viewTransform.scale;
+    const length = Math.sqrt(width * width + height * height);
+    
+    return (
+      <>
+        <div
+          className={`absolute ${isSelected ? "ring-1 ring-purple-500 ring-offset-1" : ""}`}
+          style={{
+            left: `${centerX - length / 2 + viewTransform.translateX}px`,
+            top: `${centerY + viewTransform.translateY}px`,
+            width: `${length}px`,
+            height: '0px',
+            borderTop: '2px dashed #4f46e5',
+            transform: `rotate(${angle}deg)`,
+            transformOrigin: 'center center',
+            cursor: 'pointer',
+            pointerEvents: 'auto',
+          }}
+          onClick={onClick}
+        />
+        
+        <div
+          className="absolute w-2 h-2 bg-purple-500 rounded-full border border-white"
+          style={{
+            left: `${x1 * displayCellSize * viewTransform.scale + viewTransform.translateX - 4}px`,
+            top: `${y1 * displayCellSize * viewTransform.scale + viewTransform.translateY - 4}px`,
+          }}
+        />
+        <div
+          className="absolute w-2 h-2 bg-purple-500 rounded-full border border-white"
+          style={{
+            left: `${x2 * displayCellSize * viewTransform.scale + viewTransform.translateX - 4}px`,
+            top: `${y2 * displayCellSize * viewTransform.scale + viewTransform.translateY - 4}px`,
+          }}
+        />
+        
+        {isSelected && (
+          <div
+            className="absolute bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded whitespace-nowrap z-20 pointer-events-none"
+            style={{
+              left: `${centerX + viewTransform.translateX}px`,
+              top: `${centerY - 20 + viewTransform.translateY}px`,
+              transform: 'translateX(-50%)',
+            }}
+          >
+            Вспомогательная линия ({Math.round(angle || 0)}°)
+          </div>
+        )}
+      </>
+    );
+  }
+  
+  const lineStyle = {
+    position: 'absolute' as const,
+    left: `${left + viewTransform.translateX}px`,
+    top: `${top + viewTransform.translateY}px`,
+    width: `${width}px`,
+    height: `${height}px`,
+    cursor: 'pointer',
+    pointerEvents: 'auto' as const,
+  };
+  
+  if (isHorizontal) {
+    Object.assign(lineStyle, {
+      borderTop: '2px dashed #4f46e5',
+      height: '0px',
+      width: `${width}px`,
+    });
+  } else {
+    Object.assign(lineStyle, {
+      borderLeft: '2px dashed #4f46e5',
+      width: '0px',
+      height: `${height}px`,
+    });
+  }
+  
+  if (!showGuides) return null;
+  
+  return (
+    <>
       <div
-        className="absolute bg-blue-600 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none"
+        className={`absolute ${isSelected ? "ring-1 ring-purple-500 ring-offset-1" : ""}`}
+        style={lineStyle}
+        onClick={onClick}
+      />
+      
+      <div
+        className="absolute w-2 h-2 bg-purple-500 rounded-full border border-white"
         style={{
-          left: `${centerX + viewTransform.translateX}px`,
-          top: `${centerY - 25 + viewTransform.translateY}px`,
-          transform: 'translateX(-50%)',
+          left: `${x1 * displayCellSize * viewTransform.scale + viewTransform.translateX - 4}px`,
+          top: `${y1 * displayCellSize * viewTransform.scale + viewTransform.translateY - 4}px`,
         }}
+      />
+      <div
+        className="absolute w-2 h-2 bg-purple-500 rounded-full border border-white"
+        style={{
+          left: `${x2 * displayCellSize * viewTransform.scale + viewTransform.translateX - 4}px`,
+          top: `${y2 * displayCellSize * viewTransform.scale + viewTransform.translateY - 4}px`,
+        }}
+      />
+      
+      {isSelected && (
+        <div
+          className="absolute bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded whitespace-nowrap z-20 pointer-events-none"
+          style={{
+            left: `${(left + width/2) + viewTransform.translateX}px`,
+            top: `${top - 20 + viewTransform.translateY}px`,
+            transform: 'translateX(-50%)',
+          }}
+        >
+          Вспомогательная линия
+        </div>
+      )}
+    </>
+  );
+}
+
+// Компонент двери (обновлен для поддержки диагональных стен)
+function Door({ door, wall, displayCellSize, viewTransform, isSelected, onClick, showDimensions }: { 
+  door: Door;
+  wall: WallSegment | undefined;
+  displayCellSize: number;
+  viewTransform: ViewTransform;
+  isSelected: boolean;
+  onClick: () => void;
+  showDimensions: boolean;
+}) {
+    if (!wall) return null;
+  const { x1, y1, x2, y2, isDiagonal, angle } = wall;
+  const { offset, width, isPlacing, orientation = 'vertical' } = door;
+  
+  const wallLength = wall.length;
+  const t = offset / wallLength; // параметр вдоль стены (0-1)
+  
+  // Точка на стене, где находится дверь
+  const doorCenter = getPointOnLine(x1, y1, x2, y2, t);
+  
+  // Для диагональных стен
+  if (isDiagonal) {
+    const doorAngle = angle || 0;
+    const doorLengthInGrid = width / (wallLength / Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)));
+    
+    // Перпендикулярный вектор для смещения двери от стены
+    const perpVector = getPerpendicularVector(x2 - x1, y2 - y1, 0.25);
+    
+    // Точки для отрисовки двери (прямоугольник вдоль стены)
+    const halfLength = doorLengthInGrid / 2;
+    const dx = (x2 - x1) * halfLength / wallLength;
+    const dy = (y2 - y1) * halfLength / wallLength;
+    
+    const doorX1 = doorCenter.x - dx;
+    const doorY1 = doorCenter.y - dy;
+    const doorX2 = doorCenter.x + dx;
+    const doorY2 = doorCenter.y + dy;
+    
+    // Центр двери
+    const doorCenterX = (doorX1 + doorX2) / 2;
+    const doorCenterY = (doorY1 + doorY2) / 2;
+    
+    // Смещение от стены для визуализации
+    const offsetX = perpVector.x;
+    const offsetY = perpVector.y;
+    
+    const finalDoorX1 = doorX1 + offsetX;
+    const finalDoorY1 = doorY1 + offsetY;
+    const finalDoorX2 = doorX2 + offsetX;
+    const finalDoorY2 = doorY2 + offsetY;
+    
+    const finalCenterX = (finalDoorX1 + finalDoorX2) / 2;
+    const finalCenterY = (finalDoorY1 + finalDoorY2) / 2;
+    
+    const finalWidth = Math.sqrt(Math.pow(finalDoorX2 - finalDoorX1, 2) + Math.pow(finalDoorY2 - finalDoorY1, 2));
+    const finalAngle = Math.atan2(finalDoorY2 - finalDoorY1, finalDoorX2 - finalDoorX1) * (180 / Math.PI);
+    
+    return (
+      <>
+        <div
+          className={`absolute bg-amber-800 hover:bg-amber-700 rounded-sm border-2 border-amber-900 transition-all cursor-pointer ${isSelected ? "ring-2 ring-yellow-500 ring-offset-1" : ""} ${isPlacing ? "opacity-70" : ""}`}
+          style={{
+            left: `${finalCenterX * displayCellSize * viewTransform.scale - (finalWidth * displayCellSize * viewTransform.scale) / 2 + viewTransform.translateX}px`,
+            top: `${finalCenterY * displayCellSize * viewTransform.scale - 10 + viewTransform.translateY}px`,
+            width: `${finalWidth * displayCellSize * viewTransform.scale}px`,
+            height: `20px`,
+            transform: `rotate(${finalAngle}deg)`,
+            transformOrigin: 'center center',
+          }}
+          onClick={onClick}
+        />
+        
+        {showDimensions && !isPlacing && (
+          <div
+            className="absolute bg-amber-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none"
+            style={{
+              left: `${finalCenterX * displayCellSize * viewTransform.scale + viewTransform.translateX}px`,
+              top: `${finalCenterY * displayCellSize * viewTransform.scale + 20 + viewTransform.translateY}px`,
+              transform: 'translateX(-50%)',
+            }}
+          >
+            {width.toFixed(1)} м
+          </div>
+        )}
+        
+        {showDimensions && (
+          <div
+            className="absolute bg-gray-400 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none"
+            style={{
+              left: `${doorCenter.x * displayCellSize * viewTransform.scale + viewTransform.translateX}px`,
+              top: `${doorCenter.y * displayCellSize * viewTransform.scale - 20 + viewTransform.translateY}px`,
+              transform: 'translateX(-50%)',
+            }}
+          >
+            {offset.toFixed(1)} м
+          </div>
+        )}
+      </>
+    );
+  }
+  
+  // Для прямых стен (старый код)
+  const { isHorizontal, length } = wall;
+  const doorLength = width / (length / Math.abs(isHorizontal ? x2 - x1 : y2 - y1));
+  const doorOffset = door.offset / (length / Math.abs(isHorizontal ? x2 - x1 : y2 - y1));
+  
+  let doorLeft, doorTop, doorWidth, doorHeight;
+  
+  if (isHorizontal) {
+    const startX = Math.min(x1, x2);
+    doorLeft = (startX + doorOffset) * displayCellSize * viewTransform.scale;
+    doorTop = y1 * displayCellSize * viewTransform.scale;
+    doorWidth = doorLength * displayCellSize * viewTransform.scale;
+    doorHeight = 20;
+  } else {
+    const startY = Math.min(y1, y2);
+    doorLeft = x1 * displayCellSize * viewTransform.scale;
+    doorTop = (startY + doorOffset) * displayCellSize * viewTransform.scale;
+    doorWidth = 20;
+    doorHeight = doorLength * displayCellSize * viewTransform.scale;
+  }
+  
+  return (
+    <>
+      <div
+        className={`absolute bg-amber-800 hover:bg-amber-700 rounded-sm border-2 border-amber-900 transition-all cursor-pointer ${isSelected ? "ring-2 ring-yellow-500 ring-offset-1" : ""} ${isPlacing ? "opacity-70" : ""}`}
+        style={{
+          left: `${doorLeft + viewTransform.translateX}px`,
+          top: `${doorTop + viewTransform.translateY}px`,
+          width: `${doorWidth}px`,
+          height: `${doorHeight}px`,
+          transform: isHorizontal ? 'translateY(-5px)' : 'translateX(-5px)',
+        }}
+        onClick={onClick}
+      />
+      
+      {showDimensions && !isPlacing && (
+        <div
+          className="absolute bg-amber-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none"
+          style={{
+            left: `${doorLeft + doorWidth/2 + viewTransform.translateX}px`,
+            top: `${doorTop + doorHeight + viewTransform.translateY + 5}px`,
+            transform: 'translateX(-50%)',
+          }}
+        >
+          {width.toFixed(1)} м
+        </div>
+      )}
+      
+      {showDimensions && (
+        <div
+          className="absolute bg-gray-400 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none"
+          style={{
+            left: `${doorLeft + viewTransform.translateX}px`,
+            top: `${doorTop - 25 + viewTransform.translateY}px`,
+            transform: 'translateX(-50%)',
+          }}
+        >
+         {door.offset.toFixed(1)} м
+        </div>
+      )}
+    </>
+  );
+}
+
+// Компонент окна (обновлен для поддержки диагональных стен)
+function WindowComponent({ windowItem, wall, displayCellSize, viewTransform, isSelected, onClick, showDimensions }: { 
+  windowItem: Window;
+  wall: WallSegment;
+  displayCellSize: number;
+  viewTransform: ViewTransform;
+  isSelected: boolean;
+  onClick: () => void;
+  showDimensions: boolean;
+}) {
+  const { x1, y1, x2, y2, isDiagonal, angle } = wall;
+  const { offset, width, isPlacing, orientation = 'horizontal' } = windowItem;
+  
+  const wallLength = wall.length;
+  const t = offset / wallLength;
+  
+  // Точка на стене, где находится окно
+  const windowCenter = getPointOnLine(x1, y1, x2, y2, t);
+  
+  // Для диагональных стен
+  if (isDiagonal) {
+    const windowAngle = angle || 0;
+    const windowLengthInGrid = width / (wallLength / Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)));
+    
+    // Точки для отрисовки окна
+    const halfLength = windowLengthInGrid / 2;
+    const dx = (x2 - x1) * halfLength / wallLength;
+    const dy = (y2 - y1) * halfLength / wallLength;
+    
+    const windowX1 = windowCenter.x - dx;
+    const windowY1 = windowCenter.y - dy;
+    const windowX2 = windowCenter.x + dx;
+    const windowY2 = windowCenter.y + dy;
+    
+    // Центр окна
+    const windowCenterX = (windowX1 + windowX2) / 2;
+    const windowCenterY = (windowY1 + windowY2) / 2;
+    
+    // Для окон не делаем смещение от стены, они остаются на стене
+    const finalWidth = Math.sqrt(Math.pow(windowX2 - windowX1, 2) + Math.pow(windowY2 - windowY1, 2));
+    const finalAngle = Math.atan2(windowY2 - windowY1, windowX2 - windowX1) * (180 / Math.PI);
+    
+    return (
+      <>
+        <div
+          className={`absolute bg-white hover:bg-gray-100 rounded-sm border-2 border-blue-300 transition-all cursor-pointer ${isSelected ? "ring-2 ring-blue-400 ring-offset-1" : ""} ${isPlacing ? "opacity-70" : ""}`}
+          style={{
+            left: `${windowCenterX * displayCellSize * viewTransform.scale - (finalWidth * displayCellSize * viewTransform.scale) / 2 + viewTransform.translateX}px`,
+            top: `${windowCenterY * displayCellSize * viewTransform.scale - 7.5 + viewTransform.translateY}px`,
+            width: `${finalWidth * displayCellSize * viewTransform.scale}px`,
+            height: `15px`,
+            transform: `rotate(${finalAngle}deg)`,
+            transformOrigin: 'center center',
+          }}
+          onClick={onClick}
+        >
+          <div className="absolute inset-1 bg-blue-50 border border-blue-100 rounded-sm"></div>
+        </div>
+        
+        {showDimensions && !isPlacing && (
+          <div
+            className="absolute bg-blue-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none"
+            style={{
+              left: `${windowCenterX * displayCellSize * viewTransform.scale + viewTransform.translateX}px`,
+              top: `${windowCenterY * displayCellSize * viewTransform.scale + 20 + viewTransform.translateY}px`,
+              transform: 'translateX(-50%)',
+            }}
+          >
+            {width.toFixed(1)} м
+          </div>
+        )}
+        
+        {showDimensions && (
+          <div
+            className="absolute bg-gray-400 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none"
+            style={{
+              left: `${windowCenter.x * displayCellSize * viewTransform.scale + viewTransform.translateX}px`,
+              top: `${windowCenter.y * displayCellSize * viewTransform.scale - 25 + viewTransform.translateY}px`,
+              transform: 'translateX(-50%)',
+            }}
+          >
+            {windowItem.offset.toFixed(1)} м
+          </div>
+        )}
+      </>
+    );
+  }
+  
+  // Для прямых стен (старый код)
+  const { isHorizontal, length } = wall;
+  const windowLength = width / (length / Math.abs(isHorizontal ? x2 - x1 : y2 - y1));
+  const windowOffset = windowItem.offset / (length / Math.abs(isHorizontal ? x2 - x1 : y2 - y1));
+  
+  let windowLeft, windowTop, windowWidth, windowHeight;
+  
+  if (isHorizontal) {
+    const startX = Math.min(x1, x2);
+    windowLeft = (startX + windowOffset) * displayCellSize * viewTransform.scale;
+    windowTop = y1 * displayCellSize * viewTransform.scale;
+    windowWidth = windowLength * displayCellSize * viewTransform.scale;
+    windowHeight = 15;
+  } else {
+    const startY = Math.min(y1, y2);
+    windowLeft = x1 * displayCellSize * viewTransform.scale;
+    windowTop = (startY + windowOffset) * displayCellSize * viewTransform.scale;
+    windowWidth = 15;
+    windowHeight = windowLength * displayCellSize * viewTransform.scale;
+  }
+  
+  return (
+    <>
+      <div
+        className={`absolute bg-white hover:bg-gray-100 rounded-sm border-2 border-blue-300 transition-all cursor-pointer ${isSelected ? "ring-2 ring-blue-400 ring-offset-1" : ""} ${isPlacing ? "opacity-70" : ""}`}
+        style={{
+          left: `${windowLeft + viewTransform.translateX}px`,
+          top: `${windowTop + viewTransform.translateY}px`,
+          width: `${windowWidth}px`,
+          height: `${windowHeight}px`,
+          transform: isHorizontal ? 'translateY(-5px)' : 'translateX(-5px)',
+        }}
+        onClick={onClick}
       >
-        {wall.length.toFixed(1)} м
+        <div className="absolute inset-1 bg-blue-50 border border-blue-100 rounded-sm"></div>
       </div>
+      
+      {showDimensions && !isPlacing && (
+        <div
+          className="absolute bg-blue-800 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none"
+          style={{
+            left: `${windowLeft + windowWidth/2 + viewTransform.translateX}px`,
+            top: `${windowTop + windowHeight + viewTransform.translateY + 5}px`,
+            transform: 'translateX(-50%)',
+          }}
+        >
+          {width.toFixed(1)} м
+        </div>
+      )}
+      
+      {showDimensions && (
+        <div
+          className="absolute bg-gray-400 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none"
+          style={{
+            left: `${windowLeft + viewTransform.translateX}px`,
+            top: `${windowTop - 25 + viewTransform.translateY}px`,
+            transform: 'translateX(-50%)',
+          }}
+        >
+          {windowItem.offset.toFixed(1)} м
+        </div>
+      )}
     </>
   );
 }
 
 // Компонент временной стены при рисовании
-function TempWall({ startX, startY, endX, endY, cellSize, viewTransform }: { 
-  startX: number; startY: number; endX: number; endY: number; cellSize: number;
+function TempWall({ startX, startY, endX, endY, displayCellSize, viewTransform, showDimensions, snapIndicator, isGuide = false, wallDrawingMode = "orthogonal" }: { 
+  startX: number; startY: number; endX: number; endY: number; displayCellSize: number;
   viewTransform: ViewTransform;
+  showDimensions: boolean;
+  snapIndicator: { x: number; y: number; type: string } | null;
+  isGuide?: boolean;
+  wallDrawingMode?: WallDrawingMode;
 }) {
-  const isHorizontal = Math.abs(endX - startX) > Math.abs(endY - startY);
-  
-  // Корректируем координаты для горизонтальных/вертикальных стен
   let x1 = startX;
   let y1 = startY;
   let x2 = endX;
   let y2 = endY;
   
-  if (isHorizontal) {
-    y2 = startY;
-  } else {
-    x2 = startX;
+  const { length: rawLength, angle: rawAngle } = calculateLengthAndAngle(x1, y1, x2, y2);
+  const isDiagonal = wallDrawingMode === "diagonal" || 
+    (wallDrawingMode === "free" && Math.abs(rawAngle) % 90 > 5);
+  
+  if (wallDrawingMode === "orthogonal") {
+    const isHorizontal = Math.abs(endX - startX) > Math.abs(endY - startY);
+    if (isHorizontal) {
+      y2 = startY;
+    } else {
+      x2 = startX;
+    }
   }
   
-  const left = Math.min(x1, x2) * cellSize * viewTransform.scale;
-  const top = Math.min(y1, y2) * cellSize * viewTransform.scale;
-  const width = isHorizontal ? Math.abs(x2 - x1) * cellSize * viewTransform.scale + 10 : 10;
-  const height = isHorizontal ? 10 : Math.abs(y2 - y1) * cellSize * viewTransform.scale + 10;
+  const { length, angle } = calculateLengthAndAngle(x1, y1, x2, y2);
+  const finalIsDiagonal = wallDrawingMode !== "orthogonal" && isDiagonal;
   
-  const length = isHorizontal 
-    ? Math.abs(x2 - x1) * cellSize / 40 
-    : Math.abs(y2 - y1) * cellSize / 40;
+  const left = Math.min(x1, x2) * displayCellSize * viewTransform.scale;
+  const top = Math.min(y1, y2) * displayCellSize * viewTransform.scale;
+  const width = Math.abs(x2 - x1) * displayCellSize * viewTransform.scale;
+  const height = Math.abs(y2 - y1) * displayCellSize * viewTransform.scale;
   
-  const centerX = left + (width / 2);
-  const centerY = top + (height / 2);
+  const centerX = (x1 + x2) / 2 * displayCellSize * viewTransform.scale;
+  const centerY = (y1 + y2) / 2 * displayCellSize * viewTransform.scale;
+  
+  if (finalIsDiagonal) {
+    const lineStyle = {
+      position: 'absolute' as const,
+      left: `${centerX - (length * displayCellSize * viewTransform.scale) / 2 + viewTransform.translateX}px`,
+      top: `${centerY + viewTransform.translateY}px`,
+      width: `${length * displayCellSize * viewTransform.scale}px`,
+      height: '0px',
+      pointerEvents: 'none' as const,
+      transform: `rotate(${angle}deg)`,
+      transformOrigin: 'center center',
+    };
+    
+    if (isGuide) {
+      Object.assign(lineStyle, {
+        borderTop: '2px dashed #8b5cf6',
+      });
+    } else {
+      Object.assign(lineStyle, {
+        height: '10px',
+        backgroundColor: 'rgba(75, 85, 99, 0.7)',
+        borderRadius: '0.375rem',
+        top: `${centerY - 5 + viewTransform.translateY}px`,
+      });
+    }
+    
+    return (
+      <>
+        <div style={lineStyle} />
+        
+        {showDimensions && !isGuide && (
+          <div
+            className="absolute bg-blue-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10"
+            style={{
+              left: `${centerX + viewTransform.translateX}px`,
+              top: `${centerY - 25 + viewTransform.translateY}px`,
+              transform: 'translateX(-50%)',
+            }}
+          >
+            {Math.max(0.5, length).toFixed(1)} м ({Math.round(angle)}°)
+          </div>
+        )}
+        
+        {snapIndicator && showDimensions && (
+          <div
+            className="absolute w-10 h-10 border-2 border-green-500 rounded-full bg-white/80 animate-pulse z-20 pointer-events-none"
+            style={{
+              left: `${snapIndicator.x * displayCellSize * viewTransform.scale + viewTransform.translateX - 12}px`,
+              top: `${snapIndicator.y * displayCellSize * viewTransform.scale + viewTransform.translateY - 12}px`,
+            }}
+          >
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Magnet className="h-3 w-3 text-green-600" />
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+  
+  const lineStyle = {
+    position: 'absolute' as const,
+    left: `${left + viewTransform.translateX}px`,
+    top: `${top + viewTransform.translateY}px`,
+    pointerEvents: 'none' as const,
+  };
+  
+  if (isGuide) {
+    const isHorizontal = Math.abs(x2 - x1) > Math.abs(y2 - y1);
+    if (isHorizontal) {
+      Object.assign(lineStyle, {
+        borderTop: '2px dashed #8b5cf6',
+        height: '0px',
+        width: `${width}px`,
+      });
+    } else {
+      Object.assign(lineStyle, {
+        borderLeft: '2px dashed #8b5cf6',
+        width: '0px',
+        height: `${height}px`,
+      });
+    }
+  } else {
+    const isHorizontal = Math.abs(x2 - x1) > Math.abs(y2 - y1);
+    Object.assign(lineStyle, {
+      width: `${isHorizontal ? width + 10 : 10}px`,
+      height: `${isHorizontal ? 10 : height + 10}px`,
+      backgroundColor: 'rgba(75, 85, 99, 0.7)',
+      borderRadius: '0.375rem',
+    });
+  }
   
   return (
     <>
-      <div
-        className="absolute bg-gray-600 opacity-70 rounded-md"
-        style={{
-          left: `${left + viewTransform.translateX}px`,
-          top: `${top + viewTransform.translateY}px`,
-          width: `${width}px`,
-          height: `${height}px`,
-        }}
-      />
+      <div style={lineStyle} />
       
-      {/* Метка с длиной для временной стены */}
-      <div
-        className="absolute bg-blue-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10"
-        style={{
-          left: `${centerX + viewTransform.translateX}px`,
-          top: `${centerY - 25 + viewTransform.translateY}px`,
-          transform: 'translateX(-50%)',
-        }}
-      >
-        {Math.max(0.5, length).toFixed(1)} м
-      </div>
+      {showDimensions && !isGuide && (
+        <div
+          className="absolute bg-blue-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10"
+          style={{
+            left: `${centerX + viewTransform.translateX}px`,
+            top: `${centerY - 25 + viewTransform.translateY}px`,
+            transform: 'translateX(-50%)',
+          }}
+        >
+          {Math.max(0.5, length).toFixed(1)} м
+        </div>
+      )}
+      
+      {snapIndicator && showDimensions && (
+        <div
+          className="absolute w-10 h-10 border-2 border-green-500 rounded-full bg-white/80 animate-pulse z-20 pointer-events-none"
+          style={{
+            left: `${snapIndicator.x * displayCellSize * viewTransform.scale + viewTransform.translateX - 12}px`,
+            top: `${snapIndicator.y * displayCellSize * viewTransform.scale + viewTransform.translateY - 12}px`,
+          }}
+        >
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Magnet className="h-3 w-3 text-green-600" />
+          </div>
+        </div>
+      )}
     </>
   );
 }
 
 export default function RoomDesignerPage() {
-  // Состояния
   const [walls, setWalls] = useState<WallSegment[]>([]);
+  const [doors, setDoors] = useState<Door[]>([]);
+  const [windows, setWindows] = useState<Window[]>([]);
+  const [guides, setGuides] = useState<GuideLine[]>([]);
+  
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
+  const [selectedDoorId, setSelectedDoorId] = useState<string | null>(null);
+  const [selectedWindowId, setSelectedWindowId] = useState<string | null>(null);
+  const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
+  
+  const [wallDrawingMode, setWallDrawingMode] = useState<WallDrawingMode>("orthogonal");
+  
   const [gridSettings, setGridSettings] = useState<GridSettings>({
-    cellSize: 40,
+    displayCellSize: 40,
+    snapGridSize: 4,
     showGrid: true,
     snapToGrid: true,
+    snapToWalls: true,
+    snapToGuides: true,
+    showGuides: true,
+    forceOrthogonal: false,
   });
+  
   const [drawingMode, setDrawingMode] = useState<DrawingMode>("wall");
+  const [viewMode, setViewMode] = useState<ViewMode>("edit");
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentWallStart, setCurrentWallStart] = useState<{ x: number; y: number } | null>(null);
   const [tempWallEnd, setTempWallEnd] = useState<{ x: number; y: number } | null>(null);
-  const [roomDimensions, setRoomDimensions] = useState({ width: 10, length: 8 });
+  const [snapIndicator, setSnapIndicator] = useState<{ x: number; y: number; type: string } | null>(null);
   
-  // Состояния для навигации
+  const [doorWidth, setDoorWidth] = useState<number>(0.9);
+  const [windowWidth, setWindowWidth] = useState<number>(1.2);
+  const [placingDoor, setPlacingDoor] = useState<{
+    wallId: string | null;
+    offset: number;
+    isPlacing: boolean;
+  }>({ wallId: null, offset: 0, isPlacing: false });
+  const [placingWindow, setPlacingWindow] = useState<{
+    wallId: string | null;
+    offset: number;
+    isPlacing: boolean;
+  }>({ wallId: null, offset: 0, isPlacing: false });
+  
   const [viewTransform, setViewTransform] = useState<ViewTransform>({
     scale: 1,
     translateX: 0,
@@ -166,11 +894,185 @@ export default function RoomDesignerPage() {
   
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Размеры сетки
-  const gridWidth = 30;
-  const gridHeight = 20;
+  // Функция для поиска ближайшей точки привязки
+const findSnapPoint = useCallback((x: number, y: number): SnapPoint | null => {
+  const snapRadius = gridSettings.snapGridSize / gridSettings.displayCellSize;
+  let nearestSnap: SnapPoint | null = null;
+  let minDistance = Infinity;
+  
+  // Проверяем, что массивы существуют
+  if (gridSettings.snapToWalls && walls && walls.length > 0) {
+    walls.forEach(wall => {
+      const points = [
+        { x: wall.x1, y: wall.y1, type: 'start' as const },
+        { x: wall.x2, y: wall.y2, type: 'end' as const },
+      ];
+      
+      points.forEach(point => {
+        const distance = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
+        if (distance < snapRadius && distance < minDistance) {
+          minDistance = distance;
+          nearestSnap = {
+            x: point.x,
+            y: point.y,
+            type: point.type,
+            wallId: wall.id,
+          };
+        }
+      });
+    });
+  }
+  
+  if (gridSettings.snapToGuides && guides && guides.length > 0) {
+    guides.forEach(guide => {
+      const points = [
+        { x: guide.x1, y: guide.y1, type: 'guide' as const },
+        { x: guide.x2, y: guide.y2, type: 'guide' as const },
+      ];
+      
+      points.forEach(point => {
+        const distance = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
+        if (distance < snapRadius && distance < minDistance) {
+          minDistance = distance;
+          nearestSnap = {
+            x: point.x,
+            y: point.y,
+            type: 'guide',
+            guideId: guide.id,
+          };
+        }
+      });
+    });
+  }
+  
+  return nearestSnap;
+}, [walls, guides, gridSettings.snapToWalls, gridSettings.snapToGuides, gridSettings.snapGridSize, gridSettings.displayCellSize]);
+  // НОВАЯ ФУНКЦИЯ: Найти ближайшую стену (включая диагональные)
+const findNearestWall = useCallback((x: number, y: number, maxDistance: number = 1.0) => {
+  // Проверяем, что walls существует и не пуст
+  if (!walls || walls.length === 0) {
+    return { wall: null, point: 0, distance: maxDistance };
+  }
+  
+  let nearestWall: WallSegment | null = null;
+  let minDistance = maxDistance;
+  let nearestPointOnWall: number = 0;
+  
+  walls.forEach(wall => {
+    const { x1, y1, x2, y2, isHorizontal, isDiagonal } = wall;
+    
+    if (isDiagonal) {
+      // Для диагональных стен вычисляем расстояние до линии
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const wallLength = Math.sqrt(dx * dx + dy * dy);
+      
+      if (wallLength === 0) return;
+      
+      // Находим проекцию точки на линию стены
+      const t = ((x - x1) * dx + (y - y1) * dy) / (wallLength * wallLength);
+      
+      if (t >= 0 && t <= 1) {
+        const projX = x1 + t * dx;
+        const projY = y1 + t * dy;
+        const distance = Math.sqrt(Math.pow(x - projX, 2) + Math.pow(y - projY, 2));
+        
+        if (distance < minDistance) {
+          minDistance = distance;
+          nearestWall = wall;
+          nearestPointOnWall = t;
+        }
+      }
+    } else if (isHorizontal) {
+      const minX = Math.min(x1, x2);
+      const maxX = Math.max(x1, x2);
+      if (x >= minX && x <= maxX) {
+        const distance = Math.abs(y - y1);
+        if (distance < minDistance) {
+          minDistance = distance;
+          nearestWall = wall;
+          nearestPointOnWall = (x - minX) / (maxX - minX);
+        }
+      }
+    } else {
+      const minY = Math.min(y1, y2);
+      const maxY = Math.max(y1, y2);
+      if (y >= minY && y <= maxY) {
+        const distance = Math.abs(x - x1);
+        if (distance < minDistance) {
+          minDistance = distance;
+          nearestWall = wall;
+          nearestPointOnWall = (y - minY) / (maxY - minY);
+        }
+      }
+    }
+  });
+  
+  return { wall: nearestWall, point: nearestPointOnWall, distance: minDistance };
+}, [walls]);
 
-  // Преобразование координат мыши в координаты сетки с учетом масштаба и смещения
+  // Найти ближайшую вспомогательную линию
+  const findNearestGuide = useCallback((x: number, y: number, maxDistance: number = 0.5) => {
+  // Проверяем, что guides существует и не пуст
+  if (!guides || guides.length === 0) {
+    return { guide: null, point: 0, distance: maxDistance };
+  }
+  
+  let nearestGuide: GuideLine | null = null;
+  let minDistance = maxDistance;
+  let nearestPointOnGuide: number = 0;
+  
+  guides.forEach(guide => {
+    const { x1, y1, x2, y2, isHorizontal, isDiagonal } = guide;
+    
+    if (isDiagonal) {
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      
+      if (length === 0) return;
+      
+      const t = ((x - x1) * dx + (y - y1) * dy) / (length * length);
+      
+      if (t >= 0 && t <= 1) {
+        const projX = x1 + t * dx;
+        const projY = y1 + t * dy;
+        const distance = Math.sqrt(Math.pow(x - projX, 2) + Math.pow(y - projY, 2));
+        
+        if (distance < minDistance) {
+          minDistance = distance;
+          nearestGuide = guide;
+          nearestPointOnGuide = t;
+        }
+      }
+    } else if (isHorizontal) {
+      const minX = Math.min(x1, x2);
+      const maxX = Math.max(x1, x2);
+      if (x >= minX && x <= maxX) {
+        const distance = Math.abs(y - y1);
+        if (distance < minDistance) {
+          minDistance = distance;
+          nearestGuide = guide;
+          nearestPointOnGuide = (x - minX) / (maxX - minX);
+        }
+      }
+    } else {
+      const minY = Math.min(y1, y2);
+      const maxY = Math.max(y1, y2);
+      if (y >= minY && y <= maxY) {
+        const distance = Math.abs(x - x1);
+        if (distance < minDistance) {
+          minDistance = distance;
+          nearestGuide = guide;
+          nearestPointOnGuide = (y - minY) / (maxY - minY);
+        }
+      }
+    }
+  });
+  
+  return { guide: nearestGuide, point: nearestPointOnGuide, distance: minDistance };
+}, [guides]);
+
   const getGridCoordinates = useCallback((clientX: number, clientY: number) => {
     if (!containerRef.current) return { x: 0, y: 0 };
     
@@ -178,88 +1080,307 @@ export default function RoomDesignerPage() {
     const x = clientX - rect.left;
     const y = clientY - rect.top;
     
-    // Учитываем трансформацию вида
-    const gridX = (x - viewTransform.translateX) / (gridSettings.cellSize * viewTransform.scale);
-    const gridY = (y - viewTransform.translateY) / (gridSettings.cellSize * viewTransform.scale);
+    const rawGridX = (x - viewTransform.translateX) / (gridSettings.displayCellSize * viewTransform.scale);
+    const rawGridY = (y - viewTransform.translateY) / (gridSettings.displayCellSize * viewTransform.scale);
+    
+    if ((gridSettings.snapToWalls || gridSettings.snapToGuides) && viewMode === "edit") {
+      const snapPoint = findSnapPoint(rawGridX, rawGridY);
+      if (snapPoint) {
+        setSnapIndicator({ x: snapPoint.x, y: snapPoint.y, type: snapPoint.type });
+        return { x: snapPoint.x, y: snapPoint.y };
+      }
+    }
+    
+    setSnapIndicator(null);
+    
+    if (gridSettings.snapToGrid && viewMode === "edit") {
+      const snapFactor = gridSettings.displayCellSize / gridSettings.snapGridSize;
+      return {
+        x: Math.round(rawGridX * snapFactor) / snapFactor,
+        y: Math.round(rawGridY * snapFactor) / snapFactor,
+      };
+    }
     
     return {
-      x: Math.floor(gridX),
-      y: Math.floor(gridY),
+      x: rawGridX,
+      y: rawGridY,
     };
-  }, [viewTransform, gridSettings.cellSize]);
+  }, [viewTransform, gridSettings.displayCellSize, gridSettings.snapGridSize, gridSettings.snapToGrid, gridSettings.snapToWalls, gridSettings.snapToGuides, viewMode, findSnapPoint]);
 
-  // Начать рисование стены
+  // Начать рисование стены или вспомогательной линии
   const startDrawingWall = (gridX: number, gridY: number) => {
-    if (drawingMode === "wall") {
+    if (viewMode === "edit" && (drawingMode === "wall" || drawingMode === "guide")) {
       setCurrentWallStart({ x: gridX, y: gridY });
       setIsDrawing(true);
       setTempWallEnd({ x: gridX, y: gridY });
     }
   };
 
-  // Обновление временной стены при движении мыши
-  const updateTempWall = (gridX: number, gridY: number) => {
-    if (isDrawing && currentWallStart) {
-      setTempWallEnd({ x: gridX, y: gridY });
+  // НОВАЯ ФУНКЦИЯ: Начать размещение двери (поддержка диагональных стен)
+  const startPlacingDoor = (gridX: number, gridY: number) => {
+    if (viewMode === "edit" && drawingMode === "door") {
+      const { wall, point, distance } = findNearestWall(gridX, gridY, 1.0);
+      
+      if (wall) {
+        const offset = point * wall.length;
+        setPlacingDoor({
+          wallId: wall.id,
+          offset: offset,
+          isPlacing: true,
+        });
+        
+        const newDoor: Door = {
+          id: `temp-door-${Date.now()}`,
+          wallId: wall.id,
+          position: point,
+          width: doorWidth,
+          offset: offset,
+          isPlacing: true,
+          orientation: wall.isDiagonal ? 'diagonal' : wall.isHorizontal ? 'horizontal' : 'vertical',
+          angle: wall.isDiagonal ? wall.angle : undefined,
+        };
+        
+        setDoors(prev => [...prev, newDoor]);
+        setSelectedDoorId(newDoor.id);
+        setSelectedWindowId(null);
+        setSelectedGuideId(null);
+      }
     }
   };
 
-  // Завершить рисование стены
-  const finishDrawingWall = (gridX: number, gridY: number) => {
-    if (isDrawing && currentWallStart) {
-      const { x: startX, y: startY } = currentWallStart;
-      const isHorizontal = Math.abs(gridX - startX) > Math.abs(gridY - startY);
+  // НОВАЯ ФУНКЦИЯ: Начать размещение окна (поддержка диагональных стен)
+  const startPlacingWindow = (gridX: number, gridY: number) => {
+    if (viewMode === "edit" && drawingMode === "window") {
+      const { wall, point, distance } = findNearestWall(gridX, gridY, 1.0);
       
-      // Определяем конечные точки
+      if (wall) {
+        const offset = point * wall.length;
+        setPlacingWindow({
+          wallId: wall.id,
+          offset: offset,
+          isPlacing: true,
+        });
+        
+        const newWindow: Window = {
+          id: `temp-window-${Date.now()}`,
+          wallId: wall.id,
+          position: point,
+          width: windowWidth,
+          offset: offset,
+          isPlacing: true,
+          orientation: wall.isDiagonal ? 'diagonal' : wall.isHorizontal ? 'horizontal' : 'vertical',
+          angle: wall.isDiagonal ? wall.angle : undefined,
+        };
+        
+        setWindows(prev => [...prev, newWindow]);
+        setSelectedWindowId(newWindow.id);
+        setSelectedDoorId(null);
+        setSelectedGuideId(null);
+      }
+    }
+  };
+
+  // НОВАЯ ФУНКЦИЯ: Обновить положение двери (поддержка диагональных стен)
+ const updateDoorPosition = (gridX: number, gridY: number) => {
+  if (placingDoor.isPlacing && placingDoor.wallId && viewMode === "edit") {
+    const wall = walls.find(w => w.id === placingDoor.wallId);
+    if (!wall) return;
+    
+    // Используем safe-версию findNearestWall
+    const { point } = findNearestWall(gridX, gridY, 2.0);
+    const offset = point * wall.length;
+    
+    setDoors(prev => prev.map(door => 
+      door.isPlacing 
+        ? { ...door, position: point, offset: offset }
+        : door
+    ));
+  }
+};
+
+  // НОВАЯ ФУНКЦИЯ: Обновить положение окна (поддержка диагональных стен)
+  const updateWindowPosition = (gridX: number, gridY: number) => {
+    if (placingWindow.isPlacing && placingWindow.wallId && viewMode === "edit") {
+      const wall = walls.find(w => w.id === placingWindow.wallId);
+      if (!wall) return;
+      
+      // Для диагональных стен находим ближайшую точку на линии стены
+      const { point } = findNearestWall(gridX, gridY, 2.0);
+      const offset = point * wall.length;
+      
+      setWindows(prev => prev.map(window => 
+        window.isPlacing 
+          ? { ...window, position: point, offset: offset }
+          : window
+      ));
+    }
+  };
+
+  // Завершить размещение двери
+  const finishPlacingDoor = () => {
+    if (placingDoor.isPlacing && viewMode === "edit") {
+      const wall = walls.find(w => w.id === placingDoor.wallId);
+      setDoors(prev => prev.map(door => 
+        door.isPlacing 
+          ? { 
+              ...door, 
+              isPlacing: false, 
+              id: `door-${Date.now()}`,
+              orientation: wall?.isDiagonal ? 'diagonal' : wall?.isHorizontal ? 'horizontal' : 'vertical',
+              angle: wall?.isDiagonal ? wall.angle : undefined
+            }
+          : door
+      ));
+      
+      setPlacingDoor({ wallId: null, offset: 0, isPlacing: false });
+    }
+  };
+
+  // Завершить размещение окна
+  const finishPlacingWindow = () => {
+    if (placingWindow.isPlacing && viewMode === "edit") {
+      const wall = walls.find(w => w.id === placingWindow.wallId);
+      setWindows(prev => prev.map(window => 
+        window.isPlacing 
+          ? { 
+              ...window, 
+              isPlacing: false, 
+              id: `window-${Date.now()}`,
+              orientation: wall?.isDiagonal ? 'diagonal' : wall?.isHorizontal ? 'horizontal' : 'vertical',
+              angle: wall?.isDiagonal ? wall.angle : undefined
+            }
+          : window
+      ));
+      
+      setPlacingWindow({ wallId: null, offset: 0, isPlacing: false });
+    }
+  };
+
+  // Обновление временной стены/вспомогательной линии при движении мыши
+  const updateTempWall = (gridX: number, gridY: number) => {
+    if (isDrawing && currentWallStart && viewMode === "edit") {
+      setTempWallEnd({ x: gridX, y: gridY });
+    }
+    if (placingDoor.isPlacing && viewMode === "edit") {
+      updateDoorPosition(gridX, gridY);
+    }
+    if (placingWindow.isPlacing && viewMode === "edit") {
+      updateWindowPosition(gridX, gridY);
+    }
+  };
+
+  // Завершить рисование стены или вспомогательной линии
+  const finishDrawingWall = (gridX: number, gridY: number) => {
+    if (isDrawing && currentWallStart && viewMode === "edit") {
+      const { x: startX, y: startY } = currentWallStart;
+      
+      const { length: rawLength, angle: rawAngle } = calculateLengthAndAngle(startX, startY, gridX, gridY);
       let endX = gridX;
       let endY = gridY;
       
-      if (gridSettings.snapToGrid) {
+      const forceOrthogonal = gridSettings.forceOrthogonal || wallDrawingMode === "orthogonal";
+      const isDiagonalMode = wallDrawingMode === "diagonal";
+      const isFreeMode = wallDrawingMode === "free";
+      
+      let isDiagonal = false;
+      let finalAngle = 0;
+      
+      if (forceOrthogonal) {
+        const isHorizontal = Math.abs(gridX - startX) > Math.abs(gridY - startY);
         if (isHorizontal) {
           endY = startY;
         } else {
           endX = startX;
         }
+        isDiagonal = false;
+      } else if (isDiagonalMode) {
+        isDiagonal = true;
+        finalAngle = rawAngle;
+      } else if (isFreeMode) {
+        const absAngle = Math.abs(rawAngle % 90);
+        isDiagonal = absAngle > 5 && absAngle < 85;
+        finalAngle = rawAngle;
+        
+        if (!isDiagonal) {
+          const roundedAngle = Math.round(rawAngle / 90) * 90;
+          const radians = (roundedAngle * Math.PI) / 180;
+          const length = rawLength;
+          endX = startX + Math.cos(radians) * length;
+          endY = startY + Math.sin(radians) * length;
+        }
       }
       
-      // Рассчитываем длину (примерный масштаб: 40px = 1 метр)
-      const cellSize = gridSettings.cellSize;
-      const length = isHorizontal 
-        ? Math.abs(endX - startX) * cellSize / 40 
-        : Math.abs(endY - startY) * cellSize / 40;
+      const { length, angle } = calculateLengthAndAngle(startX, startY, endX, endY);
       
-      const newWall: WallSegment = {
-        id: `wall-${Date.now()}`,
-        x1: startX,
-        y1: startY,
-        x2: endX,
-        y2: endY,
-        length: Math.max(0.5, length),
-        isHorizontal,
-      };
+      if (drawingMode === "wall") {
+        const newWall: WallSegment = {
+          id: `wall-${Date.now()}`,
+          x1: startX,
+          y1: startY,
+          x2: endX,
+          y2: endY,
+          length: Math.max(0.5, length),
+          isHorizontal: !isDiagonal && Math.abs(endX - startX) > Math.abs(endY - startY),
+          isDiagonal: isDiagonal,
+          angle: isDiagonal ? angle : undefined,
+        };
+        
+        setWalls([...walls, newWall]);
+        setSelectedWallId(newWall.id);
+        setSelectedGuideId(null);
+      } else if (drawingMode === "guide") {
+        const newGuide: GuideLine = {
+          id: `guide-${Date.now()}`,
+          x1: startX,
+          y1: startY,
+          x2: endX,
+          y2: endY,
+          isHorizontal: !isDiagonal && Math.abs(endX - startX) > Math.abs(endY - startY),
+          isDiagonal: isDiagonal,
+          angle: isDiagonal ? angle : undefined,
+        };
+        
+        setGuides([...guides, newGuide]);
+        setSelectedGuideId(newGuide.id);
+        setSelectedWallId(null);
+      }
       
-      setWalls([...walls, newWall]);
       setCurrentWallStart(null);
       setIsDrawing(false);
       setTempWallEnd(null);
+      setSnapIndicator(null);
     }
   };
 
   // Обработчик клика по сетке
   const handleGridClick = (e: React.MouseEvent) => {
-    if (isPanning) return;
+    if (isPanning || viewMode === "view") return;
     
     const { x: gridX, y: gridY } = getGridCoordinates(e.clientX, e.clientY);
     
-    // Проверяем, что клик в пределах сетки
-    if (gridX >= 0 && gridX < gridWidth && gridY >= 0 && gridY < gridHeight) {
+    if (drawingMode === "door") {
+      if (!placingDoor.isPlacing) {
+        startPlacingDoor(gridX, gridY);
+      } else {
+        finishPlacingDoor();
+      }
+    } else if (drawingMode === "window") {
+      if (!placingWindow.isPlacing) {
+        startPlacingWindow(gridX, gridY);
+      } else {
+        finishPlacingWindow();
+      }
+    } else if (drawingMode === "wall" || drawingMode === "guide") {
       if (!isDrawing) {
-        // Начинаем рисование новой стены
         startDrawingWall(gridX, gridY);
       } else {
-        // Завершаем рисование текущей стены
         finishDrawingWall(gridX, gridY);
       }
+    } else if (drawingMode === "select") {
+      setSelectedWallId(null);
+      setSelectedDoorId(null);
+      setSelectedWindowId(null);
+      setSelectedGuideId(null);
     }
   };
 
@@ -267,15 +1388,11 @@ export default function RoomDesignerPage() {
   const handleMouseMove = (e: React.MouseEvent) => {
     const { x: gridX, y: gridY } = getGridCoordinates(e.clientX, e.clientY);
     
-    // Проверяем, что в пределах сетки
-    if (gridX >= 0 && gridX < gridWidth && gridY >= 0 && gridY < gridHeight) {
-      if (isDrawing) {
-        updateTempWall(gridX, gridY);
-      }
+    if (viewMode === "edit") {
+      updateTempWall(gridX, gridY);
     }
     
-    // Панорамирование
-    if (isPanning && !isDrawing) {
+    if (isPanning && !isDrawing && !placingDoor.isPlacing && !placingWindow.isPlacing) {
       const deltaX = e.clientX - panStart.x;
       const deltaY = e.clientY - panStart.y;
       
@@ -291,7 +1408,7 @@ export default function RoomDesignerPage() {
 
   // Начать панорамирование
   const startPanning = (e: React.MouseEvent) => {
-    if (drawingMode !== "wall" && !isDrawing) {
+    if ((drawingMode !== "wall" && !isDrawing && !placingDoor.isPlacing && !placingWindow.isPlacing) || viewMode === "view") {
       setIsPanning(true);
       setPanStart({ x: e.clientX, y: e.clientY });
       e.preventDefault();
@@ -318,7 +1435,6 @@ export default function RoomDesignerPage() {
       ? Math.max(0.1, viewTransform.scale - zoomIntensity)
       : Math.min(3, viewTransform.scale + zoomIntensity);
     
-    // Масштабирование относительно курсора
     const scaleChange = newScale / viewTransform.scale;
     
     setViewTransform(prev => ({
@@ -353,75 +1469,130 @@ export default function RoomDesignerPage() {
     });
   };
 
-  // Отмена рисования
+  // Отмена рисования/размещения
   const cancelDrawing = () => {
-    setCurrentWallStart(null);
-    setIsDrawing(false);
-    setTempWallEnd(null);
+    if (isDrawing) {
+      setCurrentWallStart(null);
+      setIsDrawing(false);
+      setTempWallEnd(null);
+      setSnapIndicator(null);
+    }
+    if (placingDoor.isPlacing) {
+      setDoors(prev => prev.filter(door => !door.isPlacing));
+      setPlacingDoor({ wallId: null, offset: 0, isPlacing: false });
+      setSelectedDoorId(null);
+    }
+    if (placingWindow.isPlacing) {
+      setWindows(prev => prev.filter(window => !window.isPlacing));
+      setPlacingWindow({ wallId: null, offset: 0, isPlacing: false });
+      setSelectedWindowId(null);
+    }
   };
 
   // Удаление выбранной стены
   const deleteSelectedWall = () => {
-    if (selectedWallId) {
+    if (selectedWallId && viewMode === "edit") {
+      setDoors(doors.filter(door => door.wallId !== selectedWallId));
+      setWindows(windows.filter(window => window.wallId !== selectedWallId));
       setWalls(walls.filter(wall => wall.id !== selectedWallId));
       setSelectedWallId(null);
     }
   };
 
-  // Сброс всех стен
+  // Удаление выбранной двери
+  const deleteSelectedDoor = () => {
+    if (selectedDoorId && viewMode === "edit") {
+      setDoors(doors.filter(door => door.id !== selectedDoorId));
+      setSelectedDoorId(null);
+    }
+  };
+
+  // Удаление выбранного окна
+  const deleteSelectedWindow = () => {
+    if (selectedWindowId && viewMode === "edit") {
+      setWindows(windows.filter(window => window.id !== selectedWindowId));
+      setSelectedWindowId(null);
+    }
+  };
+
+  // Удаление выбранной вспомогательной линии
+  const deleteSelectedGuide = () => {
+    if (selectedGuideId && viewMode === "edit") {
+      setGuides(guides.filter(guide => guide.id !== selectedGuideId));
+      setSelectedGuideId(null);
+    }
+  };
+
+  // Изменение ширины двери
+  const changeDoorWidth = (width: number) => {
+    setDoorWidth(width);
+    if (selectedDoorId && viewMode === "edit") {
+      setDoors(prev => prev.map(door => 
+        door.id === selectedDoorId 
+          ? { ...door, width: width }
+          : door
+      ));
+    }
+  };
+
+  // Изменение ширины окна
+  const changeWindowWidth = (width: number) => {
+    setWindowWidth(width);
+    if (selectedWindowId && viewMode === "edit") {
+      setWindows(prev => prev.map(window => 
+        window.id === selectedWindowId 
+          ? { ...window, width: width }
+          : window
+      ));
+    }
+  };
+
+  // Сброс всех стен, дверей, окон и вспомогательных линий
   const resetWalls = () => {
-    setWalls([]);
-    setSelectedWallId(null);
-    setCurrentWallStart(null);
-    setIsDrawing(false);
-    setTempWallEnd(null);
+    if (viewMode === "edit") {
+      setWalls([]);
+      setDoors([]);
+      setWindows([]);
+      setGuides([]);
+      setSelectedWallId(null);
+      setSelectedDoorId(null);
+      setSelectedWindowId(null);
+      setSelectedGuideId(null);
+      setCurrentWallStart(null);
+      setIsDrawing(false);
+      setTempWallEnd(null);
+      setSnapIndicator(null);
+      setPlacingDoor({ wallId: null, offset: 0, isPlacing: false });
+      setPlacingWindow({ wallId: null, offset: 0, isPlacing: false });
+    }
   };
 
-  // Экспорт проекта
-  const exportProject = () => {
-    const projectData = {
-      walls,
-      gridSettings,
-      roomDimensions,
-      createdAt: new Date().toISOString(),
-    };
-    
-    const dataStr = JSON.stringify(projectData, null, 2);
-    const dataUri = `data:application/json;charset=utf-8,${encodeURIComponent(dataStr)}`;
-    
-    const link = document.createElement('a');
-    link.setAttribute('href', dataUri);
-    link.setAttribute('download', `room-design-${new Date().toISOString().split('T')[0]}.json`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // Переключение режима просмотра/редактирования
+  const toggleViewMode = () => {
+    if (viewMode === "edit") {
+      setViewMode("view");
+      setDrawingMode("select");
+      cancelDrawing();
+      setSelectedWallId(null);
+      setSelectedDoorId(null);
+      setSelectedWindowId(null);
+      setSelectedGuideId(null);
+    } else {
+      setViewMode("edit");
+    }
   };
 
-  // Расчет общей площади
-  const calculateArea = () => {
-    return (roomDimensions.width * roomDimensions.length).toFixed(1);
-  };
-
-  // Расчет периметра
-  const calculatePerimeter = () => {
-    let perimeter = 0;
-    walls.forEach(wall => {
-      perimeter += wall.length;
-    });
-    return perimeter.toFixed(1);
-  };
-
-  // Обработка нажатия клавиши ESC для отмены рисования
+  // Обработка нажатия клавиши ESC для отмены
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isDrawing) {
+      if (e.key === 'Escape' && (isDrawing || placingDoor.isPlacing || placingWindow.isPlacing) && viewMode === "edit") {
         cancelDrawing();
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDrawing]);
+  }, [isDrawing, placingDoor.isPlacing, placingWindow.isPlacing, viewMode]);
 
   // Добавляем обработчик колеса мыши
   useEffect(() => {
@@ -432,245 +1603,339 @@ export default function RoomDesignerPage() {
     }
   }, [handleWheel]);
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 p-4 md:p-6">
-      <header className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-bold text-gray-800">Конструктор помещений</h1>
-        <p className="text-gray-600 mt-2">Сетка с настройкой размера. Рисуйте наружные стены, указывайте длину.</p>
-      </header>
+  // Создаем фоновую сетку
+  const getGridBackground = () => {
+    if (!gridSettings.showGrid) return 'none';
+    
+    const displayCellSize = gridSettings.displayCellSize * viewTransform.scale;
+    const snapGridSize = gridSettings.snapGridSize * viewTransform.scale;
+    
+    const subGrid = `
+      linear-gradient(
+        to right,
+        #e5e7eb 1px,
+        transparent 1px
+      ) ${viewTransform.translateX}px ${viewTransform.translateY}px / ${snapGridSize}px 100%,
+      linear-gradient(
+        to bottom,
+        #e5e7eb 1px,
+        transparent 1px
+      ) ${viewTransform.translateX}px ${viewTransform.translateY}px / 100% ${snapGridSize}px
+    `;
+    
+    const mainGrid = `
+      linear-gradient(
+        to right,
+        #9ca3af 2px,
+        transparent 2px
+      ) ${viewTransform.translateX}px ${viewTransform.translateY}px / ${displayCellSize}px 100%,
+      linear-gradient(
+        to bottom,
+        #9ca3af 2px,
+        transparent 2px
+      ) ${viewTransform.translateX}px ${viewTransform.translateY}px / 100% ${displayCellSize}px
+    `;
+    
+    return `${subGrid}, ${mainGrid}`;
+  };
 
-      <div className="flex flex-col lg:flex-row gap-6">
-        {/* Панель управления */}
-        <Card className="lg:w-80 flex-shrink-0">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Ruler className="h-5 w-5" />
-              Панель управления
-            </CardTitle>
-            <CardDescription>Настройте сетку и рисуйте стены</CardDescription>
-          </CardHeader>
-          
-          <CardContent className="space-y-6">
-            <Tabs defaultValue="tools" className="w-full">
-              <TabsList className="grid grid-cols-2">
-                <TabsTrigger value="tools">Инструменты</TabsTrigger>
-                <TabsTrigger value="settings">Настройки</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="tools" className="space-y-4">
-                <div className="space-y-3">
-                  <h3 className="font-medium">Режим рисования</h3>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      variant={drawingMode === "wall" ? "default" : "outline"}
-                      onClick={() => setDrawingMode("wall")}
-                      className="flex flex-col h-auto py-3"
-                    >
-                      <Square className="h-5 w-5 mb-1" />
-                      <span className="text-xs">Стена</span>
-                    </Button>
-                    
-                    <Button
-                      variant={drawingMode === "select" ? "default" : "outline"}
-                      onClick={() => {
-                        setDrawingMode("select");
-                        cancelDrawing();
-                      }}
-                      className="flex flex-col h-auto py-3"
-                    >
-                      <MousePointer className="h-5 w-5 mb-1" />
-                      <span className="text-xs">Выбор</span>
-                    </Button>
-                  </div>
-                  
-                  <div className="pt-2">
-                    <p className="text-sm text-gray-500">
-                      <strong>Как рисовать стены:</strong>
-                    </p>
-                    <ol className="text-xs text-gray-500 mt-1 space-y-1">
-                      <li>1. Выберите режим "Стена"</li>
-                      <li>2. Кликните на сетке для начала стены</li>
-                      <li>3. Переместите мышь и кликните для завершения</li>
-                      <li>4. Нажмите ESC для отмены рисования</li>
-                    </ol>
-                  </div>
-                </div>
-                
-                <div className="space-y-3">
-                  <h3 className="font-medium">Навигация</h3>
-                  <div className="grid grid-cols-3 gap-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={zoomIn}
-                      title="Приблизить"
-                    >
-                      <ZoomIn className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={resetView}
-                      title="Сбросить вид"
-                    >
-                      <Maximize2 className="h-4 w-4" />
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={zoomOut}
-                      title="Отдалить"
-                    >
-                      <ZoomOut className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    • Колесо мыши: масштабирование
-                    <br/>
-                    • Зажатая правая кнопка: панорамирование
-                    <br/>
-                    • Текущий масштаб: {Math.round(viewTransform.scale * 100)}%
-                  </p>
-                </div>
-                
-                <div className="space-y-3">
-                  <h3 className="font-medium">Управление стенами</h3>
-                  <div className="flex gap-2">
-                    <Button 
-                      variant="destructive" 
-                      size="sm"
-                      onClick={deleteSelectedWall}
-                      disabled={!selectedWallId}
-                      className="flex-1"
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Удалить выбранную
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={resetWalls}
-                      className="flex-1"
-                    >
-                      Сбросить все
-                    </Button>
-                  </div>
-                  
-                  {isDrawing && (
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={cancelDrawing}
-                      className="w-full"
-                    >
-                      Отменить рисование (ESC)
-                    </Button>
-                  )}
-                </div>
-              </TabsContent>
-              
-              <TabsContent value="settings" className="space-y-4">
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="cellSize">Размер ячейки сетки: {gridSettings.cellSize}px</Label>
-                  
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="showGrid">Показать сетку</Label>
-                    <Switch
-                      id="showGrid"
-                      checked={gridSettings.showGrid}
-                      onCheckedChange={(checked) => setGridSettings({...gridSettings, showGrid: checked})}
-                    />
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="snapToGrid">Привязка к сетке</Label>
-                    <Switch
-                      id="snapToGrid"
-                      checked={gridSettings.snapToGrid}
-                      onCheckedChange={(checked) => setGridSettings({...gridSettings, snapToGrid: checked})}
-                    />
-                  </div>
-                </div>
-                
-                <div className="space-y-3 pt-2">
-                  <h3 className="font-medium">Размеры помещения</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="width">Ширина (м)</Label>
-                      <Input
-                        id="width"
-                        type="number"
-                        min="1"
-                        max="50"
-                        value={roomDimensions.width}
-                        onChange={(e) => setRoomDimensions({...roomDimensions, width: parseFloat(e.target.value) || 1})}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="length">Длина (м)</Label>
-                      <Input
-                        id="length"
-                        type="number"
-                        min="1"
-                        max="50"
-                        value={roomDimensions.length}
-                        onChange={(e) => setRoomDimensions({...roomDimensions, length: parseFloat(e.target.value) || 1})}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-            </Tabs>
-            
-            <div className="pt-4 border-t">
-              <div className="space-y-3">
-                <h3 className="font-medium">Статистика</h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-blue-50 p-3 rounded-md">
-                    <p className="text-xs text-blue-600">Периметр</p>
-                    <p className="text-lg font-bold">{calculatePerimeter()} м</p>
-                  </div>
-                  <div className="bg-green-50 p-3 rounded-md">
-                    <p className="text-xs text-green-600">Площадь</p>
-                    <p className="text-lg font-bold">{calculateArea()} м²</p>
-                  </div>
-                </div>
-                <div className="bg-gray-50 p-3 rounded-md">
-                  <p className="text-xs text-gray-600">Количество стен</p>
-                  <p className="text-lg font-bold">{walls.length}</p>
-                </div>
+  // Получение курсора в зависимости от режима
+  const getCursor = () => {
+    if (isPanning) return 'grabbing';
+    if (viewMode === "view") return 'grab';
+    if (drawingMode === "door" || drawingMode === "window" || drawingMode === "guide") return 'crosshair';
+    if (isDrawing) return 'crosshair';
+    return 'crosshair';
+  };
+
+  return (
+    <div>
+      <div className="flex flex-col gap-4">
+        <Tabs>
+          <TabsList className="w-full">
+            <TabsTrigger value="menu" className="flex-1">
+              <div className="flex items-center gap-2 justify-center">
+                <span className="truncate">Зал</span>
               </div>
-            </div>
-            
-            <Button 
-              onClick={exportProject} 
-              className="w-full"
-            >
-              <Download className="h-4 w-4 mr-2" />
-              Экспортировать проект
-            </Button>
-          </CardContent>
-        </Card>
+            </TabsTrigger>
+            <TabsTrigger value="menu" className="flex-1">
+              <div className="flex items-center gap-2 justify-center">
+                <span className="truncate">Терраса</span>
+              </div>
+            </TabsTrigger>
+            <TabsTrigger value="menu" className="flex-1">
+              <div className="flex items-center gap-2 justify-center">
+                <Plus className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">Добавить</span>
+              </div>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
 
         {/* Область рисования */}
+        <Card className="w-full flex flex-row flex-wrap gap-4 p-2">
+          {/* Переключатель режимов */}
+          <Button
+            variant={viewMode === "edit" ? "default" : "outline"}
+            onClick={toggleViewMode}
+            className="flex items-center gap-2"
+          >
+            {viewMode === "edit" ? (
+              <>
+                <Eye className="h-4 w-4" />
+                Режим просмотра
+              </>
+            ) : (
+              <>
+                <Edit className="h-4 w-4" />
+                Режим редактирования
+              </>
+            )}
+          </Button>
+
+          {/* Кнопки редактирования (только в режиме редактирования) */}
+          {viewMode === "edit" && (
+            <>
+              <div className="flex items-center gap-2 border rounded-md p-1">
+                <Button
+                  variant={wallDrawingMode === "orthogonal" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setWallDrawingMode("orthogonal")}
+                  title="Ортогональные стены (только горизонтальные/вертикальные)"
+                >
+                  <SquareIcon className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={wallDrawingMode === "diagonal" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setWallDrawingMode("diagonal")}
+                  title="Диагональные стены (под произвольным углом)"
+                >
+                  <MinusCircle className="h-4 w-4 rotate-45" />
+                </Button>
+                <Button
+                  variant={wallDrawingMode === "free" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setWallDrawingMode("free")}
+                  title="Свободный режим (автоматическое определение)"
+                >
+                  <Square className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <Button
+                variant={drawingMode === "wall" ? "default" : "outline"}
+                onClick={() => setDrawingMode("wall")}
+              >
+                <Square className="h-4 w-4 mr-2" />
+                Стена
+              </Button>
+              <Button
+                variant={drawingMode === "door" ? "default" : "outline"}
+                onClick={() => {
+                  setDrawingMode("door");
+                  cancelDrawing();
+                }}
+              >
+                <DoorOpen className="h-4 w-4 mr-2" />
+                Дверь
+              </Button>
+              <Button
+                variant={drawingMode === "window" ? "default" : "outline"}
+                onClick={() => {
+                  setDrawingMode("window");
+                  cancelDrawing();
+                }}
+              >
+                <Window className="h-4 w-4 mr-2" />
+                Окно
+              </Button>
+              <Button
+                variant={drawingMode === "guide" ? "default" : "outline"}
+                onClick={() => {
+                  setDrawingMode("guide");
+                  cancelDrawing();
+                }}
+              >
+                <HelpCircle className="h-4 w-4 mr-2" />
+                Вспомогательная линия
+              </Button>
+              <Button
+                variant={drawingMode === "select" ? "default" : "outline"}
+                onClick={() => {
+                  setDrawingMode("select");
+                  cancelDrawing();
+                }}
+              >
+                <MousePointer className="h-4 w-4 mr-2" />
+                Выбор
+              </Button>
+
+              {selectedDoorId && (
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="doorWidth" className="whitespace-nowrap">
+                    Ширина двери:
+                  </Label>
+                  <Input
+                    id="doorWidth"
+                    type="number"
+                    step="0.1"
+                    min="0.5"
+                    max="2.0"
+                    value={doorWidth}
+                    onChange={(e) => changeDoorWidth(parseFloat(e.target.value))}
+                    className="w-20"
+                  />
+                  <span className="text-sm">м</span>
+                </div>
+              )}
+
+              {selectedWindowId && (
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="windowWidth" className="whitespace-nowrap">
+                    Ширина окна:
+                  </Label>
+                  <Input
+                    id="windowWidth"
+                    type="number"
+                    step="0.1"
+                    min="0.3"
+                    max="3.0"
+                    value={windowWidth}
+                    onChange={(e) => changeWindowWidth(parseFloat(e.target.value))}
+                    className="w-20"
+                  />
+                  <span className="text-sm">м</span>
+                </div>
+              )}
+
+              <Button 
+                variant="destructive" 
+                onClick={() => {
+                  if (selectedDoorId) deleteSelectedDoor();
+                  else if (selectedWindowId) deleteSelectedWindow();
+                  else if (selectedGuideId) deleteSelectedGuide();
+                  else deleteSelectedWall();
+                }}
+                disabled={!selectedWallId && !selectedDoorId && !selectedWindowId && !selectedGuideId}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Удалить {
+                  selectedDoorId ? "дверь" : 
+                  selectedWindowId ? "окно" : 
+                  selectedGuideId ? "вспомогательную линию" : 
+                  "стену"
+                }
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={resetWalls}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Сбросить всё
+              </Button>
+            </>
+          )}
+          
+          {(isDrawing || placingDoor.isPlacing || placingWindow.isPlacing) && viewMode === "edit" && (
+            <Button 
+              variant="outline" 
+              onClick={cancelDrawing}
+            >
+              Отменить {
+                placingDoor.isPlacing ? "размещение двери" : 
+                placingWindow.isPlacing ? "размещение окна" : 
+                "рисование"
+              } (ESC)
+            </Button>
+          )}
+          
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="showGrid">Показать сетку</Label>
+            <Switch
+              id="showGrid"
+              checked={gridSettings.showGrid}
+              onCheckedChange={(checked) => setGridSettings({...gridSettings, showGrid: checked})}
+              disabled={viewMode === "view"}
+            />
+          </div>
+          
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="showGuides">Показать вспомогательные линии</Label>
+            <Switch
+              id="showGuides"
+              checked={gridSettings.showGuides}
+              onCheckedChange={(checked) => setGridSettings({...gridSettings, showGuides: checked})}
+              disabled={viewMode === "view"}
+            />
+          </div>
+          
+          {viewMode === "edit" && (
+            <>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="snapToGrid">Привязка к сетке</Label>
+                <Switch
+                  id="snapToGrid"
+                  checked={gridSettings.snapToGrid}
+                  onCheckedChange={(checked) => setGridSettings({...gridSettings, snapToGrid: checked})}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="snapToWalls">Привязка к стенам</Label>
+                <Switch
+                  id="snapToWalls"
+                  checked={gridSettings.snapToWalls}
+                  onCheckedChange={(checked) => setGridSettings({...gridSettings, snapToWalls: checked})}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="snapToGuides">Привязка к вспомогательным линиям</Label>
+                <Switch
+                  id="snapToGuides"
+                  checked={gridSettings.snapToGuides}
+                  onCheckedChange={(checked) => setGridSettings({...gridSettings, snapToGuides: checked})}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="forceOrthogonal" title="Принудительно рисовать только горизонтальные/вертикальные линии">
+                  Только ортогональные линии
+                </Label>
+                <Switch
+                  id="forceOrthogonal"
+                  checked={gridSettings.forceOrthogonal}
+                  onCheckedChange={(checked) => setGridSettings({...gridSettings, forceOrthogonal: checked})}
+                />
+              </div>
+            </>
+          )}
+        </Card>
+        
         <Card className="flex-1">
           <CardHeader>
             <div className="flex flex-wrap justify-between items-center gap-3">
               <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Grid className="h-5 w-5" />
-                  Область проектирования
+                <CardTitle className="text-lg">
+                  {viewMode === "edit" ? "Редактирование плана" : "Просмотр плана"}
                 </CardTitle>
                 <CardDescription>
-                  {isDrawing 
-                    ? "Рисуйте стену: кликните для начала, переместите, кликните для завершения" 
-                    : "Кликните на сетке, чтобы начать рисовать стену"}
+                  {viewMode === "edit" 
+                    ? "Режим редактирования. Добавляйте стены, двери, окна и вспомогательные линии." 
+                    : "Режим просмотра. Только навигация по плану."}
                 </CardDescription>
               </div>
+              
               <div className="flex items-center gap-3">
+                {viewMode === "edit" && drawingMode === "wall" && (
+                  <div className="flex items-center gap-2 text-sm bg-gray-100 px-3 py-1 rounded-md">
+                    <span className="font-medium">Режим стен:</span>
+                    <span className="text-gray-700">
+                      {wallDrawingMode === "orthogonal" ? "Ортогональный" : 
+                       wallDrawingMode === "diagonal" ? "Диагональный" : 
+                       "Свободный"}
+                    </span>
+                  </div>
+                )}
+                
                 <div className="flex items-center gap-2">
                   <Button 
                     variant="outline" 
@@ -700,9 +1965,6 @@ export default function RoomDesignerPage() {
                     <Maximize2 className="h-4 w-4" />
                   </Button>
                 </div>
-                <div className="text-sm text-gray-500">
-                  Сетка: {gridWidth} × {gridHeight}
-                </div>
               </div>
             </div>
           </CardHeader>
@@ -710,88 +1972,261 @@ export default function RoomDesignerPage() {
           <CardContent>
             <div 
               ref={containerRef}
-              className="relative border border-gray-300 rounded-md bg-white overflow-hidden cursor-crosshair"
+              className="relative border border-gray-300 rounded-md bg-white overflow-hidden"
               style={{ 
                 height: "600px",
-                backgroundSize: `${gridSettings.cellSize * viewTransform.scale}px ${gridSettings.cellSize * viewTransform.scale}px`,
-                backgroundImage: gridSettings.showGrid 
-                  ? `linear-gradient(to right, #e5e7eb 1px, transparent 1px), linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)` 
-                  : 'none',
-                backgroundPosition: `${viewTransform.translateX}px ${viewTransform.translateY}px`,
-                cursor: isPanning ? 'grabbing' : 'crosshair'
+                background: getGridBackground(),
+                cursor: getCursor()
               }}
               onClick={handleGridClick}
               onMouseMove={handleMouseMove}
               onMouseDown={startPanning}
               onMouseUp={stopPanning}
               onMouseLeave={stopPanning}
-              onContextMenu={(e) => e.preventDefault()} // Отключаем контекстное меню для правой кнопки
+              onContextMenu={(e) => e.preventDefault()}
             >
+              {/* Вспомогательные линии */}
+              {gridSettings.showGuides && viewMode === "edit" && guides.map(guide => (
+                <GuideLineComponent
+                  key={guide.id}
+                  guide={guide}
+                  displayCellSize={gridSettings.displayCellSize}
+                  isSelected={selectedGuideId === guide.id}
+                  onClick={() => {
+                    if (viewMode === "edit" && drawingMode === "select") {
+                      setSelectedGuideId(guide.id);
+                      setSelectedWallId(null);
+                      setSelectedDoorId(null);
+                      setSelectedWindowId(null);
+                    }
+                  }}
+                  viewTransform={viewTransform}
+                  showGuides={gridSettings.showGuides}
+                />
+              ))}
+              
               {/* Нарисованные стены */}
               {walls.map(wall => (
                 <Wall
                   key={wall.id}
                   wall={wall}
-                  cellSize={gridSettings.cellSize}
+                  displayCellSize={gridSettings.displayCellSize}
                   isSelected={selectedWallId === wall.id}
                   onClick={() => {
-                    if (drawingMode === "select") {
+                    if (viewMode === "edit" && drawingMode === "select") {
                       setSelectedWallId(wall.id);
+                      setSelectedDoorId(null);
+                      setSelectedWindowId(null);
+                      setSelectedGuideId(null);
                     }
                   }}
                   viewTransform={viewTransform}
+                  showDimensions={viewMode === "edit"}
                 />
               ))}
               
+              {/* Точки концов стен и вспомогательных линий для визуализации */}
+              {(gridSettings.snapToWalls || gridSettings.snapToGuides) && viewMode === "edit" && !isDrawing && !placingDoor.isPlacing && !placingWindow.isPlacing && (
+                <>
+                  {gridSettings.snapToWalls && walls.length > 0 && walls.flatMap(wall => [
+                    { x: wall.x1, y: wall.y1 },
+                    { x: wall.x2, y: wall.y2 }
+                  ]).map((point, index) => (
+                    <div
+                      key={`snap-wall-point-${index}`}
+                      className="absolute w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-sm opacity-50 pointer-events-none"
+                      style={{
+                        left: `${point.x * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateX - 4}px`,
+                        top: `${point.y * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateY - 4}px`,
+                      }}
+                    />
+                  ))}
+                  
+                  {gridSettings.snapToGuides && gridSettings.showGuides && guides.length > 0 && guides.flatMap(guide => [
+                    { x: guide.x1, y: guide.y1 },
+                    { x: guide.x2, y: guide.y2 }
+                  ]).map((point, index) => (
+                    <div
+                      key={`snap-guide-point-${index}`}
+                      className="absolute w-3 h-3 bg-purple-500 rounded-full border-2 border-white shadow-sm opacity-50 pointer-events-none"
+                      style={{
+                        left: `${point.x * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateX - 3}px`,
+                        top: `${point.y * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateY - 3}px`,
+                      }}
+                    />
+                  ))}
+                </>
+              )}
+              
+              {/* Двери */}
+              {doors.map(door => {
+                const wall = walls.find(w => w.id === door.wallId);
+                if (!wall) return null;
+                
+                return (
+                  <Door
+                    key={door.id}
+                    door={door}
+                    wall={wall}
+                    displayCellSize={gridSettings.displayCellSize}
+                    viewTransform={viewTransform}
+                    isSelected={selectedDoorId === door.id}
+                    onClick={() => {
+                      if (viewMode === "edit" && drawingMode === "select") {
+                        setSelectedDoorId(door.id);
+                        setSelectedWallId(null);
+                        setSelectedWindowId(null);
+                        setSelectedGuideId(null);
+                      }
+                    }}
+                    showDimensions={viewMode === "edit"}
+                  />
+                );
+              })}
+              
+              {/* Окна */}
+              {windows.map(windowItem => {
+                const wall = walls.find(w => w.id === windowItem.wallId);
+                if (!wall) return null;
+                
+                return (
+                  <WindowComponent
+                    key={windowItem.id}
+                    windowItem={windowItem}
+                    wall={wall}
+                    displayCellSize={gridSettings.displayCellSize}
+                    viewTransform={viewTransform}
+                    isSelected={selectedWindowId === windowItem.id}
+                    onClick={() => {
+                      if (viewMode === "edit" && drawingMode === "select") {
+                        setSelectedWindowId(windowItem.id);
+                        setSelectedWallId(null);
+                        setSelectedDoorId(null);
+                        setSelectedGuideId(null);
+                      }
+                    }}
+                    showDimensions={viewMode === "edit"}
+                  />
+                );
+              })}
+              
               {/* Точка начала рисования */}
-              {currentWallStart && (
+              {currentWallStart && viewMode === "edit" && (
                 <div
                   className="absolute w-3 h-3 bg-blue-600 rounded-full border-2 border-white shadow z-10"
                   style={{
-                    left: `${currentWallStart.x * gridSettings.cellSize * viewTransform.scale + viewTransform.translateX - 6}px`,
-                    top: `${currentWallStart.y * gridSettings.cellSize * viewTransform.scale + viewTransform.translateY - 6}px`,
+                    left: `${currentWallStart.x * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateX - 6}px`,
+                    top: `${currentWallStart.y * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateY - 6}px`,
                   }}
                 />
               )}
               
-              {/* Временная стена при рисовании */}
-              {isDrawing && currentWallStart && tempWallEnd && (
+              {/* Временная стена или вспомогательная линия при рисовании */}
+              {isDrawing && currentWallStart && tempWallEnd && viewMode === "edit" && (
                 <TempWall
                   startX={currentWallStart.x}
                   startY={currentWallStart.y}
                   endX={tempWallEnd.x}
                   endY={tempWallEnd.y}
-                  cellSize={gridSettings.cellSize}
+                  displayCellSize={gridSettings.displayCellSize}
                   viewTransform={viewTransform}
+                  showDimensions={viewMode === "edit"}
+                  snapIndicator={snapIndicator}
+                  isGuide={drawingMode === "guide"}
+                  wallDrawingMode={wallDrawingMode}
                 />
               )}
               
-              {/* Подсказка */}
-              {walls.length === 0 && !isDrawing && (
+              {/* Подсказка для режима дверей */}
+              {drawingMode === "door" && !placingDoor.isPlacing && viewMode === "edit" && (
+                <div className="absolute bottom-4 left-4 bg-blue-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
+                  <p className="text-sm font-medium">Режим добавления дверей</p>
+                  <p className="text-xs opacity-90">Нажмите на стену, чтобы добавить дверь</p>
+                  <p className="text-xs opacity-90 mt-1">Двери можно размещать на любых стенах (включая диагональные)</p>
+                </div>
+              )}
+              
+              {/* Подсказка для режима окон */}
+              {drawingMode === "window" && !placingWindow.isPlacing && viewMode === "edit" && (
+                <div className="absolute bottom-4 left-4 bg-blue-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
+                  <p className="text-sm font-medium">Режим добавления окон</p>
+                  <p className="text-xs opacity-90">Нажмите на стену, чтобы добавить окно</p>
+                  <p className="text-xs opacity-90 mt-1">Окна можно размещать на любых стенах (включая диагональные)</p>
+                </div>
+              )}
+              
+              {/* Подсказка для режима вспомогательных линий */}
+              {drawingMode === "guide" && !isDrawing && viewMode === "edit" && (
+                <div className="absolute bottom-4 left-4 bg-purple-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
+                  <p className="text-sm font-medium">Режим добавления вспомогательных линий</p>
+                  <p className="text-xs opacity-90">Нажмите и протяните для создания линии</p>
+                  <p className="text-xs opacity-90">Можно рисовать горизонтальные, вертикальные и диагональные линии</p>
+                </div>
+              )}
+              
+              {/* Подсказка для режима рисования стен */}
+              {drawingMode === "wall" && !isDrawing && viewMode === "edit" && (
+                <div className="absolute bottom-4 left-4 bg-gray-800 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none max-w-md">
+                  <p className="text-sm font-medium">Режим рисования стен: {wallDrawingMode === "orthogonal" ? "Ортогональный" : wallDrawingMode === "diagonal" ? "Диагональный" : "Свободный"}</p>
+                  <p className="text-xs opacity-90">
+                    {wallDrawingMode === "orthogonal" 
+                      ? "Рисуются только горизонтальные и вертикальные стены" 
+                      : wallDrawingMode === "diagonal" 
+                      ? "Рисуются стены под произвольным углом" 
+                      : "Автоматическое определение: при малом отклонении от осей создаются прямые стены"}
+                  </p>
+                  <p className="text-xs opacity-90 mt-1">Нажмите и протяните для создания стены</p>
+                </div>
+              )}
+              
+              {/* Подсказка для размещения двери */}
+              {placingDoor.isPlacing && viewMode === "edit" && (
+                <div className="absolute bottom-4 left-4 bg-amber-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
+                  <p className="text-sm font-medium">Размещение двери</p>
+                  <p className="text-xs opacity-90">Перетащите вдоль стены, кликните для размещения</p>
+                  <p className="text-xs opacity-90 mt-1">Привязка от начала стены: {doors.find(d => d.isPlacing)?.offset.toFixed(1) || '0.0'} м</p>
+                </div>
+              )}
+              
+              {/* Подсказка для размещения окна */}
+              {placingWindow.isPlacing && viewMode === "edit" && (
+                <div className="absolute bottom-4 left-4 bg-blue-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
+                  <p className="text-sm font-medium">Размещение окна</p>
+                  <p className="text-xs opacity-90">Перетащите вдоль стены, кликните для размещения</p>
+                  <p className="text-xs opacity-90 mt-1">Привязка от начала стены: {windows.find(w => w.isPlacing)?.offset.toFixed(1) || '0.0'} м</p>
+                </div>
+              )}
+              
+              {/* Подсказка при пустом плане */}
+              {walls.length === 0 && !isDrawing && viewMode === "edit" && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="text-center p-6 bg-white/90 rounded-lg max-w-md shadow-lg">
-                    <Grid className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                    <Grid3X3 className="h-12 w-12 text-gray-400 mx-auto mb-3" />
                     <h3 className="font-medium text-lg mb-2">Начните проектирование</h3>
-                    <p className="text-gray-600 mb-4">
-                      Выберите режим "Стена" и кликните на сетке, чтобы нарисовать первую стену.
+                    <p className="text-gray-600 mb-3">Добавьте первую стену, используя инструмент "Стена"</p>
+                    <p className="text-gray-500 text-sm mb-3">
+                      Попробуйте разные режимы рисования: ортогональный, диагональный или свободный
                     </p>
-                    <div className="text-sm text-gray-500 text-left inline-block">
-                      <p>• Выберите инструмент "Стена"</p>
-                      <p>• Кликните на сетке для начала стены</p>
-                      <p>• Переместите мышь и кликните для завершения</p>
-                      <p>• ESC - отмена рисования</p>
-                      <p>• Колесо мыши - масштабирование</p>
-                      <p>• Правая кнопка мыши - панорамирование</p>
-                    </div>
                   </div>
                 </div>
               )}
               
-              {/* Подсказка при рисовании */}
-              {isDrawing && (
-                <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg">
-                  <p className="text-sm font-medium">Рисование стены</p>
-                  <p className="text-xs">Кликните для завершения • ESC для отмены</p>
+              {/* Подсказка в режиме просмотра */}
+              {walls.length === 0 && viewMode === "view" && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="text-center p-6 bg-white/90 rounded-lg max-w-md shadow-lg">
+                    <Eye className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                    <h3 className="font-medium text-lg mb-2">Режим просмотра</h3>
+                    <p className="text-gray-600 mb-3">Добавьте стены в режиме редактирования</p>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={toggleViewMode}
+                      className="pointer-events-auto mt-2"
+                    >
+                      Перейти к редактированию
+                    </Button>
+                  </div>
                 </div>
               )}
               
@@ -802,39 +2237,71 @@ export default function RoomDesignerPage() {
                   Панорамирование...
                 </div>
               )}
+              
+              {/* Индикатор режима просмотра */}
+              {viewMode === "view" && !isPanning && (
+                <div className="absolute top-4 right-4 bg-green-600 text-white px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                  <Eye className="h-4 w-4" />
+                  Режим просмотра
+                </div>
+              )}
+              
             </div>
             
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="text-sm text-gray-600">
-                {selectedWallId 
-                  ? `Выбрана стена длиной ${walls.find(w => w.id === selectedWallId)?.length.toFixed(1)} м` 
-                  : isDrawing
-                  ? "Рисуется новая стена..."
-                  : "Выберите стену или начните рисовать"}
-              </div>
               <div className="flex items-center gap-4 text-sm">
                 <div className="flex items-center gap-1">
-                  <div className="w-6 h-3 bg-gray-800 rounded"></div>
-                  <span>Готовая стена</span>
+                  <div className="w-6 h-3 bg-gray-600 rounded"></div>
+                  <span>Стена</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <div className="w-6 h-3 bg-gray-600 opacity-70 rounded"></div>
-                  <span>Рисуемая стена</span>
+                  <div className="w-6 h-4 bg-amber-800 rounded-sm border border-amber-900"></div>
+                  <span>Дверь</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
-                  <span>Начало стены</span>
+                  <div className="w-6 h-3 bg-white rounded-sm border-2 border-blue-300"></div>
+                  <span>Окно</span>
                 </div>
+                {viewMode === "edit" && gridSettings.showGuides && (
+                  <div className="flex items-center gap-1">
+                    <div className="w-6 h-1 border-t-2 border-dashed border-purple-500"></div>
+                    <span>Вспом. линия</span>
+                  </div>
+                )}
+                {viewMode === "edit" && (
+                  <>
+                    <div className="flex items-center gap-1">
+                      <div className="w-6 h-3 bg-gray-600 opacity-70 rounded"></div>
+                      <span>Рисуемая стена</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
+                      <span>Начало стены</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-4 h-4 bg-gray-400 rounded-sm"></div>
+                      <span>Привязка</span>
+                    </div>
+                    {gridSettings.snapToWalls && (
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <span>Точки стен</span>
+                      </div>
+                    )}
+                    {gridSettings.snapToGuides && gridSettings.showGuides && (
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                        <span>Точки линий</span>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
+              
             </div>
           </CardContent>
         </Card>
       </div>
-      
-      <footer className="mt-8 pt-6 border-t border-gray-200 text-center text-gray-500 text-sm">
-        <p>Конструктор помещений • Только наружные стены • Версия 1.1</p>
-        <p className="mt-1">Управление: колесо мыши - масштабирование, правая кнопка - панорамирование, ESC - отмена</p>
-      </footer>
     </div>
   );
 }

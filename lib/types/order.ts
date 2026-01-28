@@ -57,6 +57,7 @@ export interface OrderItem {
   id: string;
   isReordered: boolean;
   isRefund: boolean;
+  createdAt?: Date;
   refundReason: string;
   status: OrderItemStatus;
   product: Product

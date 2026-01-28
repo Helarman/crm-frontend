@@ -2452,14 +2452,13 @@ const ProductCard: React.FC<ProductCardProps> = ({
             </div>
           )}
         </div>
-
         {/* Основная информация */}
         <div className="flex-1 min-w-0">
           <div className="flex flex-col ">
             {/* Заголовок и цена */}
             <div className="flex justify-between items-start gap-2">
               <h3 className="font-bold text-sm 2xl:text-md xl:text-md truncate flex-1">
-                {item.product.title}
+                {item.product.title} {!canEditQuantity && `x ${item.quantity}`}
               </h3>
               <p className="text-md 2xl:text-lg font-bold whitespace-nowrap ml-2">
                 {calculateItemPrice(item)} ₽
@@ -3627,13 +3626,20 @@ const renderTotalWithButtons = () => {
       {!isRightColCollapsed &&
       <div className="flex-1 min-h-0 overflow-hidden">
         {/* Таб "Заказ" */}
-        {activeTab === 'order' && (
+       {activeTab === 'order' && (
           <div className="h-full overflow-y-auto space-y-4 overflow-x-hidden">
-            {getOrderItems().filter(item => !item.isRefund).map(renderCompactItemCard)}
+            {getOrderItems()
+              .filter(item => !item.isRefund)
+              .sort((a, b) => {
+                const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
+                const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
+                return dateA - dateB; 
+              })
+              .map(renderCompactItemCard)}
             {renderTotalWithButtons()}
           </div>
         )}
-        
+                
         {/* Таб "История" */}
         {activeTab === 'history' && (
           <div className="h-full overflow-y-auto">
