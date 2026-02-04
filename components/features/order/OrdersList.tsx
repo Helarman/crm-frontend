@@ -192,7 +192,7 @@ const DISPLAY_MODES = [
       ka: 'კომფორტული'
     },
     icon: Square,
-    gridClass: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+    gridClass: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4',
     cardVariant: 'default' as const
   },
   {
@@ -202,7 +202,7 @@ const DISPLAY_MODES = [
       ka: 'კომპაქტური'
     },
     icon: Grid2X2,
-    gridClass: 'grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+    gridClass: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6',
     cardVariant: 'compact' as const
   },
   {
@@ -212,8 +212,9 @@ const DISPLAY_MODES = [
       ka: 'მჭიდრო'
     },
     icon: List,
-    gridClass: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
-    cardVariant: 'compact' as const
+    gridClass: 'grid-cols-1 sm:grid-cols-1 md:grid-cols-1 lg:grid-cols-1 xl:grid-cols-1', // Одна колонка на всех экранах
+    cardVariant: 'compact' as const,
+    fullWidth: true // Добавляем флаг для полной ширины
   }
 ]
 
@@ -674,7 +675,7 @@ const filteredActiveOrders = selectedOrderType === 'ALL'
                     </div>
                   )}
                 </div>
-                <div className=" sm:hidden flex gap-2 justify-center">
+                <div className=" flex gap-2 justify-center">
                   <div className="flex border rounded-lg p-1 bg-muted/50">
                   {DISPLAY_MODES.map((mode) => {
                     const Icon = mode.icon
@@ -862,12 +863,12 @@ const filteredActiveOrders = selectedOrderType === 'ALL'
         </Card>
       ) : (
         <>
-           <div className={`grid ${currentDisplayMode.gridClass} gap-4`}>
+        <div className={`grid ${currentDisplayMode.gridClass} gap-4 ${currentDisplayMode.fullWidth ? '' : ''}`}>
             {sortedOrders.map(order => (
               <div
                 key={order.id}
-                className="cursor-pointer transition-transform hover:scale-[1.02]"
-              >
+              className={`${currentDisplayMode.fullWidth ? 'w-full' : ''} cursor-pointer transition-transform hover:scale-[1.02]`}
+    >
                 <OrderCard
                   variant={currentDisplayMode.cardVariant}
                   order={order as any}

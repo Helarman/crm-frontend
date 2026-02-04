@@ -11,7 +11,7 @@ import { Language, useLanguageStore } from '@/lib/stores/language-store'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { Button } from '@/components/ui/button'
-import { ChevronDown, Check, Clock, Package, AlertCircle, Beef } from 'lucide-react'
+import { ChevronDown, Check, Clock, Package, AlertCircle, Beef, Banknote } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/hooks/useAuth'
@@ -1073,12 +1073,13 @@ ${composition}
               </div>
             ) : null}
           </div>
-
-          {variant === 'default' && order.payment && (
-            <div className="mt-auto border-t pt-2 px-3 pb-3">
-              <OrderPaymentStatus payment={order.payment} order={order} />
-            </div>
-          )}
+          <div className="flex items-center gap-2 text-xl justify-end mt-auto p-2">
+            
+            <p className="ml-2 font-semibold">
+              {order.totalAmount.toFixed(0)}{language === 'ru' ? '₽' : '₽'}
+            </p>
+          </div>
+            
         </div>
       </Card>
 

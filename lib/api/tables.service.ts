@@ -7,6 +7,8 @@ const api = axios.create({
   withCredentials: true,
 });
 
+
+
 export interface HallDto {
   id: string;
   title: string;
@@ -18,8 +20,105 @@ export interface HallDto {
   restaurantId: string;
   createdAt: Date;
   updatedAt: Date;
-  tables?: TableDto[];
+  walls?: WallDto[];
+  doors?: DoorDto[];
+  windows?: WindowDto[];
+  guides?: GuideDto[];
 }
+
+export interface WallDto {
+  id: string;
+  hallId: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  length: number;
+  isHorizontal: boolean;
+  isDiagonal: boolean;
+  angle?: number;
+  thickness?: number;
+  color?: string;
+  order: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DoorDto {
+  id: string;
+  hallId: string;
+  wallId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  angle?: number;
+  orientation: 'horizontal' | 'vertical' | 'diagonal';
+  color?: string;
+  order: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface WindowDto {
+  id: string;
+  hallId: string;
+  wallId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  angle?: number;
+  orientation: 'horizontal' | 'vertical' | 'diagonal';
+  color?: string;
+  order: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface GuideDto {
+  id: string;
+  hallId: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  isHorizontal: boolean;
+  isDiagonal: boolean;
+  angle?: number;
+  color?: string;
+  order: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateHallDto {
+  title: string;
+  description?: string;
+  polygon?: string;
+  color?: string;
+  order?: number;
+  restaurantId: string;
+  walls?: Omit<WallDto, 'id' | 'hallId' | 'createdAt' | 'updatedAt'>[];
+  doors?: Omit<DoorDto, 'id' | 'hallId' | 'createdAt' | 'updatedAt'>[];
+  windows?: Omit<WindowDto, 'id' | 'hallId' | 'createdAt' | 'updatedAt'>[];
+  guides?: Omit<GuideDto, 'id' | 'hallId' | 'createdAt' | 'updatedAt'>[];
+}
+
+export interface UpdateHallDto {
+  title?: string;
+  description?: string;
+  polygon?: string;
+  color?: string;
+  order?: number;
+  isActive?: boolean;
+  walls?: (WallDto | Omit<WallDto, 'id' | 'hallId' | 'createdAt' | 'updatedAt'>)[];
+  doors?: (DoorDto | Omit<DoorDto, 'id' | 'hallId' | 'createdAt' | 'updatedAt'>)[];
+  windows?: (WindowDto | Omit<WindowDto, 'id' | 'hallId' | 'createdAt' | 'updatedAt'>)[];
+  guides?: (GuideDto | Omit<GuideDto, 'id' | 'hallId' | 'createdAt' | 'updatedAt'>)[];
+}
+
+
 
 export enum TableShape {
   RECTANGLE = 'RECTANGLE',
@@ -73,24 +172,6 @@ export interface TableTagDto {
   createdAt: Date;
   updatedAt: Date;
   tables?: TableDto[];
-}
-
-export interface CreateHallDto {
-  title: string;
-  description?: string;
-  polygon?: string;
-  color?: string;
-  order?: number;
-  restaurantId: string;
-}
-
-export interface UpdateHallDto {
-  title?: string;
-  description?: string;
-  polygon?: string;
-  color?: string;
-  order?: number;
-  isActive?: boolean;
 }
 
 export interface CreateTableDto {
@@ -233,7 +314,141 @@ export const TablesService = {
   deleteHall: async (id: string): Promise<void> => {
     await api.delete(`/tables/halls/${id}`);
   },
+ /**
+   * Получить полную планировку зала
+   */
+  getHallLayout: async (id: string): Promise<HallDto> => {
+    const { data } = await api.get(`/tables/halls/${id}/layout`);
+    return data;
+  },
 
+
+  /**
+   * Сохранить планировку зала
+   */
+  saveHallLayout: async (id: string, layout: {
+    walls: WallDto[];
+    doors: DoorDto[];
+    windows: WindowDto[];
+    guides: GuideDto[];
+  }): Promise<HallDto> => {
+    const { data } = await api.post(`/tables/halls/${id}/layout`, layout);
+    return data;
+  },
+
+  // ========== УТИЛИТНЫЕ МЕТОДЫ ДЛЯ РЕДАКТОРА ==========
+
+  /**
+   * Конвертировать данные редактора в DTO
+   */
+  convertEditorDataToDto: (hallId: string, editorData: {
+    walls: any[];
+    doors: any[];
+    windows: any[];
+    guides: any[];
+  }) => {
+    return {
+      walls: editorData.walls.map((wall, index) => ({
+        hallId,
+        x1: wall.x1,
+        y1: wall.y1,
+        x2: wall.x2,
+        y2: wall.y2,
+        length: wall.length,
+        isHorizontal: wall.isHorizontal,
+        isDiagonal: wall.isDiagonal,
+        angle: wall.angle,
+        thickness: 0.2, // стандартная толщина стены в метрах
+        color: '#4B5563',
+        order: index,
+      })),
+      doors: editorData.doors.map((door, index) => ({
+        hallId,
+        wallId: door.wallId,
+        x: door.position,
+        y: 0,
+        width: door.width,
+        height: 2.0, // стандартная высота двери
+        angle: door.angle,
+        orientation: door.orientation || 'vertical',
+        color: '#92400E',
+        order: index,
+      })),
+      windows: editorData.windows.map((window, index) => ({
+        hallId,
+        wallId: window.wallId,
+        x: window.position,
+        y: 0.9, // стандартная высота подоконника
+        width: window.width,
+        height: 1.2, // стандартная высота окна
+        angle: window.angle,
+        orientation: window.orientation || 'horizontal',
+        color: '#1E40AF',
+        order: index,
+      })),
+      guides: editorData.guides.map((guide, index) => ({
+        hallId,
+        x1: guide.x1,
+        y1: guide.y1,
+        x2: guide.x2,
+        y2: guide.y2,
+        isHorizontal: guide.isHorizontal,
+        isDiagonal: guide.isDiagonal,
+        angle: guide.angle,
+        color: '#7C3AED',
+        order: index,
+      })),
+    };
+  },
+
+  /**
+   * Конвертировать DTO в данные редактора
+   */
+  convertDtoToEditorData: (hall: HallDto) => {
+    return {
+      walls: hall.walls?.map(wall => ({
+        id: wall.id,
+        x1: wall.x1,
+        y1: wall.y1,
+        x2: wall.x2,
+        y2: wall.y2,
+        length: wall.length,
+        isHorizontal: wall.isHorizontal,
+        isDiagonal: wall.isDiagonal,
+        angle: wall.angle,
+      })) || [],
+      doors: hall.doors?.map(door => ({
+        id: door.id,
+        wallId: door.wallId,
+        position: door.x,
+        offset: door.x, // Для совместимости с редактором
+        width: door.width,
+        orientation: door.orientation,
+        angle: door.angle,
+        isPlacing: false,
+      })) || [],
+      windows: hall.windows?.map(window => ({
+        id: window.id,
+        wallId: window.wallId,
+        position: window.x,
+        offset: window.x, // Для совместимости с редактором
+        width: window.width,
+        orientation: window.orientation,
+        angle: window.angle,
+        isPlacing: false,
+      })) || [],
+      guides: hall.guides?.map(guide => ({
+        id: guide.id,
+        x1: guide.x1,
+        y1: guide.y1,
+        x2: guide.x2,
+        y2: guide.y2,
+        isHorizontal: guide.isHorizontal,
+        isDiagonal: guide.isDiagonal,
+        angle: guide.angle,
+      })) || [],
+    };
+  },
   // ========== СТОЛЫ ==========
 
   /**
