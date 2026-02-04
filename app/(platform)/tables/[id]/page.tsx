@@ -1,7 +1,10 @@
- //@ts-nocheck
+
+//@ts-nocheck
+
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -11,8 +14,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Square, Ruler, Trash2, Download, Grid, MousePointer, ZoomIn, ZoomOut, Move, 
   Minus, Plus, Maximize2, Eye, Edit, Magnet, DoorOpen, AppWindow as Window,
-  MoveLeft, HelpCircle, Grid3X3, MinusCircle, SquareIcon, RotateCcw
+  MoveLeft, HelpCircle, Grid3X3, MinusCircle, SquareIcon, RotateCcw,
+  Save, Loader2, X, PlusCircle, Check, AlertCircle
 } from "lucide-react";
+import { TablesService, HallDto, CreateHallDto, UpdateHallDto } from "@/lib/api/tables.service";
+import { toast } from "sonner";
 
 // Типы
 type WallSegment = {
@@ -25,6 +31,11 @@ type WallSegment = {
   isHorizontal: boolean;
   isDiagonal: boolean;
   angle?: number;
+  thickness?: number;
+  color?: string;
+  order: number;
+  createdAt?: Date;
+  updatedAt?: Date;
 };
 
 type Door = {
@@ -34,8 +45,13 @@ type Door = {
   width: number;
   offset: number;
   isPlacing: boolean;
-  orientation?: 'horizontal' | 'vertical' | 'diagonal'; // НОВОЕ: ориентация двери
-  angle?: number; // НОВОЕ: угол двери для диагональных стен
+  orientation?: 'horizontal' | 'vertical' | 'diagonal';
+  angle?: number;
+  height?: number;
+  color?: string;
+  order: number;
+  createdAt?: Date;
+  updatedAt?: Date;
 };
 
 type Window = {
@@ -45,8 +61,13 @@ type Window = {
   width: number;
   offset: number;
   isPlacing: boolean;
-  orientation?: 'horizontal' | 'vertical' | 'diagonal'; // НОВОЕ: ориентация окна
-  angle?: number; // НОВОЕ: угол окна для диагональных стен
+  orientation?: 'horizontal' | 'vertical' | 'diagonal';
+  angle?: number;
+  height?: number;
+  color?: string;
+  order: number;
+  createdAt?: Date;
+  updatedAt?: Date;
 };
 
 type GuideLine = {
@@ -58,6 +79,10 @@ type GuideLine = {
   isHorizontal: boolean;
   isDiagonal: boolean;
   angle?: number;
+  color?: string;
+  order: number;
+  createdAt?: Date;
+  updatedAt?: Date;
 };
 
 type GridSettings = {
@@ -87,6 +112,13 @@ type SnapPoint = {
   wallId?: string;
   guideId?: string;
 };
+
+interface Hall extends HallDto {
+  walls?: WallSegment[];
+  doors?: Door[];
+  windows?: Window[];
+  guides?: GuideLine[];
+}
 
 // Вспомогательная функция для расчета длины и угла
 const calculateLengthAndAngle = (x1: number, y1: number, x2: number, y2: number) => {
@@ -368,7 +400,7 @@ function Door({ door, wall, displayCellSize, viewTransform, isSelected, onClick,
   onClick: () => void;
   showDimensions: boolean;
 }) {
-    if (!wall) return null;
+  if (!wall) return null;
   const { x1, y1, x2, y2, isDiagonal, angle } = wall;
   const { offset, width, isPlacing, orientation = 'vertical' } = door;
   
@@ -841,6 +873,19 @@ function TempWall({ startX, startY, endX, endY, displayCellSize, viewTransform, 
 }
 
 export default function RoomDesignerPage() {
+  const params = useParams();
+  const router = useRouter();
+  const restaurantId = params.id as string;
+  
+  const [halls, setHalls] = useState<Hall[]>([]);
+  const [currentHall, setCurrentHall] = useState<Hall | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isCreatingHall, setIsCreatingHall] = useState(false);
+  const [showCreateHallDialog, setShowCreateHallDialog] = useState(false);
+  const [newHallTitle, setNewHallTitle] = useState("");
+  const [newHallDescription, setNewHallDescription] = useState("");
+  
   const [walls, setWalls] = useState<WallSegment[]>([]);
   const [doors, setDoors] = useState<Door[]>([]);
   const [windows, setWindows] = useState<Window[]>([]);
@@ -894,184 +939,380 @@ export default function RoomDesignerPage() {
   
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Функция для поиска ближайшей точки привязки
-const findSnapPoint = useCallback((x: number, y: number): SnapPoint | null => {
-  const snapRadius = gridSettings.snapGridSize / gridSettings.displayCellSize;
-  let nearestSnap: SnapPoint | null = null;
-  let minDistance = Infinity;
-  
-  // Проверяем, что массивы существуют
-  if (gridSettings.snapToWalls && walls && walls.length > 0) {
-    walls.forEach(wall => {
-      const points = [
-        { x: wall.x1, y: wall.y1, type: 'start' as const },
-        { x: wall.x2, y: wall.y2, type: 'end' as const },
-      ];
-      
-      points.forEach(point => {
-        const distance = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
-        if (distance < snapRadius && distance < minDistance) {
-          minDistance = distance;
-          nearestSnap = {
-            x: point.x,
-            y: point.y,
-            type: point.type,
-            wallId: wall.id,
-          };
-        }
-      });
-    });
-  }
-  
-  if (gridSettings.snapToGuides && guides && guides.length > 0) {
-    guides.forEach(guide => {
-      const points = [
-        { x: guide.x1, y: guide.y1, type: 'guide' as const },
-        { x: guide.x2, y: guide.y2, type: 'guide' as const },
-      ];
-      
-      points.forEach(point => {
-        const distance = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
-        if (distance < snapRadius && distance < minDistance) {
-          minDistance = distance;
-          nearestSnap = {
-            x: point.x,
-            y: point.y,
-            type: 'guide',
-            guideId: guide.id,
-          };
-        }
-      });
-    });
-  }
-  
-  return nearestSnap;
-}, [walls, guides, gridSettings.snapToWalls, gridSettings.snapToGuides, gridSettings.snapGridSize, gridSettings.displayCellSize]);
-  // НОВАЯ ФУНКЦИЯ: Найти ближайшую стену (включая диагональные)
-const findNearestWall = useCallback((x: number, y: number, maxDistance: number = 1.0) => {
-  // Проверяем, что walls существует и не пуст
-  if (!walls || walls.length === 0) {
-    return { wall: null, point: 0, distance: maxDistance };
-  }
-  
-  let nearestWall: WallSegment | null = null;
-  let minDistance = maxDistance;
-  let nearestPointOnWall: number = 0;
-  
-  walls.forEach(wall => {
-    const { x1, y1, x2, y2, isHorizontal, isDiagonal } = wall;
-    
-    if (isDiagonal) {
-      // Для диагональных стен вычисляем расстояние до линии
-      const dx = x2 - x1;
-      const dy = y2 - y1;
-      const wallLength = Math.sqrt(dx * dx + dy * dy);
-      
-      if (wallLength === 0) return;
-      
-      // Находим проекцию точки на линию стены
-      const t = ((x - x1) * dx + (y - y1) * dy) / (wallLength * wallLength);
-      
-      if (t >= 0 && t <= 1) {
-        const projX = x1 + t * dx;
-        const projY = y1 + t * dy;
-        const distance = Math.sqrt(Math.pow(x - projX, 2) + Math.pow(y - projY, 2));
-        
-        if (distance < minDistance) {
-          minDistance = distance;
-          nearestWall = wall;
-          nearestPointOnWall = t;
-        }
-      }
-    } else if (isHorizontal) {
-      const minX = Math.min(x1, x2);
-      const maxX = Math.max(x1, x2);
-      if (x >= minX && x <= maxX) {
-        const distance = Math.abs(y - y1);
-        if (distance < minDistance) {
-          minDistance = distance;
-          nearestWall = wall;
-          nearestPointOnWall = (x - minX) / (maxX - minX);
-        }
-      }
-    } else {
-      const minY = Math.min(y1, y2);
-      const maxY = Math.max(y1, y2);
-      if (y >= minY && y <= maxY) {
-        const distance = Math.abs(x - x1);
-        if (distance < minDistance) {
-          minDistance = distance;
-          nearestWall = wall;
-          nearestPointOnWall = (y - minY) / (maxY - minY);
-        }
-      }
+  // Загрузка залов ресторана
+  useEffect(() => {
+    if (restaurantId) {
+      loadHalls();
     }
-  });
-  
-  return { wall: nearestWall, point: nearestPointOnWall, distance: minDistance };
-}, [walls]);
+  }, [restaurantId]);
+
+  const loadHalls = async () => {
+    try {
+      setIsLoading(true);
+      const hallsData = await TablesService.getHallsByRestaurant(restaurantId, true);
+      setHalls(hallsData);
+      
+      // Если есть залы, загружаем первый
+      if (hallsData.length > 0) {
+        await loadHallLayout(hallsData[0].id);
+      } else {
+        setCurrentHall(null);
+        resetEditorState();
+      }
+    } catch (error) {
+      console.error('Ошибка при загрузке залов:', error);
+      toast.error('Не удалось загрузить залы');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadHallLayout = async (hallId: string) => {
+    try {
+      setIsLoading(true);
+      const hall = await TablesService.getHallLayout(hallId);
+      
+      // Преобразуем данные API в данные редактора
+      setCurrentHall(hall);
+      
+      // Преобразуем данные из API в формат редактора
+      const editorData = TablesService.convertDtoToEditorData(hall);
+      
+      setWalls(editorData.walls.map((wall, index) => ({
+        ...wall,
+        order: index,
+        thickness: wall.thickness || 0.2,
+        color: wall.color || '#4B5563',
+      })));
+      
+      setDoors(editorData.doors.map((door, index) => ({
+        id: door.id,
+        wallId: door.wallId,
+        position: door.x,
+        width: door.width,
+        offset: door.x,
+        isPlacing: false,
+        orientation: door.orientation,
+        angle: door.angle,
+        height: door.height || 2.0,
+        color: door.color || '#92400E',
+        order: index,
+      })));
+      
+      setWindows(editorData.windows.map((window, index) => ({
+        id: window.id,
+        wallId: window.wallId,
+        position: window.x,
+        width: window.width,
+        offset: window.x,
+        isPlacing: false,
+        orientation: window.orientation,
+        angle: window.angle,
+        height: window.height || 1.2,
+        color: window.color || '#1E40AF',
+        order: index,
+      })));
+      
+      setGuides(editorData.guides.map((guide, index) => ({
+        ...guide,
+        order: index,
+        color: guide.color || '#7C3AED',
+      })));
+      
+      // Сбрасываем выбранные элементы
+      setSelectedWallId(null);
+      setSelectedDoorId(null);
+      setSelectedWindowId(null);
+      setSelectedGuideId(null);
+      
+    } catch (error) {
+      console.error('Ошибка при загрузке планировки:', error);
+      toast.error('Не удалось загрузить планировку зала');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const createNewHall = async () => {
+    if (!newHallTitle.trim()) {
+      toast.error('Введите название зала');
+      return;
+    }
+
+    try {
+      setIsCreatingHall(true);
+      
+      const createHallDto: CreateHallDto = {
+        title: newHallTitle,
+        description: newHallDescription,
+        color: '#3B82F6',
+        order: halls.length,
+        restaurantId: restaurantId,
+      };
+
+      const newHall = await TablesService.createHall(createHallDto);
+      
+      toast.success('Зал успешно создан');
+      
+      // Обновляем список залов
+      const updatedHalls = await TablesService.getHallsByRestaurant(restaurantId, true);
+      setHalls(updatedHalls);
+      
+      // Загружаем новый зал
+      await loadHallLayout(newHall.id);
+      
+      // Закрываем диалог и сбрасываем форму
+      setShowCreateHallDialog(false);
+      setNewHallTitle('');
+      setNewHallDescription('');
+      
+    } catch (error) {
+      console.error('Ошибка при создании зала:', error);
+      toast.error('Не удалось создать зал');
+    } finally {
+      setIsCreatingHall(false);
+    }
+  };
+
+  const saveHallLayout = async () => {
+    if (!currentHall) {
+      toast.error('Выберите зал для сохранения');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      
+      // Подготавливаем данные для сохранения
+      const layoutData = TablesService.convertEditorDataToDto(currentHall.id, {
+        walls,
+        doors,
+        windows,
+        guides,
+      });
+
+      // Сохраняем планировку
+      await TablesService.saveHallLayout(currentHall.id, layoutData);
+      
+      toast.success('Планировка успешно сохранена');
+      
+    } catch (error) {
+      console.error('Ошибка при сохранении планировки:', error);
+      toast.error('Не удалось сохранить планировку');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const deleteHall = async (hallId: string) => {
+    if (!confirm('Вы уверены, что хотите удалить этот зал? Все данные будут потеряны.')) {
+      return;
+    }
+
+    try {
+      await TablesService.deleteHall(hallId);
+      toast.success('Зал удален');
+      
+      // Обновляем список залов
+      await loadHalls();
+      
+    } catch (error) {
+      console.error('Ошибка при удалении зала:', error);
+      toast.error('Не удалось удалить зал');
+    }
+  };
+
+  const resetEditorState = () => {
+    setWalls([]);
+    setDoors([]);
+    setWindows([]);
+    setGuides([]);
+    setSelectedWallId(null);
+    setSelectedDoorId(null);
+    setSelectedWindowId(null);
+    setSelectedGuideId(null);
+    setCurrentWallStart(null);
+    setIsDrawing(false);
+    setTempWallEnd(null);
+    setSnapIndicator(null);
+    setPlacingDoor({ wallId: null, offset: 0, isPlacing: false });
+    setPlacingWindow({ wallId: null, offset: 0, isPlacing: false });
+  };
+
+  // Функция для поиска ближайшей точки привязки
+  const findSnapPoint = useCallback((x: number, y: number): SnapPoint | null => {
+    const snapRadius = gridSettings.snapGridSize / gridSettings.displayCellSize;
+    let nearestSnap: SnapPoint | null = null;
+    let minDistance = Infinity;
+    
+    if (gridSettings.snapToWalls && walls && walls.length > 0) {
+      walls.forEach(wall => {
+        const points = [
+          { x: wall.x1, y: wall.y1, type: 'start' as const },
+          { x: wall.x2, y: wall.y2, type: 'end' as const },
+        ];
+        
+        points.forEach(point => {
+          const distance = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
+          if (distance < snapRadius && distance < minDistance) {
+            minDistance = distance;
+            nearestSnap = {
+              x: point.x,
+              y: point.y,
+              type: point.type,
+              wallId: wall.id,
+            };
+          }
+        });
+      });
+    }
+    
+    if (gridSettings.snapToGuides && guides && guides.length > 0) {
+      guides.forEach(guide => {
+        const points = [
+          { x: guide.x1, y: guide.y1, type: 'guide' as const },
+          { x: guide.x2, y: guide.y2, type: 'guide' as const },
+        ];
+        
+        points.forEach(point => {
+          const distance = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
+          if (distance < snapRadius && distance < minDistance) {
+            minDistance = distance;
+            nearestSnap = {
+              x: point.x,
+              y: point.y,
+              type: 'guide',
+              guideId: guide.id,
+            };
+          }
+        });
+      });
+    }
+    
+    return nearestSnap;
+  }, [walls, guides, gridSettings.snapToWalls, gridSettings.snapToGuides, gridSettings.snapGridSize, gridSettings.displayCellSize]);
+
+  // Найти ближайшую стену (включая диагональные)
+  const findNearestWall = useCallback((x: number, y: number, maxDistance: number = 1.0) => {
+    if (!walls || walls.length === 0) {
+      return { wall: null, point: 0, distance: maxDistance };
+    }
+    
+    let nearestWall: WallSegment | null = null;
+    let minDistance = maxDistance;
+    let nearestPointOnWall: number = 0;
+    
+    walls.forEach(wall => {
+      const { x1, y1, x2, y2, isHorizontal, isDiagonal } = wall;
+      
+      if (isDiagonal) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const wallLength = Math.sqrt(dx * dx + dy * dy);
+        
+        if (wallLength === 0) return;
+        
+        const t = ((x - x1) * dx + (y - y1) * dy) / (wallLength * wallLength);
+        
+        if (t >= 0 && t <= 1) {
+          const projX = x1 + t * dx;
+          const projY = y1 + t * dy;
+          const distance = Math.sqrt(Math.pow(x - projX, 2) + Math.pow(y - projY, 2));
+          
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearestWall = wall;
+            nearestPointOnWall = t;
+          }
+        }
+      } else if (isHorizontal) {
+        const minX = Math.min(x1, x2);
+        const maxX = Math.max(x1, x2);
+        if (x >= minX && x <= maxX) {
+          const distance = Math.abs(y - y1);
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearestWall = wall;
+            nearestPointOnWall = (x - minX) / (maxX - minX);
+          }
+        }
+      } else {
+        const minY = Math.min(y1, y2);
+        const maxY = Math.max(y1, y2);
+        if (y >= minY && y <= maxY) {
+          const distance = Math.abs(x - x1);
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearestWall = wall;
+            nearestPointOnWall = (y - minY) / (maxY - minY);
+          }
+        }
+      }
+    });
+    
+    return { wall: nearestWall, point: nearestPointOnWall, distance: minDistance };
+  }, [walls]);
 
   // Найти ближайшую вспомогательную линию
   const findNearestGuide = useCallback((x: number, y: number, maxDistance: number = 0.5) => {
-  // Проверяем, что guides существует и не пуст
-  if (!guides || guides.length === 0) {
-    return { guide: null, point: 0, distance: maxDistance };
-  }
-  
-  let nearestGuide: GuideLine | null = null;
-  let minDistance = maxDistance;
-  let nearestPointOnGuide: number = 0;
-  
-  guides.forEach(guide => {
-    const { x1, y1, x2, y2, isHorizontal, isDiagonal } = guide;
-    
-    if (isDiagonal) {
-      const dx = x2 - x1;
-      const dy = y2 - y1;
-      const length = Math.sqrt(dx * dx + dy * dy);
-      
-      if (length === 0) return;
-      
-      const t = ((x - x1) * dx + (y - y1) * dy) / (length * length);
-      
-      if (t >= 0 && t <= 1) {
-        const projX = x1 + t * dx;
-        const projY = y1 + t * dy;
-        const distance = Math.sqrt(Math.pow(x - projX, 2) + Math.pow(y - projY, 2));
-        
-        if (distance < minDistance) {
-          minDistance = distance;
-          nearestGuide = guide;
-          nearestPointOnGuide = t;
-        }
-      }
-    } else if (isHorizontal) {
-      const minX = Math.min(x1, x2);
-      const maxX = Math.max(x1, x2);
-      if (x >= minX && x <= maxX) {
-        const distance = Math.abs(y - y1);
-        if (distance < minDistance) {
-          minDistance = distance;
-          nearestGuide = guide;
-          nearestPointOnGuide = (x - minX) / (maxX - minX);
-        }
-      }
-    } else {
-      const minY = Math.min(y1, y2);
-      const maxY = Math.max(y1, y2);
-      if (y >= minY && y <= maxY) {
-        const distance = Math.abs(x - x1);
-        if (distance < minDistance) {
-          minDistance = distance;
-          nearestGuide = guide;
-          nearestPointOnGuide = (y - minY) / (maxY - minY);
-        }
-      }
+    if (!guides || guides.length === 0) {
+      return { guide: null, point: 0, distance: maxDistance };
     }
-  });
-  
-  return { guide: nearestGuide, point: nearestPointOnGuide, distance: minDistance };
-}, [guides]);
+    
+    let nearestGuide: GuideLine | null = null;
+    let minDistance = maxDistance;
+    let nearestPointOnGuide: number = 0;
+    
+    guides.forEach(guide => {
+      const { x1, y1, x2, y2, isHorizontal, isDiagonal } = guide;
+      
+      if (isDiagonal) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        
+        if (length === 0) return;
+        
+        const t = ((x - x1) * dx + (y - y1) * dy) / (length * length);
+        
+        if (t >= 0 && t <= 1) {
+          const projX = x1 + t * dx;
+          const projY = y1 + t * dy;
+          const distance = Math.sqrt(Math.pow(x - projX, 2) + Math.pow(y - projY, 2));
+          
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearestGuide = guide;
+            nearestPointOnGuide = t;
+          }
+        }
+      } else if (isHorizontal) {
+        const minX = Math.min(x1, x2);
+        const maxX = Math.max(x1, x2);
+        if (x >= minX && x <= maxX) {
+          const distance = Math.abs(y - y1);
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearestGuide = guide;
+            nearestPointOnGuide = (x - minX) / (maxX - minX);
+          }
+        }
+      } else {
+        const minY = Math.min(y1, y2);
+        const maxY = Math.max(y1, y2);
+        if (y >= minY && y <= maxY) {
+          const distance = Math.abs(x - x1);
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearestGuide = guide;
+            nearestPointOnGuide = (y - minY) / (maxY - minY);
+          }
+        }
+      }
+    });
+    
+    return { guide: nearestGuide, point: nearestPointOnGuide, distance: minDistance };
+  }, [guides]);
 
   const getGridCoordinates = useCallback((clientX: number, clientY: number) => {
     if (!containerRef.current) return { x: 0, y: 0 };
@@ -1116,7 +1357,7 @@ const findNearestWall = useCallback((x: number, y: number, maxDistance: number =
     }
   };
 
-  // НОВАЯ ФУНКЦИЯ: Начать размещение двери (поддержка диагональных стен)
+  // Начать размещение двери (поддержка диагональных стен)
   const startPlacingDoor = (gridX: number, gridY: number) => {
     if (viewMode === "edit" && drawingMode === "door") {
       const { wall, point, distance } = findNearestWall(gridX, gridY, 1.0);
@@ -1138,6 +1379,9 @@ const findNearestWall = useCallback((x: number, y: number, maxDistance: number =
           isPlacing: true,
           orientation: wall.isDiagonal ? 'diagonal' : wall.isHorizontal ? 'horizontal' : 'vertical',
           angle: wall.isDiagonal ? wall.angle : undefined,
+          height: 2.0,
+          color: '#92400E',
+          order: doors.length,
         };
         
         setDoors(prev => [...prev, newDoor]);
@@ -1148,7 +1392,7 @@ const findNearestWall = useCallback((x: number, y: number, maxDistance: number =
     }
   };
 
-  // НОВАЯ ФУНКЦИЯ: Начать размещение окна (поддержка диагональных стен)
+  // Начать размещение окна (поддержка диагональных стен)
   const startPlacingWindow = (gridX: number, gridY: number) => {
     if (viewMode === "edit" && drawingMode === "window") {
       const { wall, point, distance } = findNearestWall(gridX, gridY, 1.0);
@@ -1170,6 +1414,9 @@ const findNearestWall = useCallback((x: number, y: number, maxDistance: number =
           isPlacing: true,
           orientation: wall.isDiagonal ? 'diagonal' : wall.isHorizontal ? 'horizontal' : 'vertical',
           angle: wall.isDiagonal ? wall.angle : undefined,
+          height: 1.2,
+          color: '#1E40AF',
+          order: windows.length,
         };
         
         setWindows(prev => [...prev, newWindow]);
@@ -1180,31 +1427,29 @@ const findNearestWall = useCallback((x: number, y: number, maxDistance: number =
     }
   };
 
-  // НОВАЯ ФУНКЦИЯ: Обновить положение двери (поддержка диагональных стен)
- const updateDoorPosition = (gridX: number, gridY: number) => {
-  if (placingDoor.isPlacing && placingDoor.wallId && viewMode === "edit") {
-    const wall = walls.find(w => w.id === placingDoor.wallId);
-    if (!wall) return;
-    
-    // Используем safe-версию findNearestWall
-    const { point } = findNearestWall(gridX, gridY, 2.0);
-    const offset = point * wall.length;
-    
-    setDoors(prev => prev.map(door => 
-      door.isPlacing 
-        ? { ...door, position: point, offset: offset }
-        : door
-    ));
-  }
-};
+  // Обновить положение двери (поддержка диагональных стен)
+  const updateDoorPosition = (gridX: number, gridY: number) => {
+    if (placingDoor.isPlacing && placingDoor.wallId && viewMode === "edit") {
+      const wall = walls.find(w => w.id === placingDoor.wallId);
+      if (!wall) return;
+      
+      const { point } = findNearestWall(gridX, gridY, 2.0);
+      const offset = point * wall.length;
+      
+      setDoors(prev => prev.map(door => 
+        door.isPlacing 
+          ? { ...door, position: point, offset: offset }
+          : door
+      ));
+    }
+  };
 
-  // НОВАЯ ФУНКЦИЯ: Обновить положение окна (поддержка диагональных стен)
+  // Обновить положение окна (поддержка диагональных стен)
   const updateWindowPosition = (gridX: number, gridY: number) => {
     if (placingWindow.isPlacing && placingWindow.wallId && viewMode === "edit") {
       const wall = walls.find(w => w.id === placingWindow.wallId);
       if (!wall) return;
       
-      // Для диагональных стен находим ближайшую точку на линии стены
       const { point } = findNearestWall(gridX, gridY, 2.0);
       const offset = point * wall.length;
       
@@ -1323,6 +1568,9 @@ const findNearestWall = useCallback((x: number, y: number, maxDistance: number =
           isHorizontal: !isDiagonal && Math.abs(endX - startX) > Math.abs(endY - startY),
           isDiagonal: isDiagonal,
           angle: isDiagonal ? angle : undefined,
+          thickness: 0.2,
+          color: '#4B5563',
+          order: walls.length,
         };
         
         setWalls([...walls, newWall]);
@@ -1338,6 +1586,8 @@ const findNearestWall = useCallback((x: number, y: number, maxDistance: number =
           isHorizontal: !isDiagonal && Math.abs(endX - startX) > Math.abs(endY - startY),
           isDiagonal: isDiagonal,
           angle: isDiagonal ? angle : undefined,
+          color: '#7C3AED',
+          order: guides.length,
         };
         
         setGuides([...guides, newGuide]);
@@ -1648,29 +1898,160 @@ const findNearestWall = useCallback((x: number, y: number, maxDistance: number =
     return 'crosshair';
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-500" />
+          <p className="text-gray-600">Загрузка...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <div className="flex flex-col gap-4">
-        <Tabs>
-          <TabsList className="w-full">
-            <TabsTrigger value="menu" className="flex-1">
-              <div className="flex items-center gap-2 justify-center">
-                <span className="truncate">Зал</span>
+        {/* Вкладки с залами */}
+        <div className="border rounded-lg bg-white">
+          <div className="p-4 border-b">
+            <div className="flex justify-between items-center">
+              <h2 className="text-lg font-semibold">Залы ресторана</h2>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowCreateHallDialog(true)}
+                >
+                  <PlusCircle className="h-4 w-4 mr-2" />
+                  Создать зал
+                </Button>
+                {currentHall && (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={saveHallLayout}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Сохранение...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Сохранить
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
-            </TabsTrigger>
-            <TabsTrigger value="menu" className="flex-1">
-              <div className="flex items-center gap-2 justify-center">
-                <span className="truncate">Терраса</span>
+            </div>
+          </div>
+          
+          <div className="p-4">
+            {halls.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-gray-500 mb-4">Нет созданных залов</p>
+                <Button onClick={() => setShowCreateHallDialog(true)}>
+                  <PlusCircle className="h-4 w-4 mr-2" />
+                  Создать первый зал
+                </Button>
               </div>
-            </TabsTrigger>
-            <TabsTrigger value="menu" className="flex-1">
-              <div className="flex items-center gap-2 justify-center">
-                <Plus className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">Добавить</span>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {halls.map(hall => (
+                  <Button
+                    key={hall.id}
+                    variant={currentHall?.id === hall.id ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => loadHallLayout(hall.id)}
+                    className="relative group"
+                  >
+                    {hall.title}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteHall(hall.id);
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </Button>
+                ))}
               </div>
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+            )}
+          </div>
+        </div>
+
+        {/* Диалог создания нового зала */}
+        {showCreateHallDialog && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Создать новый зал</h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowCreateHallDialog(false)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              
+              <div className="space-y-4">
+                <div >
+                  <Label className='mb-2' htmlFor="hallTitle">Название зала</Label>
+                  <Input
+                    id="hallTitle"
+                    value={newHallTitle}
+                    onChange={(e) => setNewHallTitle(e.target.value)}
+                    placeholder="Например: Основной зал, Терраса, Летняя веранда"
+                  />
+                </div>
+                
+                <div>
+                  <Label className='mb-2' htmlFor="hallDescription">Описание</Label>
+                  <Input
+                    id="hallDescription"
+                    value={newHallDescription}
+                    onChange={(e) => setNewHallDescription(e.target.value)}
+                    placeholder="Описание зала (необязательно)"
+                  />
+                </div>
+                
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowCreateHallDialog(false)}
+                  >
+                    Отмена
+                  </Button>
+                  <Button
+                    onClick={createNewHall}
+                    disabled={isCreatingHall || !newHallTitle.trim()}
+                  >
+                    {isCreatingHall ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Создание...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="h-4 w-4 mr-2" />
+                        Создать
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Область рисования */}
         <Card className="w-full flex flex-row flex-wrap gap-4 p-2">
@@ -1832,7 +2213,7 @@ const findNearestWall = useCallback((x: number, y: number, maxDistance: number =
                 onClick={resetWalls}
               >
                 <Trash2 className="h-4 w-4 mr-2" />
-                Сбросить всё
+                Очистить редактор
               </Button>
             </>
           )}
@@ -1915,7 +2296,7 @@ const findNearestWall = useCallback((x: number, y: number, maxDistance: number =
             <div className="flex flex-wrap justify-between items-center gap-3">
               <div>
                 <CardTitle className="text-lg">
-                  {viewMode === "edit" ? "Редактирование плана" : "Просмотр плана"}
+                  {currentHall ? `План зала: ${currentHall.title}` : 'Редактор плана'}
                 </CardTitle>
                 <CardDescription>
                   {viewMode === "edit" 
@@ -1970,283 +2351,303 @@ const findNearestWall = useCallback((x: number, y: number, maxDistance: number =
           </CardHeader>
           
           <CardContent>
-            <div 
-              ref={containerRef}
-              className="relative border border-gray-300 rounded-md bg-white overflow-hidden"
-              style={{ 
-                height: "600px",
-                background: getGridBackground(),
-                cursor: getCursor()
-              }}
-              onClick={handleGridClick}
-              onMouseMove={handleMouseMove}
-              onMouseDown={startPanning}
-              onMouseUp={stopPanning}
-              onMouseLeave={stopPanning}
-              onContextMenu={(e) => e.preventDefault()}
-            >
-              {/* Вспомогательные линии */}
-              {gridSettings.showGuides && viewMode === "edit" && guides.map(guide => (
-                <GuideLineComponent
-                  key={guide.id}
-                  guide={guide}
-                  displayCellSize={gridSettings.displayCellSize}
-                  isSelected={selectedGuideId === guide.id}
-                  onClick={() => {
-                    if (viewMode === "edit" && drawingMode === "select") {
-                      setSelectedGuideId(guide.id);
-                      setSelectedWallId(null);
-                      setSelectedDoorId(null);
-                      setSelectedWindowId(null);
-                    }
-                  }}
-                  viewTransform={viewTransform}
-                  showGuides={gridSettings.showGuides}
-                />
-              ))}
-              
-              {/* Нарисованные стены */}
-              {walls.map(wall => (
-                <Wall
-                  key={wall.id}
-                  wall={wall}
-                  displayCellSize={gridSettings.displayCellSize}
-                  isSelected={selectedWallId === wall.id}
-                  onClick={() => {
-                    if (viewMode === "edit" && drawingMode === "select") {
-                      setSelectedWallId(wall.id);
-                      setSelectedDoorId(null);
-                      setSelectedWindowId(null);
-                      setSelectedGuideId(null);
-                    }
-                  }}
-                  viewTransform={viewTransform}
-                  showDimensions={viewMode === "edit"}
-                />
-              ))}
-              
-              {/* Точки концов стен и вспомогательных линий для визуализации */}
-              {(gridSettings.snapToWalls || gridSettings.snapToGuides) && viewMode === "edit" && !isDrawing && !placingDoor.isPlacing && !placingWindow.isPlacing && (
-                <>
-                  {gridSettings.snapToWalls && walls.length > 0 && walls.flatMap(wall => [
-                    { x: wall.x1, y: wall.y1 },
-                    { x: wall.x2, y: wall.y2 }
-                  ]).map((point, index) => (
-                    <div
-                      key={`snap-wall-point-${index}`}
-                      className="absolute w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-sm opacity-50 pointer-events-none"
-                      style={{
-                        left: `${point.x * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateX - 4}px`,
-                        top: `${point.y * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateY - 4}px`,
-                      }}
-                    />
-                  ))}
-                  
-                  {gridSettings.snapToGuides && gridSettings.showGuides && guides.length > 0 && guides.flatMap(guide => [
-                    { x: guide.x1, y: guide.y1 },
-                    { x: guide.x2, y: guide.y2 }
-                  ]).map((point, index) => (
-                    <div
-                      key={`snap-guide-point-${index}`}
-                      className="absolute w-3 h-3 bg-purple-500 rounded-full border-2 border-white shadow-sm opacity-50 pointer-events-none"
-                      style={{
-                        left: `${point.x * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateX - 3}px`,
-                        top: `${point.y * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateY - 3}px`,
-                      }}
-                    />
-                  ))}
-                </>
-              )}
-              
-              {/* Двери */}
-              {doors.map(door => {
-                const wall = walls.find(w => w.id === door.wallId);
-                if (!wall) return null;
-                
-                return (
-                  <Door
-                    key={door.id}
-                    door={door}
-                    wall={wall}
+            {!currentHall ? (
+              <div className="flex flex-col items-center justify-center h-[600px] border border-gray-300 rounded-md bg-gray-50">
+                <AlertCircle className="h-12 w-12 text-gray-400 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Выберите или создайте зал</h3>
+                <p className="text-gray-600 text-center mb-6 max-w-md">
+                  Для начала работы выберите существующий зал из списка выше или создайте новый
+                </p>
+                <Button onClick={() => setShowCreateHallDialog(true)}>
+                  <PlusCircle className="h-4 w-4 mr-2" />
+                  Создать новый зал
+                </Button>
+              </div>
+            ) : (
+              <div 
+                ref={containerRef}
+                className="relative border border-gray-300 rounded-md bg-white overflow-hidden"
+                style={{ 
+                  height: "600px",
+                  background: getGridBackground(),
+                  cursor: getCursor()
+                }}
+                onClick={handleGridClick}
+                onMouseMove={handleMouseMove}
+                onMouseDown={startPanning}
+                onMouseUp={stopPanning}
+                onMouseLeave={stopPanning}
+                onContextMenu={(e) => e.preventDefault()}
+              >
+                {/* Вспомогательные линии */}
+                {gridSettings.showGuides && viewMode === "edit" && guides.map(guide => (
+                  <GuideLineComponent
+                    key={guide.id}
+                    guide={guide}
                     displayCellSize={gridSettings.displayCellSize}
-                    viewTransform={viewTransform}
-                    isSelected={selectedDoorId === door.id}
+                    isSelected={selectedGuideId === guide.id}
                     onClick={() => {
                       if (viewMode === "edit" && drawingMode === "select") {
-                        setSelectedDoorId(door.id);
+                        setSelectedGuideId(guide.id);
                         setSelectedWallId(null);
+                        setSelectedDoorId(null);
+                        setSelectedWindowId(null);
+                      }
+                    }}
+                    viewTransform={viewTransform}
+                    showGuides={gridSettings.showGuides}
+                  />
+                ))}
+                
+                {/* Нарисованные стены */}
+                {walls.map(wall => (
+                  <Wall
+                    key={wall.id}
+                    wall={wall}
+                    displayCellSize={gridSettings.displayCellSize}
+                    isSelected={selectedWallId === wall.id}
+                    onClick={() => {
+                      if (viewMode === "edit" && drawingMode === "select") {
+                        setSelectedWallId(wall.id);
+                        setSelectedDoorId(null);
                         setSelectedWindowId(null);
                         setSelectedGuideId(null);
                       }
                     }}
+                    viewTransform={viewTransform}
                     showDimensions={viewMode === "edit"}
                   />
-                );
-              })}
-              
-              {/* Окна */}
-              {windows.map(windowItem => {
-                const wall = walls.find(w => w.id === windowItem.wallId);
-                if (!wall) return null;
+                ))}
                 
-                return (
-                  <WindowComponent
-                    key={windowItem.id}
-                    windowItem={windowItem}
-                    wall={wall}
+                {/* Точки концов стен и вспомогательных линий для визуализации */}
+                {(gridSettings.snapToWalls || gridSettings.snapToGuides) && viewMode === "edit" && !isDrawing && !placingDoor.isPlacing && !placingWindow.isPlacing && (
+                  <>
+                    {gridSettings.snapToWalls && walls.length > 0 && walls.flatMap(wall => [
+                      { x: wall.x1, y: wall.y1 },
+                      { x: wall.x2, y: wall.y2 }
+                    ]).map((point, index) => (
+                      <div
+                        key={`snap-wall-point-${index}`}
+                        className="absolute w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-sm opacity-50 pointer-events-none"
+                        style={{
+                          left: `${point.x * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateX - 4}px`,
+                          top: `${point.y * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateY - 4}px`,
+                        }}
+                      />
+                    ))}
+                    
+                    {gridSettings.snapToGuides && gridSettings.showGuides && guides.length > 0 && guides.flatMap(guide => [
+                      { x: guide.x1, y: guide.y1 },
+                      { x: guide.x2, y: guide.y2 }
+                    ]).map((point, index) => (
+                      <div
+                        key={`snap-guide-point-${index}`}
+                        className="absolute w-3 h-3 bg-purple-500 rounded-full border-2 border-white shadow-sm opacity-50 pointer-events-none"
+                        style={{
+                          left: `${point.x * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateX - 3}px`,
+                          top: `${point.y * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateY - 3}px`,
+                        }}
+                      />
+                    ))}
+                  </>
+                )}
+                
+                {/* Двери */}
+                {doors.map(door => {
+                  const wall = walls.find(w => w.id === door.wallId);
+                  if (!wall) return null;
+                  
+                  return (
+                    <Door
+                      key={door.id}
+                      door={door}
+                      wall={wall}
+                      displayCellSize={gridSettings.displayCellSize}
+                      viewTransform={viewTransform}
+                      isSelected={selectedDoorId === door.id}
+                      onClick={() => {
+                        if (viewMode === "edit" && drawingMode === "select") {
+                          setSelectedDoorId(door.id);
+                          setSelectedWallId(null);
+                          setSelectedWindowId(null);
+                          setSelectedGuideId(null);
+                        }
+                      }}
+                      showDimensions={viewMode === "edit"}
+                    />
+                  );
+                })}
+                
+                {/* Окна */}
+                {windows.map(windowItem => {
+                  const wall = walls.find(w => w.id === windowItem.wallId);
+                  if (!wall) return null;
+                  
+                  return (
+                    <WindowComponent
+                      key={windowItem.id}
+                      windowItem={windowItem}
+                      wall={wall}
+                      displayCellSize={gridSettings.displayCellSize}
+                      viewTransform={viewTransform}
+                      isSelected={selectedWindowId === windowItem.id}
+                      onClick={() => {
+                        if (viewMode === "edit" && drawingMode === "select") {
+                          setSelectedWindowId(windowItem.id);
+                          setSelectedWallId(null);
+                          setSelectedDoorId(null);
+                          setSelectedGuideId(null);
+                        }
+                      }}
+                      showDimensions={viewMode === "edit"}
+                    />
+                  );
+                })}
+                
+                {/* Точка начала рисования */}
+                {currentWallStart && viewMode === "edit" && (
+                  <div
+                    className="absolute w-3 h-3 bg-blue-600 rounded-full border-2 border-white shadow z-10"
+                    style={{
+                      left: `${currentWallStart.x * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateX - 6}px`,
+                      top: `${currentWallStart.y * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateY - 6}px`,
+                    }}
+                  />
+                )}
+                
+                {/* Временная стена или вспомогательная линия при рисовании */}
+                {isDrawing && currentWallStart && tempWallEnd && viewMode === "edit" && (
+                  <TempWall
+                    startX={currentWallStart.x}
+                    startY={currentWallStart.y}
+                    endX={tempWallEnd.x}
+                    endY={tempWallEnd.y}
                     displayCellSize={gridSettings.displayCellSize}
                     viewTransform={viewTransform}
-                    isSelected={selectedWindowId === windowItem.id}
-                    onClick={() => {
-                      if (viewMode === "edit" && drawingMode === "select") {
-                        setSelectedWindowId(windowItem.id);
-                        setSelectedWallId(null);
-                        setSelectedDoorId(null);
-                        setSelectedGuideId(null);
-                      }
-                    }}
                     showDimensions={viewMode === "edit"}
+                    snapIndicator={snapIndicator}
+                    isGuide={drawingMode === "guide"}
+                    wallDrawingMode={wallDrawingMode}
                   />
-                );
-              })}
-              
-              {/* Точка начала рисования */}
-              {currentWallStart && viewMode === "edit" && (
-                <div
-                  className="absolute w-3 h-3 bg-blue-600 rounded-full border-2 border-white shadow z-10"
-                  style={{
-                    left: `${currentWallStart.x * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateX - 6}px`,
-                    top: `${currentWallStart.y * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateY - 6}px`,
-                  }}
-                />
-              )}
-              
-              {/* Временная стена или вспомогательная линия при рисовании */}
-              {isDrawing && currentWallStart && tempWallEnd && viewMode === "edit" && (
-                <TempWall
-                  startX={currentWallStart.x}
-                  startY={currentWallStart.y}
-                  endX={tempWallEnd.x}
-                  endY={tempWallEnd.y}
-                  displayCellSize={gridSettings.displayCellSize}
-                  viewTransform={viewTransform}
-                  showDimensions={viewMode === "edit"}
-                  snapIndicator={snapIndicator}
-                  isGuide={drawingMode === "guide"}
-                  wallDrawingMode={wallDrawingMode}
-                />
-              )}
-              
-              {/* Подсказка для режима дверей */}
-              {drawingMode === "door" && !placingDoor.isPlacing && viewMode === "edit" && (
-                <div className="absolute bottom-4 left-4 bg-blue-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
-                  <p className="text-sm font-medium">Режим добавления дверей</p>
-                  <p className="text-xs opacity-90">Нажмите на стену, чтобы добавить дверь</p>
-                  <p className="text-xs opacity-90 mt-1">Двери можно размещать на любых стенах (включая диагональные)</p>
-                </div>
-              )}
-              
-              {/* Подсказка для режима окон */}
-              {drawingMode === "window" && !placingWindow.isPlacing && viewMode === "edit" && (
-                <div className="absolute bottom-4 left-4 bg-blue-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
-                  <p className="text-sm font-medium">Режим добавления окон</p>
-                  <p className="text-xs opacity-90">Нажмите на стену, чтобы добавить окно</p>
-                  <p className="text-xs opacity-90 mt-1">Окна можно размещать на любых стенах (включая диагональные)</p>
-                </div>
-              )}
-              
-              {/* Подсказка для режима вспомогательных линий */}
-              {drawingMode === "guide" && !isDrawing && viewMode === "edit" && (
-                <div className="absolute bottom-4 left-4 bg-purple-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
-                  <p className="text-sm font-medium">Режим добавления вспомогательных линий</p>
-                  <p className="text-xs opacity-90">Нажмите и протяните для создания линии</p>
-                  <p className="text-xs opacity-90">Можно рисовать горизонтальные, вертикальные и диагональные линии</p>
-                </div>
-              )}
-              
-              {/* Подсказка для режима рисования стен */}
-              {drawingMode === "wall" && !isDrawing && viewMode === "edit" && (
-                <div className="absolute bottom-4 left-4 bg-gray-800 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none max-w-md">
-                  <p className="text-sm font-medium">Режим рисования стен: {wallDrawingMode === "orthogonal" ? "Ортогональный" : wallDrawingMode === "diagonal" ? "Диагональный" : "Свободный"}</p>
-                  <p className="text-xs opacity-90">
-                    {wallDrawingMode === "orthogonal" 
-                      ? "Рисуются только горизонтальные и вертикальные стены" 
-                      : wallDrawingMode === "diagonal" 
-                      ? "Рисуются стены под произвольным углом" 
-                      : "Автоматическое определение: при малом отклонении от осей создаются прямые стены"}
-                  </p>
-                  <p className="text-xs opacity-90 mt-1">Нажмите и протяните для создания стены</p>
-                </div>
-              )}
-              
-              {/* Подсказка для размещения двери */}
-              {placingDoor.isPlacing && viewMode === "edit" && (
-                <div className="absolute bottom-4 left-4 bg-amber-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
-                  <p className="text-sm font-medium">Размещение двери</p>
-                  <p className="text-xs opacity-90">Перетащите вдоль стены, кликните для размещения</p>
-                  <p className="text-xs opacity-90 mt-1">Привязка от начала стены: {doors.find(d => d.isPlacing)?.offset.toFixed(1) || '0.0'} м</p>
-                </div>
-              )}
-              
-              {/* Подсказка для размещения окна */}
-              {placingWindow.isPlacing && viewMode === "edit" && (
-                <div className="absolute bottom-4 left-4 bg-blue-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
-                  <p className="text-sm font-medium">Размещение окна</p>
-                  <p className="text-xs opacity-90">Перетащите вдоль стены, кликните для размещения</p>
-                  <p className="text-xs opacity-90 mt-1">Привязка от начала стены: {windows.find(w => w.isPlacing)?.offset.toFixed(1) || '0.0'} м</p>
-                </div>
-              )}
-              
-              {/* Подсказка при пустом плане */}
-              {walls.length === 0 && !isDrawing && viewMode === "edit" && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="text-center p-6 bg-white/90 rounded-lg max-w-md shadow-lg">
-                    <Grid3X3 className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                    <h3 className="font-medium text-lg mb-2">Начните проектирование</h3>
-                    <p className="text-gray-600 mb-3">Добавьте первую стену, используя инструмент "Стена"</p>
-                    <p className="text-gray-500 text-sm mb-3">
-                      Попробуйте разные режимы рисования: ортогональный, диагональный или свободный
+                )}
+                
+                {/* Подсказка для режима дверей */}
+                {drawingMode === "door" && !placingDoor.isPlacing && viewMode === "edit" && (
+                  <div className="absolute bottom-4 left-4 bg-blue-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
+                    <p className="text-sm font-medium">Режим добавления дверей</p>
+                    <p className="text-xs opacity-90">Нажмите на стену, чтобы добавить дверь</p>
+                    <p className="text-xs opacity-90 mt-1">Двери можно размещать на любых стенах (включая диагональные)</p>
+                  </div>
+                )}
+                
+                {/* Подсказка для режима окон */}
+                {drawingMode === "window" && !placingWindow.isPlacing && viewMode === "edit" && (
+                  <div className="absolute bottom-4 left-4 bg-blue-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
+                    <p className="text-sm font-medium">Режим добавления окон</p>
+                    <p className="text-xs opacity-90">Нажмите на стену, чтобы добавить окно</p>
+                    <p className="text-xs opacity-90 mt-1">Окна можно размещать на любых стенах (включая диагональные)</p>
+                  </div>
+                )}
+                
+                {/* Подсказка для режима вспомогательных линий */}
+                {drawingMode === "guide" && !isDrawing && viewMode === "edit" && (
+                  <div className="absolute bottom-4 left-4 bg-purple-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
+                    <p className="text-sm font-medium">Режим добавления вспомогательных линий</p>
+                    <p className="text-xs opacity-90">Нажмите и протяните для создания линии</p>
+                    <p className="text-xs opacity-90">Можно рисовать горизонтальные, вертикальные и диагональные линии</p>
+                  </div>
+                )}
+                
+                {/* Подсказка для режима рисования стен */}
+                {drawingMode === "wall" && !isDrawing && viewMode === "edit" && (
+                  <div className="absolute bottom-4 left-4 bg-gray-800 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none max-w-md">
+                    <p className="text-sm font-medium">Режим рисования стен: {wallDrawingMode === "orthogonal" ? "Ортогональный" : wallDrawingMode === "diagonal" ? "Диагональный" : "Свободный"}</p>
+                    <p className="text-xs opacity-90">
+                      {wallDrawingMode === "orthogonal" 
+                        ? "Рисуются только горизонтальные и вертикальные стены" 
+                        : wallDrawingMode === "diagonal" 
+                        ? "Рисуются стены под произвольным углом" 
+                        : "Автоматическое определение: при малом отклонении от осей создаются прямые стены"}
                     </p>
+                    <p className="text-xs opacity-90 mt-1">Нажмите и протяните для создания стены</p>
                   </div>
-                </div>
-              )}
-              
-              {/* Подсказка в режиме просмотра */}
-              {walls.length === 0 && viewMode === "view" && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="text-center p-6 bg-white/90 rounded-lg max-w-md shadow-lg">
-                    <Eye className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                    <h3 className="font-medium text-lg mb-2">Режим просмотра</h3>
-                    <p className="text-gray-600 mb-3">Добавьте стены в режиме редактирования</p>
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      onClick={toggleViewMode}
-                      className="pointer-events-auto mt-2"
-                    >
-                      Перейти к редактированию
-                    </Button>
+                )}
+                
+                {/* Подсказка для размещения двери */}
+                {placingDoor.isPlacing && viewMode === "edit" && (
+                  <div className="absolute bottom-4 left-4 bg-amber-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
+                    <p className="text-sm font-medium">Размещение двери</p>
+                    <p className="text-xs opacity-90">Перетащите вдоль стены, кликните для размещения</p>
+                    <p className="text-xs opacity-90 mt-1">Привязка от начала стены: {doors.find(d => d.isPlacing)?.offset.toFixed(1) || '0.0'} м</p>
                   </div>
-                </div>
-              )}
-              
-              {/* Индикатор панорамирования */}
-              {isPanning && (
-                <div className="absolute top-4 right-4 bg-gray-800 text-white px-3 py-1 rounded-full text-sm flex items-center gap-2">
-                  <Move className="h-4 w-4 animate-pulse" />
-                  Панорамирование...
-                </div>
-              )}
-              
-              {/* Индикатор режима просмотра */}
-              {viewMode === "view" && !isPanning && (
-                <div className="absolute top-4 right-4 bg-green-600 text-white px-3 py-1 rounded-full text-sm flex items-center gap-2">
-                  <Eye className="h-4 w-4" />
-                  Режим просмотра
-                </div>
-              )}
-              
-            </div>
+                )}
+                
+                {/* Подсказка для размещения окна */}
+                {placingWindow.isPlacing && viewMode === "edit" && (
+                  <div className="absolute bottom-4 left-4 bg-blue-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
+                    <p className="text-sm font-medium">Размещение окна</p>
+                    <p className="text-xs opacity-90">Перетащите вдоль стены, кликните для размещения</p>
+                    <p className="text-xs opacity-90 mt-1">Привязка от начала стены: {windows.find(w => w.isPlacing)?.offset.toFixed(1) || '0.0'} м</p>
+                  </div>
+                )}
+                
+                {/* Подсказка при пустом плане */}
+                {walls.length === 0 && !isDrawing && viewMode === "edit" && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="text-center p-6 bg-white/90 rounded-lg max-w-md shadow-lg">
+                      <Grid3X3 className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                      <h3 className="font-medium text-lg mb-2">Начните проектирование</h3>
+                      <p className="text-gray-600 mb-3">Добавьте первую стену, используя инструмент "Стена"</p>
+                      <p className="text-gray-500 text-sm mb-3">
+                        Попробуйте разные режимы рисования: ортогональный, диагональный или свободный
+                      </p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Подсказка в режиме просмотра */}
+                {walls.length === 0 && viewMode === "view" && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="text-center p-6 bg-white/90 rounded-lg max-w-md shadow-lg">
+                      <Eye className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                      <h3 className="font-medium text-lg mb-2">Режим просмотра</h3>
+                      <p className="text-gray-600 mb-3">Добавьте стены в режиме редактирования</p>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={toggleViewMode}
+                        className="pointer-events-auto mt-2"
+                      >
+                        Перейти к редактированию
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Индикатор панорамирования */}
+                {isPanning && (
+                  <div className="absolute top-4 right-4 bg-gray-800 text-white px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                    <Move className="h-4 w-4 animate-pulse" />
+                    Панорамирование...
+                  </div>
+                )}
+                
+                {/* Индикатор режима просмотра */}
+                {viewMode === "view" && !isPanning && (
+                  <div className="absolute top-4 right-4 bg-green-600 text-white px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                    <Eye className="h-4 w-4" />
+                    Режим просмотра
+                  </div>
+                )}
+                
+                {/* Индикатор текущего зала */}
+                {currentHall && (
+                  <div className="absolute top-4 left-4 bg-blue-600 text-white px-3 py-1 rounded-full text-sm">
+                    Зал: {currentHall.title}
+                  </div>
+                )}
+              </div>
+            )}
             
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-4 text-sm">
@@ -2298,6 +2699,28 @@ const findNearestWall = useCallback((x: number, y: number, maxDistance: number =
                 )}
               </div>
               
+              {currentHall && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={saveHallLayout}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Сохранение...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Сохранить планировку
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
