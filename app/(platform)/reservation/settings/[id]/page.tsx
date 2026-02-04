@@ -1911,6 +1911,7 @@ export default function RoomDesignerPage() {
 
   return (
     <div>
+      
       <div className="flex flex-col gap-4">
         {/* Вкладки с залами */}
         <div className="border rounded-lg bg-white">
