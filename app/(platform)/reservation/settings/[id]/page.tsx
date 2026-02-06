@@ -1,4 +1,3 @@
-
 //@ts-nocheck
 
 "use client";
@@ -15,12 +14,23 @@ import {
   Square, Ruler, Trash2, Download, Grid, MousePointer, ZoomIn, ZoomOut, Move, 
   Minus, Plus, Maximize2, Eye, Edit, Magnet, DoorOpen, AppWindow as Window,
   MoveLeft, HelpCircle, Grid3X3, MinusCircle, SquareIcon, RotateCcw,
-  Save, Loader2, X, PlusCircle, Check, AlertCircle
+  Save, Loader2, X, PlusCircle, Check, AlertCircle, Table, Users,
+  Circle, RectangleHorizontal, Square as SquareShape, Egg, Combine,
+  Tags, Filter, SortAsc, SortDesc, Search, Copy, Scissors,
+  TableProperties, Table2, LayoutGrid, GitCompare, Unlink,
+  ChevronUp, ChevronDown, ChevronLeft, ChevronRight
 } from "lucide-react";
-import { TablesService, HallDto, CreateHallDto, UpdateHallDto } from "@/lib/api/tables.service";
+import { 
+  TablesService, HallDto, CreateHallDto, UpdateHallDto, 
+  TableDto, CreateTableDto, UpdateTableDto, TableStatus, TableShape,
+  TableTagDto, CreateTableTagDto
+} from "@/lib/api/tables.service";
 import { toast } from "sonner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogContentExtraWide, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
-// Типы
 type WallSegment = {
   id: string;
   x1: number;
@@ -94,11 +104,13 @@ type GridSettings = {
   snapToGuides: boolean;
   showGuides: boolean;
   forceOrthogonal: boolean;
+  snapToTables: boolean;
+  showTableLabels: boolean;
 };
 
-type DrawingMode = "wall" | "select" | "measure" | "door" | "window" | "guide";
+type DrawingMode = "wall" | "select" | "measure" | "door" | "window" | "guide" | "table";
 type WallDrawingMode = "orthogonal" | "diagonal" | "free";
-type ViewMode = "edit" | "view";
+type ViewMode = "edit" | "view" | "tables";
 type ViewTransform = {
   scale: number;
   translateX: number;
@@ -108,9 +120,10 @@ type ViewTransform = {
 type SnapPoint = {
   x: number;
   y: number;
-  type: 'start' | 'end' | 'intersection' | 'guide';
+  type: 'start' | 'end' | 'intersection' | 'guide' | 'table';
   wallId?: string;
   guideId?: string;
+  tableId?: string;
 };
 
 interface Hall extends HallDto {
@@ -118,9 +131,9 @@ interface Hall extends HallDto {
   doors?: Door[];
   windows?: Window[];
   guides?: GuideLine[];
+  tables?: TableDto[];
 }
 
-// Вспомогательная функция для расчета длины и угла
 const calculateLengthAndAngle = (x1: number, y1: number, x2: number, y2: number) => {
   const dx = x2 - x1;
   const dy = y2 - y1;
@@ -129,7 +142,6 @@ const calculateLengthAndAngle = (x1: number, y1: number, x2: number, y2: number)
   return { length, angle };
 };
 
-// Вспомогательная функция для расчета точки на линии по параметру t (0-1)
 const getPointOnLine = (x1: number, y1: number, x2: number, y2: number, t: number) => {
   return {
     x: x1 + (x2 - x1) * t,
@@ -137,7 +149,6 @@ const getPointOnLine = (x1: number, y1: number, x2: number, y2: number, t: numbe
   };
 };
 
-// Вспомогательная функция для расчета перпендикулярного вектора
 const getPerpendicularVector = (dx: number, dy: number, length: number) => {
   const distance = Math.sqrt(dx * dx + dy * dy);
   if (distance === 0) return { x: 0, y: 0 };
@@ -149,14 +160,14 @@ const getPerpendicularVector = (dx: number, dy: number, length: number) => {
   };
 };
 
-// Компонент стены
-function Wall({ wall, displayCellSize, isSelected, onClick, viewTransform, showDimensions }: { 
+function Wall({ wall, displayCellSize, isSelected, onClick, viewTransform, showDimensions, showInTablesMode = false }: { 
   wall: WallSegment; 
   displayCellSize: number; 
   isSelected: boolean; 
   onClick: () => void;
   viewTransform: ViewTransform;
   showDimensions: boolean;
+  showInTablesMode?: boolean;
 }) {
   const { x1, y1, x2, y2, isHorizontal, isDiagonal, length, angle } = wall;
   
@@ -172,7 +183,7 @@ function Wall({ wall, displayCellSize, isSelected, onClick, viewTransform, showD
     return (
       <>
         <div
-          className={`absolute bg-gray-600 hover:bg-gray-500 rounded-md transition-all ${isSelected ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}
+          className={`absolute ${showInTablesMode ? 'bg-gray-400' : 'bg-gray-600 hover:bg-gray-500'} rounded-md transition-all ${isSelected ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}
           style={{
             left: `${centerX - (length * displayCellSize * viewTransform.scale) / 2 + viewTransform.translateX}px`,
             top: `${centerY - 5 + viewTransform.translateY}px`,
@@ -181,8 +192,9 @@ function Wall({ wall, displayCellSize, isSelected, onClick, viewTransform, showD
             transform: `rotate(${angle}deg)`,
             transformOrigin: 'center center',
             cursor: showDimensions ? 'default' : 'pointer',
+            pointerEvents: showInTablesMode ? 'none' : 'auto',
           }}
-          onClick={onClick}
+          onClick={showInTablesMode ? undefined : onClick}
         />
         
         {showDimensions && (
@@ -205,6 +217,7 @@ function Wall({ wall, displayCellSize, isSelected, onClick, viewTransform, showD
               style={{
                 left: `${x1 * displayCellSize * viewTransform.scale + viewTransform.translateX - 4}px`,
                 top: `${y1 * displayCellSize * viewTransform.scale + viewTransform.translateY - 4}px`,
+                pointerEvents: 'none',
               }}
             />
             <div
@@ -212,6 +225,7 @@ function Wall({ wall, displayCellSize, isSelected, onClick, viewTransform, showD
               style={{
                 left: `${x2 * displayCellSize * viewTransform.scale + viewTransform.translateX - 4}px`,
                 top: `${y2 * displayCellSize * viewTransform.scale + viewTransform.translateY - 4}px`,
+                pointerEvents: 'none',
               }}
             />
           </>
@@ -228,15 +242,16 @@ function Wall({ wall, displayCellSize, isSelected, onClick, viewTransform, showD
   return (
     <>
       <div
-        className={`absolute bg-gray-600 hover:bg-gray-500 rounded-md transition-all ${isSelected ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}
+        className={`absolute ${showInTablesMode ? 'bg-gray-400' : 'bg-gray-600 hover:bg-gray-500'} rounded-md transition-all ${isSelected ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}
         style={{
           left: `${left + viewTransform.translateX}px`,
           top: `${top + viewTransform.translateY}px`,
           width: `${wallWidth}px`,
           height: `${wallHeight}px`,
           cursor: showDimensions ? 'default' : 'pointer',
+          pointerEvents: showInTablesMode ? 'none' : 'auto',
         }}
-        onClick={onClick}
+        onClick={showInTablesMode ? undefined : onClick}
       />
       
       {showDimensions && (
@@ -255,14 +270,14 @@ function Wall({ wall, displayCellSize, isSelected, onClick, viewTransform, showD
   );
 }
 
-// Компонент вспомогательной линии
-function GuideLineComponent({ guide, displayCellSize, isSelected, onClick, viewTransform, showGuides }: { 
+function GuideLineComponent({ guide, displayCellSize, isSelected, onClick, viewTransform, showGuides, showInTablesMode = false }: { 
   guide: GuideLine; 
   displayCellSize: number; 
   isSelected: boolean; 
   onClick: () => void;
   viewTransform: ViewTransform;
   showGuides: boolean;
+  showInTablesMode?: boolean;
 }) {
   const { x1, y1, x2, y2, isHorizontal, isDiagonal, angle } = guide;
   
@@ -289,9 +304,9 @@ function GuideLineComponent({ guide, displayCellSize, isSelected, onClick, viewT
             transform: `rotate(${angle}deg)`,
             transformOrigin: 'center center',
             cursor: 'pointer',
-            pointerEvents: 'auto',
+            pointerEvents: showInTablesMode ? 'none' : 'auto',
           }}
-          onClick={onClick}
+          onClick={showInTablesMode ? undefined : onClick}
         />
         
         <div
@@ -299,6 +314,7 @@ function GuideLineComponent({ guide, displayCellSize, isSelected, onClick, viewT
           style={{
             left: `${x1 * displayCellSize * viewTransform.scale + viewTransform.translateX - 4}px`,
             top: `${y1 * displayCellSize * viewTransform.scale + viewTransform.translateY - 4}px`,
+            pointerEvents: 'none',
           }}
         />
         <div
@@ -306,6 +322,7 @@ function GuideLineComponent({ guide, displayCellSize, isSelected, onClick, viewT
           style={{
             left: `${x2 * displayCellSize * viewTransform.scale + viewTransform.translateX - 4}px`,
             top: `${y2 * displayCellSize * viewTransform.scale + viewTransform.translateY - 4}px`,
+            pointerEvents: 'none',
           }}
         />
         
@@ -332,7 +349,7 @@ function GuideLineComponent({ guide, displayCellSize, isSelected, onClick, viewT
     width: `${width}px`,
     height: `${height}px`,
     cursor: 'pointer',
-    pointerEvents: 'auto' as const,
+    pointerEvents: showInTablesMode ? 'none' as const : 'auto' as const,
   };
   
   if (isHorizontal) {
@@ -356,7 +373,7 @@ function GuideLineComponent({ guide, displayCellSize, isSelected, onClick, viewT
       <div
         className={`absolute ${isSelected ? "ring-1 ring-purple-500 ring-offset-1" : ""}`}
         style={lineStyle}
-        onClick={onClick}
+        onClick={showInTablesMode ? undefined : onClick}
       />
       
       <div
@@ -364,6 +381,7 @@ function GuideLineComponent({ guide, displayCellSize, isSelected, onClick, viewT
         style={{
           left: `${x1 * displayCellSize * viewTransform.scale + viewTransform.translateX - 4}px`,
           top: `${y1 * displayCellSize * viewTransform.scale + viewTransform.translateY - 4}px`,
+          pointerEvents: 'none',
         }}
       />
       <div
@@ -371,6 +389,7 @@ function GuideLineComponent({ guide, displayCellSize, isSelected, onClick, viewT
         style={{
           left: `${x2 * displayCellSize * viewTransform.scale + viewTransform.translateX - 4}px`,
           top: `${y2 * displayCellSize * viewTransform.scale + viewTransform.translateY - 4}px`,
+          pointerEvents: 'none',
         }}
       />
       
@@ -390,8 +409,7 @@ function GuideLineComponent({ guide, displayCellSize, isSelected, onClick, viewT
   );
 }
 
-// Компонент двери (обновлен для поддержки диагональных стен)
-function Door({ door, wall, displayCellSize, viewTransform, isSelected, onClick, showDimensions }: { 
+function Door({ door, wall, displayCellSize, viewTransform, isSelected, onClick, showDimensions, showInTablesMode = false }: { 
   door: Door;
   wall: WallSegment | undefined;
   displayCellSize: number;
@@ -399,26 +417,23 @@ function Door({ door, wall, displayCellSize, viewTransform, isSelected, onClick,
   isSelected: boolean;
   onClick: () => void;
   showDimensions: boolean;
+  showInTablesMode?: boolean;
 }) {
   if (!wall) return null;
   const { x1, y1, x2, y2, isDiagonal, angle } = wall;
   const { offset, width, isPlacing, orientation = 'vertical' } = door;
   
   const wallLength = wall.length;
-  const t = offset / wallLength; // параметр вдоль стены (0-1)
+  const t = offset / wallLength;
   
-  // Точка на стене, где находится дверь
   const doorCenter = getPointOnLine(x1, y1, x2, y2, t);
   
-  // Для диагональных стен
   if (isDiagonal) {
     const doorAngle = angle || 0;
     const doorLengthInGrid = width / (wallLength / Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)));
     
-    // Перпендикулярный вектор для смещения двери от стены
     const perpVector = getPerpendicularVector(x2 - x1, y2 - y1, 0.25);
     
-    // Точки для отрисовки двери (прямоугольник вдоль стены)
     const halfLength = doorLengthInGrid / 2;
     const dx = (x2 - x1) * halfLength / wallLength;
     const dy = (y2 - y1) * halfLength / wallLength;
@@ -428,11 +443,9 @@ function Door({ door, wall, displayCellSize, viewTransform, isSelected, onClick,
     const doorX2 = doorCenter.x + dx;
     const doorY2 = doorCenter.y + dy;
     
-    // Центр двери
     const doorCenterX = (doorX1 + doorX2) / 2;
     const doorCenterY = (doorY1 + doorY2) / 2;
     
-    // Смещение от стены для визуализации
     const offsetX = perpVector.x;
     const offsetY = perpVector.y;
     
@@ -450,7 +463,7 @@ function Door({ door, wall, displayCellSize, viewTransform, isSelected, onClick,
     return (
       <>
         <div
-          className={`absolute bg-amber-800 hover:bg-amber-700 rounded-sm border-2 border-amber-900 transition-all cursor-pointer ${isSelected ? "ring-2 ring-yellow-500 ring-offset-1" : ""} ${isPlacing ? "opacity-70" : ""}`}
+          className={`absolute ${showInTablesMode ? 'bg-amber-600' : 'bg-amber-800 hover:bg-amber-700'} rounded-sm border-2 border-amber-900 transition-all ${isSelected ? "ring-2 ring-yellow-500 ring-offset-1" : ""} ${isPlacing ? "opacity-70" : ""}`}
           style={{
             left: `${finalCenterX * displayCellSize * viewTransform.scale - (finalWidth * displayCellSize * viewTransform.scale) / 2 + viewTransform.translateX}px`,
             top: `${finalCenterY * displayCellSize * viewTransform.scale - 10 + viewTransform.translateY}px`,
@@ -458,8 +471,10 @@ function Door({ door, wall, displayCellSize, viewTransform, isSelected, onClick,
             height: `20px`,
             transform: `rotate(${finalAngle}deg)`,
             transformOrigin: 'center center',
+            cursor: showInTablesMode ? 'default' : 'pointer',
+            pointerEvents: showInTablesMode ? 'none' : 'auto',
           }}
-          onClick={onClick}
+          onClick={showInTablesMode ? undefined : onClick}
         />
         
         {showDimensions && !isPlacing && (
@@ -491,7 +506,6 @@ function Door({ door, wall, displayCellSize, viewTransform, isSelected, onClick,
     );
   }
   
-  // Для прямых стен (старый код)
   const { isHorizontal, length } = wall;
   const doorLength = width / (length / Math.abs(isHorizontal ? x2 - x1 : y2 - y1));
   const doorOffset = door.offset / (length / Math.abs(isHorizontal ? x2 - x1 : y2 - y1));
@@ -515,15 +529,17 @@ function Door({ door, wall, displayCellSize, viewTransform, isSelected, onClick,
   return (
     <>
       <div
-        className={`absolute bg-amber-800 hover:bg-amber-700 rounded-sm border-2 border-amber-900 transition-all cursor-pointer ${isSelected ? "ring-2 ring-yellow-500 ring-offset-1" : ""} ${isPlacing ? "opacity-70" : ""}`}
+        className={`absolute ${showInTablesMode ? 'bg-amber-600' : 'bg-amber-800 hover:bg-amber-700'} rounded-sm border-2 border-amber-900 transition-all ${isSelected ? "ring-2 ring-yellow-500 ring-offset-1" : ""} ${isPlacing ? "opacity-70" : ""}`}
         style={{
           left: `${doorLeft + viewTransform.translateX}px`,
           top: `${doorTop + viewTransform.translateY}px`,
           width: `${doorWidth}px`,
           height: `${doorHeight}px`,
           transform: isHorizontal ? 'translateY(-5px)' : 'translateX(-5px)',
+          cursor: showInTablesMode ? 'default' : 'pointer',
+          pointerEvents: showInTablesMode ? 'none' : 'auto',
         }}
-        onClick={onClick}
+        onClick={showInTablesMode ? undefined : onClick}
       />
       
       {showDimensions && !isPlacing && (
@@ -555,8 +571,7 @@ function Door({ door, wall, displayCellSize, viewTransform, isSelected, onClick,
   );
 }
 
-// Компонент окна (обновлен для поддержки диагональных стен)
-function WindowComponent({ windowItem, wall, displayCellSize, viewTransform, isSelected, onClick, showDimensions }: { 
+function WindowComponent({ windowItem, wall, displayCellSize, viewTransform, isSelected, onClick, showDimensions, showInTablesMode = false }: { 
   windowItem: Window;
   wall: WallSegment;
   displayCellSize: number;
@@ -564,6 +579,7 @@ function WindowComponent({ windowItem, wall, displayCellSize, viewTransform, isS
   isSelected: boolean;
   onClick: () => void;
   showDimensions: boolean;
+  showInTablesMode?: boolean;
 }) {
   const { x1, y1, x2, y2, isDiagonal, angle } = wall;
   const { offset, width, isPlacing, orientation = 'horizontal' } = windowItem;
@@ -571,15 +587,12 @@ function WindowComponent({ windowItem, wall, displayCellSize, viewTransform, isS
   const wallLength = wall.length;
   const t = offset / wallLength;
   
-  // Точка на стене, где находится окно
   const windowCenter = getPointOnLine(x1, y1, x2, y2, t);
   
-  // Для диагональных стен
   if (isDiagonal) {
     const windowAngle = angle || 0;
     const windowLengthInGrid = width / (wallLength / Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2)));
     
-    // Точки для отрисовки окна
     const halfLength = windowLengthInGrid / 2;
     const dx = (x2 - x1) * halfLength / wallLength;
     const dy = (y2 - y1) * halfLength / wallLength;
@@ -589,18 +602,16 @@ function WindowComponent({ windowItem, wall, displayCellSize, viewTransform, isS
     const windowX2 = windowCenter.x + dx;
     const windowY2 = windowCenter.y + dy;
     
-    // Центр окна
     const windowCenterX = (windowX1 + windowX2) / 2;
     const windowCenterY = (windowY1 + windowY2) / 2;
     
-    // Для окон не делаем смещение от стены, они остаются на стене
     const finalWidth = Math.sqrt(Math.pow(windowX2 - windowX1, 2) + Math.pow(windowY2 - windowY1, 2));
     const finalAngle = Math.atan2(windowY2 - windowY1, windowX2 - windowX1) * (180 / Math.PI);
     
     return (
       <>
         <div
-          className={`absolute bg-white hover:bg-gray-100 rounded-sm border-2 border-blue-300 transition-all cursor-pointer ${isSelected ? "ring-2 ring-blue-400 ring-offset-1" : ""} ${isPlacing ? "opacity-70" : ""}`}
+          className={`absolute ${showInTablesMode ? 'bg-blue-100' : 'bg-white hover:bg-gray-100'} rounded-sm border-2 border-blue-300 transition-all ${isSelected ? "ring-2 ring-blue-400 ring-offset-1" : ""} ${isPlacing ? "opacity-70" : ""}`}
           style={{
             left: `${windowCenterX * displayCellSize * viewTransform.scale - (finalWidth * displayCellSize * viewTransform.scale) / 2 + viewTransform.translateX}px`,
             top: `${windowCenterY * displayCellSize * viewTransform.scale - 7.5 + viewTransform.translateY}px`,
@@ -608,8 +619,10 @@ function WindowComponent({ windowItem, wall, displayCellSize, viewTransform, isS
             height: `15px`,
             transform: `rotate(${finalAngle}deg)`,
             transformOrigin: 'center center',
+            cursor: showInTablesMode ? 'default' : 'pointer',
+            pointerEvents: showInTablesMode ? 'none' : 'auto',
           }}
-          onClick={onClick}
+          onClick={showInTablesMode ? undefined : onClick}
         >
           <div className="absolute inset-1 bg-blue-50 border border-blue-100 rounded-sm"></div>
         </div>
@@ -643,7 +656,6 @@ function WindowComponent({ windowItem, wall, displayCellSize, viewTransform, isS
     );
   }
   
-  // Для прямых стен (старый код)
   const { isHorizontal, length } = wall;
   const windowLength = width / (length / Math.abs(isHorizontal ? x2 - x1 : y2 - y1));
   const windowOffset = windowItem.offset / (length / Math.abs(isHorizontal ? x2 - x1 : y2 - y1));
@@ -667,15 +679,17 @@ function WindowComponent({ windowItem, wall, displayCellSize, viewTransform, isS
   return (
     <>
       <div
-        className={`absolute bg-white hover:bg-gray-100 rounded-sm border-2 border-blue-300 transition-all cursor-pointer ${isSelected ? "ring-2 ring-blue-400 ring-offset-1" : ""} ${isPlacing ? "opacity-70" : ""}`}
+        className={`absolute ${showInTablesMode ? 'bg-blue-100' : 'bg-white hover:bg-gray-100'} rounded-sm border-2 border-blue-300 transition-all ${isSelected ? "ring-2 ring-blue-400 ring-offset-1" : ""} ${isPlacing ? "opacity-70" : ""}`}
         style={{
           left: `${windowLeft + viewTransform.translateX}px`,
           top: `${windowTop + viewTransform.translateY}px`,
           width: `${windowWidth}px`,
           height: `${windowHeight}px`,
           transform: isHorizontal ? 'translateY(-5px)' : 'translateX(-5px)',
+          cursor: showInTablesMode ? 'default' : 'pointer',
+          pointerEvents: showInTablesMode ? 'none' : 'auto',
         }}
-        onClick={onClick}
+        onClick={showInTablesMode ? undefined : onClick}
       >
         <div className="absolute inset-1 bg-blue-50 border border-blue-100 rounded-sm"></div>
       </div>
@@ -709,170 +723,698 @@ function WindowComponent({ windowItem, wall, displayCellSize, viewTransform, isS
   );
 }
 
-// Компонент временной стены при рисовании
-function TempWall({ startX, startY, endX, endY, displayCellSize, viewTransform, showDimensions, snapIndicator, isGuide = false, wallDrawingMode = "orthogonal" }: { 
-  startX: number; startY: number; endX: number; endY: number; displayCellSize: number;
+function TableComponent({ 
+  table, 
+  displayCellSize, 
+  viewTransform, 
+  isSelected, 
+  onClick,
+  onMouseDown,
+  onContextMenu,
+  showLabels,
+  isDragging,
+  dragOffset,
+  showInViewMode = false,
+  showInTablesMode = false
+}: { 
+  table: TableDto;
+  displayCellSize: number;
   viewTransform: ViewTransform;
-  showDimensions: boolean;
-  snapIndicator: { x: number; y: number; type: string } | null;
-  isGuide?: boolean;
-  wallDrawingMode?: WallDrawingMode;
+  isSelected: boolean;
+  onClick: (e: React.MouseEvent) => void;
+  onMouseDown: (e: React.MouseEvent) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+  showLabels: boolean;
+  isDragging?: boolean;
+  dragOffset?: { x: number, y: number };
+  showInViewMode?: boolean;
+  showInTablesMode?: boolean;
 }) {
-  let x1 = startX;
-  let y1 = startY;
-  let x2 = endX;
-  let y2 = endY;
+  const { 
+    positionX = 0, 
+    positionY = 0, 
+    width = 0.8, 
+    height = 0.8, 
+    radius = 0.4,
+    shape, 
+    color, 
+    name, 
+    status 
+  } = table;
   
-  const { length: rawLength, angle: rawAngle } = calculateLengthAndAngle(x1, y1, x2, y2);
-  const isDiagonal = wallDrawingMode === "diagonal" || 
-    (wallDrawingMode === "free" && Math.abs(rawAngle) % 90 > 5);
+  const statusColor = (showInViewMode || showInTablesMode) ? '#3B82F6' : TablesService.getStatusColor(status);
   
-  if (wallDrawingMode === "orthogonal") {
-    const isHorizontal = Math.abs(endX - startX) > Math.abs(endY - startY);
-    if (isHorizontal) {
-      y2 = startY;
-    } else {
-      x2 = startX;
-    }
+  const effectiveX = positionX + (dragOffset?.x || 0);
+  const effectiveY = positionY + (dragOffset?.y || 0);
+  
+  const left = effectiveX * displayCellSize * viewTransform.scale;
+  const top = effectiveY * displayCellSize * viewTransform.scale;
+  const tableWidth = (shape === TableShape.CIRCLE || shape === TableShape.OVAL ? radius * 2 : width) * displayCellSize * viewTransform.scale;
+  const tableHeight = (shape === TableShape.CIRCLE ? radius * 2 : height) * displayCellSize * viewTransform.scale;
+  
+  const tableStyle: React.CSSProperties = {
+    position: 'absolute',
+    left: `${left + viewTransform.translateX - tableWidth/2}px`,
+    top: `${top + viewTransform.translateY - tableHeight/2}px`,
+    width: `${tableWidth}px`,
+    height: `${tableHeight}px`,
+    backgroundColor: color,
+    border: isSelected ? `3px solid #3B82F6` : `2px solid ${color}`,
+    boxShadow: isSelected ? `0 0 0 3px rgba(59, 130, 246, 0.3), 0 4px 6px rgba(0,0,0,0.1)` : 'none',
+    borderRadius: shape === TableShape.CIRCLE || shape === TableShape.OVAL ? '50%' : '4px',
+    cursor: showInTablesMode ? (isDragging ? 'grabbing' : 'grab') : 'pointer',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    transition: isDragging ? 'none' : 'all 0.2s ease-in-out',
+    opacity: isDragging ? 0.9 : 1,
+    zIndex: isDragging ? 1000 : isSelected ? 10 : 1,
+    transform: isSelected ? 'scale(1.02)' : 'scale(1)',
+  };
+  
+  if (isDragging) {
+    tableStyle.boxShadow = `0 4px 12px rgba(0,0,0,0.3), 0 0 0 2px #3B82F6`;
+    tableStyle.transform = 'scale(1.05)';
   }
   
-  const { length, angle } = calculateLengthAndAngle(x1, y1, x2, y2);
-  const finalIsDiagonal = wallDrawingMode !== "orthogonal" && isDiagonal;
+  const handleClick = (e: React.MouseEvent) => {
+    if (showInViewMode) return;
+    e.stopPropagation();
+    onClick(e);
+  };
   
-  const left = Math.min(x1, x2) * displayCellSize * viewTransform.scale;
-  const top = Math.min(y1, y2) * displayCellSize * viewTransform.scale;
-  const width = Math.abs(x2 - x1) * displayCellSize * viewTransform.scale;
-  const height = Math.abs(y2 - y1) * displayCellSize * viewTransform.scale;
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (showInViewMode) return;
+    e.stopPropagation();
+    onMouseDown(e);
+  };
   
-  const centerX = (x1 + x2) / 2 * displayCellSize * viewTransform.scale;
-  const centerY = (y1 + y2) / 2 * displayCellSize * viewTransform.scale;
-  
-  if (finalIsDiagonal) {
-    const lineStyle = {
-      position: 'absolute' as const,
-      left: `${centerX - (length * displayCellSize * viewTransform.scale) / 2 + viewTransform.translateX}px`,
-      top: `${centerY + viewTransform.translateY}px`,
-      width: `${length * displayCellSize * viewTransform.scale}px`,
-      height: '0px',
-      pointerEvents: 'none' as const,
-      transform: `rotate(${angle}deg)`,
-      transformOrigin: 'center center',
-    };
-    
-    if (isGuide) {
-      Object.assign(lineStyle, {
-        borderTop: '2px dashed #8b5cf6',
-      });
-    } else {
-      Object.assign(lineStyle, {
-        height: '10px',
-        backgroundColor: 'rgba(75, 85, 99, 0.7)',
-        borderRadius: '0.375rem',
-        top: `${centerY - 5 + viewTransform.translateY}px`,
-      });
-    }
-    
-    return (
-      <>
-        <div style={lineStyle} />
-        
-        {showDimensions && !isGuide && (
-          <div
-            className="absolute bg-blue-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10"
-            style={{
-              left: `${centerX + viewTransform.translateX}px`,
-              top: `${centerY - 25 + viewTransform.translateY}px`,
-              transform: 'translateX(-50%)',
-            }}
-          >
-            {Math.max(0.5, length).toFixed(1)} м ({Math.round(angle)}°)
+    const handleContextMenu = (e: React.MouseEvent) => {
+    if (showInViewMode) return;
+    e.stopPropagation();
+    e.preventDefault();
+    onContextMenu(e);
+  };
+  return (
+    <>
+      <div 
+        style={tableStyle}
+        onClick={handleClick}
+        onMouseDown={handleMouseDown}
+        onContextMenu={handleContextMenu}
+        className="hover:opacity-90 transition-all duration-200"
+      >
+        {showLabels && (
+          <div className="text-xs font-semibold text-center text-white drop-shadow-md" style={{ lineHeight: 1 }}>
+            {name}
+          </div>
+        )}
+        {!showLabels && (
+          <div className="text-xs text-white font-semibold">
+            {name.charAt(0)}
           </div>
         )}
         
-        {snapIndicator && showDimensions && (
-          <div
-            className="absolute w-10 h-10 border-2 border-green-500 rounded-full bg-white/80 animate-pulse z-20 pointer-events-none"
-            style={{
-              left: `${snapIndicator.x * displayCellSize * viewTransform.scale + viewTransform.translateX - 12}px`,
-              top: `${snapIndicator.y * displayCellSize * viewTransform.scale + viewTransform.translateY - 12}px`,
-            }}
-          >
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Magnet className="h-3 w-3 text-green-600" />
+        {isSelected && !isDragging && (
+          <div className="absolute -top-1 -right-1">
+            <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
+              <div className="w-2 h-2 bg-white rounded-full"></div>
             </div>
           </div>
         )}
-      </>
-    );
-  }
-  
-  const lineStyle = {
-    position: 'absolute' as const,
-    left: `${left + viewTransform.translateX}px`,
-    top: `${top + viewTransform.translateY}px`,
-    pointerEvents: 'none' as const,
-  };
-  
-  if (isGuide) {
-    const isHorizontal = Math.abs(x2 - x1) > Math.abs(y2 - y1);
-    if (isHorizontal) {
-      Object.assign(lineStyle, {
-        borderTop: '2px dashed #8b5cf6',
-        height: '0px',
-        width: `${width}px`,
-      });
-    } else {
-      Object.assign(lineStyle, {
-        borderLeft: '2px dashed #8b5cf6',
-        width: '0px',
-        height: `${height}px`,
-      });
-    }
-  } else {
-    const isHorizontal = Math.abs(x2 - x1) > Math.abs(y2 - y1);
-    Object.assign(lineStyle, {
-      width: `${isHorizontal ? width + 10 : 10}px`,
-      height: `${isHorizontal ? 10 : height + 10}px`,
-      backgroundColor: 'rgba(75, 85, 99, 0.7)',
-      borderRadius: '0.375rem',
-    });
-  }
-  
-  return (
-    <>
-      <div style={lineStyle} />
+      </div>
       
-      {showDimensions && !isGuide && (
+      {isSelected && !showInTablesMode && !isDragging && (
         <div
-          className="absolute bg-blue-500 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10"
+          className="absolute bg-blue-600 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-20 pointer-events-none animate-pulse"
           style={{
-            left: `${centerX + viewTransform.translateX}px`,
-            top: `${centerY - 25 + viewTransform.translateY}px`,
+            left: `${left + viewTransform.translateX}px`,
+            top: `${top + viewTransform.translateY - tableHeight/2 - 35}px`,
             transform: 'translateX(-50%)',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
           }}
         >
-          {Math.max(0.5, length).toFixed(1)} м
-        </div>
-      )}
-      
-      {snapIndicator && showDimensions && (
-        <div
-          className="absolute w-10 h-10 border-2 border-green-500 rounded-full bg-white/80 animate-pulse z-20 pointer-events-none"
-          style={{
-            left: `${snapIndicator.x * displayCellSize * viewTransform.scale + viewTransform.translateX - 12}px`,
-            top: `${snapIndicator.y * displayCellSize * viewTransform.scale + viewTransform.translateY - 12}px`,
-          }}
-        >
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Magnet className="h-3 w-3 text-green-600" />
-          </div>
+          {name} <span className="ml-1 opacity-75">✓</span>
         </div>
       )}
     </>
   );
 }
 
+function TableDialog({ 
+  open, 
+  onOpenChange, 
+  table, 
+  hallId, 
+  onSave,
+  tableTags,
+  isSaving,
+  newTablePosition 
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  table: TableDto | null;
+  hallId: string;
+  onSave: (table: TableDto) => void;
+  tableTags: TableTagDto[];
+  isSaving: boolean;
+    newTablePosition?: { x: number; y: number } | null; 
+}) {
+  const [formData, setFormData] = useState({
+    name: table?.name || '',
+    description: table?.description || '',
+    seats: table?.seats || 4,
+    shape: table?.shape || TableShape.RECTANGLE,
+    status: table?.status || TableStatus.AVAILABLE,
+   positionX: table?.positionX || newTablePosition?.x || 5, 
+    positionY: table?.positionY || newTablePosition?.y || 5, 
+    width: table?.width || 0.8,
+    height: table?.height || 0.8,
+    radius: table?.radius || 0.4,
+    color: table?.color || '#3B82F6',
+    tagIds: table?.tags?.map(tag => tag.id) || [],
+  });
+    useEffect(() => {
+      if (newTablePosition && !table) {
+        setFormData(prev => ({
+          ...prev,
+          positionX: newTablePosition.x,
+          positionY: newTablePosition.y,
+        }));
+      }
+    }, [newTablePosition, table]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const tableData: any = {
+      ...formData,
+      hallId,
+      order: 0,
+    };
+    
+    if (table) {
+      tableData.id = table.id;
+    }
+    
+    onSave(tableData);
+  };
+  
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContentExtraWide className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            {table ? 'Редактирование стола' : 'Создание нового стола'}
+          </DialogTitle>
+          <DialogDescription>
+            {table ? 'Измените параметры стола' : 'Заполните параметры нового стола'}
+          </DialogDescription>
+        </DialogHeader>
+        
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Название стола</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => setFormData({...formData, name: e.target.value})}
+              />
+            </div>
+            
+            
+            <div className="grid grid-cols-1 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="seats">Количество мест</Label>
+                <Input
+                  id="seats"
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={formData.seats}
+                  onChange={(e) => setFormData({...formData, seats: parseInt(e.target.value)})}
+                />
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Форма стола</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={formData.shape === TableShape.RECTANGLE ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFormData({...formData, shape: TableShape.RECTANGLE})}
+                  className="flex-1"
+                >
+                  <RectangleHorizontal className="h-4 w-4 mr-2" />
+                  Прямоугольный
+                </Button>
+                <Button
+                  type="button"
+                  variant={formData.shape === TableShape.SQUARE ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFormData({...formData, shape: TableShape.SQUARE})}
+                  className="flex-1"
+                >
+                  <SquareShape className="h-4 w-4 mr-2" />
+                  Квадратный
+                </Button>
+                <Button
+                  type="button"
+                  variant={formData.shape === TableShape.CIRCLE ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFormData({...formData, shape: TableShape.CIRCLE})}
+                  className="flex-1"
+                >
+                  <Circle className="h-4 w-4 mr-2" />
+                  Круглый
+                </Button>
+                <Button
+                  type="button"
+                  variant={formData.shape === TableShape.OVAL ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setFormData({...formData, shape: TableShape.OVAL})}
+                  className="flex-1"
+                >
+                  <Egg className="h-4 w-4 mr-2" />
+                  Овальный
+                </Button>
+              </div>
+            </div>
+            
+            {(formData.shape === TableShape.RECTANGLE || formData.shape === TableShape.SQUARE) && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="width">Ширина (м)</Label>
+                  <Input
+                    id="width"
+                    type="number"
+                    step="0.1"
+                    min="0.3"
+                    max="3"
+                    value={formData.width}
+                    onChange={(e) => setFormData({...formData, width: parseFloat(e.target.value)})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="height">Длина (м)</Label>
+                  <Input
+                    id="height"
+                    type="number"
+                    step="0.1"
+                    min="0.3"
+                    max="3"
+                    value={formData.height}
+                    onChange={(e) => setFormData({...formData, height: parseFloat(e.target.value)})}
+                  />
+                </div>
+              </div>
+            )}
+            
+            {(formData.shape === TableShape.CIRCLE || formData.shape === TableShape.OVAL) && (
+              <div className="space-y-2">
+                <Label htmlFor="radius">Радиус (м)</Label>
+                <Input
+                  id="radius"
+                  type="number"
+                  step="0.1"
+                  min="0.2"
+                  max="2"
+                  value={formData.radius}
+                  onChange={(e) => setFormData({...formData, radius: parseFloat(e.target.value)})}
+                />
+              </div>
+            )}
+            
+            <div className="space-y-2">
+              <Label htmlFor="color">Цвет стола</Label>
+              <div className="flex gap-2">
+                {['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'].map(color => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={`w-8 h-8 rounded-full border-2 ${formData.color === color ? 'border-gray-800' : 'border-transparent'}`}
+                    style={{ backgroundColor: color }}
+                    onClick={() => setFormData({...formData, color})}
+                  />
+                ))}
+                <div className="relative">
+                  <Input
+                    type="color"
+                    value={formData.color}
+                    onChange={(e) => setFormData({...formData, color: e.target.value})}
+                    className="w-12 h-8 p-1"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            {tableTags.length > 0 && (
+              <div className="space-y-2">
+                <Label>Теги стола</Label>
+                <div className="flex flex-wrap gap-2">
+                  {tableTags.map(tag => (
+                    <Badge
+                      key={tag.id}
+                      variant={formData.tagIds.includes(tag.id) ? "default" : "outline"}
+                      className="cursor-pointer"
+                      style={formData.tagIds.includes(tag.id) ? { backgroundColor: tag.color } : {}}
+                      onClick={() => {
+                        const newTagIds = formData.tagIds.includes(tag.id)
+                          ? formData.tagIds.filter(id => id !== tag.id)
+                          : [...formData.tagIds, tag.id];
+                        setFormData({...formData, tagIds: newTagIds});
+                      }}
+                    >
+                      {tag.name}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Отмена
+            </Button>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Сохранение...
+                </>
+              ) : table ? 'Сохранить изменения' : 'Создать стол'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContentExtraWide>
+    </Dialog>
+  );
+}
+
+function CombineTablesDialog({
+  open,
+  onOpenChange,
+  tables,
+  selectedTableIds,
+  onCombine,
+  isCombining
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  tables: TableDto[];
+  selectedTableIds: string[];
+  onCombine: (data: any) => void;
+  isCombining: boolean;
+}) {
+  const [formData, setFormData] = useState({
+    combinedTableName: `Стол ${Math.floor(Math.random() * 100)}`,
+    keepOriginalTables: false,
+  });
+  
+  const selectedTables = tables.filter(table => selectedTableIds.includes(table.id));
+  const totalSeats = selectedTables.reduce((sum, table) => sum + table.seats, 0);
+  
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (selectedTableIds.length < 2) {
+      toast.error('Выберите хотя бы два стола для объединения');
+      return;
+    }
+    
+    const mainTableId = selectedTableIds[0];
+    const otherTableIds = selectedTableIds.slice(1);
+    
+    onCombine({
+      mainTableId,
+      tableIds: otherTableIds,
+      combinedTableName: formData.combinedTableName,
+      keepOriginalTables: formData.keepOriginalTables,
+    });
+  };
+  
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Объединение столов</DialogTitle>
+          <DialogDescription>
+            Объедините выбранные столы в один большой стол
+          </DialogDescription>
+        </DialogHeader>
+        
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="combinedTableName">Название объединенного стола</Label>
+              <Input
+                id="combinedTableName"
+                value={formData.combinedTableName}
+                onChange={(e) => setFormData({...formData, combinedTableName: e.target.value})}
+                placeholder="Введите название"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Выбранные столы ({selectedTables.length})</Label>
+              <div className="border rounded-md p-3 max-h-40 overflow-y-auto">
+                {selectedTables.map(table => (
+                  <div key={table.id} className="flex items-center justify-between py-1">
+                    <span className="text-sm">{table.name} ({table.seats} мест)</span>
+                    <Badge variant="outline" style={{ backgroundColor: table.color, color: '#fff' }}>
+                      {TablesService.getStatusLabel(table.status)}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+              <div className="text-sm text-gray-600">
+                Общее количество мест после объединения: <strong>{totalSeats}</strong>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="keepOriginalTables"
+                checked={formData.keepOriginalTables}
+                onCheckedChange={(checked) => setFormData({...formData, keepOriginalTables: checked})}
+              />
+              <Label htmlFor="keepOriginalTables">
+                Сохранить оригинальные столы (скрыть из вида)
+              </Label>
+            </div>
+            
+            <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-md">
+              <strong>Внимание:</strong> После объединения оригинальные столы будут скрыты из общего вида, 
+              но останутся в системе для разделения в будущем.
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Отмена
+            </Button>
+            <Button type="submit" disabled={isCombining || selectedTableIds.length < 2}>
+              {isCombining ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Объединение...
+                </>
+              ) : 'Объединить столы'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TableTagsDialog({
+  open,
+  onOpenChange,
+  tags,
+  restaurantId,
+  onSaveTag,
+  onDeleteTag,
+  isSaving
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  tags: TableTagDto[];
+  restaurantId: string;
+  onSaveTag: (tag: TableTagDto | CreateTableTagDto) => void;
+  onDeleteTag: (tagId: string) => void;
+  isSaving: boolean;
+}) {
+  const [editingTag, setEditingTag] = useState<TableTagDto | null>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    color: '#3B82F6',
+  });
+  
+  const resetForm = () => {
+    setEditingTag(null);
+    setFormData({
+      name: '',
+      description: '',
+      color: '#3B82F6',
+    });
+  };
+  
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!formData.name.trim()) {
+      toast.error('Введите название тега');
+      return;
+    }
+    
+    const tagData: any = {
+      ...formData,
+      restaurantId,
+      order: tags.length,
+    };
+    
+    if (editingTag) {
+      tagData.id = editingTag.id;
+    }
+    
+    onSaveTag(tagData);
+    resetForm();
+  };
+  
+  const handleEdit = (tag: TableTagDto) => {
+    setEditingTag(tag);
+    setFormData({
+      name: tag.name,
+      description: tag.description || '',
+      color: tag.color,
+    });
+  };
+  
+  return (
+    <Dialog open={open} onOpenChange={(open) => {
+      if (!open) resetForm();
+      onOpenChange(open);
+    }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Управление тегами столов</DialogTitle>
+          <DialogDescription>
+            Создавайте и редактируйте теги для категоризации столов
+          </DialogDescription>
+        </DialogHeader>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="tagName">Название тега</Label>
+            <Input
+              id="tagName"
+              value={formData.name}
+              onChange={(e) => setFormData({...formData, name: e.target.value})}
+              placeholder="Например: У окна, VIP, Семейный"
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <Label htmlFor="tagDescription">Описание (необязательно)</Label>
+            <Textarea
+              id="tagDescription"
+              value={formData.description}
+              onChange={(e) => setFormData({...formData, description: e.target.value})}
+              placeholder="Описание тега"
+            />
+          </div>
+          
+          <div className="space-y-2">
+            <Label>Цвет тега</Label>
+            <div className="flex gap-2">
+              {['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6B7280', '#000000'].map(color => (
+                <button
+                  key={color}
+                  type="button"
+                  className={`w-8 h-8 rounded-full border-2 ${formData.color === color ? 'border-gray-800' : 'border-transparent'}`}
+                  style={{ backgroundColor: color }}
+                  onClick={() => setFormData({...formData, color})}
+                />
+              ))}
+              <div className="relative">
+                <Input
+                  type="color"
+                  value={formData.color}
+                  onChange={(e) => setFormData({...formData, color: e.target.value})}
+                  className="w-12 h-8 p-1"
+                />
+              </div>
+            </div>
+          </div>
+          
+          <Button type="submit" disabled={isSaving} className="w-full">
+            {isSaving ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Сохранение...
+              </>
+            ) : editingTag ? 'Сохранить изменения' : 'Создать тег'}
+          </Button>
+        </form>
+        
+        <div className="space-y-2">
+          <Label>Существующие теги</Label>
+          <div className="border rounded-md p-3 max-h-40 overflow-y-auto">
+            {tags.length === 0 ? (
+              <div className="text-center py-4 text-gray-500">
+                Нет созданных тегов
+              </div>
+            ) : (
+              tags.map(tag => (
+                <div key={tag.id} className="flex items-center justify-between py-2 border-b last:border-b-0">
+                  <div className="flex items-center gap-2">
+                    <div 
+                      className="w-3 h-3 rounded-full" 
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    <span>{tag.name}</span>
+                    {tag.description && (
+                      <span className="text-xs text-gray-500">{tag.description}</span>
+                    )}
+                  </div>
+                  <div className="flex gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleEdit(tag)}
+                    >
+                      <Edit className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onDeleteTag(tag.id)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function RoomDesignerPage() {
+
+  
   const params = useParams();
   const router = useRouter();
   const restaurantId = params.id as string;
@@ -890,11 +1432,14 @@ export default function RoomDesignerPage() {
   const [doors, setDoors] = useState<Door[]>([]);
   const [windows, setWindows] = useState<Window[]>([]);
   const [guides, setGuides] = useState<GuideLine[]>([]);
+  const [tables, setTables] = useState<TableDto[]>([]);
+  const [tableTags, setTableTags] = useState<TableTagDto[]>([]);
   
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [selectedDoorId, setSelectedDoorId] = useState<string | null>(null);
   const [selectedWindowId, setSelectedWindowId] = useState<string | null>(null);
   const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
+  const [selectedTableIds, setSelectedTableIds] = useState<string[]>([]);
   
   const [wallDrawingMode, setWallDrawingMode] = useState<WallDrawingMode>("orthogonal");
   
@@ -907,10 +1452,12 @@ export default function RoomDesignerPage() {
     snapToGuides: true,
     showGuides: true,
     forceOrthogonal: false,
+    snapToTables: true,
+    showTableLabels: true,
   });
   
-  const [drawingMode, setDrawingMode] = useState<DrawingMode>("wall");
-  const [viewMode, setViewMode] = useState<ViewMode>("edit");
+  const [drawingMode, setDrawingMode] = useState<DrawingMode>("table");
+  const [viewMode, setViewMode] = useState<ViewMode>("tables");
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentWallStart, setCurrentWallStart] = useState<{ x: number; y: number } | null>(null);
   const [tempWallEnd, setTempWallEnd] = useState<{ x: number; y: number } | null>(null);
@@ -936,13 +1483,26 @@ export default function RoomDesignerPage() {
   });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const [isRightMouseDown, setIsRightMouseDown] = useState(false);
   
+  const [tableDialogOpen, setTableDialogOpen] = useState(false);
+  const [editingTable, setEditingTable] = useState<TableDto | null>(null);
+  const [combineDialogOpen, setCombineDialogOpen] = useState(false);
+  const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
+  const [isTableSaving, setIsTableSaving] = useState(false);
+  const [isCombiningTables, setIsCombiningTables] = useState(false);
+  const [isTagSaving, setIsTagSaving] = useState(false);
+  
+  const [draggingTableId, setDraggingTableId] = useState<string | null>(null);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [newTablePosition, setNewTablePosition] = useState<{ x: number; y: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Загрузка залов ресторана
   useEffect(() => {
     if (restaurantId) {
       loadHalls();
+      loadTableTags();
     }
   }, [restaurantId]);
 
@@ -952,7 +1512,6 @@ export default function RoomDesignerPage() {
       const hallsData = await TablesService.getHallsByRestaurant(restaurantId, true);
       setHalls(hallsData);
       
-      // Если есть залы, загружаем первый
       if (hallsData.length > 0) {
         await loadHallLayout(hallsData[0].id);
       } else {
@@ -967,15 +1526,22 @@ export default function RoomDesignerPage() {
     }
   };
 
+  const loadTableTags = async () => {
+    try {
+      const tags = await TablesService.getTableTagsByRestaurant(restaurantId);
+      setTableTags(tags);
+    } catch (error) {
+      console.error('Ошибка при загрузке тегов:', error);
+    }
+  };
+
   const loadHallLayout = async (hallId: string) => {
     try {
       setIsLoading(true);
       const hall = await TablesService.getHallLayout(hallId);
       
-      // Преобразуем данные API в данные редактора
       setCurrentHall(hall);
       
-      // Преобразуем данные из API в формат редактора
       const editorData = TablesService.convertDtoToEditorData(hall);
       
       setWalls(editorData.walls.map((wall, index) => ({
@@ -1019,11 +1585,14 @@ export default function RoomDesignerPage() {
         color: guide.color || '#7C3AED',
       })));
       
-      // Сбрасываем выбранные элементы
+      const tablesResponse = await TablesService.getTables({ hallId });
+      setTables(tablesResponse.data);
+      
       setSelectedWallId(null);
       setSelectedDoorId(null);
       setSelectedWindowId(null);
       setSelectedGuideId(null);
+      setSelectedTableIds([]);
       
     } catch (error) {
       console.error('Ошибка при загрузке планировки:', error);
@@ -1054,14 +1623,11 @@ export default function RoomDesignerPage() {
       
       toast.success('Зал успешно создан');
       
-      // Обновляем список залов
       const updatedHalls = await TablesService.getHallsByRestaurant(restaurantId, true);
       setHalls(updatedHalls);
       
-      // Загружаем новый зал
       await loadHallLayout(newHall.id);
       
-      // Закрываем диалог и сбрасываем форму
       setShowCreateHallDialog(false);
       setNewHallTitle('');
       setNewHallDescription('');
@@ -1083,7 +1649,6 @@ export default function RoomDesignerPage() {
     try {
       setIsSaving(true);
       
-      // Подготавливаем данные для сохранения
       const layoutData = TablesService.convertEditorDataToDto(currentHall.id, {
         walls,
         doors,
@@ -1091,7 +1656,6 @@ export default function RoomDesignerPage() {
         guides,
       });
 
-      // Сохраняем планировку
       await TablesService.saveHallLayout(currentHall.id, layoutData);
       
       toast.success('Планировка успешно сохранена');
@@ -1113,7 +1677,6 @@ export default function RoomDesignerPage() {
       await TablesService.deleteHall(hallId);
       toast.success('Зал удален');
       
-      // Обновляем список залов
       await loadHalls();
       
     } catch (error) {
@@ -1122,15 +1685,204 @@ export default function RoomDesignerPage() {
     }
   };
 
+  const handleCreateTable = async (tableData: any) => {
+    try {
+      setIsTableSaving(true);
+      
+      const createTableDto: CreateTableDto = {
+        name: tableData.name,
+        description: tableData.description,
+        seats: tableData.seats,
+        shape: tableData.shape,
+        status: tableData.status,
+        positionX: tableData.positionX,
+        positionY: tableData.positionY,
+        width: tableData.width,
+        height: tableData.height,
+        radius: tableData.radius,
+        color: tableData.color,
+        hallId: tableData.hallId,
+        tagIds: tableData.tagIds,
+      };
+      
+      const newTable = await TablesService.createTable(createTableDto);
+      
+      setTables(prev => [...prev, newTable]);
+      setSelectedTableIds([newTable.id]);
+      setTableDialogOpen(false);
+      setNewTablePosition(null)
+      toast.success('Стол успешно создан');
+      
+    } catch (error) {
+      console.error('Ошибка при создании стола:', error);
+      toast.error('Не удалось создать стол');
+    } finally {
+      setIsTableSaving(false);
+    }
+  };
+
+  const handleUpdateTable = async (tableData: any) => {
+    try {
+      setIsTableSaving(true);
+      
+      const updateTableDto: UpdateTableDto = {
+        name: tableData.name,
+        description: tableData.description,
+        seats: tableData.seats,
+        status: tableData.status,
+        positionX: tableData.positionX,
+        positionY: tableData.positionY,
+        width: tableData.width,
+        height: tableData.height,
+        radius: tableData.radius,
+        color: tableData.color,
+        tagIds: tableData.tagIds,
+      };
+      
+      const updatedTable = await TablesService.updateTable(tableData.id, updateTableDto);
+      
+      setTables(prev => prev.map(table => 
+        table.id === tableData.id ? updatedTable : table
+      ));
+      setTableDialogOpen(false);
+      setEditingTable(null);
+      
+      
+    } catch (error) {
+      console.error('Ошибка при обновлении стола:', error);
+      toast.error('Не удалось обновить стол');
+    } finally {
+      setIsTableSaving(false);
+    }
+  };
+
+  const handleDeleteTable = async (tableId: string) => {
+    if (!confirm('Вы уверены, что хотите удалить этот стол?')) {
+      return;
+    }
+
+    try {
+      await TablesService.deleteTable(tableId);
+      
+      setTables(prev => prev.filter(table => table.id !== tableId));
+      setSelectedTableIds(prev => prev.filter(id => id !== tableId));
+      
+      toast.success('Стол удален');
+      
+    } catch (error) {
+      console.error('Ошибка при удалении стола:', error);
+      toast.error('Не удалось удалить стол');
+    }
+  };
+
+  const handleCombineTables = async (combineData: any) => {
+    try {
+      setIsCombiningTables(true);
+      
+      const combinedTable = await TablesService.combineTables(combineData);
+      
+      const tablesResponse = await TablesService.getTables({ hallId: currentHall!.id });
+      
+      setTables(tablesResponse.data);
+      
+      setSelectedTableIds([combinedTable.id]);
+      setCombineDialogOpen(false);
+      
+      toast.success('Столы успешно объединены');
+      
+    } catch (error) {
+      console.error('Ошибка при объединении столов:', error);
+      toast.error('Не удалось объединить столы');
+    } finally {
+      setIsCombiningTables(false);
+    }
+  };
+
+  const handleSeparateTables = async (combinedTableId: string) => {
+    if (!confirm('Вы уверены, что хотите разделить объединенный стол?')) {
+      return;
+    }
+
+    try {
+      const separatedTables = await TablesService.separateTables(combinedTableId);
+      
+      const tablesResponse = await TablesService.getTables({ hallId: currentHall!.id });
+      setTables(tablesResponse.data);
+      
+      setSelectedTableIds([]);
+      
+      toast.success('Стол успешно разделен');
+      
+    } catch (error) {
+      console.error('Ошибка при разделении столов:', error);
+      toast.error('Не удалось разделить стол');
+    }
+  };
+
+  const handleSaveTableTag = async (tagData: any) => {
+    try {
+      setIsTagSaving(true);
+      
+      let savedTag: TableTagDto;
+      
+      if (tagData.id) {
+        const updateTagDto = {
+          name: tagData.name,
+          description: tagData.description,
+          color: tagData.color,
+        };
+        savedTag = await TablesService.updateTableTag(tagData.id, updateTagDto);
+      } else {
+        const createTagDto: CreateTableTagDto = {
+          name: tagData.name,
+          description: tagData.description,
+          color: tagData.color,
+          restaurantId,
+        };
+        savedTag = await TablesService.createTableTag(createTagDto);
+      }
+      
+      await loadTableTags();
+      
+      toast.success('Тег успешно сохранен');
+      
+    } catch (error) {
+      console.error('Ошибка при сохранении тега:', error);
+      toast.error('Не удалось сохранить тег');
+    } finally {
+      setIsTagSaving(false);
+    }
+  };
+
+  const handleDeleteTableTag = async (tagId: string) => {
+    if (!confirm('Вы уверены, что хотите удалить этот тег?')) {
+      return;
+    }
+
+    try {
+      await TablesService.deleteTableTag(tagId);
+      
+      await loadTableTags();
+      
+      toast.success('Тег удален');
+      
+    } catch (error) {
+      console.error('Ошибка при удалении тега:', error);
+      toast.error('Не удалось удалить тег');
+    }
+  };
+
   const resetEditorState = () => {
     setWalls([]);
     setDoors([]);
     setWindows([]);
     setGuides([]);
+    setTables([]);
     setSelectedWallId(null);
     setSelectedDoorId(null);
     setSelectedWindowId(null);
     setSelectedGuideId(null);
+    setSelectedTableIds([]);
     setCurrentWallStart(null);
     setIsDrawing(false);
     setTempWallEnd(null);
@@ -1139,13 +1891,12 @@ export default function RoomDesignerPage() {
     setPlacingWindow({ wallId: null, offset: 0, isPlacing: false });
   };
 
-  // Функция для поиска ближайшей точки привязки
   const findSnapPoint = useCallback((x: number, y: number): SnapPoint | null => {
     const snapRadius = gridSettings.snapGridSize / gridSettings.displayCellSize;
     let nearestSnap: SnapPoint | null = null;
     let minDistance = Infinity;
     
-    if (gridSettings.snapToWalls && walls && walls.length > 0) {
+    if (gridSettings.snapToWalls && walls && walls.length > 0 && viewMode !== "tables") {
       walls.forEach(wall => {
         const points = [
           { x: wall.x1, y: wall.y1, type: 'start' as const },
@@ -1167,7 +1918,7 @@ export default function RoomDesignerPage() {
       });
     }
     
-    if (gridSettings.snapToGuides && guides && guides.length > 0) {
+    if (gridSettings.snapToGuides && guides && guides.length > 0 && viewMode !== "tables") {
       guides.forEach(guide => {
         const points = [
           { x: guide.x1, y: guide.y1, type: 'guide' as const },
@@ -1189,10 +1940,30 @@ export default function RoomDesignerPage() {
       });
     }
     
+    if (gridSettings.snapToTables && tables && tables.length > 0 && viewMode === "tables") {
+      tables.forEach(table => {
+        const point = {
+          x: table.positionX || 0,
+          y: table.positionY || 0,
+          type: 'table' as const,
+        };
+        
+        const distance = Math.sqrt(Math.pow(point.x - x, 2) + Math.pow(point.y - y, 2));
+        if (distance < snapRadius && distance < minDistance) {
+          minDistance = distance;
+          nearestSnap = {
+            x: point.x,
+            y: point.y,
+            type: 'table',
+            tableId: table.id,
+          };
+        }
+      });
+    }
+    
     return nearestSnap;
-  }, [walls, guides, gridSettings.snapToWalls, gridSettings.snapToGuides, gridSettings.snapGridSize, gridSettings.displayCellSize]);
+  }, [walls, guides, tables, gridSettings.snapToWalls, gridSettings.snapToGuides, gridSettings.snapToTables, gridSettings.snapGridSize, gridSettings.displayCellSize, viewMode]);
 
-  // Найти ближайшую стену (включая диагональные)
   const findNearestWall = useCallback((x: number, y: number, maxDistance: number = 1.0) => {
     if (!walls || walls.length === 0) {
       return { wall: null, point: 0, distance: maxDistance };
@@ -1253,67 +2024,6 @@ export default function RoomDesignerPage() {
     return { wall: nearestWall, point: nearestPointOnWall, distance: minDistance };
   }, [walls]);
 
-  // Найти ближайшую вспомогательную линию
-  const findNearestGuide = useCallback((x: number, y: number, maxDistance: number = 0.5) => {
-    if (!guides || guides.length === 0) {
-      return { guide: null, point: 0, distance: maxDistance };
-    }
-    
-    let nearestGuide: GuideLine | null = null;
-    let minDistance = maxDistance;
-    let nearestPointOnGuide: number = 0;
-    
-    guides.forEach(guide => {
-      const { x1, y1, x2, y2, isHorizontal, isDiagonal } = guide;
-      
-      if (isDiagonal) {
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const length = Math.sqrt(dx * dx + dy * dy);
-        
-        if (length === 0) return;
-        
-        const t = ((x - x1) * dx + (y - y1) * dy) / (length * length);
-        
-        if (t >= 0 && t <= 1) {
-          const projX = x1 + t * dx;
-          const projY = y1 + t * dy;
-          const distance = Math.sqrt(Math.pow(x - projX, 2) + Math.pow(y - projY, 2));
-          
-          if (distance < minDistance) {
-            minDistance = distance;
-            nearestGuide = guide;
-            nearestPointOnGuide = t;
-          }
-        }
-      } else if (isHorizontal) {
-        const minX = Math.min(x1, x2);
-        const maxX = Math.max(x1, x2);
-        if (x >= minX && x <= maxX) {
-          const distance = Math.abs(y - y1);
-          if (distance < minDistance) {
-            minDistance = distance;
-            nearestGuide = guide;
-            nearestPointOnGuide = (x - minX) / (maxX - minX);
-          }
-        }
-      } else {
-        const minY = Math.min(y1, y2);
-        const maxY = Math.max(y1, y2);
-        if (y >= minY && y <= maxY) {
-          const distance = Math.abs(x - x1);
-          if (distance < minDistance) {
-            minDistance = distance;
-            nearestGuide = guide;
-            nearestPointOnGuide = (y - minY) / (maxY - minY);
-          }
-        }
-      }
-    });
-    
-    return { guide: nearestGuide, point: nearestPointOnGuide, distance: minDistance };
-  }, [guides]);
-
   const getGridCoordinates = useCallback((clientX: number, clientY: number) => {
     if (!containerRef.current) return { x: 0, y: 0 };
     
@@ -1324,7 +2034,7 @@ export default function RoomDesignerPage() {
     const rawGridX = (x - viewTransform.translateX) / (gridSettings.displayCellSize * viewTransform.scale);
     const rawGridY = (y - viewTransform.translateY) / (gridSettings.displayCellSize * viewTransform.scale);
     
-    if ((gridSettings.snapToWalls || gridSettings.snapToGuides) && viewMode === "edit") {
+    if ((gridSettings.snapToWalls || gridSettings.snapToGuides || gridSettings.snapToTables) && viewMode === "edit") {
       const snapPoint = findSnapPoint(rawGridX, rawGridY);
       if (snapPoint) {
         setSnapIndicator({ x: snapPoint.x, y: snapPoint.y, type: snapPoint.type });
@@ -1332,9 +2042,17 @@ export default function RoomDesignerPage() {
       }
     }
     
+    if (gridSettings.snapToGrid && viewMode === "tables") {
+      const snapFactor = gridSettings.displayCellSize / gridSettings.snapGridSize;
+      return {
+        x: Math.round(rawGridX * snapFactor) / snapFactor,
+        y: Math.round(rawGridY * snapFactor) / snapFactor,
+      };
+    }
+    
     setSnapIndicator(null);
     
-    if (gridSettings.snapToGrid && viewMode === "edit") {
+    if (gridSettings.snapToGrid && (viewMode === "edit" || viewMode === "tables")) {
       const snapFactor = gridSettings.displayCellSize / gridSettings.snapGridSize;
       return {
         x: Math.round(rawGridX * snapFactor) / snapFactor,
@@ -1346,9 +2064,8 @@ export default function RoomDesignerPage() {
       x: rawGridX,
       y: rawGridY,
     };
-  }, [viewTransform, gridSettings.displayCellSize, gridSettings.snapGridSize, gridSettings.snapToGrid, gridSettings.snapToWalls, gridSettings.snapToGuides, viewMode, findSnapPoint]);
+  }, [viewTransform, gridSettings.displayCellSize, gridSettings.snapGridSize, gridSettings.snapToGrid, gridSettings.snapToWalls, gridSettings.snapToGuides, gridSettings.snapToTables, viewMode, findSnapPoint]);
 
-  // Начать рисование стены или вспомогательной линии
   const startDrawingWall = (gridX: number, gridY: number) => {
     if (viewMode === "edit" && (drawingMode === "wall" || drawingMode === "guide")) {
       setCurrentWallStart({ x: gridX, y: gridY });
@@ -1357,7 +2074,6 @@ export default function RoomDesignerPage() {
     }
   };
 
-  // Начать размещение двери (поддержка диагональных стен)
   const startPlacingDoor = (gridX: number, gridY: number) => {
     if (viewMode === "edit" && drawingMode === "door") {
       const { wall, point, distance } = findNearestWall(gridX, gridY, 1.0);
@@ -1388,11 +2104,11 @@ export default function RoomDesignerPage() {
         setSelectedDoorId(newDoor.id);
         setSelectedWindowId(null);
         setSelectedGuideId(null);
+        setSelectedTableIds([]);
       }
     }
   };
 
-  // Начать размещение окна (поддержка диагональных стен)
   const startPlacingWindow = (gridX: number, gridY: number) => {
     if (viewMode === "edit" && drawingMode === "window") {
       const { wall, point, distance } = findNearestWall(gridX, gridY, 1.0);
@@ -1423,11 +2139,23 @@ export default function RoomDesignerPage() {
         setSelectedWindowId(newWindow.id);
         setSelectedDoorId(null);
         setSelectedGuideId(null);
+        setSelectedTableIds([]);
       }
     }
   };
 
-  // Обновить положение двери (поддержка диагональных стен)
+  const startDraggingTable = (gridX: number, gridY: number, tableId: string) => {
+    if (viewMode === "tables" && drawingMode === "select") {
+      setDraggingTableId(tableId);
+      setDragStart({ x: gridX, y: gridY });
+      setDragOffset({ x: 0, y: 0 });
+      
+      if (!selectedTableIds.includes(tableId)) {
+        setSelectedTableIds([tableId]);
+      }
+    }
+  };
+
   const updateDoorPosition = (gridX: number, gridY: number) => {
     if (placingDoor.isPlacing && placingDoor.wallId && viewMode === "edit") {
       const wall = walls.find(w => w.id === placingDoor.wallId);
@@ -1444,7 +2172,6 @@ export default function RoomDesignerPage() {
     }
   };
 
-  // Обновить положение окна (поддержка диагональных стен)
   const updateWindowPosition = (gridX: number, gridY: number) => {
     if (placingWindow.isPlacing && placingWindow.wallId && viewMode === "edit") {
       const wall = walls.find(w => w.id === placingWindow.wallId);
@@ -1461,7 +2188,15 @@ export default function RoomDesignerPage() {
     }
   };
 
-  // Завершить размещение двери
+  const updateDraggingTable = (gridX: number, gridY: number) => {
+    if (draggingTableId && viewMode === "tables") {
+      const deltaX = gridX - dragStart.x;
+      const deltaY = gridY - dragStart.y;
+      
+      setDragOffset({ x: deltaX, y: deltaY });
+    }
+  };
+
   const finishPlacingDoor = () => {
     if (placingDoor.isPlacing && viewMode === "edit") {
       const wall = walls.find(w => w.id === placingDoor.wallId);
@@ -1481,7 +2216,6 @@ export default function RoomDesignerPage() {
     }
   };
 
-  // Завершить размещение окна
   const finishPlacingWindow = () => {
     if (placingWindow.isPlacing && viewMode === "edit") {
       const wall = walls.find(w => w.id === placingWindow.wallId);
@@ -1501,7 +2235,31 @@ export default function RoomDesignerPage() {
     }
   };
 
-  // Обновление временной стены/вспомогательной линии при движении мыши
+  const finishDraggingTable = (gridX: number, gridY: number) => {
+    if (draggingTableId && viewMode === "tables") {
+      const table = tables.find(t => t.id === draggingTableId);
+      if (!table) return;
+      
+      let newX = (table.positionX || 0) + dragOffset.x;
+      let newY = (table.positionY || 0) + dragOffset.y;
+      
+      if (gridSettings.snapToGrid) {
+        const snapFactor = gridSettings.displayCellSize / gridSettings.snapGridSize;
+        newX = Math.round(newX * snapFactor) / snapFactor;
+        newY = Math.round(newY * snapFactor) / snapFactor;
+      }
+      
+      handleUpdateTable({
+        ...table,
+        positionX: newX,
+        positionY: newY,
+      });
+      
+      setDraggingTableId(null);
+      setDragOffset({ x: 0, y: 0 });
+    }
+  };
+
   const updateTempWall = (gridX: number, gridY: number) => {
     if (isDrawing && currentWallStart && viewMode === "edit") {
       setTempWallEnd({ x: gridX, y: gridY });
@@ -1512,9 +2270,11 @@ export default function RoomDesignerPage() {
     if (placingWindow.isPlacing && viewMode === "edit") {
       updateWindowPosition(gridX, gridY);
     }
+    if (draggingTableId && viewMode === "tables") {
+      updateDraggingTable(gridX, gridY);
+    }
   };
 
-  // Завершить рисование стены или вспомогательной линии
   const finishDrawingWall = (gridX: number, gridY: number) => {
     if (isDrawing && currentWallStart && viewMode === "edit") {
       const { x: startX, y: startY } = currentWallStart;
@@ -1576,6 +2336,7 @@ export default function RoomDesignerPage() {
         setWalls([...walls, newWall]);
         setSelectedWallId(newWall.id);
         setSelectedGuideId(null);
+        setSelectedTableIds([]);
       } else if (drawingMode === "guide") {
         const newGuide: GuideLine = {
           id: `guide-${Date.now()}`,
@@ -1593,6 +2354,7 @@ export default function RoomDesignerPage() {
         setGuides([...guides, newGuide]);
         setSelectedGuideId(newGuide.id);
         setSelectedWallId(null);
+        setSelectedTableIds([]);
       }
       
       setCurrentWallStart(null);
@@ -1602,11 +2364,73 @@ export default function RoomDesignerPage() {
     }
   };
 
-  // Обработчик клика по сетке
+  const handleTableClick = (e: React.MouseEvent, tableId: string) => {
+    if (viewMode === "tables" && drawingMode === "select") {
+      if (!e.ctrlKey && !e.metaKey) {
+        const { x: gridX, y: gridY } = getGridCoordinates(e.clientX, e.clientY);
+        startDraggingTable(gridX, gridY, tableId);
+      }
+    }
+  };
+
+  const handleTableContextMenu = (e: React.MouseEvent, tableId: string) => {
+    if (viewMode === "tables" && drawingMode === "select") {
+      e.preventDefault();
+      
+      if (e.ctrlKey || e.metaKey) {
+        setSelectedTableIds(prev => 
+          prev.includes(tableId)
+            ? prev.filter(id => id !== tableId)
+            : [...prev, tableId]
+        );
+      } else {
+        setSelectedTableIds([tableId]);
+      }
+      
+      setSelectedWallId(null);
+      setSelectedDoorId(null);
+      setSelectedWindowId(null);
+      setSelectedGuideId(null);
+    }
+  };
+
   const handleGridClick = (e: React.MouseEvent) => {
-    if (isPanning || viewMode === "view") return;
+    if (isRightMouseDown || isPanning || viewMode === "view") return;
     
     const { x: gridX, y: gridY } = getGridCoordinates(e.clientX, e.clientY);
+    
+    if (viewMode === "tables" && drawingMode === "table") {
+       let maxTableNumber = 0;
+    tables.forEach(table => {
+      const match = table.name.match(/^Стол\s*(\d+)$/i) || table.name.match(/^(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1]);
+        if (num > maxTableNumber) maxTableNumber = num;
+      }
+    });
+    
+    const nextTableNumber = maxTableNumber + 1;
+    const defaultTableName = nextTableNumber.toString();
+
+      const newTableData = {
+          name: defaultTableName,
+        seats: 4,
+        shape: TableShape.RECTANGLE,
+        status: TableStatus.AVAILABLE,
+        positionX: gridX,
+        positionY: gridY,
+        width: 0.8,
+        height: 0.8,
+        radius: 0.4,
+        color: '#3B82F6',
+        hallId: currentHall?.id,
+        tagIds: [],
+      };
+         setNewTablePosition({ x: gridX, y: gridY });
+      setEditingTable(null);
+      setTableDialogOpen(true);
+      return;
+    }
     
     if (drawingMode === "door") {
       if (!placingDoor.isPlacing) {
@@ -1631,18 +2455,26 @@ export default function RoomDesignerPage() {
       setSelectedDoorId(null);
       setSelectedWindowId(null);
       setSelectedGuideId(null);
+      setSelectedTableIds([]);
     }
   };
 
-  // Обработчик движения мыши
+  const handleTableMouseDown = (e: React.MouseEvent, tableId: string) => {
+    if (viewMode === "tables" && drawingMode === "select" && e.button === 0) {
+      e.stopPropagation();
+      const { x: gridX, y: gridY } = getGridCoordinates(e.clientX, e.clientY);
+      startDraggingTable(gridX, gridY, tableId);
+    }
+  };
+
   const handleMouseMove = (e: React.MouseEvent) => {
     const { x: gridX, y: gridY } = getGridCoordinates(e.clientX, e.clientY);
     
-    if (viewMode === "edit") {
+    if (viewMode === "edit" || viewMode === "tables") {
       updateTempWall(gridX, gridY);
     }
     
-    if (isPanning && !isDrawing && !placingDoor.isPlacing && !placingWindow.isPlacing) {
+    if (isRightMouseDown && !isDrawing && !placingDoor.isPlacing && !placingWindow.isPlacing && !draggingTableId) {
       const deltaX = e.clientX - panStart.x;
       const deltaY = e.clientY - panStart.y;
       
@@ -1656,21 +2488,36 @@ export default function RoomDesignerPage() {
     }
   };
 
-  // Начать панорамирование
-  const startPanning = (e: React.MouseEvent) => {
-    if ((drawingMode !== "wall" && !isDrawing && !placingDoor.isPlacing && !placingWindow.isPlacing) || viewMode === "view") {
-      setIsPanning(true);
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button === 2) {
+      setIsRightMouseDown(true);
       setPanStart({ x: e.clientX, y: e.clientY });
       e.preventDefault();
     }
+    
+    if (e.button === 0) {
+      if ((drawingMode !== "wall" && !isDrawing && !placingDoor.isPlacing && !placingWindow.isPlacing && !draggingTableId) || viewMode === "view") {
+        setIsPanning(true);
+        setPanStart({ x: e.clientX, y: e.clientY });
+        e.preventDefault();
+      }
+    }
   };
 
-  // Остановить панорамирование
-  const stopPanning = () => {
-    setIsPanning(false);
+  const handleMouseUp = (e: React.MouseEvent) => {
+    if (e.button === 2) {
+      setIsRightMouseDown(false);
+    }
+    if (e.button === 0) {
+      setIsPanning(false);
+    }
+    
+    if (draggingTableId && viewMode === "tables") {
+      const { x: gridX, y: gridY } = getGridCoordinates(e.clientX, e.clientY);
+      finishDraggingTable(gridX, gridY);
+    }
   };
 
-  // Масштабирование колесом мыши
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault();
     
@@ -1683,7 +2530,7 @@ export default function RoomDesignerPage() {
     const zoomIntensity = 0.1;
     const newScale = e.deltaY > 0 
       ? Math.max(0.1, viewTransform.scale - zoomIntensity)
-      : Math.min(3, viewTransform.scale + zoomIntensity);
+      : Math.min(30, viewTransform.scale + zoomIntensity);
     
     const scaleChange = newScale / viewTransform.scale;
     
@@ -1694,7 +2541,6 @@ export default function RoomDesignerPage() {
     }));
   }, [viewTransform]);
 
-  // Быстрое масштабирование
   const zoomIn = () => {
     const newScale = Math.min(3, viewTransform.scale + 0.2);
     setViewTransform(prev => ({
@@ -1719,7 +2565,6 @@ export default function RoomDesignerPage() {
     });
   };
 
-  // Отмена рисования/размещения
   const cancelDrawing = () => {
     if (isDrawing) {
       setCurrentWallStart(null);
@@ -1737,9 +2582,12 @@ export default function RoomDesignerPage() {
       setPlacingWindow({ wallId: null, offset: 0, isPlacing: false });
       setSelectedWindowId(null);
     }
+    if (draggingTableId) {
+      setDraggingTableId(null);
+      setDragOffset({ x: 0, y: 0 });
+    }
   };
 
-  // Удаление выбранной стены
   const deleteSelectedWall = () => {
     if (selectedWallId && viewMode === "edit") {
       setDoors(doors.filter(door => door.wallId !== selectedWallId));
@@ -1749,7 +2597,6 @@ export default function RoomDesignerPage() {
     }
   };
 
-  // Удаление выбранной двери
   const deleteSelectedDoor = () => {
     if (selectedDoorId && viewMode === "edit") {
       setDoors(doors.filter(door => door.id !== selectedDoorId));
@@ -1757,7 +2604,6 @@ export default function RoomDesignerPage() {
     }
   };
 
-  // Удаление выбранного окна
   const deleteSelectedWindow = () => {
     if (selectedWindowId && viewMode === "edit") {
       setWindows(windows.filter(window => window.id !== selectedWindowId));
@@ -1765,7 +2611,6 @@ export default function RoomDesignerPage() {
     }
   };
 
-  // Удаление выбранной вспомогательной линии
   const deleteSelectedGuide = () => {
     if (selectedGuideId && viewMode === "edit") {
       setGuides(guides.filter(guide => guide.id !== selectedGuideId));
@@ -1773,7 +2618,16 @@ export default function RoomDesignerPage() {
     }
   };
 
-  // Изменение ширины двери
+  const deleteSelectedTables = () => {
+    if (selectedTableIds.length > 0 && viewMode === "tables") {
+      if (confirm(`Удалить ${selectedTableIds.length} выбранных столов?`)) {
+        selectedTableIds.forEach(tableId => {
+          handleDeleteTable(tableId);
+        });
+      }
+    }
+  };
+
   const changeDoorWidth = (width: number) => {
     setDoorWidth(width);
     if (selectedDoorId && viewMode === "edit") {
@@ -1785,7 +2639,6 @@ export default function RoomDesignerPage() {
     }
   };
 
-  // Изменение ширины окна
   const changeWindowWidth = (width: number) => {
     setWindowWidth(width);
     if (selectedWindowId && viewMode === "edit") {
@@ -1797,7 +2650,6 @@ export default function RoomDesignerPage() {
     }
   };
 
-  // Сброс всех стен, дверей, окон и вспомогательных линий
   const resetWalls = () => {
     if (viewMode === "edit") {
       setWalls([]);
@@ -1817,34 +2669,41 @@ export default function RoomDesignerPage() {
     }
   };
 
-  // Переключение режима просмотра/редактирования
-  const toggleViewMode = () => {
-    if (viewMode === "edit") {
-      setViewMode("view");
+  const toggleViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    
+    if (mode === "edit") {
+      setDrawingMode("wall");
+    } else if (mode === "tables") {
       setDrawingMode("select");
-      cancelDrawing();
-      setSelectedWallId(null);
-      setSelectedDoorId(null);
-      setSelectedWindowId(null);
-      setSelectedGuideId(null);
     } else {
-      setViewMode("edit");
+      setDrawingMode("select");
     }
+    
+    cancelDrawing();
+    setSelectedWallId(null);
+    setSelectedDoorId(null);
+    setSelectedWindowId(null);
+    setSelectedGuideId(null);
+    setSelectedTableIds([]);
   };
 
-  // Обработка нажатия клавиши ESC для отмены
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && (isDrawing || placingDoor.isPlacing || placingWindow.isPlacing) && viewMode === "edit") {
+      if (e.key === 'Escape' && (isDrawing || placingDoor.isPlacing || placingWindow.isPlacing || draggingTableId)) {
         cancelDrawing();
+      }
+      
+      if (e.key === 'a' && e.ctrlKey && viewMode === "tables") {
+        e.preventDefault();
+        setSelectedTableIds(tables.map(table => table.id));
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isDrawing, placingDoor.isPlacing, placingWindow.isPlacing, viewMode]);
+  }, [isDrawing, placingDoor.isPlacing, placingWindow.isPlacing, draggingTableId, viewMode, tables]);
 
-  // Добавляем обработчик колеса мыши
   useEffect(() => {
     const container = containerRef.current;
     if (container) {
@@ -1853,7 +2712,6 @@ export default function RoomDesignerPage() {
     }
   }, [handleWheel]);
 
-  // Создаем фоновую сетку
   const getGridBackground = () => {
     if (!gridSettings.showGrid) return 'none';
     
@@ -1889,21 +2747,34 @@ export default function RoomDesignerPage() {
     return `${subGrid}, ${mainGrid}`;
   };
 
-  // Получение курсора в зависимости от режима
   const getCursor = () => {
+    if (isRightMouseDown) return 'grabbing';
     if (isPanning) return 'grabbing';
     if (viewMode === "view") return 'grab';
-    if (drawingMode === "door" || drawingMode === "window" || drawingMode === "guide") return 'crosshair';
+    if (draggingTableId) return 'grabbing';
+    if (drawingMode === "door" || drawingMode === "window" || drawingMode === "guide" || drawingMode === "table") return 'crosshair';
     if (isDrawing) return 'crosshair';
+    if (viewMode === "tables") return 'default';
     return 'crosshair';
   };
+
+  const selectedTable = selectedTableIds.length === 1 ? tables.find(t => t.id === selectedTableIds[0]) : null;
+  const isCombinedTable = selectedTable ? TablesService.isCombinedTable(selectedTable) : false;
+
+const getTablesToDisplay = () => {
+  if (viewMode === "view") {
+    return tables.filter(table => 
+      !table.isHidden
+    );
+  }
+  return tables;
+};
 
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-500" />
-          <p className="text-gray-600">Загрузка...</p>
+          <p className="text-gray-900">Загрузка...</p>
         </div>
       </div>
     );
@@ -1913,7 +2784,6 @@ export default function RoomDesignerPage() {
     <div>
       
       <div className="flex flex-col gap-4">
-        {/* Вкладки с залами */}
         <div className="border rounded-lg bg-white">
           <div className="p-4 border-b">
             <div className="flex justify-between items-center">
@@ -1989,7 +2859,6 @@ export default function RoomDesignerPage() {
           </div>
         </div>
 
-        {/* Диалог создания нового зала */}
         {showCreateHallDialog && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
@@ -2054,28 +2923,42 @@ export default function RoomDesignerPage() {
           </div>
         )}
 
-        {/* Область рисования */}
         <Card className="w-full flex flex-row flex-wrap gap-4 p-2">
-          {/* Переключатель режимов */}
-          <Button
-            variant={viewMode === "edit" ? "default" : "outline"}
-            onClick={toggleViewMode}
-            className="flex items-center gap-2"
-          >
-            {viewMode === "edit" ? (
-              <>
-                <Eye className="h-4 w-4" />
-                Режим просмотра
-              </>
-            ) : (
-              <>
-                <Edit className="h-4 w-4" />
-                Режим редактирования
-              </>
-            )}
-          </Button>
+          <div className="flex items-center gap-2 border rounded-md p-1">
+            <Button
+              variant={viewMode === "view" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => toggleViewMode("view")}
+              title="Режим просмотра"
+              className="flex items-center gap-1"
+            >
+              <Eye className="h-4 w-4" />
+              <span className="hidden sm:inline">Просмотр</span>
+            </Button>
+            
+            <Button
+              variant={viewMode === "edit" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => toggleViewMode("edit")}
+              title="Режим редактирования стен"
+              className="flex items-center gap-1"
+            >
+              <Edit className="h-4 w-4" />
+              <span className="hidden sm:inline">Стены</span>
+            </Button>
+            
+            <Button
+              variant={viewMode === "tables" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => toggleViewMode("tables")}
+              title="Режим работы со столами"
+              className="flex items-center gap-1"
+            >
+              <Table className="h-4 w-4" />
+              <span className="hidden sm:inline">Столы</span>
+            </Button>
+          </div>
 
-          {/* Кнопки редактирования (только в режиме редактирования) */}
           {viewMode === "edit" && (
             <>
               <div className="flex items-center gap-2 border rounded-md p-1">
@@ -2214,12 +3097,86 @@ export default function RoomDesignerPage() {
                 onClick={resetWalls}
               >
                 <Trash2 className="h-4 w-4 mr-2" />
-                Очистить редактор
+                Очистить стены
               </Button>
             </>
           )}
           
-          {(isDrawing || placingDoor.isPlacing || placingWindow.isPlacing) && viewMode === "edit" && (
+          {viewMode === "tables" && (
+            <>
+              <Button
+                variant={drawingMode === "table" ? "default" : "outline"}
+                onClick={() => setDrawingMode("table")}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Добавить стол
+              </Button>
+              <Button
+                variant={drawingMode === "select" ? "default" : "outline"}
+                onClick={() => setDrawingMode("select")}
+              >
+                <MousePointer className="h-4 w-4 mr-2" />
+                Выбор
+              </Button>
+              
+              {selectedTableIds.length > 0 && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const table = tables.find(t => t.id === selectedTableIds[0]);
+                      if (table) {
+                        setEditingTable(table);
+                        setTableDialogOpen(true);
+                      }
+                    }}
+                    disabled={selectedTableIds.length !== 1}
+                  >
+                    <Edit className="h-4 w-4 mr-2" />
+                    Редактировать
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    onClick={deleteSelectedTables}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Удалить ({selectedTableIds.length})
+                  </Button>
+                  
+                  {selectedTableIds.length >= 2 && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setCombineDialogOpen(true)}
+                    >
+                      <Combine className="h-4 w-4 mr-2" />
+                      Объединить
+                    </Button>
+                  )}
+                  
+                  {isCombinedTable && (
+                    <Button
+                      variant="outline"
+                      onClick={() => handleSeparateTables(selectedTableIds[0])}
+                    >
+                      <Unlink className="h-4 w-4 mr-2" />
+                      Разделить
+                    </Button>
+                  )}
+                </>
+              )}
+              
+              <Button
+                variant="outline"
+                onClick={() => setTagsDialogOpen(true)}
+              >
+                <Tags className="h-4 w-4 mr-2" />
+                Теги
+              </Button>
+            </>
+          )}
+          
+          {(isDrawing || placingDoor.isPlacing || placingWindow.isPlacing || draggingTableId) && (
             <Button 
               variant="outline" 
               onClick={cancelDrawing}
@@ -2227,6 +3184,7 @@ export default function RoomDesignerPage() {
               Отменить {
                 placingDoor.isPlacing ? "размещение двери" : 
                 placingWindow.isPlacing ? "размещение окна" : 
+                draggingTableId ? "перетаскивание стола" :
                 "рисование"
               } (ESC)
             </Button>
@@ -2242,17 +3200,29 @@ export default function RoomDesignerPage() {
             />
           </div>
           
-          <div className="flex items-center justify-between gap-2">
-            <Label htmlFor="showGuides">Показать вспомогательные линии</Label>
-            <Switch
-              id="showGuides"
-              checked={gridSettings.showGuides}
-              onCheckedChange={(checked) => setGridSettings({...gridSettings, showGuides: checked})}
-              disabled={viewMode === "view"}
-            />
-          </div>
-          
           {viewMode === "edit" && (
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="showGuides">Показать вспомогательные линии</Label>
+              <Switch
+                id="showGuides"
+                checked={gridSettings.showGuides}
+                onCheckedChange={(checked) => setGridSettings({...gridSettings, showGuides: checked})}
+              />
+            </div>
+          )}
+          
+          {viewMode === "tables" && (
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="showTableLabels">Показать названия столов</Label>
+              <Switch
+                id="showTableLabels"
+                checked={gridSettings.showTableLabels}
+                onCheckedChange={(checked) => setGridSettings({...gridSettings, showTableLabels: checked})}
+              />
+            </div>
+          )}
+          
+          {viewMode !== "view" && (
             <>
               <div className="flex items-center justify-between gap-2">
                 <Label htmlFor="snapToGrid">Привязка к сетке</Label>
@@ -2262,32 +3232,48 @@ export default function RoomDesignerPage() {
                   onCheckedChange={(checked) => setGridSettings({...gridSettings, snapToGrid: checked})}
                 />
               </div>
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="snapToWalls">Привязка к стенам</Label>
-                <Switch
-                  id="snapToWalls"
-                  checked={gridSettings.snapToWalls}
-                  onCheckedChange={(checked) => setGridSettings({...gridSettings, snapToWalls: checked})}
-                />
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="snapToGuides">Привязка к вспомогательным линиям</Label>
-                <Switch
-                  id="snapToGuides"
-                  checked={gridSettings.snapToGuides}
-                  onCheckedChange={(checked) => setGridSettings({...gridSettings, snapToGuides: checked})}
-                />
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="forceOrthogonal" title="Принудительно рисовать только горизонтальные/вертикальные линии">
-                  Только ортогональные линии
-                </Label>
-                <Switch
-                  id="forceOrthogonal"
-                  checked={gridSettings.forceOrthogonal}
-                  onCheckedChange={(checked) => setGridSettings({...gridSettings, forceOrthogonal: checked})}
-                />
-              </div>
+              
+              {viewMode === "edit" && (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="snapToWalls">Привязка к стенам</Label>
+                    <Switch
+                      id="snapToWalls"
+                      checked={gridSettings.snapToWalls}
+                      onCheckedChange={(checked) => setGridSettings({...gridSettings, snapToWalls: checked})}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="snapToGuides">Привязка к вспомогательным линиям</Label>
+                    <Switch
+                      id="snapToGuides"
+                      checked={gridSettings.snapToGuides}
+                      onCheckedChange={(checked) => setGridSettings({...gridSettings, snapToGuides: checked})}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="forceOrthogonal" title="Принудительно рисовать только горизонтальные/вертикальные линии">
+                      Только ортогональные линии
+                    </Label>
+                    <Switch
+                      id="forceOrthogonal"
+                      checked={gridSettings.forceOrthogonal}
+                      onCheckedChange={(checked) => setGridSettings({...gridSettings, forceOrthogonal: checked})}
+                    />
+                  </div>
+                </>
+              )}
+              
+              {viewMode === "tables" && (
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="snapToTables">Привязка к столам</Label>
+                  <Switch
+                    id="snapToTables"
+                    checked={gridSettings.snapToTables}
+                    onCheckedChange={(checked) => setGridSettings({...gridSettings, snapToTables: checked})}
+                  />
+                </div>
+              )}
             </>
           )}
         </Card>
@@ -2301,7 +3287,9 @@ export default function RoomDesignerPage() {
                 </CardTitle>
                 <CardDescription>
                   {viewMode === "edit" 
-                    ? "Режим редактирования. Добавляйте стены, двери, окна и вспомогательные линии." 
+                    ? "Режим редактирования стен. Добавляйте стены, двери, окна и вспомогательные линии." 
+                    : viewMode === "tables"
+                    ? "Режим работы со столами. Добавляйте, редактируйте и расставляйте столы. ЛКМ - перемещение, ПКМ - выбор."
                     : "Режим просмотра. Только навигация по плану."}
                 </CardDescription>
               </div>
@@ -2327,9 +3315,6 @@ export default function RoomDesignerPage() {
                   >
                     <Minus className="h-4 w-4" />
                   </Button>
-                  <span className="text-sm font-medium min-w-[60px] text-center">
-                    {Math.round(viewTransform.scale * 100)}%
-                  </span>
                   <Button 
                     variant="outline" 
                     size="sm" 
@@ -2375,13 +3360,15 @@ export default function RoomDesignerPage() {
                 }}
                 onClick={handleGridClick}
                 onMouseMove={handleMouseMove}
-                onMouseDown={startPanning}
-                onMouseUp={stopPanning}
-                onMouseLeave={stopPanning}
+                onMouseDown={handleMouseDown}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={() => {
+                  setIsPanning(false);
+                  setIsRightMouseDown(false);
+                }}
                 onContextMenu={(e) => e.preventDefault()}
               >
-                {/* Вспомогательные линии */}
-                {gridSettings.showGuides && viewMode === "edit" && guides.map(guide => (
+                {gridSettings.showGuides && viewMode !== "tables" && guides.map(guide => (
                   <GuideLineComponent
                     key={guide.id}
                     guide={guide}
@@ -2393,15 +3380,16 @@ export default function RoomDesignerPage() {
                         setSelectedWallId(null);
                         setSelectedDoorId(null);
                         setSelectedWindowId(null);
+                        setSelectedTableIds([]);
                       }
                     }}
                     viewTransform={viewTransform}
                     showGuides={gridSettings.showGuides}
+                    showInTablesMode={viewMode === "tables"}
                   />
                 ))}
                 
-                {/* Нарисованные стены */}
-                {walls.map(wall => (
+                {(viewMode === "edit" || viewMode === "view" || viewMode === "tables") && walls.map(wall => (
                   <Wall
                     key={wall.id}
                     wall={wall}
@@ -2413,48 +3401,16 @@ export default function RoomDesignerPage() {
                         setSelectedDoorId(null);
                         setSelectedWindowId(null);
                         setSelectedGuideId(null);
+                        setSelectedTableIds([]);
                       }
                     }}
                     viewTransform={viewTransform}
                     showDimensions={viewMode === "edit"}
+                    showInTablesMode={viewMode === "tables"}
                   />
                 ))}
                 
-                {/* Точки концов стен и вспомогательных линий для визуализации */}
-                {(gridSettings.snapToWalls || gridSettings.snapToGuides) && viewMode === "edit" && !isDrawing && !placingDoor.isPlacing && !placingWindow.isPlacing && (
-                  <>
-                    {gridSettings.snapToWalls && walls.length > 0 && walls.flatMap(wall => [
-                      { x: wall.x1, y: wall.y1 },
-                      { x: wall.x2, y: wall.y2 }
-                    ]).map((point, index) => (
-                      <div
-                        key={`snap-wall-point-${index}`}
-                        className="absolute w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow-sm opacity-50 pointer-events-none"
-                        style={{
-                          left: `${point.x * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateX - 4}px`,
-                          top: `${point.y * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateY - 4}px`,
-                        }}
-                      />
-                    ))}
-                    
-                    {gridSettings.snapToGuides && gridSettings.showGuides && guides.length > 0 && guides.flatMap(guide => [
-                      { x: guide.x1, y: guide.y1 },
-                      { x: guide.x2, y: guide.y2 }
-                    ]).map((point, index) => (
-                      <div
-                        key={`snap-guide-point-${index}`}
-                        className="absolute w-3 h-3 bg-purple-500 rounded-full border-2 border-white shadow-sm opacity-50 pointer-events-none"
-                        style={{
-                          left: `${point.x * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateX - 3}px`,
-                          top: `${point.y * gridSettings.displayCellSize * viewTransform.scale + viewTransform.translateY - 3}px`,
-                        }}
-                      />
-                    ))}
-                  </>
-                )}
-                
-                {/* Двери */}
-                {doors.map(door => {
+                {(viewMode === "edit" || viewMode === "view" || viewMode === "tables") && doors.map(door => {
                   const wall = walls.find(w => w.id === door.wallId);
                   if (!wall) return null;
                   
@@ -2472,15 +3428,16 @@ export default function RoomDesignerPage() {
                           setSelectedWallId(null);
                           setSelectedWindowId(null);
                           setSelectedGuideId(null);
+                          setSelectedTableIds([]);
                         }
                       }}
                       showDimensions={viewMode === "edit"}
+                      showInTablesMode={viewMode === "tables"}
                     />
                   );
                 })}
                 
-                {/* Окна */}
-                {windows.map(windowItem => {
+                {(viewMode === "edit" || viewMode === "view" || viewMode === "tables") && windows.map(windowItem => {
                   const wall = walls.find(w => w.id === windowItem.wallId);
                   if (!wall) return null;
                   
@@ -2498,14 +3455,33 @@ export default function RoomDesignerPage() {
                           setSelectedWallId(null);
                           setSelectedDoorId(null);
                           setSelectedGuideId(null);
+                          setSelectedTableIds([]);
                         }
                       }}
                       showDimensions={viewMode === "edit"}
+                      showInTablesMode={viewMode === "tables"}
                     />
                   );
                 })}
                 
-                {/* Точка начала рисования */}
+                {(viewMode === "tables" || viewMode === "view") && getTablesToDisplay().map(table => (
+                  <TableComponent
+                    key={table.id}
+                    table={table}
+                    displayCellSize={gridSettings.displayCellSize}
+                    viewTransform={viewTransform}
+                    isSelected={selectedTableIds.includes(table.id)}
+                    onClick={(e) => handleTableClick(e, table.id)}
+                    onMouseDown={(e) => handleTableMouseDown(e, table.id)}
+                    onContextMenu={(e) => handleTableContextMenu(e, table.id)}
+                    showLabels={gridSettings.showTableLabels}
+                    isDragging={draggingTableId === table.id}
+                    dragOffset={draggingTableId === table.id ? dragOffset : undefined}
+                    showInViewMode={viewMode === "view"}
+                    showInTablesMode={viewMode === "tables"}
+                  />
+                ))}
+                
                 {currentWallStart && viewMode === "edit" && (
                   <div
                     className="absolute w-3 h-3 bg-blue-600 rounded-full border-2 border-white shadow z-10"
@@ -2516,135 +3492,69 @@ export default function RoomDesignerPage() {
                   />
                 )}
                 
-                {/* Временная стена или вспомогательная линия при рисовании */}
-                {isDrawing && currentWallStart && tempWallEnd && viewMode === "edit" && (
-                  <TempWall
-                    startX={currentWallStart.x}
-                    startY={currentWallStart.y}
-                    endX={tempWallEnd.x}
-                    endY={tempWallEnd.y}
-                    displayCellSize={gridSettings.displayCellSize}
-                    viewTransform={viewTransform}
-                    showDimensions={viewMode === "edit"}
-                    snapIndicator={snapIndicator}
-                    isGuide={drawingMode === "guide"}
-                    wallDrawingMode={wallDrawingMode}
-                  />
-                )}
-                
-                {/* Подсказка для режима дверей */}
-                {drawingMode === "door" && !placingDoor.isPlacing && viewMode === "edit" && (
-                  <div className="absolute bottom-4 left-4 bg-blue-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
-                    <p className="text-sm font-medium">Режим добавления дверей</p>
-                    <p className="text-xs opacity-90">Нажмите на стену, чтобы добавить дверь</p>
-                    <p className="text-xs opacity-90 mt-1">Двери можно размещать на любых стенах (включая диагональные)</p>
-                  </div>
-                )}
-                
-                {/* Подсказка для режима окон */}
-                {drawingMode === "window" && !placingWindow.isPlacing && viewMode === "edit" && (
-                  <div className="absolute bottom-4 left-4 bg-blue-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
-                    <p className="text-sm font-medium">Режим добавления окон</p>
-                    <p className="text-xs opacity-90">Нажмите на стену, чтобы добавить окно</p>
-                    <p className="text-xs opacity-90 mt-1">Окна можно размещать на любых стенах (включая диагональные)</p>
-                  </div>
-                )}
-                
-                {/* Подсказка для режима вспомогательных линий */}
-                {drawingMode === "guide" && !isDrawing && viewMode === "edit" && (
-                  <div className="absolute bottom-4 left-4 bg-purple-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
-                    <p className="text-sm font-medium">Режим добавления вспомогательных линий</p>
-                    <p className="text-xs opacity-90">Нажмите и протяните для создания линии</p>
-                    <p className="text-xs opacity-90">Можно рисовать горизонтальные, вертикальные и диагональные линии</p>
-                  </div>
-                )}
-                
-                {/* Подсказка для режима рисования стен */}
-                {drawingMode === "wall" && !isDrawing && viewMode === "edit" && (
-                  <div className="absolute bottom-4 left-4 bg-gray-800 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none max-w-md">
-                    <p className="text-sm font-medium">Режим рисования стен: {wallDrawingMode === "orthogonal" ? "Ортогональный" : wallDrawingMode === "diagonal" ? "Диагональный" : "Свободный"}</p>
-                    <p className="text-xs opacity-90">
-                      {wallDrawingMode === "orthogonal" 
-                        ? "Рисуются только горизонтальные и вертикальные стены" 
-                        : wallDrawingMode === "diagonal" 
-                        ? "Рисуются стены под произвольным углом" 
-                        : "Автоматическое определение: при малом отклонении от осей создаются прямые стены"}
-                    </p>
-                    <p className="text-xs opacity-90 mt-1">Нажмите и протяните для создания стены</p>
-                  </div>
-                )}
-                
-                {/* Подсказка для размещения двери */}
-                {placingDoor.isPlacing && viewMode === "edit" && (
-                  <div className="absolute bottom-4 left-4 bg-amber-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
-                    <p className="text-sm font-medium">Размещение двери</p>
-                    <p className="text-xs opacity-90">Перетащите вдоль стены, кликните для размещения</p>
-                    <p className="text-xs opacity-90 mt-1">Привязка от начала стены: {doors.find(d => d.isPlacing)?.offset.toFixed(1) || '0.0'} м</p>
-                  </div>
-                )}
-                
-                {/* Подсказка для размещения окна */}
-                {placingWindow.isPlacing && viewMode === "edit" && (
-                  <div className="absolute bottom-4 left-4 bg-blue-600 text-white px-3 py-2 rounded-lg shadow-lg pointer-events-none">
-                    <p className="text-sm font-medium">Размещение окна</p>
-                    <p className="text-xs opacity-90">Перетащите вдоль стены, кликните для размещения</p>
-                    <p className="text-xs opacity-90 mt-1">Привязка от начала стены: {windows.find(w => w.isPlacing)?.offset.toFixed(1) || '0.0'} м</p>
-                  </div>
-                )}
-                
-                {/* Подсказка при пустом плане */}
-                {walls.length === 0 && !isDrawing && viewMode === "edit" && (
+                {walls.length === 0 && tables.length === 0 && !isDrawing && viewMode === "edit" && (
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="text-center p-6 bg-white/90 rounded-lg max-w-md shadow-lg">
                       <Grid3X3 className="h-12 w-12 text-gray-400 mx-auto mb-3" />
                       <h3 className="font-medium text-lg mb-2">Начните проектирование</h3>
                       <p className="text-gray-600 mb-3">Добавьте первую стену, используя инструмент "Стена"</p>
-                      <p className="text-gray-500 text-sm mb-3">
-                        Попробуйте разные режимы рисования: ортогональный, диагональный или свободный
-                      </p>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Подсказка в режиме просмотра */}
-                {walls.length === 0 && viewMode === "view" && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="text-center p-6 bg-white/90 rounded-lg max-w-md shadow-lg">
-                      <Eye className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                      <h3 className="font-medium text-lg mb-2">Режим просмотра</h3>
-                      <p className="text-gray-600 mb-3">Добавьте стены в режиме редактирования</p>
                       <Button 
                         variant="outline" 
                         size="sm"
-                        onClick={toggleViewMode}
+                        onClick={() => toggleViewMode("tables")}
                         className="pointer-events-auto mt-2"
                       >
-                        Перейти к редактированию
+                        Или перейдите к расстановке столов
                       </Button>
                     </div>
                   </div>
                 )}
                 
-                {/* Индикатор панорамирования */}
-                {isPanning && (
+                {walls.length === 0 && tables.length === 0 && viewMode === "tables" && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="text-center p-6 bg-white/90 rounded-lg max-w-md shadow-lg">
+                      <Table className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                      <h3 className="font-medium text-lg mb-2">Начните расстановку столов</h3>
+                      <p className="text-gray-600 mb-3">Добавьте первый стол, используя инструмент "Добавить стол"</p>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => toggleViewMode("edit")}
+                        className="pointer-events-auto mt-2"
+                      >
+                        Или перейдите к проектированию стен
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                
+                {isRightMouseDown && (
                   <div className="absolute top-4 right-4 bg-gray-800 text-white px-3 py-1 rounded-full text-sm flex items-center gap-2">
                     <Move className="h-4 w-4 animate-pulse" />
-                    Панорамирование...
+                    Панорамирование (правая кнопка мыши)...
                   </div>
                 )}
                 
-                {/* Индикатор режима просмотра */}
-                {viewMode === "view" && !isPanning && (
-                  <div className="absolute top-4 right-4 bg-green-600 text-white px-3 py-1 rounded-full text-sm flex items-center gap-2">
-                    <Eye className="h-4 w-4" />
-                    Режим просмотра
+                {!isRightMouseDown && (
+                  <div className={`absolute top-4 left-4 px-3 py-1 rounded-full text-sm flex items-center gap-2 ${viewMode === "edit" ? "bg-blue-600 text-white" : viewMode === "tables" ? "bg-green-600 text-white" : "bg-gray-600 text-white"}`}>
+                    {viewMode === "edit" ? <Edit className="h-4 w-4" /> : 
+                     viewMode === "tables" ? <Table className="h-4 w-4" /> : 
+                     <Eye className="h-4 w-4" />}
+                    {viewMode === "edit" ? "Режим стен" : 
+                     viewMode === "tables" ? "Режим столов" : 
+                     "Режим просмотра"}
                   </div>
                 )}
                 
-                {/* Индикатор текущего зала */}
                 {currentHall && (
-                  <div className="absolute top-4 left-4 bg-blue-600 text-white px-3 py-1 rounded-full text-sm">
+                  <div className="absolute top-4 right-4 bg-blue-600 text-white px-3 py-1 rounded-full text-sm">
                     Зал: {currentHall.title}
+                  </div>
+                )}
+                
+                {viewMode === "tables" && selectedTableIds.length > 0 && (
+                  <div className="absolute bottom-4 left-4 bg-blue-600 text-white px-3 py-2 rounded-md text-sm">
+                    Выбрано столов: {selectedTableIds.length}
                   </div>
                 )}
               </div>
@@ -2652,24 +3562,36 @@ export default function RoomDesignerPage() {
             
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-4 text-sm">
-                <div className="flex items-center gap-1">
-                  <div className="w-6 h-3 bg-gray-600 rounded"></div>
-                  <span>Стена</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-6 h-4 bg-amber-800 rounded-sm border border-amber-900"></div>
-                  <span>Дверь</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-6 h-3 bg-white rounded-sm border-2 border-blue-300"></div>
-                  <span>Окно</span>
-                </div>
-                {viewMode === "edit" && gridSettings.showGuides && (
+                {(viewMode === "edit" || viewMode === "view" || viewMode === "tables") && (
+                  <>
+                    <div className="flex items-center gap-1">
+                      <div className="w-6 h-3 bg-gray-600 rounded"></div>
+                      <span>Стена</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-6 h-4 bg-amber-800 rounded-sm border border-amber-900"></div>
+                      <span>Дверь</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-6 h-3 bg-white rounded-sm border-2 border-blue-300"></div>
+                      <span>Окно</span>
+                    </div>
+                    {gridSettings.showGuides && viewMode !== "tables" && (
+                      <div className="flex items-center gap-1">
+                        <div className="w-6 h-1 border-t-2 border-dashed border-purple-500"></div>
+                        <span>Вспом. линия</span>
+                      </div>
+                    )}
+                  </>
+                )}
+                
+                {(viewMode === "tables" || viewMode === "view") && (
                   <div className="flex items-center gap-1">
-                    <div className="w-6 h-1 border-t-2 border-dashed border-purple-500"></div>
-                    <span>Вспом. линия</span>
+                    <div className="w-6 h-6 bg-blue-500 rounded border-2 border-blue-700"></div>
+                    <span>Стол</span>
                   </div>
                 )}
+                
                 {viewMode === "edit" && (
                   <>
                     <div className="flex items-center gap-1">
@@ -2680,22 +3602,6 @@ export default function RoomDesignerPage() {
                       <div className="w-3 h-3 bg-blue-600 rounded-full"></div>
                       <span>Начало стены</span>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <div className="w-4 h-4 bg-gray-400 rounded-sm"></div>
-                      <span>Привязка</span>
-                    </div>
-                    {gridSettings.snapToWalls && (
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span>Точки стен</span>
-                      </div>
-                    )}
-                    {gridSettings.snapToGuides && gridSettings.showGuides && (
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                        <span>Точки линий</span>
-                      </div>
-                    )}
                   </>
                 )}
               </div>
@@ -2726,6 +3632,41 @@ export default function RoomDesignerPage() {
           </CardContent>
         </Card>
       </div>
+
+      <TableDialog
+        open={tableDialogOpen}
+         onOpenChange={(open) => {
+          setTableDialogOpen(open);
+          if (!open) {
+            setNewTablePosition(null); 
+          }
+        }}
+        table={editingTable}
+        hallId={currentHall?.id || ''}
+        onSave={editingTable ? handleUpdateTable : handleCreateTable}
+        tableTags={tableTags}
+        isSaving={isTableSaving}
+         newTablePosition={newTablePosition}
+      />
+      
+      <CombineTablesDialog
+        open={combineDialogOpen}
+        onOpenChange={setCombineDialogOpen}
+        tables={tables}
+        selectedTableIds={selectedTableIds}
+        onCombine={handleCombineTables}
+        isCombining={isCombiningTables}
+      />
+      
+      <TableTagsDialog
+        open={tagsDialogOpen}
+        onOpenChange={setTagsDialogOpen}
+        tags={tableTags}
+        restaurantId={restaurantId}
+        onSaveTag={handleSaveTableTag}
+        onDeleteTag={handleDeleteTableTag}
+        isSaving={isTagSaving}
+      />
     </div>
   );
 }
