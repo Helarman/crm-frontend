@@ -23,6 +23,7 @@ import {
   ChevronDown,
   LayoutDashboard,
   ClipboardList,
+  BookUser,
   Utensils,
   BookOpen,
   Users,
@@ -602,6 +603,13 @@ export default function Side() {
       icon: <LineChart className="w-5 h-5" />,
       roles: []
     },
+    {
+      name: 'Бронирование',
+      href: "/reservation",
+      icon: <BookUser className="w-5 h-5" />,
+      roles: [ 'WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR']
+    },
+    
   ]
 
   const [activeItems, inactiveItems] = navItems.reduce<

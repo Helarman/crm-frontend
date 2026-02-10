@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -119,33 +119,38 @@ export interface PaginatedResponse<T> {
 }
 
 export const ReservationsService = {
+  // Основные операции
   createReservation: async (dto: CreateReservationDto): Promise<ReservationDto> => {
     const { data } = await api.post('/reservations', dto);
     return data;
   },
+
   getReservationById: async (id: string): Promise<ReservationDto> => {
     const { data } = await api.get(`/reservations/${id}`);
     return data;
   },
-  getReservations: async (query: ReservationQueryDto): Promise<PaginatedResponse<ReservationDto>> => {
+
+  getReservations: async (query: ReservationQueryDto): Promise<any> => {
     const { data } = await api.get('/reservations', { params: query });
     return data;
   },
+
   updateReservation: async (id: string, dto: UpdateReservationDto): Promise<ReservationDto> => {
     const { data } = await api.patch(`/reservations/${id}`, dto);
     return data;
   },
+
+  // Специальные операции статуса
   cancelReservation: async (id: string): Promise<ReservationDto> => {
     const { data } = await api.post(`/reservations/${id}/cancel`);
     return data;
   },
-  deleteReservation: async (id: string): Promise<void> => {
-    await api.delete(`/reservations/${id}`);
-  },
+
   markAsArrived: async (id: string): Promise<ReservationDto> => {
     const { data } = await api.post(`/reservations/${id}/arrived`);
     return data;
   },
+
   completeReservation: async (id: string): Promise<ReservationDto> => {
     const { data } = await api.post(`/reservations/${id}/complete`);
     return data;
@@ -155,6 +160,12 @@ export const ReservationsService = {
     const { data } = await api.post(`/reservations/${id}/no-show`);
     return data;
   },
+
+  deleteReservation: async (id: string): Promise<void> => {
+    await api.delete(`/reservations/${id}`);
+  },
+
+  // Групповые операции
   getUpcomingReservations: async (
     restaurantId: string,
     hours: number = 24
@@ -164,6 +175,23 @@ export const ReservationsService = {
     });
     return data;
   },
+
+  getReservationStatistics: async (
+    restaurantId: string,
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<ReservationStatisticsDto> => {
+    const params: any = {};
+    if (startDate) params.startDate = startDate.toISOString();
+    if (endDate) params.endDate = endDate.toISOString();
+
+    const { data } = await api.get(`/reservations/statistics/restaurant/${restaurantId}`, {
+      params
+    });
+    return data;
+  },
+
+  // Операции по столам
   getReservationsByTable: async (
     tableId: string,
     query?: ReservationQueryDto
@@ -173,6 +201,7 @@ export const ReservationsService = {
     });
     return data;
   },
+
   getCurrentReservationByTable: async (tableId: string): Promise<ReservationDto | null> => {
     try {
       const { data } = await api.get(`/reservations/table/${tableId}/current`);
@@ -184,6 +213,7 @@ export const ReservationsService = {
       throw error;
     }
   },
+
   getUpcomingReservationsByTable: async (
     tableId: string,
     hours: number = 24
@@ -204,22 +234,7 @@ export const ReservationsService = {
     return data;
   },
 
-  getReservationStatistics: async (
-    restaurantId: string,
-    startDate?: Date,
-    endDate?: Date
-  ): Promise<ReservationStatisticsDto> => {
-    const params: any = {};
-    if (startDate) params.startDate = startDate.toISOString();
-    if (endDate) params.endDate = endDate.toISOString();
-
-    const { data } = await api.get(`/reservations/statistics/restaurant/${restaurantId}`, {
-      params
-    });
-    return data;
-  },
-
-
+  // Утилиты
   getStatusColor: (status: ReservationStatus): string => {
     const colors = {
       [ReservationStatus.PENDING]: '#F59E0B', // amber
@@ -243,7 +258,6 @@ export const ReservationsService = {
     };
     return labels[status] || 'Неизвестно';
   },
-
 
   getSourceLabel: (source: ReservationSource): string => {
     const labels = {
@@ -274,8 +288,7 @@ export const ReservationsService = {
     
     return (
       (reservation.status === ReservationStatus.PENDING ||
-       reservation.status === ReservationStatus.CONFIRMED) &&
-      hoursDiff > 1 
+       reservation.status === ReservationStatus.CONFIRMED)
     );
   },
 
@@ -360,12 +373,14 @@ export const ReservationsService = {
     
     return groups;
   },
+
   filterReservationsByStatus: (
     reservations: ReservationDto[],
     status: ReservationStatus
   ): ReservationDto[] => {
     return reservations.filter(reservation => reservation.status === status);
   },
+
   getGuestsCountByDate: (
     reservations: ReservationDto[],
     date: Date
@@ -384,6 +399,7 @@ export const ReservationsService = {
       return total;
     }, 0);
   },
+
   formatReservationDateTime: (date: Date | string): string => {
     const d = new Date(date);
     return d.toLocaleDateString('ru-RU', {
@@ -394,6 +410,7 @@ export const ReservationsService = {
       minute: '2-digit'
     });
   },
+
   formatReservationTime: (date: Date | string): string => {
     const d = new Date(date);
     return d.toLocaleTimeString('ru-RU', {
@@ -401,6 +418,7 @@ export const ReservationsService = {
       minute: '2-digit'
     });
   },
+
   formatReservationDate: (date: Date | string): string => {
     const d = new Date(date);
     return d.toLocaleDateString('ru-RU', {
@@ -411,9 +429,11 @@ export const ReservationsService = {
   },
 
   getReservationDuration: (reservation: ReservationDto): number => {
-    return 2;
+    return 2; // стандартная продолжительность бронирования
   },
 
+  // Этот метод остался, но в контроллере нет соответствующего endpoint-а
+  // Можно либо удалить его, либо реализовать на бекенде
   checkTableAvailability: async (
     tableId: string,
     reservationTime: string,

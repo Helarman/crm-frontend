@@ -99,6 +99,7 @@ export interface CreateRestaurantDto {
   description?: string;
   address: string;
   useWarehouse?: boolean;
+  useReservation?: boolean;
   shiftCloseTime?: string;
   allowNegativeStock?: string;
   acceptOrders?: string;
@@ -131,6 +132,7 @@ export interface UpdateRestaurantDto {
   description?: string;
   address?: string;
   useWarehouse?: boolean;
+  useReservation?: boolean;
   shiftCloseTime?: string;
   allowNegativeStock?: string;
   acceptOrders?: string;

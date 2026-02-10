@@ -128,6 +128,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { motion, useAnimationControls } from 'framer-motion'
+import { TablesService, TableStatus } from '@/lib/api/tables.service'
 
   // Типы для навигации по категориям
   interface CategoryNavigation {
@@ -599,7 +600,24 @@ import { motion, useAnimationControls } from 'framer-motion'
         setOrderAdditivesLoading(false);
       }
     };
+      const releaseTable = async (tableId: string, reason: string) => {
+        try {
+          // Обновляем статус стола на "Свободен" и убираем привязку к заказу
+          await TablesService.updateTableStatus(
+            tableId,
+            TableStatus.AVAILABLE,
+            undefined // Сбрасываем orderId
+          );
 
+          // Создаем лог об освобождении стола
+          await createOrderLog(`Стол освобожден: ${reason}`);
+          
+          console.log(`Стол ${tableId} освобожден: ${reason}`);
+        } catch (error) {
+          console.error('Ошибка при освобождении стола:', error);
+          // Не прерываем основную операцию, только логируем ошибку
+        }
+      };
     const loadWarehouseData = async () => {
       if (!order?.restaurant?.id) return;
 
@@ -1264,6 +1282,23 @@ import { motion, useAnimationControls } from 'framer-motion'
         if (currentShiftId) {
           await assignOrderToShift(order.id, currentShiftId);
         }
+        
+        if (restaurantData?.useWarehouse && orderAdditives.length > 0) {
+              // Фильтруем модификаторы с инвентарными товарами
+              const additivesWithInventory = orderAdditives.filter(
+                additive => additive.inventoryItem && additive.quantity && additive.quantity > 0
+              );  
+
+              if (additivesWithInventory.length > 0) {
+                await writeOffOrderAdditives(additivesWithInventory);
+              }
+            }
+
+            // Освобождаем стол перед завершением заказа
+            if (order.tableId && restaurantData.useReservation) {
+              await releaseTable(order.tableId, 'Заказ завершен');
+            }
+
 
         // Если ресторан использует склад и есть модификаторы с инвентарными товарами
         if (restaurantData?.useWarehouse && orderAdditives.length > 0) {
@@ -1292,6 +1327,52 @@ import { motion, useAnimationControls } from 'framer-motion'
         setIsUpdating(false);
       }
     };
+const updateTableStatusBasedOnOrder = async () => {
+  if (!order?.tableId || !restaurantData.useReservation) return;
+
+  try {
+    let newTableStatus = TableStatus.AVAILABLE;
+    let reason = '';
+
+    switch (order.status) {
+      case 'PREPARING':
+        newTableStatus = TableStatus.OCCUPIED;
+        reason = 'Заказ готовится';
+        break;
+      case 'READY':
+        newTableStatus = TableStatus.OCCUPIED;
+        reason = 'Заказ готов';
+        break;
+      case 'DELIVERING':
+        newTableStatus = TableStatus.OCCUPIED;
+        reason = 'Заказ доставляется';
+        break;
+      case 'COMPLETED':
+        newTableStatus = TableStatus.AVAILABLE;
+        reason = 'Заказ завершен';
+        break;
+      case 'CANCELLED':
+        newTableStatus = TableStatus.AVAILABLE;
+        reason = 'Заказ отменен';
+        break;
+      default:
+        return;
+    }
+
+    await TablesService.updateTableStatus(order.tableId, newTableStatus, order.id);
+    await createOrderLog(`Статус стола изменен: ${reason}`);
+  } catch (error) {
+    console.error('Ошибка обновления статуса стола:', error);
+  }
+};
+
+// Вызываем при изменении статуса заказа
+useEffect(() => {
+  if (order?.tableId && restaurantData.useReservation) {
+    updateTableStatusBasedOnOrder();
+  }
+}, [order?.status, order?.tableId, restaurantData.useReservation]);
+
 
     const handleCalculateOrder = async () => {
       if (!order) return;
@@ -1349,6 +1430,11 @@ import { motion, useAnimationControls } from 'framer-motion'
       if (!order) return;
       try {
         setIsUpdating(true);
+        if (order.tableId && restaurantData.useReservation) {
+          await releaseTable(order.tableId, 'Заказ отменен');
+        }
+
+
         const updatedOrder = await OrderService.updateStatus(order.id, { status: 'CANCELLED' });
         setOrder(updatedOrder);
 

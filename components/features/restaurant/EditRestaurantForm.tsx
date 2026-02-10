@@ -21,8 +21,6 @@ import {
 import { Loader2, MapPin, Search } from 'lucide-react';
 import { ImageUploader } from '../menu/product/ImageUploader';
 
-
-
 interface RestaurantFormValues {
   title: string;
   address: string;
@@ -33,6 +31,7 @@ interface RestaurantFormValues {
   networkId: string;
   images: string[];
   useWarehouse: boolean;
+  useReservation: boolean; // <-- Добавлено
   shiftCloseTime: string;
   mondayOpen: string;
   mondayClose: string;
@@ -180,6 +179,7 @@ export function EditRestaurantForm({
       ...initialValues,
       images: initialValues.images || [],
       useWarehouse: initialValues.useWarehouse || false,
+      useReservation: initialValues.useReservation || false, // <-- Добавлено
       allowNegativeStock: initialValues.allowNegativeStock || false,
       acceptOrders: initialValues.acceptOrders || true,
       shiftCloseTime: formatTimeForInput(initialValues.shiftCloseTime),
@@ -230,6 +230,8 @@ export function EditRestaurantForm({
       noNetworks: 'Нет доступных сетей',
       useWarehouse: 'Использовать складскую систему',
       useWarehouseDescription: 'Включить управление складом и учет остатков',
+      useReservation: 'Использовать систему бронирования', // <-- Добавлено
+      useReservationDescription: 'Включить систему бронирования столиков', // <-- Добавлено
       allowNegativeStock: 'Разрешить отрицательный остаток',
       allowNegativeStockDescription: 'Позволить продавать товары при нулевом остатке',
       acceptOrders: 'Принимать заказы',
@@ -280,6 +282,8 @@ export function EditRestaurantForm({
       noNetworks: 'No networks available',
       useWarehouse: 'Use warehouse system',
       useWarehouseDescription: 'Enable warehouse management and stock tracking',
+      useReservation: 'Use reservation system', // <-- Добавлено
+      useReservationDescription: 'Enable table reservation system', // <-- Добавлено
       allowNegativeStock: 'Allow negative stock',
       allowNegativeStockDescription: 'Allow selling products when stock is zero',
       acceptOrders: 'Accept orders',
@@ -330,6 +334,8 @@ export function EditRestaurantForm({
       noNetworks: 'ხელმისაწვდომი ქსელი არ არის',
       useWarehouse: 'საწყობის სისტემის გამოყენება',
       useWarehouseDescription: 'ჩართეთ საწყობის მენეჯმენტი და მარაგების თვალყურის დევნება',
+      useReservation: 'საბუკინგოს სისტემის გამოყენება', // <-- Добавлено
+      useReservationDescription: 'ჩართეთ მაგიდების დაჯავშნის სისტემა', // <-- Добавлено
       allowNegativeStock: 'ნეგატიური მარაგის ნებართვა',
       allowNegativeStockDescription: 'ნულოვანი მარაგის შემთხვევაში პროდუქტების გაყიდვის ნებართვა',
       acceptOrders: 'შეკვეთების მიღება',
@@ -367,6 +373,7 @@ export function EditRestaurantForm({
   const t = translations[language];
 
   const useWarehouseValue = watch('useWarehouse');
+  const useReservationValue = watch('useReservation'); // <-- Добавлено
   const allowNegativeStockValue = watch('allowNegativeStock');
   const acceptOrdersValue = watch('acceptOrders');
   const addressValue = watch('address');
@@ -470,6 +477,10 @@ export function EditRestaurantForm({
     setValue('useWarehouse', checked, { shouldDirty: true });
   };
 
+  const handleReservationToggle = (checked: boolean) => {
+    setValue('useReservation', checked, { shouldDirty: true });
+  };
+
   const handleNegativeStockToggle = (checked: boolean) => {
     setValue('allowNegativeStock', checked, { shouldDirty: true });
   };
@@ -496,11 +507,10 @@ export function EditRestaurantForm({
     
     return true;
   };
-
-  const onSubmitHandler = handleSubmit(async (data) => {
-    setIsUploading(true);
-    try {
-      const formatTimeForApi = (time: string) => {
+const onSubmitHandler = handleSubmit(async (data) => {
+  setIsUploading(true);
+  try {
+    const formatTimeForApi = (time: string) => {
         if (!time) return null;
         
         const [hours, minutes] = time.split(':');
@@ -509,38 +519,57 @@ export function EditRestaurantForm({
         
         return date.toISOString();
       };
+      
+    const cleanData: any = {
+      ...data,
+      latitude: coordinates.lat.toString(),
+      longitude: coordinates.lng.toString(),
+      networkId: data.networkId,
+      useWarehouse: data.useWarehouse,
+      useReservation: data.useReservation,
+      allowNegativeStock: data.allowNegativeStock,
+      acceptOrders: data.acceptOrders,
+      images: data.images || [],
+      shiftCloseTime: formatTimeForApi(data.shiftCloseTime),
+      mondayOpen: data.mondayIsWorking ? formatTimeForApi(data.mondayOpen) : null,
+      mondayClose: data.mondayIsWorking ? formatTimeForApi(data.mondayClose) : null,
+      tuesdayOpen: data.tuesdayIsWorking ? formatTimeForApi(data.tuesdayOpen) : null,
+      tuesdayClose: data.tuesdayIsWorking ? formatTimeForApi(data.tuesdayClose) : null,
+      wednesdayOpen: data.wednesdayIsWorking ? formatTimeForApi(data.wednesdayOpen) : null,
+      wednesdayClose: data.wednesdayIsWorking ? formatTimeForApi(data.wednesdayClose) : null,
+      thursdayOpen: data.thursdayIsWorking ? formatTimeForApi(data.thursdayOpen) : null,
+      thursdayClose: data.thursdayIsWorking ? formatTimeForApi(data.thursdayClose) : null,
+      fridayOpen: data.fridayIsWorking ? formatTimeForApi(data.fridayOpen) : null,
+      fridayClose: data.fridayIsWorking ? formatTimeForApi(data.fridayClose) : null,
+      saturdayOpen: data.saturdayIsWorking ? formatTimeForApi(data.saturdayOpen) : null,
+      saturdayClose: data.saturdayIsWorking ? formatTimeForApi(data.saturdayClose) : null,
+      sundayOpen: data.sundayIsWorking ? formatTimeForApi(data.sundayOpen) : null,
+      sundayClose: data.sundayIsWorking ? formatTimeForApi(data.sundayClose) : null,
+    };
 
-      await onSubmit({
-        ...data,
-        latitude: coordinates.lat.toString(),
-        longitude: coordinates.lng.toString(),
-        networkId: data.networkId,
-        useWarehouse: data.useWarehouse,
-        allowNegativeStock: data.allowNegativeStock,
-        acceptOrders: data.acceptOrders,
-        images: data.images || [],
-        shiftCloseTime: formatTimeForApi(data.shiftCloseTime),
-        mondayOpen: data.mondayIsWorking ? formatTimeForApi(data.mondayOpen) : null,
-        mondayClose: data.mondayIsWorking ? formatTimeForApi(data.mondayClose) : null,
-        tuesdayOpen: data.tuesdayIsWorking ? formatTimeForApi(data.tuesdayOpen) : null,
-        tuesdayClose: data.tuesdayIsWorking ? formatTimeForApi(data.tuesdayClose) : null,
-        wednesdayOpen: data.wednesdayIsWorking ? formatTimeForApi(data.wednesdayOpen) : null,
-        wednesdayClose: data.wednesdayIsWorking ? formatTimeForApi(data.wednesdayClose) : null,
-        thursdayOpen: data.thursdayIsWorking ? formatTimeForApi(data.thursdayOpen) : null,
-        thursdayClose: data.thursdayIsWorking ? formatTimeForApi(data.thursdayClose) : null,
-        fridayOpen: data.fridayIsWorking ? formatTimeForApi(data.fridayOpen) : null,
-        fridayClose: data.fridayIsWorking ? formatTimeForApi(data.fridayClose) : null,
-        saturdayOpen: data.saturdayIsWorking ? formatTimeForApi(data.saturdayOpen) : null,
-        saturdayClose: data.saturdayIsWorking ? formatTimeForApi(data.saturdayClose) : null,
-        sundayOpen: data.sundayIsWorking ? formatTimeForApi(data.sundayOpen) : null,
-        sundayClose: data.sundayIsWorking ? formatTimeForApi(data.sundayClose) : null,
-      });
-    } catch (error) {
-      console.error('Error updating restaurant:', error);
-    } finally {
-      setIsUploading(false);
+    // Явно удаляем лишние поля, которые не должны быть в DTO обновления
+    delete cleanData.products;
+    delete cleanData.users;
+    delete cleanData.network; // если есть
+    delete cleanData.id;
+    delete cleanData.createdAt;
+    delete cleanData.updatedAt;
+
+    // Логируем размер данных для отладки
+    const dataSize = JSON.stringify(cleanData).length;
+    console.log(`Sending update data size: ${dataSize} bytes`);
+    
+    if (dataSize > 500000) { // 500KB
+      console.warn('Data size is large, consider splitting the request');
     }
-  });
+
+    await onSubmit(cleanData);
+  } catch (error) {
+    console.error('Error updating restaurant:', error);
+  } finally {
+    setIsUploading(false);
+  }
+});
 
   const DaySchedule = ({ 
     day, 
@@ -650,7 +679,6 @@ export function EditRestaurantForm({
               className="flex-1"
               placeholder="Введите адрес"
             />
-       
           </div>
           {isGeocoding && (
             <div className="flex items-center space-x-2 text-sm text-muted-foreground mt-1">
@@ -713,6 +741,22 @@ export function EditRestaurantForm({
             id="useWarehouse"
             checked={useWarehouseValue}
             onCheckedChange={handleWarehouseToggle}
+          />
+        </div>
+
+        <div className="flex items-center justify-between p-4 border rounded-lg">
+          <div className="space-y-0.5">
+            <Label htmlFor="useReservation" className="text-base">
+              {t.useReservation}
+            </Label>
+            <p className="text-sm text-muted-foreground">
+              {t.useReservationDescription}
+            </p>
+          </div>
+          <Switch
+            id="useReservation"
+            checked={useReservationValue}
+            onCheckedChange={handleReservationToggle}
           />
         </div>
 

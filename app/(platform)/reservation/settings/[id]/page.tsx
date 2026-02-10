@@ -1668,22 +1668,7 @@ export default function RoomDesignerPage() {
     }
   };
 
-  const deleteHall = async (hallId: string) => {
-    if (!confirm('Вы уверены, что хотите удалить этот зал? Все данные будут потеряны.')) {
-      return;
-    }
 
-    try {
-      await TablesService.deleteHall(hallId);
-      toast.success('Зал удален');
-      
-      await loadHalls();
-      
-    } catch (error) {
-      console.error('Ошибка при удалении зала:', error);
-      toast.error('Не удалось удалить зал');
-    }
-  };
 
   const handleCreateTable = async (tableData: any) => {
     try {
@@ -2841,17 +2826,6 @@ const getTablesToDisplay = () => {
                     className="relative group"
                   >
                     {hall.title}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 w-6 p-0 absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteHall(hall.id);
-                      }}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
                   </Button>
                 ))}
               </div>

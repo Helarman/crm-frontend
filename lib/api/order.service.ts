@@ -290,6 +290,7 @@
   export interface OrderResponse {
     totalAmount: number
     discountAmount: number
+    tableId?: string
     bonusPointsUsed: number
     orderAdditives: any
     source: string

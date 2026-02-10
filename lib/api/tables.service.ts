@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -267,7 +267,30 @@ export interface PaginatedResponse<T> {
     totalPages: number;
   };
 }
+export interface AssignTableDto {
+  tableId: string;
+  assignToOrder?: boolean;
+  reservationId?: string;
+}
 
+export interface OrderTableDto {
+  id: string;
+  orderId: string;
+  tableId: string;
+  assignedAt: Date;
+  assignedBy: string;
+  table?: TableDto;
+}
+
+export interface TableStatusDto {
+  tableId: string;
+  status: TableStatus;
+  currentOrderId?: string;
+  orderIds?: string[];
+  isReserved: boolean;
+  reservationTime?: Date;
+  lastCleaned?: Date;
+}
 export const TablesService = {
   // ========== ЗАЛЫ ==========
 
@@ -587,6 +610,142 @@ export const TablesService = {
    */
   getTableStatistics: async (restaurantId: string): Promise<TableStatisticsDto> => {
     const { data } = await api.get(`/tables/statistics/restaurant/${restaurantId}`);
+    return data;
+  },
+  // ========== УПРАВЛЕНИЕ СТОЛАМИ В ЗАКАЗАХ ==========
+
+  /**
+   * Привязать стол к заказу
+   */
+  assignTableToOrder: async (
+    orderId: string,
+    dto: AssignTableDto
+  ): Promise<OrderTableDto> => {
+    const { data } = await api.post(`/orders/${orderId}/assign-table`, dto);
+    return data;
+  },
+
+  /**
+   * Отвязать стол от заказа
+   */
+  unassignTableFromOrder: async (orderId: string): Promise<void> => {
+    const { data } = await api.delete(`/orders/${orderId}/unassign-table`);
+    return data;
+  },
+
+  /**
+   * Получить информацию о столе заказа
+   */
+  getOrderTable: async (orderId: string): Promise<OrderTableDto> => {
+    const { data } = await api.get(`/orders/${orderId}/table`);
+    return data;
+  },
+
+  /**
+   * Получить заказы на столе
+   */
+  getOrdersByTable: async (
+    tableId: string,
+    includeCompleted?: boolean
+  ): Promise<any[]> => { // Можно заменить `any` на конкретный интерфейс OrderDto, если он есть
+    const { data } = await api.get(`/orders/tables/${tableId}/orders`, {
+      params: { includeCompleted }
+    });
+    return data;
+  },
+
+  /**
+   * Получить статус стола с дополнительной информацией
+   */
+  getTableStatus: async (tableId: string): Promise<TableStatusDto> => {
+    const { data } = await api.get(`/orders/tables/${tableId}/status`);
+    return data;
+  },
+
+  /**
+   * Получить статусы всех столов в зале
+   */
+  getHallTablesStatus: async (hallId: string): Promise<TableStatusDto[]> => {
+    // Если такого эндпоинта нет в бэкенде, можно создать его или использовать другой подход
+    const { data } = await api.get(`/tables/tables/hall/${hallId}/statuses`);
+    return data;
+  },
+
+  // ========== УТИЛИТНЫЕ МЕТОДЫ ДЛЯ РАБОТЫ СО СТОЛАМИ И ЗАКАЗАМИ ==========
+
+  /**
+   * Проверить, можно ли привязать стол к заказу
+   */
+  canAssignTableToOrder: (table: TableDto, orderId?: string): boolean => {
+    if (table.status !== TableStatus.AVAILABLE) {
+      return false;
+    }
+
+
+    return table.isActive && !table.currentOrderId;
+  },
+
+  /**
+   * Получить доступные столы для заказа
+   */
+  getAvailableTablesForOrder: async (
+    orderId: string,
+    requiredSeats: number,
+    hallId?: string
+  ): Promise<TableDto[]> => {
+    const params: any = { requiredSeats };
+    if (hallId) params.hallId = hallId;
+    
+    const { data } = await api.get('/tables/tables/available-for-order', {
+      params: { ...params, orderId }
+    });
+    return data;
+  },
+
+  /**
+   * Получить рекомендуемые столы для компании определенного размера
+   */
+  getRecommendedTables: async (
+    requiredSeats: number,
+    hallId?: string,
+    excludeTableIds: string[] = []
+  ): Promise<TableDto[]> => {
+    const params: any = { requiredSeats };
+    if (hallId) params.hallId = hallId;
+    if (excludeTableIds.length > 0) params.excludeTableIds = excludeTableIds.join(',');
+    
+    const { data } = await api.get('/tables/tables/recommended', { params });
+    return data;
+  },
+
+  /**
+   * Быстрое изменение статуса стола
+   */
+  quickChangeTableStatus: async (
+    tableId: string,
+    status: TableStatus,
+    orderId?: string
+  ): Promise<TableDto> => {
+    const { data } = await api.patch(`/tables/tables/${tableId}/quick-status`, {
+      status,
+      orderId
+    });
+    return data;
+  },
+
+  /**
+   * Получить историю изменений статуса стола
+   */
+  getTableStatusHistory: async (
+    tableId: string,
+    startDate?: Date,
+    endDate?: Date
+  ): Promise<any[]> => { // Можно заменить `any` на конкретный интерфейс
+    const params: any = {};
+    if (startDate) params.startDate = startDate.toISOString();
+    if (endDate) params.endDate = endDate.toISOString();
+    
+    const { data } = await api.get(`/tables/tables/${tableId}/status-history`, { params });
     return data;
   },
 

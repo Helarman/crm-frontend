@@ -16,6 +16,7 @@ export interface Surcharge {
 export interface OrderState {
   restaurantId: string
   items: OrderItem[]
+  tableId: any
   phone: string
   payment: { 
     method: 'CASH' | 'CARD' | 'CASH_TO_COURIER' | 'CARD_TO_COURIER'
