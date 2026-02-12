@@ -123,7 +123,7 @@ const createUserSchema = z.object({
   email: z.string().min(1).email(),
   password: z.string().min(6),
   role: z.nativeEnum(UserRoles),
-  restaurantId: z.string().min(1), // Изменено на строку вместо массива
+  restaurantId: z.string().min(1),
 })
 
 export function CreateStaffDialog({
@@ -145,7 +145,7 @@ export function CreateStaffDialog({
       email: '',
       password: '',
       role: UserRoles.NONE,
-      restaurantId: defaultRestaurantId 
+      restaurantId: defaultRestaurantId,
     }
   })
 
@@ -168,6 +168,7 @@ export function CreateStaffDialog({
         email: values.email,
         password: values.password,
         role: values.role,
+        acceptTerms: true
       })
 
       await new Promise(resolve => setTimeout(resolve, 1000))

@@ -1371,7 +1371,7 @@ useEffect(() => {
   if (order?.tableId && restaurantData.useReservation) {
     updateTableStatusBasedOnOrder();
   }
-}, [order?.status, order?.tableId, restaurantData.useReservation]);
+}, [order?.status, order?.tableId, restaurantData?.useReservation]);
 
 
     const handleCalculateOrder = async () => {
@@ -3812,7 +3812,7 @@ const renderTotalWithButtons = () => {
             </h2>
             
             <div className="flex flex-col 2xl:flex-row gap-6 mb-6">
-              {editFormData.type === 'DINE_IN' && (
+              {editFormData.type === 'DINE_IN' && false && (
                 <div className="flex-1 min-w-0">
                   <div className="space-y-3">
                     <Label className="text-xl font-semibold flex items-center gap-3">

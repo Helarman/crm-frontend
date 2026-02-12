@@ -139,11 +139,6 @@ export default function UsersPage() {
           onButtonClick={() => { setIsCreateDialogOpen(true) }}
           icon={<Plus className="h-4 w-4 mr-2" />}
         />
-        <CreateStaffDialog
-          open={isCreateDialogOpen}
-          onOpenChange={setIsCreateDialogOpen}
-          onSuccess={handleRefresh}
-        />
 
         <StaffFilter
           searchTerm={searchTerm}

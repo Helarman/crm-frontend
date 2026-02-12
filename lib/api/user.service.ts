@@ -200,6 +200,7 @@ export const UserService = {
     email: string
     role: string
     password: string
+    acceptTerms: boolean
   }): Promise<{ id: string }> {
     const { data } = await api.post('/auth/register', dto)
     return data
