@@ -78,9 +78,15 @@ export const AuthForm = () => {
   const onSubmit = async (values: AuthFormValues) => {
     setIsLoading(true)
     try {
+      // Убираем пробелы из email перед отправкой
+      const sanitizedValues = {
+        ...values,
+        email: values.email.replace(/\s/g, '')
+      }
+
       const response = await authApi.post(
         activeTab === 'login' ? '/auth/login' : '/auth/register', 
-        values, 
+        sanitizedValues, 
         { withCredentials: true }
       )
 
@@ -142,6 +148,12 @@ export const AuthForm = () => {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>, onChange: (value: string) => void) => {
+    // Убираем пробелы при вводе
+    const valueWithoutSpaces = e.target.value.replace(/\s/g, '')
+    onChange(valueWithoutSpaces)
   }
 
   const handleTabChange = (tab: 'login' | 'register') => {
@@ -213,6 +225,8 @@ export const AuthForm = () => {
                                 placeholder="email@example.com"
                                 {...field}
                                 autoComplete="email"
+                                onChange={(e) => handleEmailChange(e, field.onChange)}
+                                value={field.value}
                               />
                             </FormControl>
                             <FormMessage />
@@ -302,6 +316,8 @@ export const AuthForm = () => {
                                       placeholder="email@example.com"
                                       {...field}
                                       autoComplete="email"
+                                      onChange={(e) => handleEmailChange(e, field.onChange)}
+                                      value={field.value}
                                     />
                                   </FormControl>
                                   <FormMessage />

@@ -300,10 +300,7 @@ export function OrdersList() {
       return;
     }
 
-    if (restaurantStatus && !restaurantStatus.isOpen) {
-      toast.error(`Невозможно создать заказ: ${restaurantStatus.message}`);
-      return;
-    }
+   
 
     router.push('/orders/new');
   };
@@ -734,7 +731,6 @@ const filteredActiveOrders = selectedOrderType === 'ALL'
                   onClick={handleNewOrder}
                   className="flex-[2] sm:flex-none min-w-[140px] sm:min-w-[160px] lg:min-w-[180px] xl:min-w-[200px]"
                   size="lg"
-                  disabled={!restaurantStatus?.isOpen}
                 >
                   <span className="font-semibold">{t('newOrder')}</span>
                 </Button>

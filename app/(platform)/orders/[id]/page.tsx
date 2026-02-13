@@ -1055,24 +1055,27 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
       }
     };
 
-    useEffect(() => {
-      const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-        if (order?.status === 'CREATED') {
-          e.preventDefault();
-          e.returnValue = t.exitConfirmMessage;
-        }
-      };
+   useEffect(() => {
+  const hasCreatedItems = getOrderItems().some(
+    item => item.status === OrderItemStatus.CREATED
+  );
 
-      window.addEventListener('beforeunload', handleBeforeUnload);
+  const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+    if (hasCreatedItems) {
+      e.preventDefault();
+      e.returnValue = t.exitConfirmMessage;
+    }
+  };
 
-      return () => {
-        window.removeEventListener('beforeunload', handleBeforeUnload);
-        Object.values(pendingAdditions).forEach(({ timer }) => {
-          if (timer) clearTimeout(timer)
-        })
-      };
-    }, [order?.status, t.exitConfirmMessage, pendingAdditions]);
+  window.addEventListener('beforeunload', handleBeforeUnload);
 
+  return () => {
+    window.removeEventListener('beforeunload', handleBeforeUnload);
+    Object.values(pendingAdditions).forEach(({ timer }) => {
+      if (timer) clearTimeout(timer);
+    });
+  };
+}, [order?.items, t.exitConfirmMessage]);
     const handleUpdateQuantity = async (item: OrderItem, newQuantity: number) => {
       if (!order || !isOrderEditable) return;
 
@@ -1171,14 +1174,18 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
       }
     };
 
-    const handleRouteChange = (path: string) => {
-      if (order?.status === 'CREATED') {
-        setIntendedPath(path);
-        setShowExitConfirmDialog(true);
-      } else {
-        router.push(path);
-      }
-    };
+   const handleRouteChange = (path: string) => {
+  const hasCreatedItems = getOrderItems().some(
+    item => item.status === OrderItemStatus.CREATED
+  );
+
+  if (hasCreatedItems) {
+    setIntendedPath(path);
+    setShowExitConfirmDialog(true);
+  } else {
+    router.push(path);
+  }
+};
 
     const confirmExit = () => {
       setShowExitConfirmDialog(false);
@@ -3209,7 +3216,7 @@ const renderOrderAdditivesBlock = () => {
           <AlertCircle className="h-12 w-12 text-red-500" />
           <h2 className="text-xl font-semibold">{t.orderNotFound}</h2>
           <p className="text-gray-600">{error}</p>
-          <Button onClick={() => router.push('/orders')}>
+            <Button onClick={() => handleRouteChange('/orders')} variant="outline">
             <ArrowLeft className="h-4 w-4 mr-2" />
             {t.back}
           </Button>
@@ -3222,10 +3229,10 @@ const renderOrderAdditivesBlock = () => {
         <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
           <AlertCircle className="h-12 w-12 text-red-500" />
           <h2 className="text-xl font-semibold">{t.orderNotFound}</h2>
-          <Button onClick={() => router.push('/orders')}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            {t.back}
-          </Button>
+          <Button onClick={() => handleRouteChange('/orders')} variant="outline">
+  <ArrowLeft className="h-4 w-4 mr-2" />
+  {t.back}
+</Button>
         </div>
       );
     }
@@ -3432,7 +3439,7 @@ const renderTotalWithButtons = () => {
 
     
     return (
-      <AccessCheck allowedRoles={['WAITER', 'MANAGER', 'SUPERVISOR']}>
+      <AccessCheck allowedRoles={['WAITER', 'MANAGER', 'SUPERVISOR', 'CASHIER']}>
         <div className='absolute top-0'>
           {/* Основная сетка */}
          <div className={`grid ${isRightColCollapsed ? 'grid-cols-1 lg:grid-cols-12' : 'grid-cols-1 lg:grid-cols-3' }  gap-8 h-[100vh] mt-0 pt-0 `}>
@@ -3447,10 +3454,10 @@ const renderTotalWithButtons = () => {
                       <Utensils className="h-8 w-8 text-blue-600" />
                       Меню
                      </h2>
-                        <Button onClick={() => router.push('/orders')} variant="outline">
-                              <ArrowLeft className="h-4 w-4 mr-2" />
-                              {t.back}
-                            </Button>
+                        <Button onClick={() => handleRouteChange('/orders')} variant="outline">
+  <ArrowLeft className="h-4 w-4 mr-2" />
+  {t.back}
+</Button>
                   </div>
                   <div className="flex gap-2 justify-cente text-center p-2 sm:p-3">
                   {order.type === 'DINE_IN' && (

@@ -112,7 +112,7 @@ export const OrderInfoStep = ({
   const [selectedTableIds, setSelectedTableIds] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [isCreatingOrder, setIsCreatingOrder] = useState(false)
-
+  const [deliverAsSoonAsPossible, setDeliverAsSoonAsPossible] = useState(true)
   const { surcharges: availableSurcharges } = useSurcharges(order.type, order.restaurantId)
 
   const t = (text: string | undefined, textGe: string | undefined) => {
@@ -1570,73 +1570,152 @@ export const OrderInfoStep = ({
             </div>
 
             {/* Доставка */}
-            {order.type === 'DELIVERY' && (
-              <div className="bg-white rounded-2xl p-6 shadow-lg">
-                <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-                  <Truck className="h-8 w-8 text-orange-600" />
-                  {language === 'ka' ? 'მიტანის ინფორმაცია' : 'Информация о доставке'}
-                </h2>
-                
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="space-y-3">
-                    <Label className="text-xl font-semibold flex items-center gap-3">
-                      <MapPin className="h-6 w-6 text-orange-600" />
-                      {language === 'ka' ? 'მისამართი' : 'Адрес доставки'}
-                    </Label>
-                    <AddressInput
-                      value={order.deliveryAddress}
-                      onChange={(e: any) => setOrder({
-                        ...order,
-                        deliveryAddress: e.target.value,
-                        deliveryZone: null
-                      })}
-                      language={language as any}
-                      restaurantId={order.restaurantId}
-                      onZoneFound={(zone) => {
-                        setOrder({
-                          ...order,
-                          deliveryZone: zone
-                        })
-                      }}
-                    />
-                    {order.deliveryZone && (
-                      <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                        <div className="flex items-center justify-between">
-                          <span className="text-lg font-semibold text-green-700">
-                            {order.deliveryZone.title}
-                          </span>
-                          <Badge variant="secondary" className="text-lg py-1 px-3">
-                            {order.deliveryZone.price} ₽
-                          </Badge>
-                        </div>
-                        {order.deliveryZone.minOrder && order.deliveryZone.minOrder > 0 && (
-                          <p className="text-sm text-green-600 mt-1">
-                            {language === 'ka' ? 'მინიმალური შეკვეთა: ' : 'Минимальный заказ: '}
-                            {order.deliveryZone.minOrder} ₽
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
+           {order.type === 'DELIVERY' && (
+  <div className="bg-white rounded-2xl p-6 shadow-lg">
+    {/* Заголовок */}
+    <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
+      <Truck className="h-8 w-8 text-orange-600" />
+      {language === 'ka' ? 'მიტანის ინფორმაცია' : 'Информация о доставке'}
+    </h2>
+    
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* Левая колонка: Адрес и зона доставки */}
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label className="text-lg font-semibold flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-orange-600" />
+            {language === 'ka' ? 'მისამართი' : 'Адрес доставки'}
+          </Label>
+          <AddressInput
+            value={order.deliveryAddress}
+            onChange={(e: any) => setOrder({
+              ...order,
+              deliveryAddress: e.target.value,
+              deliveryZone: null
+            })}
+            language={language as any}
+            restaurantId={order.restaurantId}
+            onZoneFound={(zone) => {
+              setOrder({
+                ...order,
+                deliveryZone: zone
+              })
+            }}
+            className="w-full"
+          />
+        </div>
 
-                  <div className="space-y-3">
-                    <Label className="text-xl font-semibold flex items-center gap-3">
-                      <Clock className="h-6 w-6 text-orange-600" />
-                      {language === 'ka' ? 'მიტანის დრო' : 'Время доставки'}
-                    </Label>
-                    <Input
-                      type="time"
-                      value={order.deliveryTime}
-                      onChange={(e) => setOrder({
-                        ...order,
-                        deliveryTime: e.target.value
-                      })}
-                      className="h-14 text-lg"
-                    />
-                  </div>
-                </div>
+        {order.deliveryZone && (
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4">
+            <div className="flex items-start justify-between">
+              <div className="space-y-1">
+                <span className="text-lg font-semibold text-green-800">
+                  {order.deliveryZone.title}
+                </span>
+                {order.deliveryZone.minOrder && order.deliveryZone.minOrder > 0 && (
+                  <p className="text-sm text-green-600">
+                    {language === 'ka' ? 'მინიმალური შეკვეთა' : 'Мин. заказ'}: 
+                    <span className="font-medium ml-1">{order.deliveryZone.minOrder} ₽</span>
+                  </p>
+                )}
               </div>
-            )}
+              <Badge variant="secondary" className="text-base px-4 py-1.5 bg-white shadow-sm">
+                {order.deliveryZone.price} ₽
+              </Badge>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Правая колонка: Время доставки */}
+      <div className="space-y-4">
+        <Label className="text-lg font-semibold flex items-center gap-2 mb-2">
+          <Clock className="h-5 w-5 text-orange-600" />
+          {language === 'ka' ? 'მიტანის დრო' : 'Время доставки'}
+        </Label>
+        
+        <div className="space-y-3">
+          {/* Карточка "Как можно скорее" */}
+          <div 
+            className={`
+              flex items-center justify-between p-4 rounded-xl border-2 cursor-pointer 
+              transition-all duration-200
+              ${deliverAsSoonAsPossible 
+                ? 'border-orange-500 bg-orange-50' 
+                : 'border-gray-200 hover:border-orange-300 hover:bg-orange-50/30'
+              }
+            `}
+            onClick={() => {
+              setDeliverAsSoonAsPossible(!deliverAsSoonAsPossible)
+              if (!deliverAsSoonAsPossible) {
+                setOrder({
+                  ...order,
+                  deliveryTime: undefined
+                })
+              }
+            }}
+          >
+            <span className="font-medium">
+              {language === 'ka' ? 'რაც შეიძლება მალე' : 'Как можно скорее'}
+            </span>
+            <div className={`
+              w-6 h-6 rounded-md border-2 flex items-center justify-center
+              ${deliverAsSoonAsPossible 
+                ? 'bg-orange-500 border-orange-500' 
+                : 'border-gray-300 bg-white'
+              }
+            `}>
+              {deliverAsSoonAsPossible && (
+                <Check className="h-4 w-4 text-white" />
+              )}
+            </div>
+          </div>
+
+          {/* Выбор конкретного времени */}
+         {!deliverAsSoonAsPossible && (
+  <div className="p-4 border-2 border-gray-200 rounded-xl space-y-2">
+    <p className="text-sm text-gray-600 mb-2">
+      {language === 'ka' ? 'აირჩიეთ მიტანის დრო' : 'Выберите время доставки'}
+    </p>
+    <Input
+      type="time"
+      value={order.deliveryTime ? 
+        new Date(order.deliveryTime).toLocaleTimeString('ru-RU', { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          hour12: false 
+        }) : ''}
+      onChange={(e) => {
+        const timeString = e.target.value;
+        if (timeString) {
+          const [hours, minutes] = timeString.split(':');
+          const dateTime = new Date();
+          dateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+          
+          if (dateTime < new Date()) {
+            dateTime.setDate(dateTime.getDate() + 1);
+          }
+          
+          setOrder({
+            ...order,
+            deliveryTime: dateTime.toISOString()
+          });
+        } else {
+          setOrder({
+            ...order,
+            deliveryTime: undefined
+          });
+        }
+      }}
+      className="h-12 text-lg w-full"
+    />
+  </div>
+)}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
           </div>
         </div>
 
@@ -1760,7 +1839,6 @@ export const OrderInfoStep = ({
             disabled={
               isCreatingOrder || 
               loading || 
-              (!order.isScheduled && restaurantStatus && !restaurantStatus.isOpen) ||
               (order.type === 'DINE_IN' && restaurantUsesReservation && !selectedTable)
             }
           >

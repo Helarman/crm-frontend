@@ -96,8 +96,10 @@ function redirectToLogin() {
 interface UpdateUserDto {
   name?: string;
   email?: string;
+  phone?: string;
   picture?: string;
   role?: string;
+  isBlocked?: boolean;
 }
 
 interface ChangePasswordDto {
@@ -179,15 +181,13 @@ export const UserService = {
       
       // Обработка пустого ответа
       if (response.data === "" && response.status === 200) {
-        return true; // Подставьте нужное значение по умолчанию
+        return true;
       }
   
-      // Обработка 204 No Content
       if (response.status === 204) {
         return false;
       }
   
-      // Стандартная обработка
       return Boolean(response.data);
     } catch (error) {
       console.error("Ошибка:", error);
@@ -200,6 +200,7 @@ export const UserService = {
     email: string
     role: string
     password: string
+    phone?: string
     acceptTerms: boolean
   }): Promise<{ id: string }> {
     const { data } = await api.post('/auth/register', dto)

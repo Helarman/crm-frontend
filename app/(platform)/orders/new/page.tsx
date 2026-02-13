@@ -230,14 +230,6 @@ export default function NewOrderPage() {
   }
 
   const handleCreateOrder = async () => {
-    // Проверяем, открыт ли ресторан (кроме запланированных заказов)
-    if (!order.isScheduled && restaurantStatus && !restaurantStatus.isOpen) {
-      toast.error(language === 'ka' 
-        ? `შეუძლებელია შეკვეთის შექმნა: ${restaurantStatus.message}` 
-        : `Невозможно создать заказ: ${restaurantStatus.message}`)
-      return;
-    }
-
     // Проверяем зону доставки для заказов типа DELIVERY
     if (order.type === 'DELIVERY' && order.deliveryAddress && !order.deliveryZone) {
       setLoading(true)

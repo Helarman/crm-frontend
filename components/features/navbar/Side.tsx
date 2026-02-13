@@ -51,6 +51,7 @@ import {
   CircleCheck,
   User
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 const ROLE_COLORS = {
   NONE: 'text-gray-500 dark:text-gray-400',
@@ -405,7 +406,7 @@ function MobileBottomBar({
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 z-50 md:hidden">
+    <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 z-50">
       <nav className="px-2 py-2">
         <div className="flex space-x-1 overflow-x-auto scrollbar-hide">
           {activeItems.map((item) => {
