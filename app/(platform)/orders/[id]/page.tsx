@@ -208,8 +208,8 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
         exitConfirmTitle: "Подтверждение выхода",
         exitConfirmMessage: "Заказ еще не подтвержден. Вы уверены, что хотите уйти? Неподтвержденные заказы могут быть потеряны.",
         exitConfirmLeave: "Уйти",
-        precheckFormed: "Пречек сформирован",
-        formPrecheck: "Сформировать пречек",
+        precheckFormed: "Пречек",
+        formPrecheck: "Пречек",
         refundItem: "Вернуть блюдо",
         refundReason: "Причина возврата",
         confirmRefund: "Подтвердить возврат",
@@ -447,7 +447,6 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
       breadcrumbs: []
     });
 
-    // Новые состояния для модификаторов заказа
     const [orderAdditives, setOrderAdditives] = useState<OrderAdditiveItem[]>([]);
     const [availableOrderAdditives, setAvailableOrderAdditives] = useState<OrderAdditiveItem[]>([]);
     const [selectedOrderAdditive, setSelectedOrderAdditive] = useState<string>('');
@@ -461,6 +460,9 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
     const [isWritingOff, setIsWritingOff] = useState(false);
     const [activeTab, setActiveTab] = useState<any>('order');
     const [isRightColCollapsed, setIsRightColCollapsed] = useState(false)
+    const [selectedItemForHistory, setSelectedItemForHistory] = useState<OrderItem | null>(null);
+    const [showItemHistoryDialog, setShowItemHistoryDialog] = useState(false);
+
     const {
       isConnected: isWebSocketConnected,
       connectionError: webSocketError
@@ -2171,12 +2173,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
   isOrderEditable,
   getProductPrice
 }) => {
-  const titleRef = useRef<HTMLDivElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
-  const [isInView, setIsInView] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
-  const controls = useAnimationControls();
 
   // Проверка переполнения текста
   useEffect(() => {
@@ -2192,111 +2190,10 @@ const ProductCard: React.FC<ProductCardProps> = ({
     return () => window.removeEventListener('resize', checkOverflow);
   }, [product.title]);
 
-  // Intersection Observer для отслеживания попадания в область видимости
-  useEffect(() => {
-    if (!containerRef.current || !isOverflowing) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const entry = entries[0];
-        setIsInView(entry.isIntersecting);
-      },
-      {
-        threshold: 0.1,
-        rootMargin: '0px'
-      }
-    );
-
-    observer.observe(containerRef.current);
-
-    return () => {
-      if (containerRef.current) {
-        observer.unobserve(containerRef.current);
-      }
-    };
-  }, [isOverflowing]);
-
-  // Управление анимацией
-  useEffect(() => {
-    if (!isOverflowing || !isInView) {
-      controls.stop();
-      controls.set({ x: 0 });
-      return;
-    }
-
-    if (isHovered) {
-      // При наведении - останавливаем анимацию
-      controls.stop();
-      return;
-    }
-
-    // Рассчитываем параметры анимации
-    const element = titleRef.current;
-    if (!element) return;
-
-    const scrollDistance = element.scrollWidth - element.clientWidth;
-    const duration = Math.max(scrollDistance * 0.03, 3); // Минимальная длительность 3 секунды
-
-    // Плавная анимация с паузами
-    const sequence = async () => {
-      // Начальная пауза
-      await controls.start({ 
-        x: 0,
-        transition: { duration: 1 }
-      });
-
-      // Плавный старт анимации
-      await controls.start({
-        x: -scrollDistance,
-        transition: {
-          duration: duration,
-          ease: "linear"
-        }
-      });
-
-      // Пауза в конце
-      await controls.start({ 
-        x: -scrollDistance,
-        transition: { duration: 1 }
-      });
-
-      // Возврат к началу с паузой
-      await controls.start({ 
-        x: 0,
-        transition: { 
-          duration: 1,
-          ease: "easeInOut"
-        }
-      });
-
-      // Бесконечный цикл
-      if (isOverflowing && isInView && !isHovered) {
-        sequence();
-      }
-    };
-
-    sequence();
-
-    return () => {
-      controls.stop();
-    };
-  }, [isOverflowing, isInView, isHovered, controls, product.title]);
-
-  // Обработчики наведения
-  const handleHoverStart = () => {
-    setIsHovered(true);
-  };
-
-  const handleHoverEnd = () => {
-    setIsHovered(false);
-  };
-
   return (
-    <div 
-      ref={containerRef}
-      className="group bg-white rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-green-100 transition-all duration-200 flex flex-col h-full"
-    >
-      <div className="relative aspect-square overflow-hidden">
+    <div className="group bg-white rounded-xl shadow-sm hover:shadow-md border border-gray-100 hover:border-green-100 transition-all duration-200 flex flex-col h-full overflow-hidden">
+      {/* Изображение */}
+      <div className="relative aspect-square overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100">
         {product.images?.[0] ? (
           <Image
             src={product.images[0]}
@@ -2306,88 +2203,299 @@ const ProductCard: React.FC<ProductCardProps> = ({
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
         ) : (
-          <div className="w-full h-full bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-            <Utensils className="h-8 w-8 text-gray-300" />
+          <div className="w-full h-full flex items-center justify-center">
+            <Utensils className="h-12 w-12 text-gray-300" />
           </div>
         )}
         
-        {product.additives && product.additives.length > 0 && (
-          <AdditivesDialog
-            product={product}
-            selectedAdditives={additives}
-            onAdditivesChange={onAdditivesChange}
-            disabled={!isOrderEditable}
-          />
+        {/* Бейдж с количеством */}
+        {quantity > 0 && (
+          <div className="absolute top-3 right-3 bg-green-500 text-white text-lg font-bold rounded-xl px-3 py-1.5 shadow-lg">
+            {quantity} шт
+          </div>
         )}
         
-        {quantity > 0 && (
-          <div className="absolute top-2 right-2 bg-green-500 text-white text-md font-bold rounded-lg h-8 w-8 flex items-center justify-center">
-            {quantity}
+        {/* Кнопка добавок */}
+        {product.additives && product.additives.length > 0 && (
+          <div className="absolute top-3 left-3">
+            <AdditivesDialog
+              product={product}
+              selectedAdditives={additives}
+              onAdditivesChange={onAdditivesChange}
+              disabled={!isOrderEditable}
+            />
           </div>
         )}
       </div>
       
-      <div className="p-3 flex flex-col flex-grow">
-        {/* Заголовок и цена */}
-        <div className="flex justify-between items-start mb-2">
-          <div 
+      {/* Контент */}
+      <div className="p-4 flex flex-col flex-grow">
+        {/* Заголовок и цена - ИЗМЕНЕНО */}
+        <div className="mb-3 flex flex-col gap-2">
+          {/* Название - теперь занимает всю ширину и переносится */}
+          <h3 
             ref={titleRef}
-            className="flex-1 mr-2 overflow-hidden relative"
-            onMouseEnter={handleHoverStart}
-            onMouseLeave={handleHoverEnd}
+            className="text-xl font-bold text-gray-800 leading-tight break-words"
+            title={isOverflowing ? product.title : undefined}
           >
-            <div className="w-max">
-              <motion.h3
-                animate={controls}
-                className="font-semibold text-base whitespace-nowrap cursor-default"
-                title={product.title}
-              >
-                {product.title}
-              </motion.h3>
-            </div>
-          </div>
-          <p className="text-lg font-bold text-green-600 whitespace-nowrap">
+            {product.title}
+          </h3>
+          
+          {/* Цена - отдельно под названием */}
+          <span className="text-2xl font-extrabold text-green-600">
             {getProductPrice(product)} ₽
-          </p>
+          </span>
         </div>
 
         {/* Управление количеством */}
-        <div className="mt-auto border-t border-gray-50">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 w-full">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0 w-1/2"
-                onClick={() => {
-                  const newQuantity = Math.max(0, quantity - 1)
-                  onQuantityChange(newQuantity)
-                }}
-                disabled={quantity === 0 || !isOrderEditable}
-              >
-                <Minus className="h-4 w-4" />
-              </Button>
+        <div className="mt-auto pt-3 border-t border-gray-100">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="default"
+              className="flex-1 h-11 text-base font-medium"
+              onClick={() => {
+                const newQuantity = Math.max(0, quantity - 1)
+                onQuantityChange(newQuantity)
+              }}
+              disabled={quantity === 0 || !isOrderEditable}
+            >
+              <Minus className="h-5 w-5 mr-1" />
+            </Button>
 
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0 w-1/2"
-                onClick={() => {
-                  const newQuantity = quantity + 1
-                  onQuantityChange(newQuantity)
-                }}
-                disabled={!isOrderEditable}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="default"
+              className="flex-1 h-11 text-base font-medium"
+              onClick={() => {
+                const newQuantity = quantity + 1
+                onQuantityChange(newQuantity)
+              }}
+              disabled={!isOrderEditable}
+            >
+              <Plus className="h-5 w-5 mr-1" />
+            </Button>
           </div>
+          
+          {/* Текущее количество */}
+          {quantity > 0 && (
+            <div className="text-center mt-2 text-sm font-medium text-gray-600">
+              В заказе: {quantity} шт
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
+
+const ItemHistoryDialog = ({ item, open, onOpenChange }: { 
+  item: OrderItem; 
+  open: boolean; 
+  onOpenChange: (open: boolean) => void;
+}) => {
+  const { language } = useLanguageStore();
+    const t = translations[language as keyof typeof translations];
+
+  const formatDate = (dateString?: any) => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    return format(date, 'PPpp', {
+      locale: language === 'ru' ? ru : ka
+    });
+  };
+
+  const getStatusText = (status: OrderItemStatus) => {
+    const statusMap = {
+      [OrderItemStatus.CREATED]: t.statusCreated,
+      [OrderItemStatus.CONFIRMED]: language === 'ru' ? 'Подтвержден' : 'დადასტურებული',
+      [OrderItemStatus.IN_PROGRESS]: t.statusPreparing,
+      [OrderItemStatus.COMPLETED]: t.statusReady,
+      [OrderItemStatus.REFUNDED]: t.itemReturned,
+      [OrderItemStatus.CANCELLED]: t.statusCancelled,
+      [OrderItemStatus.PARTIALLY_DONE]: 'Частично готов', 
+      [OrderItemStatus.PAUSED]: 'Приостановлен', 
+    };
+    return statusMap[status] || status;
+  };
+  if (!item){
+    return;
+  
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-xl flex items-center gap-2">
+            <History className="h-5 w-5" />
+            История блюда: {item.product.title}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-6 py-4">
+          {/* Основная информация */}
+          <div className="bg-muted/50 p-4 rounded-lg space-y-2">
+            <div className="flex justify-between">
+              <span className="font-medium">{language === 'ru' ? 'Статус' : 'სტატუსი'}:</span>
+              <Badge variant={
+                item.status === OrderItemStatus.COMPLETED ? 'default' :
+                item.status === OrderItemStatus.REFUNDED ? 'destructive' :
+                item.status === OrderItemStatus.CREATED ? 'secondary' : 'outline'
+              }>
+                {getStatusText(item.status)}
+              </Badge>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-medium">{language === 'ru' ? 'Количество' : 'რაოდენობა'}:</span>
+              <span>{item.quantity} шт.</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-medium">{language === 'ru' ? 'Цена' : 'ფასი'}:</span>
+              <span className="font-bold text-green-600">
+                {calculateItemPrice(item)} ₽
+              </span>
+            </div>
+          </div>
+
+          {/* Таймлайн событий */}
+          <div className="space-y-4">
+            <h3 className="font-semibold text-lg">{language === 'ru' ? 'Хронология' : 'ქრონოლოგია'}</h3>
+            
+            {/* Создание */}
+            {item.timestamps?.createdAt && (
+              <div className="flex gap-3">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                  <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium">{language === 'ru' ? 'Создан' : 'შექმნილია'}</p>
+                  <p className="text-sm text-muted-foreground">{formatDate(item.timestamps.createdAt)}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Начало приготовления */}
+            {item.timestamps?.startedAt && (
+              <div className="flex gap-3">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
+                  <Play className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium">{language === 'ru' ? 'Начато приготовление' : 'დაიწყო მომზადება'}</p>
+                  <p className="text-sm text-muted-foreground">{formatDate(item.timestamps.startedAt)}</p>
+                  {item.startedBy && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {item.startedBy.name}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Завершение */}
+            {item.timestamps?.completedAt && (
+              <div className="flex gap-3">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                  <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium">{language === 'ru' ? 'Готово' : 'მზადაა'}</p>
+                  <p className="text-sm text-muted-foreground">{formatDate(item.timestamps.completedAt)}</p>
+                  {JSON.stringify(item)}
+                  {item.completedBy && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {item.completedBy.name}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Приостановка */}
+            {item.timestamps?.pausedAt && (
+              <div className="flex gap-3">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                  <Pause className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium">{language === 'ru' ? 'Приостановлено' : 'შეჩერებულია'}</p>
+                  <p className="text-sm text-muted-foreground">{formatDate(item.timestamps.pausedAt)}</p>
+                  {item.pausedBy && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {item.pausedBy.name}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Возврат */}
+            {item.timestamps?.refundedAt && (
+              <div className="flex gap-3">
+                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                  <Undo className="h-4 w-4 text-red-600 dark:text-red-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-medium">{language === 'ru' ? 'Возврат' : 'დაბრუნება'}</p>
+                  <p className="text-sm text-muted-foreground">{formatDate(item.timestamps.refundedAt)}</p>
+                  {item.refundedBy && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {item.refundedBy.name}
+                    </p>
+                  )}
+                  {item.refundReason && (
+                    <p className="text-xs text-red-500 dark:text-red-400 mt-1">
+                      {language === 'ru' ? 'Причина' : 'მიზეზი'}: {item.refundReason}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Дополнительная информация */}
+          {(item.additives?.length > 0 || item.comment) && (
+            <div className="border-t pt-4">
+              <h3 className="font-semibold text-lg mb-3">{language === 'ru' ? 'Дополнительно' : 'დამატებით'}</h3>
+              
+              {item.additives?.length > 0 && (
+                <div className="mb-2">
+                  <p className="text-sm font-medium text-muted-foreground mb-1">
+                    {language === 'ru' ? 'Модификаторы' : 'დანამატები'}:
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {item.additives.map(additive => (
+                      <Badge key={additive.id} variant="outline" className="text-xs">
+                        {additive.title} (+{additive.price} ₽)
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {item.comment && (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">
+                    {language === 'ru' ? 'Комментарий' : 'კომენტარი'}:
+                  </p>
+                  <p className="text-sm bg-muted/50 p-2 rounded">{item.comment}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            {language === 'ru' ? 'Закрыть' : 'დახურვა'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
     const renderItemActions = (item: OrderItem) => {
       if (!order) return null;
@@ -2519,7 +2627,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
     OrderItemStatus.CREATED,
   ].includes(item.status) && isOrderEditable && !item.isRefund;
 
-  const canRefund = ['COMPLETED', 'DELIVERING', 'PREPARING'].includes(order?.status || '') && !item.isRefund;
+  const canRefund = ['COMPLETED', 'DELIVERING', 'PREPARING', 'READY'].includes(order?.status || '') && !item.isRefund;
   const canRefundItem = [
     OrderItemStatus.COMPLETED,
     OrderItemStatus.IN_PROGRESS
@@ -2528,7 +2636,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
   return (
     <div
       key={item.id}
-      className={`bg-white rounded-xl p-3 2xl:p-4 shadow-sm ${item.isReordered ? 'border-l-4 border-blue-500' : ''} ${item.isRefund ? 'bg-red-50' : ''}`}
+      className={`bg-white rounded-xl p-3 2xl:p-4 shadow-sm ${item.isReordered ? 'border-l-4 border-blue-500' : ''} ${item.isRefund ? 'border-l-4 border-red-500' : ''}`}
     >
       <div className="flex items-start gap-3 2xl:gap-4">
         {/* Изображение продукта */}
@@ -2625,6 +2733,17 @@ const ProductCard: React.FC<ProductCardProps> = ({
 
               {/* Кнопки действий */}
               <div className="flex items-center gap-1 2xl:gap-3 flex-shrink-0">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-gray-500 hover:text-gray-600 hover:bg-gray-50"
+                  onClick={() => {
+                    setSelectedItemForHistory(item);
+                    setShowItemHistoryDialog(true);
+                  }}
+                >
+                  <History className="h-4 w-4 2xl:h-5 2xl:w-5" />
+                </Button>
                 {/* Дозаказ */}
                 {canReorder && (
                   <Button
@@ -3063,7 +3182,7 @@ const renderOrderAdditivesBlock = () => {
                   Продукты не найдены
                 </div>
               ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3 md:gap-4 lg:gap-5 xl:gap-6">
                   {searchResults.map((product) => {
                     const additives = productAdditives[product.id] || []
                     const comment = productComments[product.id] || ''
@@ -3150,7 +3269,7 @@ const renderOrderAdditivesBlock = () => {
                     {categoryNavigation.currentCategory.title}
                   </h4>
 
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3 md:gap-4 lg:gap-5 xl:gap-6">
                     {displayProducts.map((product) => {
                       const additives = productAdditives[product.id] || []
                       const comment = productComments[product.id] || ''
@@ -3404,27 +3523,34 @@ const renderTotalWithButtons = () => {
         {t.cancel}
       </Button>
     )}
-
     {(order.status === 'READY' && order.type != 'DELIVERY') && (
       <Button
         disabled={
           isUpdating || 
           shiftLoading || 
           !order.attentionFlags.isPrecheck || 
-          // Проверяем, что все блюда в заказе готовы
-          getOrderItems().some(item => item.status !== OrderItemStatus.COMPLETED)
+          getOrderItems().some(item => 
+            item.status !== OrderItemStatus.COMPLETED && 
+            item.status !== OrderItemStatus.REFUNDED
+          )
         }
         onClick={handleCalculateOrder}
         variant="default"
         className={`gap-3 w-full h-16 text-2xl font-bold shadow-lg hover:shadow-xl transition-shadow ${
-          getOrderItems().some(item => item.status !== OrderItemStatus.COMPLETED)
+          getOrderItems().some(item => 
+            item.status !== OrderItemStatus.COMPLETED && 
+            item.status !== OrderItemStatus.REFUNDED
+          )
             ? 'hidden'
             : 'bg-emerald-500 hover:bg-emerald-400'
         }`}
       >
         {isUpdating || shiftLoading ? (
           <Loader2 className="h-6 w-6 animate-spin" />
-        ) : getOrderItems().some(item => item.status !== OrderItemStatus.COMPLETED) ? (
+        ) : getOrderItems().some(item => 
+            item.status !== OrderItemStatus.COMPLETED && 
+            item.status !== OrderItemStatus.REFUNDED
+          ) ? (
           <Clock className="h-6 w-6" />
         ) : (
           <CheckCircle className="h-6 w-6" />
@@ -3722,7 +3848,6 @@ const renderTotalWithButtons = () => {
        {activeTab === 'order' && (
           <div className="h-full overflow-y-auto space-y-4 overflow-x-hidden">
             {getOrderItems()
-              .filter(item => !item.isRefund)
               .sort((a, b) => {
                 const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
                 const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
@@ -4235,7 +4360,11 @@ const renderTotalWithButtons = () => {
           />
         )}
 
-        
+        <ItemHistoryDialog
+            item={selectedItemForHistory!}
+            open={showItemHistoryDialog}
+            onOpenChange={setShowItemHistoryDialog}
+          />
       </AccessCheck>
     );
   }
@@ -4345,3 +4474,4 @@ const AdditivesDialog: React.FC<AdditivesDialogProps> = ({
 </Dialog>
   );
 };
+

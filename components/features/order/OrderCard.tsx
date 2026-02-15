@@ -261,7 +261,7 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
       writeOffTitle: "Списание ингредиентов",
       writeOffText: "Будут списаны следующие ингредиенты:",
       cancel: "Отмена",
-      confirmWriteOff: "Подтвердить списание",
+      confirmWriteOff: "Подтвердить",
       writingOff: "Списание...",
       statusUpdated: "Статус обновлён",
       writeOffSuccess: "Ингредиенты списаны, статус обновлён",
@@ -865,7 +865,7 @@ ${composition}
                     setIsCommentExpanded(!isCommentExpanded)
                   }}
                   className={cn(
-                    "text-sm text-muted-foreground overflow-hidden transition-all duration-300 ease-in-out",
+                    "text-xl text-gray-900 overflow-hidden transition-all duration-300 ease-in-out",
                     "bg-gray-100 dark:bg-gray-800 rounded px-3 py-2 cursor-pointer",
                     "hover:bg-gray-200 dark:hover:bg-gray-700",
                     isCommentExpanded ? "max-h-[500px]" : "max-h-[3.6em]"
@@ -908,10 +908,10 @@ ${composition}
                           }
                         }}
                       >
-                        <div className="flex justify-between items-start">
+                        <div className="flex justify-between items-start gap-2 flex-col xl:flex-row">
                           <div>
-                            <div className="font-medium flex items-center gap-1">
-                              {item.product.title} × {item.quantity}
+                            <div className="font-medium  items-center gap-1">
+                              <span className='font-bold text-xl items-center '>{item.quantity}x</span>  {item.product.title}
                             </div>
                             {item.additives.length > 0 && (
                               <div className="text-xs text-muted-foreground">
@@ -924,16 +924,14 @@ ${composition}
                               </div>
                             )}
                           </div>
-                          <Badge variant="outline" className="text-xs">
+                          <Badge variant="outline" className="text-md">
 
                             {item.status === OrderItemStatus.IN_PROGRESS && item.timestamps.startedAt ? (
                               <>
-                                {language === 'ru' ? 'Готовится' : 'მზადდება'}{' '}
                                 {Math.round((new Date().getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
                               </>
                             ) : item.status === OrderItemStatus.COMPLETED && item.timestamps.startedAt && item.timestamps.completedAt ? (
                               <>
-                                {language === 'ru' ? 'Приготовлен за' : 'მზად იყო'}{' '}
                                 {Math.round((new Date(item.timestamps.completedAt).getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
                               </>
                             ) : (
@@ -1084,69 +1082,54 @@ ${composition}
       </Card>
 
       <Dialog open={writeOffDialogOpen} onOpenChange={setWriteOffDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Beef className="h-5 w-5" />
-              {t.confirmCompletion}
-            </DialogTitle>
-          </DialogHeader>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle className="flex items-center gap-2">
+        <Beef className="h-5 w-5" />
+        {t.confirmCompletion}
+      </DialogTitle>
+    </DialogHeader>
+    
+    {/* Информация о блюде */}
+    {currentItemId && (
+      <div className=" p-3 bg-muted rounded-lg">
+        <p>
+          <span className="text-lg font-bold ">
+            {order.items.find(item => item.id === currentItemId)?.quantity}× 
+          </span>
+          {order.items.find(item => item.id === currentItemId)?.product.title}
 
-          {writeOffItems.length > 0 && (
-            <div className="max-h-60 overflow-y-auto">
-              <p className="text-sm text-muted-foreground mb-3">{t.writeOffText}</p>
-              <div className="space-y-2">
-                {writeOffItems.map((item, index) => (
-                  <div
-                    key={`${item.id}-${index}`}
-                    className="flex justify-between items-center p-2 border rounded"
-                  >
-                    <div>
-                      <div className="font-medium">
-                        {item.name} {item.type === 'additive' && `(модификатор: ${item.additiveName})`}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {item.quantity} {item.unit}
-                      </div>
-                    </div>
-                    {item.type === 'additive' && (
-                      <Badge variant="outline" className="ml-2">
-                        Модификатор
-                      </Badge>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+        </p>
+      </div>
+    )}
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setWriteOffDialogOpen(false)}
-              disabled={isWritingOff}
-            >
-              {t.cancel}
-            </Button>
-            <Button
-              onClick={handleConfirmWriteOff}
-              disabled={isWritingOff}
-            >
-              {isWritingOff ? (
-                <>
-                  <Clock className="mr-2 h-4 w-4 animate-spin" />
-                  {t.writingOff}
-                </>
-              ) : (
-                <>
-                  <Check className="mr-2 h-4 w-4" />
-                  {t.confirmWriteOff}
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+    <DialogFooter>
+      <Button
+        variant="outline"
+        onClick={() => setWriteOffDialogOpen(false)}
+        disabled={isWritingOff}
+      >
+        {t.cancel}
+      </Button>
+      <Button
+        onClick={handleConfirmWriteOff}
+        disabled={isWritingOff}
+      >
+        {isWritingOff ? (
+          <>
+            <Clock className="mr-2 h-4 w-4 animate-spin" />
+            {t.writingOff}
+          </>
+        ) : (
+          <>
+            <Check className="mr-2 h-4 w-4" />
+            {t.confirmWriteOff}
+          </>
+        )}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
     </div>
   )
 }
