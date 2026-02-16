@@ -3930,12 +3930,25 @@ const renderTotalWithButtons = () => {
        {activeTab === 'order' && (
           <div className="h-full overflow-y-auto space-y-4 ">
             {getOrderItems()
-              .sort((a, b) => {
-                const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
-                const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
-                return dateA - dateB; 
-              })
-              .map(renderCompactItemCard)}
+      .filter(item => item.status !== OrderItemStatus.IN_PROGRESS)
+      .sort((a, b) => {
+        // Сортируем по дате создания (старые сверху)
+        const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
+        const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
+        return dateA - dateB;
+      })
+      .map(renderCompactItemCard)}
+    
+    {/* Затем готовящиеся позиции (IN_PROGRESS) в конце */}
+    {getOrderItems()
+      .filter(item => item.status === OrderItemStatus.IN_PROGRESS)
+      .sort((a, b) => {
+        // Сортируем по дате создания (старые сверху)
+        const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
+        const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
+        return dateA - dateB;
+      })
+      .map(renderCompactItemCard)}
             {renderTotalWithButtons()}
           </div>
         )}
@@ -4319,7 +4332,7 @@ const renderTotalWithButtons = () => {
                 </div>
               </div>
 
-              <AlertDialogFooter className="gap-3 sm:gap-0 mt-6">
+              <AlertDialogFooter className="gap-3  mt-6 g">
                 {refundQuantity < maxRefundQuantity && (
                   <Button
                     variant="outline"
@@ -4545,20 +4558,3 @@ const AdditivesDialog: React.FC<AdditivesDialogProps> = ({
 };
 
 
-
-const pulseAnimation = `
-  @keyframes softPulse {
-    0% {
-      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
-      background-color: rgba(34, 197, 94, 0.02);
-    }
-    50% {
-      box-shadow: 0 0 0 8px rgba(34, 197, 94, 0.1);
-      background-color: rgba(34, 197, 94, 0.06);
-    }
-    100% {
-      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
-      background-color: rgba(34, 197, 94, 0.02);
-    }
-  }
-`;
