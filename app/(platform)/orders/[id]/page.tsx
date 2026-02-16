@@ -1271,71 +1271,58 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
     };
 
     const confirmCompleteOrder = async () => {
-      if (!order) return;
-      if (!order.attentionFlags.isPrecheck) return;
+  if (!order) return;
+  if (!order.attentionFlags.isPrecheck) return;
 
-      try {
-        setIsUpdating(true);
+  try {
+    setIsUpdating(true);
 
-        let currentShiftId = activeShiftId;
-        if (!currentShiftId) {
-          const shiftId = await checkAndCreateShift(order.restaurant.id);
-          if (!shiftId) {
-            toast.error('Нет активной смены');
-            return;
-          }
-          currentShiftId = shiftId;
-        }
-
-        // Привязываем заказ к смене
-        if (currentShiftId) {
-          await assignOrderToShift(order.id, currentShiftId);
-        }
-        
-        if (restaurantData?.useWarehouse && orderAdditives.length > 0) {
-              // Фильтруем модификаторы с инвентарными товарами
-              const additivesWithInventory = orderAdditives.filter(
-                additive => additive.inventoryItem && additive.quantity && additive.quantity > 0
-              );  
-
-              if (additivesWithInventory.length > 0) {
-                await writeOffOrderAdditives(additivesWithInventory);
-              }
-            }
-
-            // Освобождаем стол перед завершением заказа
-            if (order.tableId && restaurantData.useReservation) {
-              await releaseTable(order.tableId, 'Заказ завершен');
-            }
-
-
-        // Если ресторан использует склад и есть модификаторы с инвентарными товарами
-        if (restaurantData?.useWarehouse && orderAdditives.length > 0) {
-          // Фильтруем модификаторы с инвентарными товарами
-          const additivesWithInventory = orderAdditives.filter(
-            additive => additive.inventoryItem && additive.quantity && additive.quantity > 0
-          );
-
-          if (additivesWithInventory.length > 0) {
-            await writeOffOrderAdditives(additivesWithInventory);
-          }
-        }
-
-        const updatedOrder = await OrderService.updateStatus(order.id, { status: 'COMPLETED' });
-        setOrder(updatedOrder);
-
-        await createOrderLog(t.logs.orderCompleted);
-
-        toast.success('Заказ завершен');
-        setShowCompleteDialog(false);
-        setShowPaymentDialog(false);
-      } catch (error) {
-        console.error('Error completing order:', error);
-        toast.error('Ошибка завершения заказа');
-      } finally {
-        setIsUpdating(false);
+    let currentShiftId = activeShiftId;
+    if (!currentShiftId) {
+      const shiftId = await checkAndCreateShift(order.restaurant.id);
+      if (!shiftId) {
+        toast.error('Нет активной смены');
+        return;
       }
-    };
+      currentShiftId = shiftId;
+    }
+
+    // Привязываем заказ к смене
+    if (currentShiftId) {
+      await assignOrderToShift(order.id, currentShiftId);
+    }
+    
+    if (restaurantData?.useWarehouse && orderAdditives.length > 0) {
+      // Фильтруем модификаторы с инвентарными товарами
+      const additivesWithInventory = orderAdditives.filter(
+        additive => additive.inventoryItem && additive.quantity && additive.quantity > 0
+      );  
+
+      if (additivesWithInventory.length > 0) {
+        await writeOffOrderAdditives(additivesWithInventory);
+      }
+    }
+
+    // Освобождаем стол перед завершением заказа
+    if (order.tableId && restaurantData.useReservation) {
+      await releaseTable(order.tableId, 'Заказ завершен');
+    }
+
+    const updatedOrder = await OrderService.updateStatus(order.id, { status: 'COMPLETED' });
+    setOrder(updatedOrder);
+
+    await createOrderLog(t.logs.orderCompleted);
+
+    toast.success('Заказ завершен');
+    setShowCompleteDialog(false);
+    setShowPaymentDialog(false);
+  } catch (error) {
+    console.error('Error completing order:', error);
+    toast.error('Ошибка завершения заказа');
+  } finally {
+    setIsUpdating(false);
+  }
+};
 const updateTableStatusBasedOnOrder = async () => {
   if (!order?.tableId || !restaurantData.useReservation) return;
 
@@ -1384,44 +1371,52 @@ useEffect(() => {
 
 
     const handleCalculateOrder = async () => {
-      if (!order) return;
+  if (!order) return;
 
-      try {
-        setIsUpdating(true);
+  try {
+    setIsUpdating(true);
 
-        let currentShiftId = activeShiftId;
+    let currentShiftId = activeShiftId;
 
-        if (!currentShiftId) {
-          const shiftId = await checkAndCreateShift(order.restaurant.id);
-          if (!shiftId) {
-            toast.error('Нет активной смены');
-            setIsUpdating(false);
-            return;
-          }
-          currentShiftId = shiftId;
-        }
-
-        // Убеждаемся, что заказ привязан к смене
-        if (currentShiftId) {
-          await assignOrderToShift(order.id, currentShiftId);
-        }
-
-        // Проверяем оплату
-        if (order && order.payment && order.payment.status !== 'PAID' && calculateOrderTotal() > 0) {
-          setShowPaymentDialog(true);
-          setIsUpdating(false);
-          return;
-        }
-
-        // Вызываем завершение заказа (расчет)
-        setShowCompleteDialog(true);
-      } catch (error) {
-        console.error('Error during calculate order:', error);
-        toast.error('Ошибка расчета заказа');
-      } finally {
+    if (!currentShiftId) {
+      const shiftId = await checkAndCreateShift(order.restaurant.id);
+      if (!shiftId) {
+        toast.error('Нет активной смены');
         setIsUpdating(false);
+        return;
       }
-    };
+      currentShiftId = shiftId;
+    }
+
+    // Убеждаемся, что заказ привязан к смене
+    if (currentShiftId) {
+      await assignOrderToShift(order.id, currentShiftId);
+    }
+console.log(order)
+    // Проверяем оплату
+    if (order && order.payment && order.payment.status !== 'PAID' && calculateOrderTotal() > 0) {
+      
+      setShowPaymentDialog(true);
+      setIsUpdating(false);
+      return;
+    }
+
+    // Проверяем наличие пречека
+    if (!order.attentionFlags.isPrecheck) {
+      toast.error('Сначала необходимо сформировать пречек');
+      setIsUpdating(false);
+      return;
+    }
+
+    // Вызываем завершение заказа (расчет)
+    setShowCompleteDialog(true);
+  } catch (error) {
+    console.error('Error during calculate order:', error);
+    toast.error('Ошибка расчета заказа');
+  } finally {
+    setIsUpdating(false);
+  }
+};
 
     // Обновите useEffect для проверки смены
     useEffect(() => {
@@ -2191,9 +2186,9 @@ const ProductCard: React.FC<ProductCardProps> = ({
   }, [product.title]);
 
   return (
-    <div className="group bg-white rounded-xl shadow-sm hover:shadow-md border border-gray-100 hover:border-green-100 transition-all duration-200 flex flex-col h-full overflow-hidden">
+    <div className="group bg-white rounded-xl shadow-sm hover:shadow-md border border-gray-100 hover:border-green-100 transition-all duration-200 flex flex-col h-full">1
       {/* Изображение */}
-      <div className="relative aspect-square overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="relative aspect-square  bg-gradient-to-br from-gray-50 to-gray-100">
         {product.images?.[0] ? (
           <Image
             src={product.images[0]}
@@ -2215,6 +2210,9 @@ const ProductCard: React.FC<ProductCardProps> = ({
           </div>
         )}
         
+          <div className="absolute bottom-3 right-3 border-1 border-green-500 text-green-500 text-lg font-bold rounded-xl px-3 py-1.5 shadow-lg">
+            {getProductPrice(product)} ₽
+          </div>
         {/* Кнопка добавок */}
         {product.additives && product.additives.length > 0 && (
           <div className="absolute top-3 left-3">
@@ -2230,9 +2228,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
       
       {/* Контент */}
       <div className="p-4 flex flex-col flex-grow">
-        {/* Заголовок и цена - ИЗМЕНЕНО */}
         <div className="mb-3 flex flex-col gap-2">
-          {/* Название - теперь занимает всю ширину и переносится */}
           <h3 
             ref={titleRef}
             className="text-xl font-bold text-gray-800 leading-tight break-words"
@@ -2240,11 +2236,7 @@ const ProductCard: React.FC<ProductCardProps> = ({
           >
             {product.title}
           </h3>
-          
-          {/* Цена - отдельно под названием */}
-          <span className="text-2xl font-extrabold text-green-600">
-            {getProductPrice(product)} ₽
-          </span>
+        
         </div>
 
         {/* Управление количеством */}
@@ -2277,12 +2269,6 @@ const ProductCard: React.FC<ProductCardProps> = ({
             </Button>
           </div>
           
-          {/* Текущее количество */}
-          {quantity > 0 && (
-            <div className="text-center mt-2 text-sm font-medium text-gray-600">
-              В заказе: {quantity} шт
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -2632,12 +2618,15 @@ const ItemHistoryDialog = ({ item, open, onOpenChange }: {
     OrderItemStatus.COMPLETED,
     OrderItemStatus.IN_PROGRESS
   ].includes(item.status) && isOrderEditable && !item.isRefund;
-
-  return (
-    <div
-      key={item.id}
-      className={`bg-white rounded-xl p-3 2xl:p-4 shadow-sm ${item.isReordered ? 'border-l-4 border-blue-500' : ''} ${item.isRefund ? 'border-l-4 border-red-500' : ''}`}
-    >
+const isCooking = item.status === OrderItemStatus.IN_PROGRESS && item.timestamps.startedAt && !item.timestamps.completedAt
+  return ( <div
+    key={item.id}
+    className={`bg-white rounded-xl p-3 2xl:p-4 shadow-sm transition-all duration-300
+      ${item.isReordered ? 'border-l-4 border-blue-500' : ''} 
+      ${item.isRefund ? 'border-l-4 border-red-500' : ''}
+      ${isCooking ? 'shimmer-border' : 'border border-transparent'}
+    `}
+  >
       <div className="flex items-start gap-3 2xl:gap-4">
         {/* Изображение продукта */}
         <div className="flex-shrink-0 w-12 h-12 2xl:w-16 2xl:h-16 relative  bg-gray-100 rounded-lg">
@@ -3388,8 +3377,101 @@ const renderOrderAdditivesBlock = () => {
 
   // Обновленная функция renderTotalWithButtons
 const renderTotalWithButtons = () => {
+  // Даже если правая колонка свернута, показываем кнопки в компактном виде
   if (isRightColCollapsed) {
-    return null
+    return (
+      <div className="bg-white rounded-xl shadow-md p-3 flex items-center justify-between gap-2">
+        <div className="text-sm font-medium">
+          Итого: <span className="font-bold text-green-600">{calculateOrderTotal().toFixed(0)} ₽</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {order.status !== 'CANCELLED' && (
+            <Button
+              size="sm"
+              disabled={isUpdating}
+              onClick={handlePrecheck}
+              variant={order.attentionFlags?.isPrecheck ? "default" : "outline"}
+              className={`px-3 py-1 h-9 text-xs ${order.attentionFlags?.isPrecheck ? 'bg-green-100 text-green-800 hover:bg-green-100' : ''}`}
+            >
+              {isUpdating ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : order.attentionFlags?.isPrecheck ? (
+                <CheckCircle className="h-3 w-3 mr-1" />
+              ) : (
+                <Check className="h-3 w-3 mr-1" />
+              )}
+              {order.attentionFlags?.isPrecheck ? t.precheckFormed : t.formPrecheck}
+            </Button>
+          )}
+
+          {getOrderItems().some(item => item.status === OrderItemStatus.CREATED) && (
+            <Button
+              size="sm"
+              disabled={isUpdating || getOrderItems().length === 0}
+              onClick={handleConfirmOrder}
+              className="bg-emerald-500 hover:bg-emerald-400 text-white px-3 py-1 h-9 text-xs"
+            >
+              {isUpdating ? (
+                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              ) : (
+                <Check className="h-3 w-3 mr-1" />
+              )}
+              {order.scheduledAt ? 'Подтв.' : t.confirm}({getOrderItems().filter(item => item.status === OrderItemStatus.CREATED).length})
+            </Button>
+          )}
+
+          {order.status === 'CREATED' && (
+            <Button
+              size="sm"
+              disabled={isUpdating}
+              onClick={handleCancelOrder}
+              className="bg-red-500 hover:bg-red-400 text-white px-3 py-1 h-9 text-xs"
+            >
+              {isUpdating ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <X className="h-3 w-3" />
+              )}
+            </Button>
+          )}
+
+          {(order.status === 'READY' && order.type != 'DELIVERY') && (
+            <Button
+              size="sm"
+              disabled={
+                isUpdating || 
+                shiftLoading || 
+                !order.attentionFlags.isPrecheck || 
+                getOrderItems().some(item => 
+                  item.status !== OrderItemStatus.COMPLETED && 
+                  item.status !== OrderItemStatus.REFUNDED
+                )
+              }
+              onClick={handleCalculateOrder}
+              className={`px-3 py-1 h-9 text-xs ${
+                getOrderItems().some(item => 
+                  item.status !== OrderItemStatus.COMPLETED && 
+                  item.status !== OrderItemStatus.REFUNDED
+                )
+                  ? 'hidden'
+                  : 'bg-emerald-500 hover:bg-emerald-400 text-white'
+              }`}
+            >
+              {(isUpdating || shiftLoading) ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : getOrderItems().some(item => 
+                  item.status !== OrderItemStatus.COMPLETED && 
+                  item.status !== OrderItemStatus.REFUNDED
+                ) ? (
+                <Clock className="h-3 w-3" />
+              ) : (
+                <CheckCircle className="h-3 w-3" />
+              )}
+            </Button>
+          )}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -3573,7 +3655,7 @@ const renderTotalWithButtons = () => {
             <div className={isRightColCollapsed ? 'lg:col-span-11' : 'lg:col-span-2'}>
               <div className="bg-white rounded-2xl shadow-lg sticky h-[100vh] flex flex-col">
                 {/* Заголовок меню - sticky */}
-                <div className="sticky top-0 z-10 bg-white border-b px-6 pb-4  flex justify-between">
+                <div className="sticky top-0 z-10 bg-white border-b  pb-4  flex justify-between">
                   <div className='flex flex-col  justify-center items-start gap-2'>
                  
                     <h2 className="text-2xl font-bold flex items-center gap-3 flex ">
@@ -3722,10 +3804,10 @@ const renderTotalWithButtons = () => {
               </div>
 
             {/* Правая колонка - Информация о заказе */}
-          <div className={`h-[100vh] flex flex-col w-full`}>
+          <div className={`h-[100vh] flex flex-col w-full `}>
   {/* Карточка с табами - фиксированной высоты со скроллом */}
-  <div className="bg-white rounded-2xl pb-4 shadow-lg flex-1 flex flex-col min-h-0 px-6 justify-between">
-    {!isRightColCollapsed && <h1 className={`text-xl md:text-2xl font-bold text-gray-900 py-4 ${isRightColCollapsed ? 'text-center': 'text-left'}`}>
+  <div className="bg-white rounded-2xl pb-4 shadow-lg flex-1 flex flex-col min-h-0  justify-between px-6 ">
+    {!isRightColCollapsed && <h1 className={`text-xl md:text-2xl font-bold text-gray-900 py-4  ${isRightColCollapsed ? 'text-center': 'text-left'}`}>
       Заказ {order.number}
     </h1>
   }
@@ -3843,10 +3925,10 @@ const renderTotalWithButtons = () => {
       
       {/* Контент табов */}
       {!isRightColCollapsed &&
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div className="flex-1 min-h-0">
         {/* Таб "Заказ" */}
        {activeTab === 'order' && (
-          <div className="h-full overflow-y-auto space-y-4 overflow-x-hidden">
+          <div className="h-full overflow-y-auto space-y-4 ">
             {getOrderItems()
               .sort((a, b) => {
                 const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
@@ -4121,7 +4203,6 @@ const renderTotalWithButtons = () => {
               />
             </div>
           </div>
-
           {/* Кнопки сохранения */}
           {isOrderEditable && (
             <div className="flex justify-end gap-4 pt-4 border-t">
@@ -4268,42 +4349,30 @@ const renderTotalWithButtons = () => {
           </AlertDialog>
 
           <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
-            <AlertDialogContent className="max-w-md">
-              <AlertDialogHeader>
-                <AlertDialogTitle className="text-2xl">
-                  {t.confirmation}
-                </AlertDialogTitle>
-                <AlertDialogDescription className="text-lg">
-                  {t.confirmCalculate}
-
-                  {/* Добавить информацию о списании */}
-                  {restaurantData?.useWarehouse && orderAdditives.some(a => a.inventoryItem) && (
-                    <div className="mt-4 p-4 bg-yellow-50 rounded-xl">
-                      <p className="text-lg font-semibold text-yellow-800">
-                        <AlertCircle className="h-5 w-5 inline mr-2" />
-                        Будут списаны инвентарные товары из модификаторов заказа
-                      </p>
-                    </div>
-                  )}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel className="h-12 text-lg">
-                  {t.cancel}
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={confirmCompleteOrder}
-                  disabled={isUpdating || isWritingOff}
-                  className="h-12 text-lg"
-                >
-                  {(isUpdating || isWritingOff) && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
-                  {isWritingOff
-                    ? 'Списание...'
-                    : t.calculate}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+  <AlertDialogContent className="max-w-md">
+    <AlertDialogHeader>
+      <AlertDialogTitle className="text-2xl">
+        {t.confirmation}
+      </AlertDialogTitle>
+      <AlertDialogDescription className="text-lg">
+        {t.confirmCalculate}
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    <AlertDialogFooter>
+      <AlertDialogCancel className="h-12 text-lg">
+        {t.cancel}
+      </AlertDialogCancel>
+      <AlertDialogAction
+        onClick={confirmCompleteOrder}
+        disabled={isUpdating || isWritingOff}
+        className="h-12 text-lg"
+      >
+        {(isUpdating || isWritingOff) && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
+        {t.calculate}
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
 
           <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
             <AlertDialogContent className="max-w-md">
@@ -4475,3 +4544,21 @@ const AdditivesDialog: React.FC<AdditivesDialogProps> = ({
   );
 };
 
+
+
+const pulseAnimation = `
+  @keyframes softPulse {
+    0% {
+      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+      background-color: rgba(34, 197, 94, 0.02);
+    }
+    50% {
+      box-shadow: 0 0 0 8px rgba(34, 197, 94, 0.1);
+      background-color: rgba(34, 197, 94, 0.06);
+    }
+    100% {
+      box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+      background-color: rgba(34, 197, 94, 0.02);
+    }
+  }
+`;

@@ -130,3 +130,28 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;  /* Chrome, Safari и Opera */
 }
+ @keyframes shimmer {
+    0% {
+      border-color: rgba(34, 197, 94, 0.3);
+    }
+    25% {
+      border-color: rgba(34, 197, 94, 0.7);
+    }
+    50% {
+      border-color: rgba(34, 197, 94, 1);
+    }
+    75% {
+      border-color: rgba(34, 197, 94, 0.7);
+    }
+    100% {
+      border-color: rgba(34, 197, 94, 0.3);
+    }
+  }
+
+  .shimmer-border {
+    animation: shimmer 3s ease-in-out infinite;
+    border-width: 2px;
+    border-style: solid;
+    border-radius: 12px;
+    transition: all 0.3s ease;
+  }
