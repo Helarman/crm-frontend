@@ -1702,111 +1702,115 @@ console.log(order)
       }
     };
 
-    const handleQuantityChange = useCallback(async (product: Product, newQuantity: number, additives: string[], comment: string) => {
-      if (!orderId || !isOrderEditable || !order || !getOrderItems()) return;
+   const handleQuantityChange = useCallback(async (product: Product, newQuantity: number, additives: string[], comment: string) => {
+  if (!orderId || !isOrderEditable || !order || !getOrderItems()) return;
 
-      const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`;
+  // Защита от отрицательных значений
+  if (newQuantity < 0) return;
+  
+  const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`;
 
-      if (pendingAdditions[key]?.timer) {
-        clearTimeout(pendingAdditions[key].timer!);
-      }
+  if (pendingAdditions[key]?.timer) {
+    clearTimeout(pendingAdditions[key].timer!);
+  }
 
-      if (newQuantity === 0) {
-        setPendingAdditions(prev => {
-          const newState = { ...prev };
-          delete newState[key];
-          return newState;
-        });
-        return;
-      }
+  if (newQuantity === 0) {
+    setPendingAdditions(prev => {
+      const newState = { ...prev };
+      delete newState[key];
+      return newState;
+    });
+    return;
+  }
 
-      const timer = setTimeout(async () => {
-        try {
-          setIsUpdating(true);
+  const timer = setTimeout(async () => {
+    try {
+      setIsUpdating(true);
 
-          const existingItem = getOrderItems().find(item =>
-            item.product.id === product.id &&
-            JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
-            item.comment === comment &&
-            item.status === OrderItemStatus.CREATED
-          );
-
-          if (existingItem) {
-            await OrderService.updateOrderItemQuantity(
-              orderId as string,
-              existingItem.id,
-              newQuantity
-            );
-          } else {
-            await OrderService.addItemToOrder(
-              orderId as string,
-              {
-                productId: product.id,
-                quantity: newQuantity,
-                additiveIds: additives,
-                comment,
-              }
-            );
-          }
-
-          const updatedOrder = await OrderService.getById(orderId as string);
-          const orderWithPreservedFlags = {
-            ...updatedOrder,
-            attentionFlags: updatedOrder.attentionFlags || {} // Добавьте fallback
-          };
-
-          setOrder(orderWithPreservedFlags);
-
-          await applyAutoDiscounts(orderWithPreservedFlags);
-
-          await createOrderLog(
-            existingItem
-              ? `Обновлено количество: ${product.title} → ${newQuantity}`
-              : `${t.logs.itemAdded}: ${product.title} x ${newQuantity}`
-          );
-
-          setPendingAdditions(prev => {
-            const newState = { ...prev };
-            delete newState[key];
-            return newState;
-          });
-        } catch (err) {
-          toast.error('Ошибка при обновлении заказа');
-          console.error('Error:', err);
-        } finally {
-          setIsUpdating(false);
-        }
-      }, 1000);
-
-      setPendingAdditions(prev => ({
-        ...prev,
-        [key]: {
-          quantity: newQuantity,
-          additives,
-          comment,
-          timer,
-        },
-      }));
-    }, [orderId, isOrderEditable, order]);
-
-    const getDisplayQuantity = (product: Product, additives: string[], comment: string) => {
-      const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`
-
-      // Сначала проверяем pending additions
-      if (pendingAdditions[key]) {
-        return pendingAdditions[key].quantity
-      }
-
-      // Затем проверяем существующие items только со статусом CREATED
-      const existingItem = order?.items?.find(item =>
+      const existingItem = getOrderItems().find(item =>
         item.product.id === product.id &&
         JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
         item.comment === comment &&
         item.status === OrderItemStatus.CREATED
       );
 
-      return existingItem ? existingItem.quantity : 0;
+      if (existingItem) {
+        // Обновляем существующий item
+        await OrderService.updateOrderItemQuantity(
+          orderId as string,
+          existingItem.id,
+          newQuantity
+        );
+      } else {
+        // Добавляем новый item
+        await OrderService.addItemToOrder(
+          orderId as string,
+          {
+            productId: product.id,
+            quantity: newQuantity,
+            additiveIds: additives,
+            comment,
+          }
+        );
+      }
+
+      const updatedOrder = await OrderService.getById(orderId as string);
+      const orderWithPreservedFlags = {
+        ...updatedOrder,
+        attentionFlags: updatedOrder.attentionFlags || {}
+      };
+
+      setOrder(orderWithPreservedFlags);
+
+      await applyAutoDiscounts(orderWithPreservedFlags);
+
+      await createOrderLog(
+        existingItem
+          ? `Обновлено количество: ${product.title} → ${newQuantity}`
+          : `${t.logs.itemAdded}: ${product.title} x ${newQuantity}`
+      );
+
+      setPendingAdditions(prev => {
+        const newState = { ...prev };
+        delete newState[key];
+        return newState;
+      });
+    } catch (err) {
+      toast.error('Ошибка при обновлении заказа');
+      console.error('Error:', err);
+    } finally {
+      setIsUpdating(false);
     }
+  }, 1000);
+
+  setPendingAdditions(prev => ({
+    ...prev,
+    [key]: {
+      quantity: newQuantity,
+      additives,
+      comment,
+      timer,
+    },
+  }));
+}, [orderId, isOrderEditable, order, getOrderItems]);
+    const getDisplayQuantity = (product: Product, additives: string[], comment: string) => {
+  const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`
+
+  // Сначала проверяем pending additions
+  if (pendingAdditions[key]) {
+    return pendingAdditions[key].quantity
+  }
+
+  // Затем проверяем существующие items только со статусом CREATED
+  const existingItem = order?.items?.find(item =>
+    item.product.id === product.id &&
+    JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
+    item.comment === comment &&
+    item.status === OrderItemStatus.CREATED
+  );
+
+  return existingItem ? existingItem.quantity : 0;
+}
 
     const handleAdditivesChange = (productId: string, newAdditives: string[]) => {
       setProductAdditives(prev => ({
@@ -2186,9 +2190,9 @@ const ProductCard: React.FC<ProductCardProps> = ({
   }, [product.title]);
 
   return (
-    <div className="group bg-white rounded-xl shadow-sm hover:shadow-md border border-gray-100 hover:border-green-100 transition-all duration-200 flex flex-col h-full">1
+    <div className="group bg-white rounded-xl shadow-sm hover:shadow-md border border-gray-100 hover:border-green-100 transition-all duration-200 flex flex-col h-full">
       {/* Изображение */}
-      <div className="relative aspect-square  bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="relative aspect-square bg-gradient-to-br from-gray-50 to-gray-100">
         {product.images?.[0] ? (
           <Image
             src={product.images[0]}
@@ -2210,9 +2214,10 @@ const ProductCard: React.FC<ProductCardProps> = ({
           </div>
         )}
         
-          <div className="absolute bottom-3 right-3 border-1 border-green-500 text-green-500 text-lg font-bold rounded-xl px-3 py-1.5 shadow-lg">
-            {getProductPrice(product)} ₽
-          </div>
+        <div className="absolute bottom-3 right-3 border-1 border-green-500 text-green-500 text-lg font-bold rounded-xl px-3 py-1.5 shadow-lg">
+          {getProductPrice(product)} ₽
+        </div>
+        
         {/* Кнопка добавок */}
         {product.additives && product.additives.length > 0 && (
           <div className="absolute top-3 left-3">
@@ -2236,10 +2241,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
           >
             {product.title}
           </h3>
-        
         </div>
 
-        {/* Управление количеством */}
         <div className="mt-auto pt-3 border-t border-gray-100">
           <div className="flex items-center gap-2">
             <Button
@@ -2247,8 +2250,8 @@ const ProductCard: React.FC<ProductCardProps> = ({
               size="default"
               className="flex-1 h-11 text-base font-medium"
               onClick={() => {
-                const newQuantity = Math.max(0, quantity - 1)
-                onQuantityChange(newQuantity)
+                const newQuantity = Math.max(0, quantity - 1);
+                onQuantityChange(newQuantity);
               }}
               disabled={quantity === 0 || !isOrderEditable}
             >
@@ -2260,15 +2263,14 @@ const ProductCard: React.FC<ProductCardProps> = ({
               size="default"
               className="flex-1 h-11 text-base font-medium"
               onClick={() => {
-                const newQuantity = quantity + 1
-                onQuantityChange(newQuantity)
+                const newQuantity = quantity + 1;
+                onQuantityChange(newQuantity);
               }}
               disabled={!isOrderEditable}
             >
               <Plus className="h-5 w-5 mr-1" />
             </Button>
           </div>
-          
         </div>
       </div>
     </div>
@@ -2389,7 +2391,6 @@ const ItemHistoryDialog = ({ item, open, onOpenChange }: {
                 <div className="flex-1">
                   <p className="font-medium">{language === 'ru' ? 'Готово' : 'მზადაა'}</p>
                   <p className="text-sm text-muted-foreground">{formatDate(item.timestamps.completedAt)}</p>
-                  {JSON.stringify(item)}
                   {item.completedBy && (
                     <p className="text-xs text-muted-foreground mt-1">
                       {item.completedBy.name}
@@ -2497,7 +2498,6 @@ const ItemHistoryDialog = ({ item, open, onOpenChange }: {
 
       const canRefundItem = [
         OrderItemStatus.COMPLETED,
-        OrderItemStatus.IN_PROGRESS
       ].includes(item.status) && isOrderEditable && !item.isRefund;
 
       return (
@@ -2554,37 +2554,49 @@ const ItemHistoryDialog = ({ item, open, onOpenChange }: {
             )}
 
             {canRefund && canRefundItem && (
-              <div className='flex justify-end text-right'>
-                <Button
-                  variant="ghost"
-                  size="lg"
-                  className="text-red-500 hover:text-red-600 2xl:flex hidden h-10"
-                  onClick={() => {
-                    setSelectedItemForRefund(item);
-                    setMaxRefundQuantity(item.quantity);
-                    setRefundQuantity(1);
-                    setShowRefundDialog(true);
-                  }}
-                  disabled={isUpdating}
-                >
-                  <Undo className="h-5 w-5 mr-2" />
-                  Вернуть
-                </Button>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  className="text-red-500 hover:text-red-600 flex 2xl:hidden h-10"
-                  onClick={() => {
-                    setSelectedItemForRefund(item);
-                    setMaxRefundQuantity(item.quantity);
-                    setRefundQuantity(1);
-                    setShowRefundDialog(true);
-                  }}
-                  disabled={isUpdating}
-                >
-                  <Undo className="h-5 w-5" />
-                </Button>
-              </div>
+              (() => {
+                const isBeforeKitchen = order?.status === 'CREATED';
+                
+                const isAfterKitchenButBeforePrecheck = 
+                  order?.status === 'PREPARING' && 
+                  item.status === OrderItemStatus.COMPLETED;
+                
+                const canKitchenStaffReturn = 
+                  isAfterKitchenButBeforePrecheck && 
+                  ['WAITER', 'CASHIER','MANAGER', 'SUPERVISOR'].includes(user.role);
+                
+                const isAfterPrecheck = order?.attentionFlags?.isPrecheck;
+                const canManagerReturn = 
+                  isAfterPrecheck && 
+                  ['MANAGER', 'SUPERVISOR'].includes(user.role);
+                
+                const shouldShow = 
+                  isBeforeKitchen || 
+                  canKitchenStaffReturn || 
+                  canManagerReturn;
+                
+                return shouldShow && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                    onClick={() => {
+                      setSelectedItemForRefund(item);
+                      setMaxRefundQuantity(item.quantity);
+                      setRefundQuantity(1);
+                      setShowRefundDialog(true);
+                    }}
+                    disabled={isUpdating}
+                    title={
+                      isBeforeKitchen ? 'Возврат до кухни' :
+                      isAfterKitchenButBeforePrecheck ? 'Возврат после кухни' :
+                      isAfterPrecheck ? 'Возврат после пречека (только для менеджеров)' : ''
+                    }
+                  >
+                    <Undo className="h-4 w-4 2xl:h-5 2xl:w-5" />
+                  </Button>
+                );
+              })()
             )}
           </div>
         </div>
@@ -2616,7 +2628,6 @@ const ItemHistoryDialog = ({ item, open, onOpenChange }: {
   const canRefund = ['COMPLETED', 'DELIVERING', 'PREPARING', 'READY'].includes(order?.status || '') && !item.isRefund;
   const canRefundItem = [
     OrderItemStatus.COMPLETED,
-    OrderItemStatus.IN_PROGRESS
   ].includes(item.status) && isOrderEditable && !item.isRefund;
 const isCooking = item.status === OrderItemStatus.IN_PROGRESS && item.timestamps.startedAt && !item.timestamps.completedAt
   return ( <div
@@ -2748,21 +2759,46 @@ const isCooking = item.status === OrderItemStatus.IN_PROGRESS && item.timestamps
 
                 {/* Возврат */}
                 {canRefund && canRefundItem && (
+              (() => {
+                const isBeforeKitchen = order?.status === 'CREATED';
+                
+                const isAfterKitchenButBeforePrecheck = 
+                  order?.status === 'PREPARING' && 
+                  item.status === OrderItemStatus.COMPLETED;
+                
+                const canKitchenStaffReturn = 
+                  isAfterKitchenButBeforePrecheck && 
+                  ['WAITER', 'CASHIER','MANAGER', 'SUPERVISOR'].includes(user.role);
+                
+                const isAfterPrecheck = order?.attentionFlags?.isPrecheck;
+                const canManagerReturn = 
+                  isAfterPrecheck && 
+                  ['MANAGER', 'SUPERVISOR'].includes(user.role);
+                
+                const shouldShow = 
+                  isBeforeKitchen || 
+                  canKitchenStaffReturn || 
+                  canManagerReturn;
+                
+                return shouldShow && (
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                    className={`${!canManagerReturn ? 'hidden' : ''} h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50`}
                     onClick={() => {
                       setSelectedItemForRefund(item);
                       setMaxRefundQuantity(item.quantity);
                       setRefundQuantity(1);
                       setShowRefundDialog(true);
                     }}
-                    disabled={isUpdating}
+                    disabled={isUpdating || !canManagerReturn}
+                    title={'Возврат'}
                   >
                     <Undo className="h-4 w-4 2xl:h-5 2xl:w-5" />
                   </Button>
-                )}
+                );
+              })()
+            )}
 
                 {/* Удаление */}
                 {canEditQuantity && (

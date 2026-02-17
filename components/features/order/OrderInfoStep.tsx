@@ -491,6 +491,36 @@ export const OrderInfoStep = ({
     }
   }
 
+  const formatPhoneNumber = (value: string) => {
+    const cleaned = value.replace(/\D/g, '');
+    
+    let number = cleaned;
+    if (cleaned.startsWith('8')) {
+      number = '7' + cleaned.slice(1);
+    } else if (!cleaned.startsWith('7') && cleaned.length > 0) {
+      number = '7' + cleaned;
+    }
+    if (number.length <= 1) return '+7';
+    if (number.length <= 4) return `+7 (${number.slice(1, 4)}`;
+    if (number.length <= 7) return `+7 (${number.slice(1, 4)}) ${number.slice(4, 7)}`;
+    if (number.length <= 9) return `+7 (${number.slice(1, 4)}) ${number.slice(4, 7)}-${number.slice(7, 9)}`;
+    return `+7 (${number.slice(1, 4)}) ${number.slice(4, 7)}-${number.slice(7, 9)}-${number.slice(9, 11)}`;
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhoneNumber(e.target.value);
+    setOrder({
+      ...order,
+      phone: formatted
+    });
+  };
+
+  // Функция для валидации телефона (опционально)
+  const validatePhone = (phone: string) => {
+    const cleaned = phone.replace(/\D/g, '');
+    return cleaned.length === 11; // +7 XXX XXX XX XX = 11 цифр
+  };
+
   // Обработчик для кнопки "-" (предыдущий стол)
   const handlePreviousTable = async () => {
     // Если не в режиме бронирования - используем старую логику
@@ -1307,23 +1337,21 @@ export const OrderInfoStep = ({
               <div className="flex flex-col md:flex-row gap-6 mb-6 w-full">
                 {/* Телефон */}
                 {order.type !== 'DINE_IN' && (
-                  <div className="space-y-3 w-full">
-                    <Label className="text-xl font-semibold flex items-center gap-3">
-                      <Phone className="h-6 w-6 text-gray-600" />
-                      {language === 'ka' ? 'ტელეფონი' : 'Телефон'}
-                    </Label>
-                    <Input
-                      type="tel"
-                      placeholder={language === 'ka' ? '+995 555 123 456' : '+7 999 123-45-67'}
-                      value={order.phone || ''}
-                      onChange={(e) => setOrder({
-                        ...order,
-                        phone: e.target.value
-                      })}
-                      className="h-14 text-lg"
-                    />
-                  </div>
-                )}
+  <div className="space-y-3 w-full">
+    <Label className="text-xl font-semibold flex items-center gap-3">
+      <Phone className="h-6 w-6 text-gray-600" />
+      {language === 'ka' ? 'ტელეფონი' : 'Телефон'}
+    </Label>
+    <Input
+      type="tel"
+      placeholder="+7 (999) 999-99-99"
+      value={order.phone || ''}
+      onChange={handlePhoneChange}
+      className="h-14 text-lg font-mono"
+      maxLength={18} 
+    />
+  </div>
+)}
 
                 {/* Количество людей и номер стола */}
                 <div className="flex flex-col md:flex-row gap-4 w-full">
