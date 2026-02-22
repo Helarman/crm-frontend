@@ -19,6 +19,7 @@ import {
   Store,
   Phone,
   Users,
+  DoorClosed,
   Table as TableIcon,
   MessageCircle,
   MapPin,
@@ -40,6 +41,8 @@ import {
   Check,
   Eye,
   CheckCircle,
+  Calculator,
+
   X,
   Loader2,
   Search
@@ -1350,8 +1353,22 @@ export const OrderInfoStep = ({
       className="h-14 text-lg font-mono"
       maxLength={18} 
     />
+       <Label className="text-xl font-semibold flex items-center gap-3">
+      <User className="h-6 w-6 text-gray-600" />
+      {language === 'ka' ? 'სახელი' : 'Имя клиента'}
+    </Label>
+      <Input
+          value={order.customerName || ''}
+          onChange={(e) => setOrder({
+            ...order,
+            customerName: e.target.value
+          })}
+          className="h-12 text-lg"
+          placeholder={language === 'ka' ? 'შეიყვანეთ სახელი' : 'Введите имя клиента'}
+        />
   </div>
 )}
+
 
                 {/* Количество людей и номер стола */}
                 <div className="flex flex-col md:flex-row gap-4 w-full">
@@ -1598,9 +1615,8 @@ export const OrderInfoStep = ({
             </div>
 
             {/* Доставка */}
-           {order.type === 'DELIVERY' && (
+     {order.type === 'DELIVERY' && (
   <div className="bg-white rounded-2xl p-6 shadow-lg">
-    {/* Заголовок */}
     <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
       <Truck className="h-8 w-8 text-orange-600" />
       {language === 'ka' ? 'მიტანის ინფორმაცია' : 'Информация о доставке'}
@@ -1609,28 +1625,111 @@ export const OrderInfoStep = ({
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
       {/* Левая колонка: Адрес и зона доставки */}
       <div className="space-y-4">
+        {/* Основной адрес */}
         <div className="space-y-2">
           <Label className="text-lg font-semibold flex items-center gap-2">
             <MapPin className="h-5 w-5 text-orange-600" />
             {language === 'ka' ? 'მისამართი' : 'Адрес доставки'}
           </Label>
-          <AddressInput
-            value={order.deliveryAddress}
-            onChange={(e: any) => setOrder({
-              ...order,
-              deliveryAddress: e.target.value,
-              deliveryZone: null
-            })}
-            language={language as any}
-            restaurantId={order.restaurantId}
-            onZoneFound={(zone) => {
-              setOrder({
+    <AddressInput
+  value={order.deliveryAddress}
+  onChange={(e: any) => {
+    console.log('AddressInput onChange:', e.target.value) // Добавьте эту отладку
+    setOrder({
+      ...order,
+      deliveryAddress: e.target.value,
+      deliveryZone: null
+    })
+  }}
+  language={language as any}
+  restaurantId={order.restaurantId}
+  onZoneFound={(zone) => {
+    console.log('Zone found:', zone) // Добавьте эту отладку
+    setOrder({
+      ...order,
+      deliveryZone: zone
+    })
+  }}
+  onAddressSelect={(address) => {
+    console.log('AddressInput onAddressSelect:', address) // Добавьте эту отладку
+    setOrder({
+      ...order,
+      deliveryAddress: address
+    })
+  }}
+  className="w-full"
+/>
+        </div>
+
+        {/* Дополнительные поля адреса */}
+        <div className="grid grid-cols-2 gap-3">
+          {/* Этаж */}
+          <div className="space-y-2">
+            <Label className="text-lg font-semibold flex items-center gap-2">
+              <Building className="h-5 w-5 text-orange-600" />
+              {language === 'ka' ? 'სართული' : 'Этаж'}
+            </Label>
+            <Input
+              value={order.deliveryFloor || ''}
+              onChange={(e) => setOrder({
                 ...order,
-                deliveryZone: zone
-              })
-            }}
-            className="w-full"
-          />
+                deliveryFloor: e.target.value
+              })}
+              className="h-10"
+              placeholder={language === 'ka' ? 'მაგ. 5' : 'Этаж'}
+            />
+          </div>
+
+          {/* Подъезд */}
+          <div className="space-y-2">
+            <Label className="text-lg font-semibold flex items-center gap-2">
+              <DoorClosed className="h-5 w-5 text-orange-600" />
+              {language === 'ka' ? 'სადარბაზო' : 'Подъезд'}
+            </Label>
+            <Input
+              value={order.deliveryEntrance || ''}
+              onChange={(e) => setOrder({
+                ...order,
+                deliveryEntrance: e.target.value
+              })}
+              className="h-10"
+              placeholder={language === 'ka' ? 'მაგ. 2' : 'Подъезд'}
+            />
+          </div>
+
+
+          
+          <div className="space-y-2">
+            <Label className="text-lg font-semibold flex items-center gap-2">
+              <Calculator className="h-5 w-5 text-orange-600" />
+              {language === 'ka' ? 'დომოფონი' : 'Домофон'}
+            </Label>
+            <Input
+              value={order.deliveryIntercom || ''}
+              onChange={(e) => setOrder({
+                ...order,
+                deliveryIntercom: e.target.value
+              })}
+              className="h-10"
+              placeholder={language === 'ka' ? 'დომოფონი' : 'Домофон'}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-lg font-semibold flex items-center gap-2">
+              <Building className="h-5 w-5 text-orange-600" />
+              {language === 'ka' ? 'ბინა/ოფისი' : 'Квартира/Офис'}
+            </Label>
+            <Input
+              value={order.deliveryApartment || ''}
+              onChange={(e) => setOrder({
+                ...order,
+                deliveryApartment: e.target.value
+              })}
+              className="h-10"
+              placeholder={language === 'ka' ? 'მაგ. 42' : 'Квартира'}
+            />
+          </div>
         </div>
 
         {order.deliveryZone && (
@@ -1655,8 +1754,9 @@ export const OrderInfoStep = ({
         )}
       </div>
 
-      {/* Правая колонка: Время доставки */}
+      {/* Правая колонка: Время доставки и заметки */}
       <div className="space-y-4">
+        {/* Время доставки (существующий код) */}
         <Label className="text-lg font-semibold flex items-center gap-2 mb-2">
           <Clock className="h-5 w-5 text-orange-600" />
           {language === 'ka' ? 'მიტანის დრო' : 'Время доставки'}
@@ -1700,45 +1800,64 @@ export const OrderInfoStep = ({
           </div>
 
           {/* Выбор конкретного времени */}
-         {!deliverAsSoonAsPossible && (
-  <div className="p-4 border-2 border-gray-200 rounded-xl space-y-2">
-    <p className="text-sm text-gray-600 mb-2">
-      {language === 'ka' ? 'აირჩიეთ მიტანის დრო' : 'Выберите время доставки'}
-    </p>
-    <Input
-      type="time"
-      value={order.deliveryTime ? 
-        new Date(order.deliveryTime).toLocaleTimeString('ru-RU', { 
-          hour: '2-digit', 
-          minute: '2-digit',
-          hour12: false 
-        }) : ''}
-      onChange={(e) => {
-        const timeString = e.target.value;
-        if (timeString) {
-          const [hours, minutes] = timeString.split(':');
-          const dateTime = new Date();
-          dateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-          
-          if (dateTime < new Date()) {
-            dateTime.setDate(dateTime.getDate() + 1);
-          }
-          
-          setOrder({
-            ...order,
-            deliveryTime: dateTime.toISOString()
-          });
-        } else {
-          setOrder({
-            ...order,
-            deliveryTime: undefined
-          });
-        }
-      }}
-      className="h-12 text-lg w-full"
-    />
-  </div>
-)}
+          {!deliverAsSoonAsPossible && (
+            <div className="p-4 border-2 border-gray-200 rounded-xl space-y-2">
+              <p className="text-sm text-gray-600 mb-2">
+                {language === 'ka' ? 'აირჩიეთ მიტანის დრო' : 'Выберите время доставки'}
+              </p>
+              <Input
+                type="time"
+                value={order.deliveryTime ? 
+                  new Date(order.deliveryTime).toLocaleTimeString('ru-RU', { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    hour12: false 
+                  }) : ''}
+                onChange={(e) => {
+                  const timeString = e.target.value;
+                  if (timeString) {
+                    const [hours, minutes] = timeString.split(':');
+                    const dateTime = new Date();
+                    dateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                    
+                    if (dateTime < new Date()) {
+                      dateTime.setDate(dateTime.getDate() + 1);
+                    }
+                    
+                    setOrder({
+                      ...order,
+                      deliveryTime: dateTime.toISOString()
+                    });
+                  } else {
+                    setOrder({
+                      ...order,
+                      deliveryTime: undefined
+                    });
+                  }
+                }}
+                className="h-12 text-lg w-full"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Заметки для курьера */}
+        <div className="space-y-2 mt-4">
+          <Label className="text-lg font-semibold flex items-center gap-2">
+            <MessageCircle className="h-5 w-5 text-orange-600" />
+            {language === 'ka' ? 'შენიშვნები კურიერისთვის' : 'Комментарий для курьера'}
+          </Label>
+          <Textarea
+            value={order.deliveryNotes || ''}
+            onChange={(e) => setOrder({
+              ...order,
+              deliveryNotes: e.target.value
+            })}
+            className="min-h-[100px] text-base"
+            placeholder={language === 'ka' 
+              ? 'დამატებითი ინფორმაცია მისამართის შესახებ...' 
+              : 'Дополнительная информация об адресе...'}
+          />
         </div>
       </div>
     </div>

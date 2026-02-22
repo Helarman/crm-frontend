@@ -30,6 +30,12 @@ export interface OrderState {
   deliveryAddress: string
   deliveryTime: string
   deliveryNotes: string
+    deliveryEntrance?: string;    
+  deliveryIntercom?: string;      
+  deliveryFloor?: string;        
+  deliveryApartment?: string;    
+  deliveryCourierComment?: string; 
+  customerName?: string;  
   scheduledAt?: string;
   isScheduled?: boolean;
   customerId: string | null

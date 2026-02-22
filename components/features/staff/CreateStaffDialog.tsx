@@ -51,11 +51,12 @@ const translations = {
     createUser: "Создать сотрудника",
     name: "Имя",
     email: "Email",
+    phone: "Телефон",
     password: "Пароль",
     role: "Роль",
     selectRole: "Выберите роль",
     restaurants: "Рестораны",
-    selectRestaurant: "Выберите ресторан", // Изменено
+    selectRestaurant: "Выберите ресторан",
     searchRestaurants: "Поиск ресторанов...",
     noRestaurants: "Рестораны не найдены",
     create: "Создать",
@@ -63,10 +64,12 @@ const translations = {
     nameRequired: "Имя обязательно",
     emailRequired: "Email обязателен",
     invalidEmail: "Некорректный email",
+    phoneRequired: "Телефон обязателен",
+    invalidPhone: "Некорректный номер телефона",
     passwordRequired: "Пароль обязателен",
     minPasswordLength: "Пароль должен содержать минимум 6 символов",
     roleRequired: "Роль обязательна",
-    restaurantRequired: "Выберите ресторан", // Изменено
+    restaurantRequired: "Выберите ресторан",
     emailTaken: "Email уже занят",
     checkingEmail: "Проверка email...",
     userCreated: "Сотрудник успешно создан",
@@ -85,11 +88,12 @@ const translations = {
     createUser: "თანამშრომლის შექმნა",
     name: "სახელი",
     email: "ელ. ფოსტა",
+    phone: "ტელეფონი",
     password: "პაროლი",
     role: "როლი",
     selectRole: "აირჩიეთ როლი",
     restaurants: "რესტორანები",
-    selectRestaurant: "აირჩიეთ რესტორანი", // Изменено
+    selectRestaurant: "აირჩიეთ რესტორანი",
     searchRestaurants: "რესტორანების ძებნა...",
     noRestaurants: "რესტორანები ვერ მოიძებნა",
     create: "შექმნა",
@@ -97,10 +101,12 @@ const translations = {
     nameRequired: "სახელი სავალდებულოა",
     emailRequired: "ელ. ფოსტა სავალდებულოა",
     invalidEmail: "არასწორი ელ. ფოსტა",
+    phoneRequired: "ტელეფონი სავალდებულოა",
+    invalidPhone: "არასწორი ტელეფონის ნომერი",
     passwordRequired: "პაროლი სავალდებულოა",
     minPasswordLength: "პაროლი უნდა შედგებოდეს მინიმუმ 6 სიმბოლოსგან",
     roleRequired: "როლი სავალდებულოა",
-    restaurantRequired: "აირჩიეთ რესტორანი", // Изменено
+    restaurantRequired: "აირჩიეთ რესტორანი",
     emailTaken: "ელ. ფოსტა უკვე დაკავებულია",
     checkingEmail: "ელ. ფოსტის შემოწმება...",
     userCreated: "თანამშრომელი წარმატებით შეიქმნა",
@@ -117,13 +123,40 @@ const translations = {
   }
 }
 
-// Изменяем схему валидации для одного ресторана
+// Функция для форматирования номера телефона
+const formatPhoneNumber = (value: string) => {
+  const cleaned = value.replace(/\D/g, '');
+  
+  let number = cleaned;
+  if (cleaned.startsWith('8')) {
+    number = '7' + cleaned.slice(1);
+  } else if (!cleaned.startsWith('7') && cleaned.length > 0) {
+    number = '7' + cleaned;
+  }
+  
+  if (number.length <= 1) return '+7';
+  if (number.length <= 4) return `+7 (${number.slice(1, 4)}`;
+  if (number.length <= 7) return `+7 (${number.slice(1, 4)}) ${number.slice(4, 7)}`;
+  if (number.length <= 9) return `+7 (${number.slice(1, 4)}) ${number.slice(4, 7)}-${number.slice(7, 9)}`;
+  return `+7 (${number.slice(1, 4)}) ${number.slice(4, 7)}-${number.slice(7, 9)}-${number.slice(9, 11)}`;
+};
+
+// Функция для валидации телефона
+const validatePhone = (phone: string) => {
+  const cleaned = phone.replace(/\D/g, '');
+  return cleaned.length === 11; // +7 XXX XXX XX XX = 11 цифр
+};
+
+// Обновляем схему валидации с добавлением поля phone
 const createUserSchema = z.object({
-  name: z.string().min(1),
-  email: z.string().min(1).email(),
-  password: z.string().min(6),
-  role: z.nativeEnum(UserRoles),
-  restaurantId: z.string().min(1),
+  name: z.string().min(1, { message: "nameRequired" }),
+  email: z.string().min(1, { message: "emailRequired" }).email({ message: "invalidEmail" }),
+  phone: z.string()
+    .min(1, { message: "phoneRequired" })
+    .refine(validatePhone, { message: "invalidPhone" }),
+  password: z.string().min(6, { message: "minPasswordLength" }),
+  role: z.nativeEnum(UserRoles, { required_error: "roleRequired" }),
+  restaurantId: z.string().min(1, { message: "restaurantRequired" }),
 })
 
 export function CreateStaffDialog({
@@ -143,6 +176,7 @@ export function CreateStaffDialog({
     defaultValues: {
       name: '',
       email: '',
+      phone: '',
       password: '',
       role: UserRoles.NONE,
       restaurantId: defaultRestaurantId,
@@ -166,6 +200,7 @@ export function CreateStaffDialog({
       const newUser = await UserService.register({
         name: values.name,
         email: values.email,
+        phone: values.phone, // Добавляем телефон
         password: values.password,
         role: values.role,
         acceptTerms: true
@@ -173,7 +208,6 @@ export function CreateStaffDialog({
 
       await new Promise(resolve => setTimeout(resolve, 1000))
 
-      // Используем выбранный restaurantId
       if (values.restaurantId) {
         RestaurantService.addUserByEmail(values.restaurantId, { email: values.email })
       }
@@ -191,15 +225,22 @@ export function CreateStaffDialog({
     }
   }
 
+  // Обработчик изменения телефона с форматированием
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>, field: any) => {
+    const formatted = formatPhoneNumber(e.target.value);
+    field.onChange(formatted);
+  };
+
   return (
     <Dialog open={open} onOpenChange={(open) => {
       if (!open) {
         form.reset({
           name: '',
           email: '',
+          phone: '',
           password: '',
           role: UserRoles.NONE,
-          restaurantId: defaultRestaurantId || '', // Изменено
+          restaurantId: defaultRestaurantId || '',
         })
         setEmailError(null)
       }
@@ -243,10 +284,30 @@ export function CreateStaffDialog({
                     />
                   </FormControl>
                   <FormMessage>
-                    {form.formState.errors.email?.type === 'required' && t.emailRequired}
-                    {form.formState.errors.email?.type === 'invalid_string' && t.invalidEmail}
                     {emailError === 'emailTaken' && t.emailTaken}
                   </FormMessage>
+                </FormItem>
+              )}
+            />
+
+            {/* Новое поле для телефона */}
+            <FormField
+              control={form.control}
+              name="phone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t.phone}</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      type="tel"
+                      placeholder="+7 (999) 999-99-99"
+                      onChange={(e) => handlePhoneChange(e, field)}
+                      maxLength={18}
+                      className="font-mono"
+                    />
+                  </FormControl>
+                  <FormMessage />
                 </FormItem>
               )}
             />
@@ -300,7 +361,7 @@ export function CreateStaffDialog({
             {restaurants && restaurants.length > 0 && (
               <FormField
                 control={form.control}
-                name="restaurantId" // Изменено
+                name="restaurantId"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>{t.restaurants}</FormLabel>

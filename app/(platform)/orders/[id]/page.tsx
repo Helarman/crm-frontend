@@ -402,9 +402,6 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
       numberOfPeople: 1,
       tableNumber: '',
       comment: '',
-      deliveryAddress: '',
-      deliveryNotes: '',
-      deliveryTime: '',
     });
     const [showCompleteDialog, setShowCompleteDialog] = useState(false);
     const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -1498,9 +1495,6 @@ console.log(order)
           numberOfPeople: editFormData.numberOfPeople,
           tableNumber: editFormData.tableNumber,
           comment: editFormData.comment,
-          deliveryAddress: editFormData.deliveryAddress,
-          deliveryNotes: editFormData.deliveryNotes,
-          deliveryTime: editFormData.deliveryTime,
         });
 
         await fetchOrder();
@@ -1840,9 +1834,6 @@ console.log(order)
           numberOfPeople: Number(data.numberOfPeople) || 1,
           tableNumber: data.tableNumber || '',
           comment: data.comment || '',
-          deliveryAddress: data.deliveryAddress || '',
-          deliveryNotes: data.deliveryNotes || '',
-          deliveryTime: data.deliveryTime || '',
         }));
 
         if (data.restaurant?.id) {
@@ -4177,63 +4168,7 @@ const renderTotalWithButtons = () => {
               
             </div>
 
-            {/* Доставка */}
-            {editFormData.type === 'DELIVERY' && (
-              <div className="space-y-6 mb-6">
-                <div className="grid grid-cols-1 gap-6">
-                  <div className="space-y-3">
-                    <Label className="text-xl font-semibold flex items-center gap-3">
-                      <MapPin className="h-6 w-6 text-orange-600" />
-                      {t.deliveryAddress}
-                    </Label>
-                    <Input
-                      value={editFormData.deliveryAddress}
-                      onChange={(e) => setEditFormData({
-                        ...editFormData,
-                        deliveryAddress: e.target.value
-                      })}
-                      placeholder={t.deliveryAddress}
-                      disabled={!isOrderEditable}
-                      className="h-14 text-lg"
-                    />
-                  </div>
-                  <div className="space-y-3">
-                    <Label className="text-xl font-semibold flex items-center gap-3">
-                      <Clock className="h-6 w-6 text-orange-600" />
-                      {t.deliveryTime}
-                    </Label>
-                    <Input
-                      type="time"
-                      value={editFormData.deliveryTime}
-                      onChange={(e) => setEditFormData({
-                        ...editFormData,
-                        deliveryTime: e.target.value
-                      })}
-                      disabled={!isOrderEditable}
-                      className="h-14 text-lg"
-                    />
-                  </div>
-                </div>
-                
-                <div className="space-y-3">
-                  <Label className="text-xl font-semibold flex items-center gap-3">
-                    <MessageSquare className="h-6 w-6 text-orange-600" />
-                    {t.deliveryNotes}
-                  </Label>
-                  <Textarea
-                    value={editFormData.deliveryNotes}
-                    onChange={(e) => setEditFormData({
-                      ...editFormData,
-                      deliveryNotes: e.target.value
-                    })}
-                    placeholder={t.callBeforeArrival}
-                    disabled={!isOrderEditable}
-                    className="min-h-[100px] text-lg"
-                  />
-                </div>
-              </div>
-            )}
-
+                      {order.customerName}
             {/* Комментарий */}
             <div className="space-y-3">
               <Label className="text-xl font-semibold flex items-center gap-3">

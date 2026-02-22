@@ -1,3 +1,5 @@
+'use client'
+
 import { useState, useEffect } from 'react'
 import {
   Dialog,
@@ -12,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Check, Loader2, Trash2 } from "lucide-react"
@@ -40,6 +43,7 @@ interface EditStaffDialogProps {
     id: string
     name: string
     email: string
+    phone?: string
     restaurant: {
       id: string
       title: string
@@ -52,7 +56,7 @@ interface EditStaffDialogProps {
   }
   restaurants: Restaurant[]
   workshops: WorkshopResponseDto[]
-  onSave: (role: UserRoles, restaurants: string[], workshops?: string[]) => Promise<void>
+  onSave: (role: UserRoles, restaurants: string[], workshops?: string[], name?: string, email?: string, phone?: string) => Promise<void>
   onDelete: (userId: string) => Promise<void>
   isLoading: boolean
   isDeleting: boolean
@@ -63,6 +67,7 @@ const translations = {
     editStaff: "Редактировать сотрудника",
     name: "Имя",
     email: "Email",
+    phone: "Телефон",
     role: "Роль",
     selectRole: "Выберите роль",
     restaurants: "Рестораны",
@@ -95,6 +100,7 @@ const translations = {
     editStaff: "თანამშრომლის რედაქტირება",
     name: "სახელი",
     email: "ელ. ფოსტა",
+    phone: "ტელეფონი",
     role: "როლი",
     selectRole: "აირჩიეთ როლი",
     restaurants: "რესტორანები",
@@ -125,6 +131,56 @@ const translations = {
   }
 }
 
+// Функция для форматирования российского телефона
+const formatPhoneNumber = (value: string) => {
+  // Удаляем все нецифровые символы
+  const numbers = value.replace(/\D/g, '')
+  
+  // Если номер пустой, возвращаем +7
+  if (!numbers) return '+7'
+  
+  // Для российских номеров первая цифра должна быть 7
+  let formatted = '+7'
+  
+  // Пропускаем первую цифру если это 7 или 8
+  let restNumbers = numbers
+  if (numbers.startsWith('7') || numbers.startsWith('8')) {
+    restNumbers = numbers.slice(1)
+  }
+  
+  // Форматируем: +7 (XXX) XXX-XX-XX
+  if (restNumbers.length > 0) {
+    formatted += ' (' + restNumbers.slice(0, 3)
+  }
+  
+  if (restNumbers.length > 3) {
+    formatted += ') ' + restNumbers.slice(3, 6)
+  }
+  
+  if (restNumbers.length > 6) {
+    formatted += '-' + restNumbers.slice(6, 8)
+  }
+  
+  if (restNumbers.length > 8) {
+    formatted += '-' + restNumbers.slice(8, 10)
+  }
+  
+  return formatted
+}
+
+// Функция для очистки телефона от форматирования
+const cleanPhoneNumber = (value: string) => {
+  const numbers = value.replace(/\D/g, '')
+  // Убеждаемся что номер начинается с 7
+  if (numbers.startsWith('8')) {
+    return '7' + numbers.slice(1)
+  }
+  if (numbers.startsWith('7')) {
+    return numbers
+  }
+  return '7' + numbers
+}
+
 export function EditStaffDialog({
   open,
   onOpenChange,
@@ -139,6 +195,11 @@ export function EditStaffDialog({
   const { language } = useLanguageStore()
   const t = translations[language]
 
+  const [name, setName] = useState(staffMember.name)
+  const [email, setEmail] = useState(staffMember.email)
+  const [phone, setPhone] = useState(() => {
+    return staffMember.phone ? formatPhoneNumber(staffMember.phone) : '+7'
+  })
   const [selectedRole, setSelectedRole] = useState<UserRoles>(staffMember.position as UserRoles)
   const [selectedRestaurants, setSelectedRestaurants] = useState<string[]>(
     staffMember.restaurant.map(r => r.id)
@@ -154,6 +215,9 @@ export function EditStaffDialog({
   // Сброс данных при изменении staffMember или открытии/закрытии диалога
   useEffect(() => {
     if (open && staffMember) {
+      setName(staffMember.name)
+      setEmail(staffMember.email)
+      setPhone(staffMember.phone ? formatPhoneNumber(staffMember.phone) : '+7')
       setSelectedRole(staffMember.position as UserRoles)
       setSelectedRestaurants(staffMember.restaurant.map(r => r.id))
       setSelectedWorkshops(staffMember.workshops?.map(w => w.workshopId) || [])
@@ -174,10 +238,21 @@ export function EditStaffDialog({
 
   const handleSave = async () => {
     try {
+        let cleanPhone: string | undefined = undefined
+        
+        if (phone && phone !== '+7' && phone !== '+7 () -' && phone !== '+7 (___) ___-__-__') {
+          const cleaned = cleanPhoneNumber(phone)
+          if (cleaned && cleaned.length > 1) {
+            cleanPhone = cleaned
+          }
+        }
       await onSave(
         selectedRole,
         selectedRestaurants,
-        isKitchenRole ? selectedWorkshops : undefined
+        isKitchenRole ? selectedWorkshops : undefined,
+        name,
+        email,
+        cleanPhone
       )
       
       toast.success(
@@ -195,11 +270,50 @@ export function EditStaffDialog({
     }
   }
 
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target
+    const cursorPosition = input.selectionStart || 0
+    const rawValue = e.target.value
+    
+    // Если поле пустое или удалили все символы, оставляем +7
+    if (!rawValue || rawValue === '+') {
+      setPhone('+7')
+      setTimeout(() => {
+        input.setSelectionRange(2, 2)
+      }, 0)
+      return
+    }
+    
+    // Форматируем введенное значение
+    const formatted = formatPhoneNumber(rawValue)
+    
+    // Вычисляем новую позицию курсора
+    const oldLength = phone.length
+    const newLength = formatted.length
+    const newPosition = cursorPosition + (newLength - oldLength)
+    
+    setPhone(formatted)
+    
+    // Восстанавливаем позицию курсора после обновления состояния
+    setTimeout(() => {
+      // Корректируем позицию, чтобы не попасть на служебные символы
+      let adjustedPosition = newPosition
+      const serviceChars = [' ', '(', ')', '-']
+      if (adjustedPosition < formatted.length && serviceChars.includes(formatted[adjustedPosition])) {
+        adjustedPosition++
+      }
+      input.setSelectionRange(adjustedPosition, adjustedPosition)
+    }, 0)
+  }
+
   const handleOpenChange = (open: boolean) => {
     if (!open) {
       // Сбрасываем все данные при закрытии
       setDeleteConfirm(false)
       // Восстанавливаем исходные значения из staffMember
+      setName(staffMember.name)
+      setEmail(staffMember.email)
+      setPhone(staffMember.phone ? formatPhoneNumber(staffMember.phone) : '+7')
       setSelectedRole(staffMember.position as UserRoles)
       setSelectedRestaurants(staffMember.restaurant.map(r => r.id))
       setSelectedWorkshops(staffMember.workshops?.map(w => w.workshopId) || [])
@@ -209,13 +323,53 @@ export function EditStaffDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
+      
       <DialogContent className="sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold">{t.editStaff}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-4 py-4">
-          {/* Name and Email fields would go here */}
+          {/* Name field */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <label className="text-sm font-medium text-right">{t.name}:</label>
+            <div className="col-span-3">
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t.name}
+                className="w-full"
+              />
+            </div>
+          </div>
+          {/* Email field */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <label className="text-sm font-medium text-right">{t.email}:</label>
+            <div className="col-span-3">
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder={t.email}
+                className="w-full"
+              />
+            </div>
+          </div>
 
+          {/* Phone field with Russian format */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <label className="text-sm font-medium text-right">{t.phone}:</label>
+            <div className="col-span-3">
+              <Input
+                value={phone}
+                onChange={handlePhoneChange}
+                placeholder="+7 (999) 999-99-99"
+                className="w-full"
+                type="tel"
+              />
+            </div>
+          </div>
+
+          {/* Role selection */}
           <div className="grid grid-cols-4 items-center gap-4">
             <label className="text-sm font-medium text-right">{t.role}:</label>
             <div className="col-span-3">
@@ -243,22 +397,6 @@ export function EditStaffDialog({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-          </div>
-
-          {/* Restaurant selection */}
-          <div className="grid grid-cols-4 items-center gap-4">
-            <label className="text-sm font-medium text-right">{t.restaurants}:</label>
-            <div className="col-span-3">
-              <SearchableSelect
-                options={restaurants.map(r => ({ id: r.id, label: r.title }))}
-                value={selectedRestaurants}
-                onChange={setSelectedRestaurants}
-                placeholder={t.selectRestaurants}
-                searchPlaceholder={t.searchRestaurants}
-                emptyText={t.noRestaurants}
-                multiple={true}
-              />
             </div>
           </div>
 

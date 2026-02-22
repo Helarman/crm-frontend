@@ -11,7 +11,7 @@ import { Language, useLanguageStore } from '@/lib/stores/language-store'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
 import { Button } from '@/components/ui/button'
-import { ChevronDown, Check, Clock, Package, AlertCircle, Beef, Banknote } from 'lucide-react'
+import { ChevronDown, Check, Clock, Package, AlertCircle, Beef, Banknote, MapPin, User2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { useAuth } from '@/lib/hooks/useAuth'
@@ -817,7 +817,6 @@ ${composition}
         )}
         onClick={handleCardClick}
       >
-
         <div className="absolute top-0 left-0 w-full h-1" />
         <div className="flex flex-col flex-grow">
           <OrderHeader order={order} compact={variant === 'kitchen'} />
@@ -988,7 +987,7 @@ ${composition}
                                 </Badge>
                               </div>
                               <div className="text-xs text-muted-foreground mt-1">
-                                {t.responsibleWorkshop}: {item.product.workshops?.[0]?.workshop.name || (language === 'ru' ? 'Не указан' : 'არ არის მითითებული')}
+                                {item.product.workshops?.[0]?.workshop.name || (language === 'ru' ? 'Не указан' : 'არ არის მითითებული')}
                               </div>
                             </div>
                           ))}
@@ -1039,7 +1038,7 @@ ${composition}
                                   </Badge>
                                 </div>
                                 <div className="text-xs text-muted-foreground mt-1">
-                                  {t.responsibleWorkshop}: {item.product.workshops?.[0]?.workshop.name || (language === 'ru' ? 'Не указан' : 'არ არის მითითებული')}
+                                  {item.product.workshops?.[0]?.workshop.name || (language === 'ru' ? 'Не указан' : 'არ არის მითითებული')}
                                 </div>
                               </div>
                             ))}
@@ -1052,24 +1051,47 @@ ${composition}
               ) : (<></>
               )
             )}
-            {variant === 'default' || variant === 'preorder' && (order.scheduledAt || order.customer) ? (
-              <div className='border-t pt-2 mt-auto'>
-                {(user?.role === 'SUPERVISOR' || user?.role === 'MANAGER') && order.customer && variant === 'default' && (
-                  <OrderCustomerInfo customer={order.customer} compact />
-                )}
-                {order.scheduledAt &&
-                  <Badge
-                    variant="outline"
-                    className="flex items-center gap-1 px-2 py-1 rounded-md border text-sm font-medium"
-                  >
-                    {language === 'ru' ? 'Отложено до' : 'გადაიდო'}
-                    <span className="text-sm">
-                      {formatUTC(order.scheduledAt)}
-                    </span>
-                  </Badge>
-                }
-              </div>
-            ) : null}
+           {variant === 'default' || variant === 'preorder' && (order.scheduledAt || order.customer || order.deliveryAddress) ? (
+  <div className='border-t pt-2 mt-auto space-y-2'>
+    {/* Адрес доставки */}
+    {order.deliveryAddress && (
+      <div>
+      <div className="flex items-start gap-2 text-sm">
+        <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
+        <div className="flex flex-col">
+         
+          <span className="text-muted-foreground">{order.deliveryAddress}</span>
+        </div>
+      </div>
+        <div className="flex items-start gap-2 text-sm">
+          <User2 className="h-4 w-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
+          <div className="flex flex-col">
+          
+            <span className="text-muted-foreground">{order.customerName}</span>
+          </div>
+        </div>
+      </div>
+    )}
+    
+    {/* Информация о клиенте для менеджеров */}
+    {(user?.role === 'SUPERVISOR' || user?.role === 'MANAGER') && order.customer && variant === 'default' && !order.deliveryAddress && (
+      <OrderCustomerInfo customer={order.customer} compact />
+    )}
+    
+    {/* Отложенный заказ */}
+    {order.scheduledAt && (
+      <Badge
+        variant="outline"
+        className="flex items-center gap-1 px-2 py-1 rounded-md border text-sm font-medium w-fit"
+      >
+        {language === 'ru' ? 'Отложено до' : 'გადაიდო'}
+        <span className="text-sm">
+          {formatUTC(order.scheduledAt)}
+        </span>
+      </Badge>
+    )}
+  </div>
+) : null}
           </div>
           <div className="flex items-center gap-2 text-xl justify-end mt-auto p-2">
             

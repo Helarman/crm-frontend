@@ -505,7 +505,6 @@ export default function KitchenOrdersList() {
     <div className="space-y-6">
       <div className="flex justify-between items-center gap-4 flex-col lg:flex-row">
         <div className="flex items-center gap-4">
-
           <h2 className="text-2xl font-bold">
             {showArchive ? translations.archiveOrders.ru : translations.kitchenOrders.ru}
           </h2>

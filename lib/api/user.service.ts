@@ -205,5 +205,10 @@ export const UserService = {
   }): Promise<{ id: string }> {
     const { data } = await api.post('/auth/register', dto)
     return data
-  }
+  },
+
+  toggleBlock: async (userId: string, isBlocked: boolean) => {
+  const { data } = await api.patch(`/users/${userId}/toggle-block`, { isBlocked });
+  return data;
+},
 };

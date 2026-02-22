@@ -46,7 +46,12 @@ export default function NewOrderPage() {
     surcharges: [],
     discounts: [],
     isScheduled: false, 
-    scheduledAt: undefined
+    scheduledAt: undefined,
+      customerName: '',           
+  deliveryFloor: '',         
+  deliveryEntrance: '',     
+  deliveryDoorCode: '',       
+  deliveryIntercom: ''  
   })
   const [loading, setLoading] = useState(false)
   const [restaurantUsesReservation, setRestaurantUsesReservation] = useState(false)

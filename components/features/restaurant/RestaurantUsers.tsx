@@ -57,7 +57,6 @@ export default function RestaurantUsers() {
         // Устанавливаем текущий ресторан
         setCurrentRestaurant(restaurantData)
         setWorkshops(workshopsData)
-
         // Фильтруем пользователей только для текущего ресторана
         const restaurantUsers = usersData.filter((user: any) => 
           user.restaurant?.some((r: any) => r.id === restaurantId)
@@ -68,7 +67,9 @@ export default function RestaurantUsers() {
           id: user.id,
           name: user.name,
           email: user.email,
+          phone: user.phone,
           restaurant: user.restaurant,
+          isBlocked: user.isBlocked,
           workshops: user.workshops || [],
           position: user.role as UserRoles,
         }))
@@ -119,7 +120,6 @@ export default function RestaurantUsers() {
       const restaurantUsers = freshUsers.filter((user: any) => 
         user.restaurant?.some((r: any) => r.id === restaurantId)
       )
-
       const formattedStaff = restaurantUsers.map((user: any) => ({
         id: user.id,
         name: user.name,
@@ -127,6 +127,7 @@ export default function RestaurantUsers() {
         restaurant: user.restaurant,
         workshops: user.workshops || [],
         position: user.role as UserRoles,
+         isBlocked: user.isBlocked,
       }))
       
       setStaff(formattedStaff)
@@ -138,7 +139,44 @@ export default function RestaurantUsers() {
       setLoading(false)
     }
   }
+ const loadData = async () => {
+      try {
+        setLoading(true)
 
+        const [restaurantData, workshopsData, usersData] = await Promise.all([
+          RestaurantService.getById(restaurantId),
+          WorkshopService.getByRestaurantId(restaurantId),
+          UserService.getAll()
+        ])
+
+        // Устанавливаем текущий ресторан
+        setCurrentRestaurant(restaurantData)
+        setWorkshops(workshopsData)
+        // Фильтруем пользователей только для текущего ресторана
+        const restaurantUsers = usersData.filter((user: any) => 
+          user.restaurant?.some((r: any) => r.id === restaurantId)
+        )
+
+        // Форматируем данные сотрудников
+        const formattedStaff = restaurantUsers.map((user: any) => ({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          restaurant: user.restaurant,
+          isBlocked: user.isBlocked,
+          workshops: user.workshops || [],
+          position: user.role as UserRoles,
+        }))
+        setStaff(formattedStaff)
+
+      } catch (err) {
+        console.error('Failed to load data:', err)
+        setError('Failed to load data')
+      } finally {
+        setLoading(false)
+      }
+    }
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
 
   if (loading) {
@@ -190,7 +228,7 @@ export default function RestaurantUsers() {
           searchTerm={searchTerm}
           selectedRestaurant={restaurantId} 
           selectedPosition={selectedPosition}
-          onRefresh={handleRefresh}
+          onRefresh={loadData}
         />
       </div>
     </AccessCheck>
