@@ -240,7 +240,8 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
     return itemWorkshopIds.some((id: string) => userWorkshopIds.includes(id));
   });
 
-  const otherItems = order.items.filter(item => !filteredItems.includes(item));
+  const parentItems = order.items.filter(item => !item.isComboChild)
+  const otherItems = parentItems.filter(item => !filteredItems.includes(item));
 
   const translations = {
     ru: {
@@ -376,14 +377,26 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
 
   // Calculate order totals
   const calculateItemsTotal = () => {
-    return order.items.reduce((sum, item) => {
-      if (item.isRefund) return sum;
+  return order.items.reduce((sum, item) => {
+    if (item.isRefund) return sum;
 
-      const itemPrice = item.product.price;
-      const additivesPrice = item.additives.reduce((addSum, additive) => addSum + additive.price, 0);
-      return sum + (itemPrice + additivesPrice) * item.quantity;
-    }, 0);
-  };
+    // Базовая цена продукта с учетом скидки клиента
+    const restaurantPrice = item.product.restaurantPrices?.find(
+      p => p.restaurantId === order.restaurant?.id
+    );
+    let basePrice = restaurantPrice?.price ?? item.product.price;
+    
+    // Применяем персональную скидку клиента, если она есть
+    if (order.customer?.discountApplied) {
+      basePrice = basePrice * (1 - order.customer.personalDiscount / 100);
+    }
+
+    // Цена модификаторов (они обычно не дисконтируются)
+    const additivesPrice = item.additives.reduce((addSum, additive) => addSum + additive.price, 0);
+    
+    return sum + (basePrice + additivesPrice) * item.quantity;
+  }, 0);
+};
 
   const calculateRefundedTotal = () => {
     return order.items.reduce((sum, item) => {
@@ -628,11 +641,37 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
     }
   }
 
-  const handleConfirmWriteOff = async () => {
-    if (!currentItemId) return
+ const handleConfirmWriteOff = async () => {
+  if (!currentItemId) return;
 
-    setIsWritingOff(true)
-    try {
+  setIsWritingOff(true);
+  try {
+    const currentItem = order.items.find(item => item.id === currentItemId);
+    
+    // Если это родительское комбо
+    if (currentItem?.isComboParent) {
+      const childItems = order.items.filter(item => item.parentComboId === currentItem.product.id);
+      
+      // Проверяем еще раз, что все дочерние элементы готовы
+      const allChildrenCompleted = childItems.length > 0 && 
+        childItems.every(child => child.status === OrderItemStatus.COMPLETED);
+
+      if (!allChildrenCompleted) {
+        toast.warning(language === 'ru' 
+          ? 'Не все блюда комбо готовы' 
+          : 'კომბოს ყველა კერძი არ არის მზად');
+        setWriteOffDialogOpen(false);
+        return;
+      }
+
+      // Отмечаем родительское комбо как готовое
+      await handleStatusChange(currentItemId, OrderItemStatus.COMPLETED);
+      
+      toast.success(language === 'ru' 
+        ? 'Комбо отмечено как готовое' 
+        : 'კომბო მონიშნულია როგორც მზად');
+    } else {
+      // Обычная логика для обычного блюда
       if (shouldUseWarehouse && warehouse?.id) {
         for (const writeOffItem of writeOffItems) {
           await WarehouseService.createTransaction({
@@ -644,31 +683,65 @@ export function OrderCard({ order, variant, onStatusChange, className, selectedR
               ? `Модификатор "${writeOffItem.additiveName}" для блюда`
               : 'Приготовление блюда',
             userId: user?.id
-          })
+          });
         }
       }
 
-      await handleStatusChange(currentItemId, OrderItemStatus.COMPLETED)
+      await handleStatusChange(currentItemId, OrderItemStatus.COMPLETED);
+      
       const completedItem = order.items.find(item => item.id === currentItemId);
-      if (completedItem?.product.printLabels && (order.type == EnumOrderType.TAKEAWAY || order.type == EnumOrderType.DELIVERY)) {
+      if (completedItem?.product.printLabels && 
+          (order.type == EnumOrderType.TAKEAWAY || order.type == EnumOrderType.DELIVERY)) {
         printItemLabel(completedItem, order.number);
       }
 
-      setWriteOffDialogOpen(false)
-
-      // Показываем соответствующее сообщение
-      if (shouldUseWarehouse) {
-        toast.success(t.writeOffSuccess)
-      } else {
-        toast.success(t.statusUpdated)
-      }
-    } catch (error) {
-      console.error('Error writing off inventory:', error)
-      toast.error(shouldUseWarehouse ? t.writeOffError : t.statusUpdateError)
-    } finally {
-      setIsWritingOff(false)
+      toast.success(shouldUseWarehouse ? t.writeOffSuccess : t.statusUpdated);
     }
+
+    setWriteOffDialogOpen(false);
+  } catch (error) {
+    console.error('Error processing item:', error);
+    toast.error(shouldUseWarehouse ? t.writeOffError : t.statusUpdateError);
+  } finally {
+    setIsWritingOff(false);
   }
+};
+
+const checkComboCompletion = (comboParentId: string) => {
+  const comboParent = order.items.find(item => item.id === comboParentId);
+  if (!comboParent?.isComboParent) return false;
+
+  // Находим все дочерние элементы этого комбо
+  const childItems = order.items.filter(item => item.parentComboId === comboParent.product.id);
+  
+  // Проверяем, все ли дочерние элементы готовы (COMPLETED)
+  const allChildrenCompleted = childItems.length > 0 && 
+    childItems.every(child => child.status === OrderItemStatus.COMPLETED);
+
+  return allChildrenCompleted;
+};
+
+
+const handleComboParentClick = async (comboParentId: string) => {
+  const comboParent = order.items.find(item => item.id === comboParentId);
+  if (!comboParent?.isComboParent) return;
+
+  // Проверяем, все ли дочерние элементы готовы
+  const allChildrenCompleted = checkComboCompletion(comboParentId);
+
+  if (!allChildrenCompleted) {
+    toast.warning(language === 'ru' 
+      ? 'Не все блюда комбо готовы' 
+      : 'კომბოს ყველა კერძი არ არის მზად');
+    return;
+  }
+
+  // Если все готово, показываем диалог подтверждения для комбо
+  setCurrentItemId(comboParentId);
+  setWriteOffDialogOpen(true);
+};
+
+
 
   const handleStatusChange = async (itemId: string, newStatus: OrderItemStatus) => {
     if (!orderId || !user?.id || isUpdating) return;
@@ -890,61 +963,164 @@ ${composition}
               </div>
             ) : (
               variant === 'kitchen' || variant === 'preorder' ? (
-                <div className="flex-grow">
-                  {filteredItems.length > 0 ? (
-                    filteredItems.map(item => (
-                      <div
-                        key={item.id}
-                        className={cn(
-                          "mb-2 last:mb-0 p-2 rounded-lg border border-dashed cursor-pointer py-7 transition-colors hover:bg-opacity-90 border-2",
-                          item.status === OrderItemStatus.COMPLETED ? "opacity-70" : "",
-                          item.isReordered ? 'border-red-500 ' : 'border-black'
-                        )}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (item.status !== OrderItemStatus.COMPLETED && order.status === EnumOrderStatus.PREPARING) {
-                            handleItemClick(item.id);
-                          }
-                        }}
-                      >
-                        <div className="flex justify-between items-start gap-2 flex-col xl:flex-row">
-                          <div>
-                            <div className="font-medium  items-center gap-1">
-                              <span className='font-bold text-xl items-center '>{item.quantity}x</span>  {item.product.title}
-                            </div>
-                            {item.additives.length > 0 && (
-                              <div className="text-xs text-muted-foreground">
-                                {language === 'ru' ? 'Модификаторы:' : 'მოდიფიკატორები:'} {item.additives.map(a => a.title).join(', ')}
-                              </div>
-                            )}
-                            {item.comment && (
-                              <div className="text-xs text-muted-foreground">
-                                {language === 'ru' ? 'Коммент:' : 'კომენტარი:'} {item.comment}
-                              </div>
-                            )}
-                          </div>
-                          <Badge variant="outline" className="text-md">
+    <div className="flex-grow ">
+      {filteredItems.length > 0 ? (
+  filteredItems.filter(item => !item.isComboChild).map(item => {
+    const isComboParent = item.isComboParent;
+    
+    const childItems = isComboParent 
+      ? order.items.filter(child => child.parentComboId === item.product.id)
+      : [];
+    
+    const allChildItems = isComboParent
+      ? order.items.filter(child => child.parentComboId === item.product.id)
+      : [];
 
-                            {item.status === OrderItemStatus.IN_PROGRESS && item.timestamps.startedAt ? (
-                              <>
-                                {Math.round((new Date().getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
-                              </>
-                            ) : item.status === OrderItemStatus.COMPLETED && item.timestamps.startedAt && item.timestamps.completedAt ? (
-                              <>
-                                {Math.round((new Date(item.timestamps.completedAt).getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
-                              </>
-                            ) : (
-                              getStatusText(item.status, language)
-                            )}
-                          </Badge>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    (kitchenArchive || variant === 'preorder') ? "" : (<div className="text-center text-muted-foreground py-4 flex-grow flex items-center justify-center">
-                      {t.noDishes}
-                    </div>)
+    // Проверяем, все ли дочерние элементы готовы
+    const allChildrenCompleted = isComboParent && childItems.length > 0 && 
+      childItems.every(child => child.status === OrderItemStatus.COMPLETED);
+
+    return (
+      <div key={item.id} className='mb-2 last:mb-0'>
+        {/* Родительский элемент комбо */}
+        <div
+          className={cn(
+            "mb-2 last:mb-0 p-2 rounded-lg border transition-colors  py-7",
+            item.status === OrderItemStatus.COMPLETED 
+              ? "border-2 border-green-500 bg-green-50/50"
+              : allChildrenCompleted 
+                ? "border-2 border-blue-500 bg-blue-100/50 cursor-pointer " 
+                : "border border-dashed border-black opacity-70",
+            isComboParent && "border-2 border-blue-500 bg-blue-50/50"
+          )}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isComboParent && allChildrenCompleted && order.status === EnumOrderStatus.PREPARING) {
+              handleComboParentClick(item.id);
+            } else if (!isComboParent && item.status !== OrderItemStatus.COMPLETED && order.status === EnumOrderStatus.PREPARING) {
+              handleItemClick(item.id);
+            }
+          }}
+        >
+          <div className="flex justify-between items-start gap-2 flex-col xl:flex-row">
+            <div>
+              <div className="font-medium items-center gap-1">
+                <span className='font-bold text-xl items-center'>{item.quantity}x</span> {item.product.title}
+                
+              </div>
+              {item.additives.length > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  {language === 'ru' ? 'Модификаторы:' : 'მოდიფიკატორები:'} {item.additives.map(a => a.title).join(', ')}
+                </div>
+              )}
+              {item.comment && (
+                <div className="text-xs text-muted-foreground">
+                  {language === 'ru' ? 'Коммент:' : 'კომენტარი:'} {item.comment}
+                </div>
+              )}
+            </div>
+            <Badge variant="outline" className="text-md">
+              {item.status === OrderItemStatus.COMPLETED ? (
+                item.timestamps?.startedAt && item.timestamps?.completedAt ? (
+                  <>
+                    {Math.round((new Date(item.timestamps.completedAt).getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
+                  </>
+                ) : (
+                  language === 'ru' ? 'Выдано' : 'გაცემული'
+                )
+              ) : isComboParent && allChildrenCompleted ? (
+                <span className="text-blue-600">
+                  {language === 'ru' ? 'Все готовы' : 'ყველა მზადაა'}
+                </span>
+              ) : item.status === OrderItemStatus.IN_PROGRESS && item.timestamps?.startedAt ? (
+                <>
+                  {Math.round((new Date().getTime() - new Date(item.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
+                </>
+              ) : (
+                getStatusText(item.status, language)
+              )}
+            </Badge>
+          </div>
+        </div>
+
+        {/* Дочерние элементы комбо */}
+        {isComboParent && allChildItems.length > 0 && (
+          <div className="ml-6 mt-1 mb-3 space-y-2 border-l-2 border-blue-300 pl-3">
+            {allChildItems.map(childItem => {
+              const isChildAccessible = userWorkshopIds.length === 0 || 
+                childItem.product.workshops?.some((w: any) => 
+                  userWorkshopIds.includes(w.workshop.id)
+                );
+
+              return (
+                <div
+                  key={childItem.id}
+                  className={cn(
+                    "p-2 rounded-lg border transition-colors py-4",
+                    childItem.status === OrderItemStatus.COMPLETED 
+                      ? "border-2 border-green-500 bg-green-50/50"
+                      : "border border-dashed border-gray-300",
+                    !isChildAccessible && childItem.status !== OrderItemStatus.COMPLETED ? "opacity-50 bg-gray-100" : "",
+                    isChildAccessible && childItem.status !== OrderItemStatus.COMPLETED ? "cursor-pointer hover:bg-opacity-90" : "",
+                    childItem.isReordered && childItem.status !== OrderItemStatus.COMPLETED ? 'border-red-300' : ''
                   )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isChildAccessible && 
+                        childItem.status !== OrderItemStatus.COMPLETED && 
+                        order.status === EnumOrderStatus.PREPARING) {
+                      handleItemClick(childItem.id);
+                    }
+                  }}
+                >
+                  <div className="flex justify-between items-start gap-2 flex-col xl:flex-row">
+                    <div>
+                      <div className="font-medium flex items-center gap-1">
+                        <span className='font-bold text-lg'>{childItem.quantity}x</span> {childItem.product.title}
+                        {!isChildAccessible && (
+                          <Badge variant="outline" className="text-xs ml-2">
+                            {language === 'ru' ? 'Другой цех' : 'სხვა სახელოსნო'}
+                          </Badge>
+                        )}
+                      </div>
+                      {childItem.additives.length > 0 && (
+                        <div className="text-xs text-muted-foreground">
+                          {language === 'ru' ? 'Модификаторы:' : 'მოდიფიკატორები:'} {childItem.additives.map(a => a.title).join(', ')}
+                        </div>
+                      )}
+                      {childItem.comment && (
+                        <div className="text-xs text-muted-foreground">
+                          {language === 'ru' ? 'Коммент:' : 'კომენტარი:'} {childItem.comment}
+                        </div>
+                      )}
+                    </div>
+                    <Badge variant="outline" className="text-sm">
+                      {childItem.status === OrderItemStatus.COMPLETED ? (
+                        language === 'ru' ? 'Готово' : 'მზადაა'
+                      ) : childItem.status === OrderItemStatus.IN_PROGRESS && childItem.timestamps.startedAt ? (
+                        <>
+                          {Math.round((new Date().getTime() - new Date(childItem.timestamps.startedAt).getTime()) / 60000)} {language === 'ru' ? 'мин' : 'წთ'}
+                        </>
+                      ) : (
+                        getStatusText(childItem.status, language)
+                      )}
+                    </Badge>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  })
+      ) : (
+        (kitchenArchive || variant === 'preorder') ? null : (
+          <div className="text-center text-muted-foreground py-4 flex-grow flex items-center justify-center">
+            {t.noDishes}
+          </div>
+        )
+      )}
 
                   {otherItems.length > 0 && (
                     <div className="mt-4">

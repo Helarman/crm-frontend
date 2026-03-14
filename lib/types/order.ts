@@ -65,15 +65,19 @@ export interface OrderItem {
   isReordered: boolean;
   isRefund: boolean;
   createdAt?: Date;
+  isComboChild?: boolean;
   refundReason: string;
   status: OrderItemStatus;
   product: Product
   productId: string
   quantity: number
+   parentComboId?: string;
+  parentOrderItemId?: string; 
   ingredients: any[]
   additiveIds: string[]
   comment?: string
   additives: Additive[]
+  isComboParent?: boolean
   timestamps: {
     createdAt: Date;
     startedAt: Date;

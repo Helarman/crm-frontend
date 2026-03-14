@@ -253,7 +253,7 @@ const ProductCreatePage = () => {
         toast.error(language === 'ru' 
           ? 'Сначала выберите сеть' 
           : 'ჯერ აირჩიეთ ქსელი')
-        router.push('/menu?tab=products')
+        router.push('/menu?tab=menu')
       }
     }
   }, [router, language])
@@ -310,7 +310,7 @@ const ProductCreatePage = () => {
       toast.error(language === 'ru' 
         ? 'Сеть не выбрана' 
         : 'ქსელი არ არის არჩეული')
-      router.push('/menu?tab=products')
+      router.push('/menu?tab=menu')
       return
     }
 

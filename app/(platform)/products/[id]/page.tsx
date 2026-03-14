@@ -318,64 +318,78 @@ const ProductEditPage = () => {
     }
   }
 
-  const loadData = async () => {
-    if (!productId) {
-      resetForm()
-      return
-    }
-
-    setIsLoading(true)
-    try {
-      const [product, productAdditives, prices, productIngredients] = await Promise.all([
-        ProductService.getById(productId as string),
-        AdditiveService.getByProduct(productId as string),
-        ProductService.getRestaurantPrices(productId as string),
-        ProductService.getIngredients(productId as string),
-      ])
-      const networkId = product.networkId
-
-      if (networkId) {
-        const userRestaurantsData = await RestaurantService.getRestaurantsByUserAndNetwork(user.id, networkId)
-        setUserRestaurants(userRestaurantsData)
-      }
-
-      setFormData({
-        title: product.title,
-        description: product.description,
-        composition: product.composition,
-        price: product.price,
-        images: product.images.length ? product.images : [''],
-        categoryId: product.categoryId,
-        weight: product.weight,
-        preparationTime: product.preparationTime,
-        packageQuantity: product.packageQuantity,
-        quantity: product.quantity || 0,
-        printLabels: product.printLabels,
-        publishedOnWebsite: product.publishedOnWebsite,
-        publishedInApp: product.publishedInApp,
-        isStopList: product.isStopList,
-        pageTitle: product.pageTitle || '',
-        metaDescription: product.metaDescription || '',
-        content: product.content || '',
-      })
-
-      setSelectedAdditives(productAdditives.map((a: any) => a.id))
-      setRestaurantPrices(prices)
-
-      const userRestaurantIds = user?.restaurants?.map((r: Restaurant) => r.id) || []
-      const filteredSelectedRestaurants = prices
-        .map((p: RestaurantPrice) => p.restaurantId)
-        .filter((id: string) => userRestaurantIds.includes(id))
-
-      setSelectedRestaurants(filteredSelectedRestaurants)
-      setSelectedWorkshops(product.workshops?.map((w: any) => w.workshop.id) || [])
-      setIngredients(productIngredients || [])
-    } catch (error) {
-      toast.error(language === 'ru' ? 'Ошибка загрузки данных' : 'მონაცემების ჩატვირთვის შეცდომა')
-    } finally {
-      setIsLoading(false)
-    }
+const loadData = async () => {
+  if (!productId) {
+    resetForm()
+    return
   }
+
+  setIsLoading(true)
+  setIsRestaurantsLoading(true)
+  
+  try {
+    
+    const [product, productAdditives, prices, productIngredients] = await Promise.all([
+      ProductService.getById(productId as string),
+      AdditiveService.getByProduct(productId as string),
+      ProductService.getRestaurantPrices(productId as string),
+      ProductService.getIngredients(productId as string),
+    ])
+    
+    
+    const networkId = product.networkId
+    console.log('5. networkId:', networkId)
+
+    let userRestaurantsData = []
+    if (networkId && user?.id) {
+      console.log('6. Загружаем рестораны для user:', user.id, 'network:', networkId)
+      userRestaurantsData = await RestaurantService.getRestaurantsByUserAndNetwork(user.id, networkId)
+      console.log('7. Загружены рестораны:', userRestaurantsData)
+      setUserRestaurants(userRestaurantsData)
+    }
+
+    setFormData({
+      title: product.title,
+      description: product.description,
+      composition: product.composition,
+      price: product.price,
+      images: product.images.length ? product.images : [''],
+      categoryId: product.categoryId,
+      weight: product.weight,
+      preparationTime: product.preparationTime,
+      packageQuantity: product.packageQuantity,
+      quantity: product.quantity || 0,
+      printLabels: product.printLabels,
+      publishedOnWebsite: product.publishedOnWebsite,
+      publishedInApp: product.publishedInApp,
+      isStopList: product.isStopList,
+      pageTitle: product.pageTitle || '',
+      metaDescription: product.metaDescription || '',
+      content: product.content || '',
+    })
+
+    setSelectedAdditives(productAdditives.map((a: any) => a.id))
+    setRestaurantPrices(prices)
+
+    const userRestaurantIds = userRestaurantsData.map((r: any) => r.id)
+    
+    const filteredSelectedRestaurants = prices
+      .map((p: RestaurantPrice) => p.restaurantId)
+      .filter((id: string) => userRestaurantIds.includes(id))
+    
+    setSelectedRestaurants(filteredSelectedRestaurants)
+    
+    setSelectedWorkshops(product.workshops?.map((w: any) => w.workshop.id) || [])
+    setIngredients(productIngredients || [])
+    
+  } catch (error) {
+    console.error('Ошибка в loadData:', error)
+    toast.error(language === 'ru' ? 'Ошибка загрузки данных' : 'მონაცემების ჩატვირთვის შეცდომა')
+  } finally {
+    setIsLoading(false)
+    setIsRestaurantsLoading(false)
+  }
+}
 
   const resetForm = () => {
     setFormData({
@@ -582,7 +596,7 @@ const ProductEditPage = () => {
       )
 
       toast.success(language === 'ru' ? 'Продукт обновлен' : 'პროდუქტი განახლებულია')
-      router.push('/menu?tab=products')
+      router.push('/menu?tab=menu')
     } catch (error) {
       console.error('Error saving product:', error)
       toast.error(language === 'ru' ? 'Ошибка сохранения' : 'შენახვის შეცდომა')
@@ -825,72 +839,84 @@ const ProductEditPage = () => {
         )
 
       case 'prices':
-        return (
-          <Card>
-            <CardContent className="pt-6">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label className="text-sm">
-                    {language === 'ru' ? 'Выберите рестораны' : 'აირჩიეთ რესტორნები'}
-                  </Label>
-                  {isRestaurantsLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <SearchableSelect
-                      options={userRestaurants.map(r => ({ id: r.id, label: r.title }))}
-                      value={selectedRestaurants}
-                      onChange={handleRestaurantsChange}
-                      placeholder={language === 'ru' ? 'Выберите рестораны' : 'აირჩიეთ რესტორნები'}
-                      searchPlaceholder={language === 'ru' ? 'Поиск ресторанов...' : 'რესტორნების ძებნა...'}
-                      emptyText={language === 'ru' ? 'Рестораны не найдены' : 'რესტორნები ვერ მოიძებნა'}
-                    />
-                  )}
-                </div>
-                {selectedRestaurants.length > 0 && (
-                  <div className="space-y-3">
-                    {selectedRestaurants.map(restaurantId => {
-                      const restaurant = userRestaurants.find(r => r.id === restaurantId)
-                      if (!restaurant) return null
-
-                      const priceInfo = getRestaurantPrice(restaurantId)
-                      return (
-                        <div key={restaurantId} className="grid grid-cols-3 gap-4 items-center">
-                          <Label className="text-sm">{restaurant.title}</Label>
-
-                          <Input
-                            type="number"
-                            min="0"
-                            value={priceInfo.price}
-                            onChange={e => handleRestaurantPriceChange(
-                              restaurantId,
-                              'price',
-                              e.target.value
-                            )}
-                            className="text-sm"
-                          />
-
-                          <div className="flex items-center space-x-2">
-                            <Switch
-                              checked={priceInfo.isStopList}
-                              onCheckedChange={checked => handleRestaurantPriceChange(
-                                restaurantId,
-                                'isStopList',
-                                checked
-                              )}
-                            />
-                            <Label className="text-sm">
-                              {language === 'ru' ? 'Стоп-лист' : 'სტოპ ლისტი'}
-                            </Label>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
+  console.log('Рендер секции prices:', {
+    userRestaurants,
+    selectedRestaurants,
+    restaurantPrices,
+    isRestaurantsLoading
+  })
+  
+  return (
+    <Card>
+      <CardContent className="pt-6">
+        
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label className="text-sm">
+              {language === 'ru' ? 'Выберите рестораны' : 'აირჩიეთ რესტორნები'}
+            </Label>
+            {isRestaurantsLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : userRestaurants.length === 0 ? (
+              <div className="text-sm text-gray-500">
+                {language === 'ru' ? 'Нет доступных ресторанов' : 'ხელმისაწვდომი რესტორნები არ არის'}
               </div>
-            </CardContent>
-          </Card>
-        )
+            ) : (
+              <SearchableSelect
+                options={userRestaurants.map(r => ({ id: r.id, label: r.title }))}
+                value={selectedRestaurants}
+                onChange={handleRestaurantsChange}
+                placeholder={language === 'ru' ? 'Выберите рестораны' : 'აირჩიეთ რესტორნები'}
+                searchPlaceholder={language === 'ru' ? 'Поиск ресторанов...' : 'რესტორნების ძებნა...'}
+                emptyText={language === 'ru' ? 'Рестораны не найдены' : 'რესტორნები ვერ მოიძებნა'}
+              />
+            )}
+          </div>
+          {selectedRestaurants.length > 0 && (
+            <div className="space-y-3">
+              {selectedRestaurants.map(restaurantId => {
+                const restaurant = userRestaurants.find(r => r.id === restaurantId)
+                if (!restaurant) return null
+
+                const priceInfo = getRestaurantPrice(restaurantId)
+                return (
+                  <div key={restaurantId} className="grid grid-cols-3 gap-4 items-center">
+                    <Label className="text-sm">{restaurant.title}</Label>
+
+                    <Input
+                      type="number"
+                      min="0"
+                      value={priceInfo.price}
+                      onChange={e => handleRestaurantPriceChange(
+                        restaurantId,
+                        'price',
+                        e.target.value
+                      )}
+                      className="text-sm"
+                    />
+
+                    <div className="flex items-center space-x-2">
+                      <Switch
+                        checked={priceInfo.isStopList}
+                        onCheckedChange={checked => handleRestaurantPriceChange(
+                          restaurantId,
+                          'isStopList',
+                          checked
+                        )}
+                      />
+                      <Label className="text-sm">
+                        {language === 'ru' ? 'Стоп-лист' : 'სტოპ ლისტი'}
+                      </Label>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
 
       case 'additives':
         return (
@@ -1049,6 +1075,7 @@ const ProductEditPage = () => {
 
   return (
     <div className="min-h-screen ">
+      {JSON.stringify(restaurantPrices)}
       {/* Навигация */}
       <nav className="sticky top-0 z-50 backdrop-blur-lg bg-white/80 border-b supports-backdrop-blur:bg-white/60">
         <div className=" py-3">

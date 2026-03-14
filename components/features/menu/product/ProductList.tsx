@@ -644,10 +644,16 @@ export const ProductList = () => {
           </Button>
 
           {!showArchived && (
+            <div className='flex gap-2'>
             <Button onClick={() => router.push('/products/new')}>
               <Plus className="mr-2 h-4 w-4" />
               {t.addProduct}
             </Button>
+              <Button onClick={() => router.push('/combo/new')}>
+              <Plus className="mr-2 h-4 w-4" />
+              Добавить комбо
+            </Button>
+            </div>
           )}
         </div>
       </div>

@@ -93,6 +93,129 @@ function redirectToLogin() {
   }
 }
 
+// Добавить в начало файла или создать отдельный файл types.ts
+export enum ComboItemType {
+  STATIC = 'STATIC',
+  CHOICE = 'CHOICE',
+  OPTIONAL = 'OPTIONAL'
+}
+
+export interface ComboItemProductDto {
+  productId: string;
+  quantity?: number;
+  additionalPrice?: number;
+  allowMultiple?: boolean;
+  maxQuantity?: number;
+  sortOrder?: number;
+}
+
+export interface ComboItemDto {
+  type: ComboItemType;
+  minSelect?: number;
+  maxSelect?: number;
+  groupName?: string;
+  sortOrder?: number;
+  products: ComboItemProductDto[];
+}
+
+export interface CreateComboDto {
+  title: string;
+  description?: string;
+  price: number;
+  items: ComboItemDto[];
+  categoryId?: string;
+  networkId?: string;
+  images?: string[];
+  workshopIds?: string[];
+  additives?: string[];
+}
+
+export interface UpdateComboDto extends Partial<CreateComboDto> {}
+
+export interface ComboSelectionDto {
+  comboItemId: string;
+  selectedProducts: Array<{
+    productId: string;
+    quantity: number;
+  }>;
+}
+
+export interface CalculateComboPriceDto {
+  comboId: string;
+  selections: ComboSelectionDto[];
+}
+
+export interface OrderComboItemDto extends CalculateComboPriceDto {
+  quantity?: number;
+  comment?: string;
+}
+
+export interface ComboPriceCalculation {
+  basePrice: number;
+  additionalPrice: number;
+  totalPrice: number;
+  breakdown: Array<{
+    itemId: string;
+    itemName: string;
+    selectedProducts: Array<{
+      productId: string;
+      productName: string;
+      quantity: number;
+      price: number;
+    }>;
+  }>;
+}
+
+
+export interface ComboDto {
+  title: string;
+  description?: string;
+  price: number;
+  categoryId?: string;
+  networkId?: string;
+  images?: string[];
+  workshopIds?: string[];
+  additives?: string[];
+}
+
+export interface UpdateComboDto {
+  title?: string;
+  description?: string;
+  price?: number;
+  childProductIds?: string[];
+  categoryId?: string;
+  images?: string[];
+  workshopIds?: string[];
+  additives?: string[];
+}
+
+export interface AddProductsToComboRequest {
+  productIds: string[];
+}
+
+export interface RemoveProductsFromComboRequest {
+  productIds: string[];
+}
+
+export interface BulkUpdateComboDiscountRequest {
+  updates: Array<{
+    comboId: string;
+    discount: number;
+  }>;
+}
+
+export interface ComboComposition {
+  comboId: string;
+  title: string;
+  price: number;
+  productsCount: number;
+  products: Array<{
+    id: string;
+    title: string;
+    price: number;
+  }>;
+}
+
 export interface ProductDto {
   title: string;
   description?: string;
@@ -158,8 +281,56 @@ export interface RestoreRequest {
 }
 
 export const ProductService = {
-  // ... существующие методы ...
+  createCombo: async (dto: ComboDto) => {
+    const { data } = await api.post('/combo', dto);
+    return data;
+  },
 
+  getAllCombos: async (search?: string) => {
+    const { data } = await api.get('/combo', { params: { search } });
+    return data;
+  },
+
+  getComboById: async (id: string) => {
+    const { data } = await api.get(`/combo/${id}`);
+    return data;
+  },
+
+  updateCombo: async (id: string, dto: UpdateComboDto) => {
+    const { data } = await api.put(`/combo/${id}`, dto);
+    return data;
+  },
+
+  addProductsToCombo: async (comboId: string, productIds: string[]) => {
+    const { data } = await api.patch(`/combo/${comboId}/add-products`, { productIds });
+    return data;
+  },
+
+  removeProductsFromCombo: async (comboId: string, productIds: string[]) => {
+    const { data } = await api.patch(`/combo/${comboId}/remove-products`, { productIds });
+    return data;
+  },
+
+  getAvailableProductsForCombo: async (comboId: string) => {
+    const { data } = await api.get(`/combo/${comboId}/available-products`);
+    return data;
+  },
+
+  getComboComposition: async (comboId: string): Promise<ComboComposition> => {
+    const { data } = await api.get(`/combo/${comboId}/composition`);
+    return data;
+  },
+
+  getProductParentCombos: async (productId: string) => {
+    const { data } = await api.get(`/combo/product/${productId}/parents`);
+    return data;
+  },
+
+  canDeleteProduct: async (productId: string): Promise<boolean> => {
+    const { data } = await api.get(`/products/${productId}/can-delete`);
+    return data;
+  },
+  
   getAll: async (searchTerm?: string) => {
     const { data } = await api.get('/products', { params: { searchTerm } });
     return data;

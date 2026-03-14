@@ -1,7 +1,7 @@
   'use client'
 
   import { useParams, useRouter } from 'next/navigation'
-  import { useState, useEffect, useCallback, useRef } from 'react'
+  import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
   import { OrderHeader } from '@/components/features/order/OrderHeader'
   import { Card } from '@/components/ui/card'
   import { Button } from '@/components/ui/button'
@@ -126,11 +126,23 @@ import {
   DialogTrigger,
   DialogClose,
   DialogFooter,
+  DialogContentExtraWide,
 } from "@/components/ui/dialog"
 import { motion, useAnimationControls } from 'framer-motion'
 import { TablesService, TableStatus } from '@/lib/api/tables.service'
 
-  // Типы для навигации по категориям
+ interface ComboSelection {
+  comboId: string;
+  selections: {
+    [comboItemId: string]: {
+      selectedProducts: Array<{
+        productId: string;
+        quantity: number;
+      }>;
+    };
+  };
+}
+
   interface CategoryNavigation {
     currentCategory: Category | null
     parentCategory: Category | null
@@ -418,6 +430,7 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
       quantity: number
       additives: string[]
       comment: string
+        parentComboId?: string
       timer: NodeJS.Timeout | null
     }>>({});
     const [customerCode, setCustomerCode] = useState('');
@@ -459,6 +472,12 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
     const [isRightColCollapsed, setIsRightColCollapsed] = useState(false)
     const [selectedItemForHistory, setSelectedItemForHistory] = useState<OrderItem | null>(null);
     const [showItemHistoryDialog, setShowItemHistoryDialog] = useState(false);
+    const [showComboRefundDialog, setShowComboRefundDialog] = useState(false);
+    const [selectedComboItems, setSelectedComboItems] = useState<Array<{
+      item: OrderItem;
+      quantity: number;
+      selected: boolean;
+    }>>([]);
 
     const {
       isConnected: isWebSocketConnected,
@@ -639,7 +658,81 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
       }
     };
 
-    // Добавление модификатора к заказу
+    const prepareComboItemsForRefund = (comboItem: OrderItem) => {
+      const childItems = getOrderItems().filter(
+        child => child.parentOrderItemId === comboItem.id && !child.isRefund
+      );
+      
+      const itemsForRefund = childItems.map(item => ({
+        item,
+        quantity: item.quantity,
+        selected: false
+      }));
+      
+      setSelectedComboItems(itemsForRefund);
+      setSelectedItemForRefund(comboItem);
+    };
+
+    const handleComboItemsRefund = async () => {
+  if (!order || !selectedItemForRefund || !refundReason.trim()) return;
+
+  const selectedItems = selectedComboItems.filter(item => item.selected);
+  
+  if (selectedItems.length === 0) {
+    toast.error('Выберите хотя бы одно блюдо для возврата');
+    return;
+  }
+
+  try {
+    setIsUpdating(true);
+
+    // Возвращаем каждое выбранное блюдо
+    for (const { item, quantity } of selectedItems) {
+      await OrderService.partialRefundOrderItem(
+        order.id,
+        item.id,
+        quantity,
+        refundReason,
+        user?.id
+      );
+    }
+
+    // Проверяем, остались ли непогашенные элементы в комбо
+    const remainingItems = getOrderItems().filter(
+      child => 
+        child.parentOrderItemId === selectedItemForRefund.id && 
+        !child.isRefund
+    );
+
+    // Если все элементы возвращены, помечаем родительское комбо как частично возвращенное
+    if (remainingItems.length === 0) {
+      // Можно добавить специальный флаг для родительского комбо
+      await createOrderLog(`Все блюда из комбо "${selectedItemForRefund.product.title}" возвращены`);
+    }
+
+    await recalculateDiscount();
+    await createOrderLog(
+      `Возвращено ${selectedItems.length} блюд из комбо: ${selectedItemForRefund.product.title}`
+    );
+
+    toast.success(`Возвращено ${selectedItems.length} блюд из комбо`);
+
+    setShowComboRefundDialog(false);
+    setRefundReason('');
+    setSelectedComboItems([]);
+
+    // Обновляем заказ
+    const updatedOrder = await OrderService.getById(order.id);
+    setOrder(updatedOrder);
+
+  } catch (error) {
+    console.error('Error refunding combo items:', error);
+    toast.error('Ошибка при возврате блюд из комбо');
+  } finally {
+    setIsUpdating(false);
+  }
+};
+
     const handleAddOrderAdditive = async () => {
       if (!selectedOrderAdditive || !order || !isOrderEditable) return;
 
@@ -1134,44 +1227,94 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
       }
     };
 
-    const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => {
-      if (!order || newQuantity < 0 || !isOrderEditable) return;
+const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => {
+  if (!order || newQuantity < 0 || !isOrderEditable) return;
 
-      // Явная проверка что можно редактировать только CREATED items
-      if (item.status !== OrderItemStatus.CREATED) {
-        toast.error('Можно изменять только неподтвержденные позиции');
-        return;
-      }
+  // Явная проверка что можно редактировать только CREATED items
+  if (item.status !== OrderItemStatus.CREATED) {
+    toast.error('Можно изменять только неподтвержденные позиции');
+    return;
+  }
 
-      try {
-        setIsUpdating(true);
+  try {
+    setIsUpdating(true);
 
-        if (newQuantity === 0) {
-          await OrderService.removeItemFromOrder(order.id, item.id);
-          await createOrderLog(`${t.logs.itemRemoved}: ${item.product.title}`);
-        } else {
-          await OrderService.updateOrderItemQuantity(
-            order.id,
-            item.id,
-            newQuantity,
-            user?.id
-          );
-          await createOrderLog(
-            `Изменено количество: ${item.product.title} → ${newQuantity}`
-          );
-        }
-
-        const updatedOrder = await OrderService.getById(order.id);
-        setOrder(updatedOrder);
-
-      } catch (error) {
-        toast.error(
-          'Ошибка изменения количества'
+    if (newQuantity === 0) {
+      // Сначала собираем все ID элементов для удаления
+      const itemsToDelete: string[] = [];
+      
+      // Добавляем сам элемент
+      itemsToDelete.push(item.id);
+      
+      // Проверяем, является ли элемент родительским комбо
+      const childItems = getOrderItems().filter(
+        childItem => childItem.parentOrderItemId === item.id
+      );
+      
+      // Добавляем все дочерние элементы
+      childItems.forEach(childItem => {
+        itemsToDelete.push(childItem.id);
+      });
+      
+      // Также проверяем старую логику с parentComboId
+      if (item.parentComboId) {
+        const childItemsByCombo = getOrderItems().filter(
+          childItem => childItem.parentComboId === item.parentComboId &&
+                      childItem.parentOrderItemId === item.id
         );
-      } finally {
-        setIsUpdating(false);
+        
+        childItemsByCombo.forEach(childItem => {
+          if (!itemsToDelete.includes(childItem.id)) {
+            itemsToDelete.push(childItem.id);
+          }
+        });
       }
-    };
+      
+      // Удаляем элементы в обратном порядке (сначала дочерние, потом родительские)
+      // Сортируем так, чтобы дочерние элементы (с parentOrderItemId) удалялись первыми
+      const sortedItemsToDelete = [...itemsToDelete].sort((a, b) => {
+        const aIsChild = getOrderItems().find(i => i.id === a)?.parentOrderItemId ? 1 : 0;
+        const bIsChild = getOrderItems().find(i => i.id === b)?.parentOrderItemId ? 1 : 0;
+        return bIsChild - aIsChild; // Дочерние первыми
+      });
+      
+      // Удаляем элементы по одному с обработкой ошибок
+      let successCount = 0;
+      for (const itemId of sortedItemsToDelete) {
+        try {
+          await OrderService.removeItemFromOrder(order.id, itemId);
+          successCount++;
+        } catch (err) {
+          console.error(`Ошибка при удалении элемента ${itemId}:`, err);
+        }
+      }
+      
+      if (successCount > 0) {
+        await createOrderLog(`${t.logs.itemRemoved}: ${item.product.title} и связанные элементы`);
+      }
+      
+    } else {
+      await OrderService.updateOrderItemQuantity(
+        order.id,
+        item.id,
+        newQuantity,
+        user?.id
+      );
+      await createOrderLog(
+        `Изменено количество: ${item.product.title} → ${newQuantity}`
+      );
+    }
+
+    // Получаем обновленный заказ
+    const updatedOrder = await OrderService.getById(order.id);
+    setOrder(updatedOrder);
+
+  } catch (error) {
+    console.error('Ошибка в handleQuantitItemChange:', error);
+  } finally {
+    setIsUpdating(false);
+  }
+};
 
    const handleRouteChange = (path: string) => {
   const hasCreatedItems = getOrderItems().some(
@@ -1666,6 +1809,7 @@ console.log(order)
       return total;
     };
 
+    
     const handleReorderItem = async (item: OrderItem) => {
       if (!order) return;
 
@@ -1695,14 +1839,58 @@ console.log(order)
         setIsUpdating(false);
       }
     };
+const pendingComboSelectionRef = useRef<ComboSelection | null>(null);
 
-   const handleQuantityChange = useCallback(async (product: Product, newQuantity: number, additives: string[], comment: string) => {
+// Состояние для хранения выбранных опций комбо
+const [pendingComboSelection, setPendingComboSelection] = useState<ComboSelection | null>(null);
+
+// Map для быстрого доступа к comboItems по ID
+const comboItemsMapRef = useRef<Record<string, ComboItem>>({});
+
+// Обновляем map при загрузке комбо
+useEffect(() => {
+  if (products.length > 0) {
+    const map: Record<string, ComboItem> = {};
+    products.forEach(product => {
+      if ((product as any).comboItems) {
+        (product as any).comboItems.forEach((item: ComboItem) => {
+          map[item.id] = item;
+        });
+      }
+    });
+    comboItemsMapRef.current = map;
+  }
+}, [products]);
+const calculateComboTotalPrice = (product: Product, comboSelection: ComboSelection, comboItems: any[]): number => {
+  let total = product.price; // Базовая цена комбо
+
+  // Проходим по всем выбранным опциям
+  Object.entries(comboSelection.selections).forEach(([comboItemId, selection]) => {
+    // Находим соответствующий comboItem в product
+    const comboItem = (product as any).comboItems?.find((item: any) => item.id === comboItemId);
+    if (!comboItem) return;
+
+    // Для каждого выбранного продукта в этой группе
+    selection.selectedProducts.forEach(selected => {
+      // Находим информацию о продукте в comboItem
+      const comboProduct = comboItem.products?.find((p: any) => p.productId === selected.productId);
+      if (comboProduct) {
+        // Добавляем дополнительную стоимость за каждый выбранный продукт
+        total += comboProduct.additionalPrice * selected.quantity;
+      }
+    });
+  });
+
+  return total;
+};
+
+const handleQuantityChange = useCallback(async (product: Product, newQuantity: number, additives: string[], comment: string, parentComboId?: string) => {
   if (!orderId || !isOrderEditable || !order || !getOrderItems()) return;
 
   // Защита от отрицательных значений
   if (newQuantity < 0) return;
   
-  const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`;
+  const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}-${parentComboId || ''}`;
 
   if (pendingAdditions[key]?.timer) {
     clearTimeout(pendingAdditions[key].timer!);
@@ -1717,26 +1905,101 @@ console.log(order)
     return;
   }
 
-  const timer = setTimeout(async () => {
-    try {
-      setIsUpdating(true);
+const timer = setTimeout(async () => {
+  try {
+    setIsUpdating(true);
 
-      const existingItem = getOrderItems().find(item =>
-        item.product.id === product.id &&
-        JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
-        item.comment === comment &&
-        item.status === OrderItemStatus.CREATED
+   
+    const existingItem = getOrderItems().find(item =>
+      item.product.id === product.id &&
+      JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
+      item.comment === comment &&
+      item.parentComboId === parentComboId &&
+      item.status === OrderItemStatus.CREATED
+    );
+
+    if (existingItem) {
+      await OrderService.updateOrderItemQuantity(
+        orderId as string,
+        existingItem.id,
+        newQuantity
       );
-
-      if (existingItem) {
-        // Обновляем существующий item
-        await OrderService.updateOrderItemQuantity(
+    } else {
+      // Проверяем, является ли продукт комбо
+      if (product.isCombo && pendingComboSelectionRef.current) {
+        const comboSelection = pendingComboSelectionRef.current;
+        const comboGroupId = `combo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Рассчитываем итоговую цену комбо
+        const comboTotalPrice = calculateComboTotalPrice(product, comboSelection, (product as any).comboItems);
+        
+        // Создаем родительское комбо с рассчитанной ценой
+        const mainOrderItem = await OrderService.addItemToOrder(
           orderId as string,
-          existingItem.id,
-          newQuantity
+          {
+            productId: product.id,
+            quantity: newQuantity,
+            additiveIds: [],
+            comment: comboGroupId,
+            price: comboTotalPrice // Передаем рассчитанную цену
+          }
         );
+        
+        console.log('Родительский элемент создан с ценой:', comboTotalPrice, 'и comment:', comboGroupId);
+        
+        // Ждем немного, чтобы элемент точно появился в заказе
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Получаем актуальный заказ
+        const currentOrder = await OrderService.getById(orderId as string);
+        
+        // Ищем родительский элемент по comment (не по ID!)
+        const parentItem = currentOrder.items.find(item => 
+          item.comment === comboGroupId && 
+          item.product.id === product.id
+        );
+        
+        if (!parentItem) {
+          throw new Error('Родительский элемент не найден по comment');
+        }
+        
+        console.log('Найден родительский элемент с реальным ID:', parentItem.id);
+        
+        // Используем найденный ID для дочерних элементов
+        const childPromises = [];
+        
+        for (const [comboItemId, selection] of Object.entries(comboSelection.selections)) {
+          for (const selectedProduct of selection.selectedProducts) {
+            console.log('Добавление дочернего элемента с parentOrderItemId:', parentItem.id);
+            
+            childPromises.push(
+              OrderService.addItemToOrder(
+                orderId as string,
+                {
+                  productId: selectedProduct.productId,
+                  quantity: selectedProduct.quantity * newQuantity,
+                  additiveIds: [],
+                  parentComboId: product.id,
+                  parentOrderItemId: parentItem.id, // Используем ID из заказа
+                  comment: comboGroupId,
+                  price: 0 // Цена 0 для дочерних элементов
+                }
+              )
+            );
+          }
+        }
+        
+        await Promise.all(childPromises);
+        
+        // Обновляем заказ
+        const finalUpdatedOrder = await OrderService.getById(orderId as string);
+        setOrder(finalUpdatedOrder);
+        
+        setPendingComboSelection(null);
+        pendingComboSelectionRef.current = null;
+
       } else {
-        // Добавляем новый item
+        // Обычный продукт
         await OrderService.addItemToOrder(
           orderId as string,
           {
@@ -1744,38 +2007,34 @@ console.log(order)
             quantity: newQuantity,
             additiveIds: additives,
             comment,
+            parentComboId
           }
         );
+        
+        const finalUpdatedOrder = await OrderService.getById(orderId as string);
+        setOrder(finalUpdatedOrder);
       }
-
-      const updatedOrder = await OrderService.getById(orderId as string);
-      const orderWithPreservedFlags = {
-        ...updatedOrder,
-        attentionFlags: updatedOrder.attentionFlags || {}
-      };
-
-      setOrder(orderWithPreservedFlags);
-
-      await applyAutoDiscounts(orderWithPreservedFlags);
-
-      await createOrderLog(
-        existingItem
-          ? `Обновлено количество: ${product.title} → ${newQuantity}`
-          : `${t.logs.itemAdded}: ${product.title} x ${newQuantity}`
-      );
-
-      setPendingAdditions(prev => {
-        const newState = { ...prev };
-        delete newState[key];
-        return newState;
-      });
-    } catch (err) {
-      toast.error('Ошибка при обновлении заказа');
-      console.error('Error:', err);
-    } finally {
-      setIsUpdating(false);
     }
-  }, 1000);
+
+    await applyAutoDiscounts(order);
+    await createOrderLog(
+      existingItem
+        ? `Обновлено количество: ${product.title} → ${newQuantity}`
+        : `${t.logs.itemAdded}: ${product.title} x ${newQuantity}`
+    );
+
+    setPendingAdditions(prev => {
+      const newState = { ...prev };
+      delete newState[key];
+      return newState;
+    });
+  } catch (err) {
+    console.error('Ошибка при обновлении заказа:', err);
+    toast.error('Ошибка при обновлении заказа');
+  } finally {
+    setIsUpdating(false);
+  }
+}, 1000);
 
   setPendingAdditions(prev => ({
     ...prev,
@@ -1783,10 +2042,12 @@ console.log(order)
       quantity: newQuantity,
       additives,
       comment,
+      parentComboId,
       timer,
     },
   }));
 }, [orderId, isOrderEditable, order, getOrderItems]);
+
     const getDisplayQuantity = (product: Product, additives: string[], comment: string) => {
   const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`
 
@@ -2151,6 +2412,9 @@ console.log(order)
       onQuantityChange: (quantity: number) => void;
       isOrderEditable: boolean;
       getProductPrice: (product: Product) => number;
+parentComboId?: string
+       comboItems?: ComboItem[];
+        onComboSelect?: (selection: ComboSelection) => void
     }
 
 const ProductCard: React.FC<ProductCardProps> = ({
@@ -2161,10 +2425,15 @@ const ProductCard: React.FC<ProductCardProps> = ({
   onAdditivesChange,
   onQuantityChange,
   isOrderEditable,
-  getProductPrice
+  getProductPrice,
+  comboItems,
+  onComboSelect,
+  parentComboId 
 }) => {
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [isOverflowing, setIsOverflowing] = useState(false);
+  const [showComboDialog, setShowComboDialog] = useState(false);
+  const [pendingComboSelection, setPendingComboSelection] = useState<ComboSelection | null>(null);
 
   // Проверка переполнения текста
   useEffect(() => {
@@ -2180,91 +2449,146 @@ const ProductCard: React.FC<ProductCardProps> = ({
     return () => window.removeEventListener('resize', checkOverflow);
   }, [product.title]);
 
+  // Используем useRef для отслеживания монтирования
+  const isMounted = useRef(false);
+  
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  const handleComboConfirm = (selection: ComboSelection) => {
+    if (!isMounted.current) return;
+    
+    console.log('Combo selection saved:', selection);
+    
+    // Сохраняем выбранные опции
+    if (onComboSelect) {
+      onComboSelect(selection);
+    }
+    
+    // После выбора комбо, увеличиваем количество
+    onQuantityChange(quantity + 1);
+  };
+
+  const handleAddToOrder = () => {
+    if (!isOrderEditable) return;
+    
+    if (product.isCombo && comboItems && comboItems.length > 0) {
+      console.log('Opening combo dialog for:', product.title);
+      setShowComboDialog(true);
+    } else {
+      onQuantityChange(quantity + 1);
+    }
+  };
+
+  const handleDialogOpenChange = (open: boolean) => {
+    if (isMounted.current) {
+      setShowComboDialog(open);
+    }
+  };
+
+  // Мемоизируем пропсы для диалога, чтобы избежать лишних ререндеров
+  const dialogProps = useMemo(() => ({
+    open: showComboDialog,
+    onOpenChange: handleDialogOpenChange,
+    combo: product,
+    comboItems: comboItems || [],
+    onConfirm: handleComboConfirm,
+    isOrderEditable
+  }), [showComboDialog, product, comboItems, isOrderEditable]);
+
   return (
-    <div className="group bg-white rounded-xl shadow-sm hover:shadow-md border border-gray-100 hover:border-green-100 transition-all duration-200 flex flex-col h-full">
-      {/* Изображение */}
-      <div className="relative aspect-square bg-gradient-to-br from-gray-50 to-gray-100">
-        {product.images?.[0] ? (
-          <Image
-            src={product.images[0]}
-            alt={product.title}
-            width={280}
-            height={280}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Utensils className="h-12 w-12 text-gray-300" />
-          </div>
-        )}
-        
-        {/* Бейдж с количеством */}
-        {quantity > 0 && (
-          <div className="absolute top-3 right-3 bg-green-500 text-white text-lg font-bold rounded-xl px-3 py-1.5 shadow-lg">
-            {quantity} шт
-          </div>
-        )}
-        
-        <div className="absolute bottom-3 right-3 border-1 border-green-500 text-green-500 text-lg font-bold rounded-xl px-3 py-1.5 shadow-lg">
-          {getProductPrice(product)} ₽
-        </div>
-        
-        {/* Кнопка добавок */}
-        {product.additives && product.additives.length > 0 && (
-          <div className="absolute top-3 left-3">
-            <AdditivesDialog
-              product={product}
-              selectedAdditives={additives}
-              onAdditivesChange={onAdditivesChange}
-              disabled={!isOrderEditable}
+    <>
+      <div className="group bg-white rounded-xl shadow-sm hover:shadow-md border border-gray-100 hover:border-green-100 transition-all duration-200 flex flex-col h-full">
+        {/* Изображение */}
+        <div className="relative aspect-square bg-gradient-to-br from-gray-50 to-gray-100">
+          {product.images?.[0] ? (
+            <Image
+              src={product.images[0]}
+              alt={product.title}
+              width={280}
+              height={280}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <Utensils className="h-12 w-12 text-gray-300" />
+            </div>
+          )}
+          
+          {/* Бейдж с количеством */}
+          {quantity > 0 && (
+            <div className="absolute top-3 right-3 bg-green-500 text-white text-lg font-bold rounded-xl px-3 py-1.5 shadow-lg">
+              {quantity} шт
+            </div>
+          )}
+          
+          <div className="absolute bottom-3 right-3 border-1 border-green-500 text-green-500 text-lg font-bold rounded-xl px-3 py-1.5 shadow-lg">
+            {getProductPrice(product)} ₽
           </div>
-        )}
-      </div>
-      
-      {/* Контент */}
-      <div className="p-4 flex flex-col flex-grow">
-        <div className="mb-3 flex flex-col gap-2">
-          <h3 
-            ref={titleRef}
-            className="text-xl font-bold text-gray-800 leading-tight break-words"
-            title={isOverflowing ? product.title : undefined}
-          >
-            {product.title}
-          </h3>
+          
+          {/* Кнопка добавок (только для обычных продуктов) */}
+          {!product.isCombo && product.additives && product.additives.length > 0 && (
+            <div className="absolute top-3 left-3">
+              <AdditivesDialog
+                product={product}
+                selectedAdditives={additives}
+                onAdditivesChange={onAdditivesChange}
+                disabled={!isOrderEditable}
+              />
+            </div>
+          )}
         </div>
-
-        <div className="mt-auto pt-3 border-t border-gray-100">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="default"
-              className="flex-1 h-11 text-base font-medium"
-              onClick={() => {
-                const newQuantity = Math.max(0, quantity - 1);
-                onQuantityChange(newQuantity);
-              }}
-              disabled={quantity === 0 || !isOrderEditable}
+        
+        {/* Контент */}
+        <div className="p-4 flex flex-col flex-grow">
+          <div className="mb-3 flex flex-col gap-2">
+            <h3 
+              ref={titleRef}
+              className="text-xl font-bold text-gray-800 leading-tight break-words"
+              title={isOverflowing ? product.title : undefined}
             >
-              <Minus className="h-5 w-5 mr-1" />
-            </Button>
+              {product.title}
+            </h3>
+          </div>
 
-            <Button
-              variant="outline"
-              size="default"
-              className="flex-1 h-11 text-base font-medium"
-              onClick={() => {
-                const newQuantity = quantity + 1;
-                onQuantityChange(newQuantity);
-              }}
-              disabled={!isOrderEditable}
-            >
-              <Plus className="h-5 w-5 mr-1" />
-            </Button>
+          <div className="mt-auto pt-3 border-t border-gray-100">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="default"
+                className="flex-1 h-11 text-base font-medium"
+                onClick={() => {
+                  const newQuantity = Math.max(0, quantity - 1);
+                  onQuantityChange(newQuantity);
+                }}
+                disabled={quantity === 0 || !isOrderEditable}
+              >
+                <Minus className="h-5 w-5 mr-1" />
+              </Button>
+
+              <Button
+                variant="outline"
+                size="default"
+                className="flex-1 h-11 text-base font-medium"
+                onClick={handleAddToOrder}
+                disabled={!isOrderEditable}
+              >
+                <Plus className="h-5 w-5 mr-1" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* Диалог выбора комбо - рендерим только если есть comboItems */}
+      {product.isCombo && comboItems && comboItems.length > 0 && (
+        <ComboSelectionDialog {...dialogProps} />
+      )}
+    </>
   );
 };
 
@@ -2485,7 +2809,7 @@ const ItemHistoryDialog = ({ item, open, onOpenChange }: {
         OrderItemStatus.CREATED,
       ].includes(item.status) && isOrderEditable && !item.isRefund;
 
-      const canRefund = ['COMPLETED', 'DELIVERING', 'PREPARING', 'READY'].includes(order.status) && !item.isRefund;
+         const canRefund = ['COMPLETED', 'DELIVERING', 'PREPARING', 'READY'].includes(order.status) && !item.isRefund;
 
       const canRefundItem = [
         OrderItemStatus.COMPLETED,
@@ -2544,7 +2868,7 @@ const ItemHistoryDialog = ({ item, open, onOpenChange }: {
               </div>
             )}
 
-            {canRefund && canRefundItem && (
+             {canRefund && canRefundItem && (
               (() => {
                 const isBeforeKitchen = order?.status === 'CREATED';
                 
@@ -2578,11 +2902,7 @@ const ItemHistoryDialog = ({ item, open, onOpenChange }: {
                       setShowRefundDialog(true);
                     }}
                     disabled={isUpdating}
-                    title={
-                      isBeforeKitchen ? 'Возврат до кухни' :
-                      isAfterKitchenButBeforePrecheck ? 'Возврат после кухни' :
-                      isAfterPrecheck ? 'Возврат после пречека (только для менеджеров)' : ''
-                    }
+                    title='Возврат'
                   >
                     <Undo className="h-4 w-4 2xl:h-5 2xl:w-5" />
                   </Button>
@@ -2594,7 +2914,7 @@ const ItemHistoryDialog = ({ item, open, onOpenChange }: {
       );
     };
 
-  const renderCompactItemCard = (item: OrderItem) => {
+const renderCompactItemCard = (item: OrderItem) => {
   const getCookingTime = () => {
     if (!item.timestamps.startedAt) return null;
 
@@ -2604,7 +2924,6 @@ const ItemHistoryDialog = ({ item, open, onOpenChange }: {
       : Date.now();
 
     const cookingTimeMinutes = Math.round((endTime - startTime) / (1000 * 60));
-
     return cookingTimeMinutes;
   };
 
@@ -2620,37 +2939,73 @@ const ItemHistoryDialog = ({ item, open, onOpenChange }: {
   const canRefundItem = [
     OrderItemStatus.COMPLETED,
   ].includes(item.status) && isOrderEditable && !item.isRefund;
-const isCooking = item.status === OrderItemStatus.IN_PROGRESS && item.timestamps.startedAt && !item.timestamps.completedAt
-  return ( <div
-    key={item.id}
-    className={`bg-white rounded-xl p-3 2xl:p-4 shadow-sm transition-all duration-300
-      ${item.isReordered ? 'border-l-4 border-blue-500' : ''} 
-      ${item.isRefund ? 'border-l-4 border-red-500' : ''}
-      ${isCooking ? 'shimmer-border' : 'border border-transparent'}
-    `}
-  >
+  
+  const isCooking = item.status === OrderItemStatus.IN_PROGRESS && item.timestamps.startedAt && !item.timestamps.completedAt;
+
+  const isParentCombo = item.isComboParent || false;
+  const isChildItem = !!item.parentOrderItemId;
+
+  // Находим все дочерние элементы для этого родительского комбо (по parentOrderItemId)
+  const childItems = isParentCombo 
+    ? getOrderItems().filter(childItem => childItem.parentOrderItemId === item.id && !childItem.isRefund)
+    : [];
+
+  const refundedChildItems = isParentCombo
+    ? getOrderItems().filter(childItem => childItem.parentOrderItemId === item.id && childItem.isRefund)
+    : [];
+
+  const hasChildren = childItems.length > 0;
+  const hasRefundedChildren = refundedChildItems.length > 0;
+  const allChildrenRefunded = isParentCombo && 
+    childItems.length === 0 && 
+    hasRefundedChildren;
+
+  // ИЗМЕНЕНИЕ: Показываем дочерние элементы только если они возвращены
+  // Игнорируем обычные дочерние элементы (не возвращенные)
+  if (isChildItem && !item.isRefund) {
+    return null;
+  }
+
+  return (
+    <div
+      key={item.id}
+      className={`bg-white rounded-xl p-3 2xl:p-4 shadow-sm transition-all duration-300 relative
+        ${item.isReordered ? 'border-l-4 border-blue-500' : ''} 
+        ${item.isRefund ? 'border-l-4 border-red-500' : ''}
+        ${isCooking ? 'shimmer-border' : 'border border-transparent'}
+        ${isParentCombo ? 'border-2 border-purple-200 bg-purple-50/30' : ''}
+        ${allChildrenRefunded ? 'opacity-60' : ''}
+      `}
+    >
       <div className="flex items-start gap-3 2xl:gap-4">
         {/* Изображение продукта */}
-        <div className="flex-shrink-0 w-12 h-12 2xl:w-16 2xl:h-16 relative  bg-gray-100 rounded-lg">
-          {item.product.image ? (
+        <div className="flex-shrink-0 w-12 h-12 2xl:w-16 2xl:h-16 relative bg-gray-100 rounded-lg overflow-hidden">
+          {item.product.images?.[0] ? (
             <img
-              src={item.product.image}
+              src={item.product.images[0]}
               alt={item.product.title}
-              className="h-full object-cover rounded-lg"
+              className="w-full h-full object-cover"
             />
           ) : (
-            <div className="w-12 h-12 2xl:w-16 2xl:h-16 bg-gray-100 rounded-lg flex items-center justify-center">
+            <div className="w-full h-full flex items-center justify-center">
               <Utensils className="h-5 w-5 2xl:h-8 2xl:w-8 text-gray-400" />
             </div>
           )}
+          {isParentCombo && (
+            <div className="absolute top-0 right-0 bg-purple-500 text-white text-xs px-1 rounded-bl-lg">
+              Комбо
+            </div>
+          )}
         </div>
+
         {/* Основная информация */}
         <div className="flex-1 min-w-0">
-          <div className="flex flex-col ">
+          <div className="flex flex-col">
             {/* Заголовок и цена */}
             <div className="flex justify-between items-start gap-2">
               <h3 className="font-bold text-sm 2xl:text-md xl:text-md truncate flex-1">
-                {item.product.title} {!canEditQuantity && `x ${item.quantity}`}
+                {item.product.title} 
+                {!canEditQuantity && ` x ${item.quantity}`}
               </h3>
               <p className="text-md 2xl:text-lg font-bold whitespace-nowrap ml-2">
                 {calculateItemPrice(item)} ₽
@@ -2665,7 +3020,7 @@ const isCooking = item.status === OrderItemStatus.IN_PROGRESS && item.timestamps
                   <span className="truncate">{item.additives.map(a => a.title).join(', ')}</span>
                 </div>
               )}
-              {item.comment && (
+              {item.comment && !item.comment.startsWith('combo-') && (
                 <div className="text-xs 2xl:text-sm text-gray-600 flex items-start">
                   <MessageSquare className="h-3 w-3 2xl:h-4 2xl:w-4 mr-1 2xl:mr-2 mt-0.5 flex-shrink-0" />
                   <span className="truncate">{item.comment}</span>
@@ -2677,23 +3032,71 @@ const isCooking = item.status === OrderItemStatus.IN_PROGRESS && item.timestamps
                   <span className="truncate">{item.refundReason}</span>
                 </div>
               )}
-              {/*<div className="flex">
-                {getStatusBadge(item.status)}
-              </div>*/}
             </div>
+
+            {/* Дочерние элементы комбо (обычные, не возвращенные) */}
+            {hasChildren && (
+              <div className="mt-3 pl-3 border-l-2 border-purple-200 space-y-2">
+                {childItems.map(childItem => (
+                  <div key={childItem.id} className="flex items-center gap-2 text-sm">
+                    <div className="w-6 h-6 bg-gray-200 rounded flex items-center justify-center flex-shrink-0">
+                      <Package className="h-3 w-3 text-gray-500" />
+                    </div>
+                    <span className="text-gray-700 flex-1">{childItem.product.title}</span>
+                    <span className="text-gray-500 text-xs">x{childItem.quantity}</span>
+                    {canRefund && canRefundItem && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => {
+                          setSelectedItemForRefund(childItem);
+                          setMaxRefundQuantity(childItem.quantity);
+                          setRefundQuantity(1);
+                          setShowRefundDialog(true);
+                        }}
+                        disabled={isUpdating}
+                        title="Вернуть это блюдо"
+                      >
+                        <Undo className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Дочерние элементы комбо (возвращенные) */}
+            {hasRefundedChildren && (
+              <div className="mt-3 pl-3 border-l-2 border-red-200 space-y-2">
+                <p className="text-xs font-semibold text-red-500 mb-1">Возвращенные блюда:</p>
+                {refundedChildItems.map(childItem => (
+                  <div key={childItem.id} className="flex items-center gap-2 text-sm opacity-70">
+                    <div className="w-6 h-6 bg-red-100 rounded flex items-center justify-center flex-shrink-0">
+                      <Undo className="h-3 w-3 text-red-500" />
+                    </div>
+                    <span className="text-gray-700 flex-1 line-through">{childItem.product.title}</span>
+                    <span className="text-red-500 text-xs">x{childItem.quantity}</span>
+                    {childItem.refundReason && (
+                      <span className="text-xs text-red-400 truncate max-w-[100px]" title={childItem.refundReason}>
+                        ({childItem.refundReason})
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             
             {/* Статус и элементы управления */}
-            <div className="flex items-center justify-between gap-2 ">
-              {/* Бейдж статуса */}
-
+            <div className="flex items-center justify-between gap-2 mt-3 ">
               {/* Время приготовления или счетчик */}
               <div className="flex min-w-0">
-                {canEditQuantity ? (
+                {canEditQuantity && !isParentCombo ? (
                   <div className="flex items-center justify-end gap-1">
                     <Button
                       variant="outline"
                       size="sm"
-                     className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 "
+                      className="h-9 w-9 2xl:h-11 2xl:w-11 p-0"
                       onClick={() => handleQuantitItemChange(item, item.quantity - 1)}
                       disabled={item.quantity <= 1}
                     >
@@ -2735,63 +3138,70 @@ const isCooking = item.status === OrderItemStatus.IN_PROGRESS && item.timestamps
                 >
                   <History className="h-4 w-4 2xl:h-5 2xl:w-5" />
                 </Button>
-                {/* Дозаказ */}
-                {canReorder && (
+
+                {canReorder && !isParentCombo && (
                   <Button
                     variant="outline"
                     size="sm"
                     className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
                     onClick={() => handleReorderItem(item)}
                     disabled={isUpdating}
+                    title="Повторить"
                   >
                     <RefreshCw className="h-4 w-4 2xl:h-5 2xl:w-5" />
                   </Button>
                 )}
 
                 {/* Возврат */}
-                {canRefund && canRefundItem && (
-              (() => {
-                const isBeforeKitchen = order?.status === 'CREATED';
-                
-                const isAfterKitchenButBeforePrecheck = 
-                  order?.status === 'PREPARING' && 
-                  item.status === OrderItemStatus.COMPLETED;
-                
-                const canKitchenStaffReturn = 
-                  isAfterKitchenButBeforePrecheck && 
-                  ['WAITER', 'CASHIER','MANAGER', 'SUPERVISOR'].includes(user.role);
-                
-                const isAfterPrecheck = order?.attentionFlags?.isPrecheck;
-                const canManagerReturn = 
-                  isAfterPrecheck && 
-                  ['MANAGER', 'SUPERVISOR'].includes(user.role);
-                
-                const shouldShow = 
-                  isBeforeKitchen || 
-                  canKitchenStaffReturn || 
-                  canManagerReturn;
-                
-                return shouldShow && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className={`${!canManagerReturn ? 'hidden' : ''} h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50`}
-                    onClick={() => {
-                      setSelectedItemForRefund(item);
-                      setMaxRefundQuantity(item.quantity);
-                      setRefundQuantity(1);
-                      setShowRefundDialog(true);
-                    }}
-                    disabled={isUpdating || !canManagerReturn}
-                    title={'Возврат'}
-                  >
-                    <Undo className="h-4 w-4 2xl:h-5 2xl:w-5" />
-                  </Button>
-                );
-              })()
-            )}
+                {canRefund && canRefundItem && !isParentCombo && !item.isRefund && (
+                  (() => {
+                    const isBeforeKitchen = order?.status === 'CREATED';
+                    
+                    const isAfterKitchenButBeforePrecheck = 
+                      order?.status === 'PREPARING' && 
+                      item.status === OrderItemStatus.COMPLETED;
+                    
+                    const canKitchenStaffReturn = 
+                      isAfterKitchenButBeforePrecheck && 
+                      ['WAITER', 'CASHIER','MANAGER', 'SUPERVISOR'].includes(user.role);
+                    
+                    const isAfterPrecheck = order?.attentionFlags?.isPrecheck;
+                    const canManagerReturn = 
+                      isAfterPrecheck && 
+                      ['MANAGER', 'SUPERVISOR'].includes(user.role);
+                    
+                    const shouldShow = 
+                      isBeforeKitchen || 
+                      canKitchenStaffReturn || 
+                      canManagerReturn;
+                    
+                    return shouldShow && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={`${!canManagerReturn && !isParentCombo ? 'hidden' : ''} h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50`}
+                        onClick={() => {
+                          if (isParentCombo && hasChildren) {
+                            // Открываем диалог выбора блюд для возврата из комбо
+                            setSelectedItemForRefund(item);
+                            setShowComboRefundDialog(true);
+                          } else {
+                            setSelectedItemForRefund(item);
+                            setMaxRefundQuantity(item.quantity);
+                            setRefundQuantity(1);
+                            setShowRefundDialog(true);
+                          }
+                        }}
+                        disabled={isUpdating || (!canManagerReturn && !isParentCombo)}
+                        title={isParentCombo ? 'Вернуть блюда из комбо' : 'Возврат'}
+                      >
+                        <Undo className="h-4 w-4 2xl:h-5 2xl:w-5" />
+                      </Button>
+                    );
+                  })()
+                )}
 
-                {/* Удаление */}
+                {/* Удаление - только для CREATED позиций */}
                 {canEditQuantity && (
                   <Button
                     variant="outline"
@@ -2799,6 +3209,7 @@ const isCooking = item.status === OrderItemStatus.IN_PROGRESS && item.timestamps
                     className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
                     onClick={() => handleQuantitItemChange(item, 0)}
                     disabled={isUpdating}
+                    title="Удалить"
                   >
                     <X className="h-4 w-4 2xl:h-5 2xl:w-5" />
                   </Button>
@@ -3163,170 +3574,185 @@ const renderOrderAdditivesBlock = () => {
 };
 
     // Рендер карточек категорий с горизонтальной прокруткой
-    const renderCategoryCards = () => {
-      const displayCategories = getDisplayCategories();
-      const displayProducts = searchQuery ? searchResults : getDisplayProducts();
+   // Рендер карточек категорий с горизонтальной прокруткой
+const renderCategoryCards = () => {
+  const displayCategories = getDisplayCategories();
+  const displayProducts = searchQuery ? searchResults : getDisplayProducts();
 
-      return (
-        <div className="space-y-6">
-          {/* Поиск */}
-          <SearchInput />
-          
-          {/* Показываем результаты поиска */}
-          {searchQuery && (
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-2xl font-bold">
-                  Результаты поиска
-                  {searchResults.length > 0 && ` (${searchResults.length})`}
-                </h3>
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={() => {
-                    setSearchQuery('');
-                    setSearchResults([]);
-                  }}
-                  className="h-12"
-                >
-                  Очистить поиск
-                </Button>
-              </div>
+  return (
+    <div className="space-y-6">
+      {/* Поиск */}
+      <SearchInput />
+      
+      {/* Показываем результаты поиска */}
+      {searchQuery && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-2xl font-bold">
+              Результаты поиска
+              {searchResults.length > 0 && ` (${searchResults.length})`}
+            </h3>
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => {
+                setSearchQuery('');
+                setSearchResults([]);
+              }}
+              className="h-12"
+            >
+              Очистить поиск
+            </Button>
+          </div>
 
-              {searchResults.length === 0 ? (
-                <div className="text-center py-8 text-gray-600 text-lg">
-                  Продукты не найдены
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3 md:gap-4 lg:gap-5 xl:gap-6">
-                  {searchResults.map((product) => {
-                    const additives = productAdditives[product.id] || []
-                    const comment = productComments[product.id] || ''
-                    const quantity = getDisplayQuantity(product, additives, comment)
+          {searchResults.length === 0 ? (
+            <div className="text-center py-8 text-gray-600 text-lg">
+              Продукты не найдены
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3 md:gap-4 lg:gap-5 xl:gap-6">
+              {searchResults.map((product) => {
+                const additives = productAdditives[product.id] || []
+                const comment = productComments[product.id] || ''
+                const quantity = getDisplayQuantity(product, additives, comment)
+
+                // Получаем comboItems из продукта (они должны быть загружены в продукт)
+                // В вашем JSON они приходят в поле comboItems
+                const comboItems = (product as any).comboItems || [];
+
+                return (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    additives={additives}
+                    comment={comment}
+                    quantity={quantity}
+                    onAdditivesChange={(newAdditives) => {
+                      handleAdditivesChange(product.id, newAdditives)
+                      if (quantity > 0) {
+                        handleQuantityChange(product, quantity, newAdditives, comment)
+                      }
+                    }}
+                    onQuantityChange={(newQuantity) =>
+                      handleQuantityChange(product, newQuantity, additives, comment)
+                    }
+                    isOrderEditable={isOrderEditable!}
+                    getProductPrice={getProductPrice}
+                    comboItems={comboItems} // ВАЖНО: передаем comboItems
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Обычное отображение категорий (только если нет поиска) */}
+      {!searchQuery && (
+        <>
+          {/* Горизонтальная прокрутка категорий */}
+          {(displayCategories.length > 0 || categoryNavigation.parentCategory) && (
+              <div className="flex ">
+                <div className="grid grid-flow-col auto-cols-[minmax(200px,1fr)] overflow-x-auto pb-6 scrollbar-hide gap-2 px-2 ">
+                  {/* Кнопка назад */}
+                  {(categoryNavigation.parentCategory || categoryNavigation.breadcrumbs.length > 0) && (
+                    <div
+                      onClick={handleBackToCategories}
+                      className={`transition-all flex flex-col text-lg font-semibold items-center text-center justify-center p-6 rounded-xl border-2 transition-all border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50`}
+                    >
+                      {t.backToCategories}
+                    </div>
+                  )}
+
+                  {/* Карточки категорий */}
+                  {displayCategories.map((category) => {
+                    const productsInCategory = getDisplayProducts().filter(
+                      product => product.categoryId === category.id
+                    );
 
                     return (
-                      <ProductCard
-                        key={product.id}
-                        product={product}
-                        additives={additives}
-                        comment={comment}
-                        quantity={quantity}
-                        onAdditivesChange={(newAdditives) => {
-                          handleAdditivesChange(product.id, newAdditives)
-                          if (quantity > 0) {
-                            handleQuantityChange(product, quantity, newAdditives, comment)
-                          }
-                        }}
-                        onQuantityChange={(newQuantity) =>
-                          handleQuantityChange(product, newQuantity, additives, comment)
-                        }
-                        isOrderEditable={isOrderEditable!}
-                        getProductPrice={getProductPrice}
-                      />
+                      <div
+                        onClick={() => handleCategoryClick(category)}
+                        key={category.id}
+                        className={`flex flex-col text-lg font-semibold items-center text-center justify-center transition-all  p-6 rounded-xl border-2 ${
+                          categoryNavigation.currentCategory && category.id === categoryNavigation.currentCategory!.id
+                            ? 'border-blue-600 bg-blue-50 text-blue-700'
+                            : 'border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50'
+                        }`}
+                      >
+                      {category.title}
+                      </div>
                     );
                   })}
                 </div>
-              )}
+              </div>
+            )}
+
+          {/* Сообщение когда нет категорий с товарами */}
+          {displayCategories.length === 0 && !categoryNavigation.parentCategory && (
+            <div className="text-center py-8 text-gray-600 text-lg">
+              {t.noProductsFound}
             </div>
           )}
 
-          {/* Обычное отображение категорий (только если нет поиска) */}
-          {!searchQuery && (
-            <>
-              {/* Горизонтальная прокрутка категорий */}
-              {(displayCategories.length > 0 || categoryNavigation.parentCategory) && (
-                  <div className="flex ">
-                    <div className="grid grid-flow-col auto-cols-[minmax(200px,1fr)] overflow-x-auto pb-6 scrollbar-hide gap-2 px-2 ">
-                      {/* Кнопка назад */}
-                      {(categoryNavigation.parentCategory || categoryNavigation.breadcrumbs.length > 0) && (
-                        <div
-                          onClick={handleBackToCategories}
-                          className={`transition-all flex flex-col text-lg font-semibold items-center text-center justify-center p-6 rounded-xl border-2 transition-all border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50`}
-                        >
-                          {t.backToCategories}
-                        </div>
-                      )}
+          {/* Товары отображаются ТОЛЬКО когда выбрана конкретная категория */}
+          {categoryNavigation.currentCategory && displayProducts.length > 0 && (
+            <div className="mt-8">
+              <h4 className="text-2xl font-bold mb-6 text-center">
+                {categoryNavigation.currentCategory.title}
+              </h4>
 
-                      {/* Карточки категорий */}
-                      {displayCategories.map((category) => {
-                        const productsInCategory = getDisplayProducts().filter(
-                          product => product.categoryId === category.id
-                        );
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3 md:gap-4 lg:gap-5 xl:gap-6">
+                {displayProducts.map((product) => {
+                  const additives = productAdditives[product.id] || []
+                  const comment = productComments[product.id] || ''
+                  const quantity = getDisplayQuantity(product, additives, comment)
 
-                        return (
-                          <div
-                            onClick={() => handleCategoryClick(category)}
-                            key={category.id}
-                            className={`flex flex-col text-lg font-semibold items-center text-center justify-center transition-all  p-6 rounded-xl border-2 ${
-                              categoryNavigation.currentCategory && category.id === categoryNavigation.currentCategory!.id
-                                ? 'border-blue-600 bg-blue-50 text-blue-700'
-                                : 'border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50'
-                            }`}
-                          >
-                          {category.title}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                  // Получаем comboItems из продукта (они должны быть загружены в продукт)
+                  const comboItems = (product as any).comboItems || [];
 
-              {/* Сообщение когда нет категорий с товарами */}
-              {displayCategories.length === 0 && !categoryNavigation.parentCategory && (
-                <div className="text-center py-8 text-gray-600 text-lg">
-                  {t.noProductsFound}
-                </div>
-              )}
-
-              {/* Товары отображаются ТОЛЬКО когда выбрана конкретная категория */}
-              {categoryNavigation.currentCategory && displayProducts.length > 0 && (
-                <div className="mt-8">
-                  <h4 className="text-2xl font-bold mb-6 text-center">
-                    {categoryNavigation.currentCategory.title}
-                  </h4>
-
-                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3 md:gap-4 lg:gap-5 xl:gap-6">
-                    {displayProducts.map((product) => {
-                      const additives = productAdditives[product.id] || []
-                      const comment = productComments[product.id] || ''
-                      const quantity = getDisplayQuantity(product, additives, comment)
-
-                      return (
-                        <ProductCard
-                          key={product.id}
-                          product={product}
-                          additives={additives}
-                          comment={comment}
-                          quantity={quantity}
-                          onAdditivesChange={(newAdditives) => {
-                            handleAdditivesChange(product.id, newAdditives)
-                            if (quantity > 0) {
-                              handleQuantityChange(product, quantity, newAdditives, comment)
-                            }
-                          }}
-                          onQuantityChange={(newQuantity) =>
-                            handleQuantityChange(product, newQuantity, additives, comment)
-                          }
-                          isOrderEditable={isOrderEditable!}
-                          getProductPrice={getProductPrice}
-                        />
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Сообщение когда выбрана категория но нет товаров */}
-              {categoryNavigation.currentCategory && displayProducts.length === 0 && (
-                <div className="text-center py-8 text-gray-600 text-lg">
-                  {t.noProductsFound}
-                </div>
-              )}
-            </>
+                  return (
+                  <ProductCard
+  key={product.id}
+  product={product}
+  additives={additives}
+  comment={comment}
+  quantity={quantity}
+  onAdditivesChange={(newAdditives) => {
+    handleAdditivesChange(product.id, newAdditives);
+    if (quantity > 0) {
+      handleQuantityChange(product, quantity, newAdditives, comment);
+    }
+  }}
+  onQuantityChange={(newQuantity) =>
+    handleQuantityChange(product, newQuantity, additives, comment)
+  }
+  isOrderEditable={isOrderEditable!}
+  getProductPrice={getProductPrice}
+  comboItems={comboItems}
+  onComboSelect={(selection) => {
+    // Сохраняем выбранные опции комбо
+    setPendingComboSelection(selection);
+    pendingComboSelectionRef.current = selection;
+  }}
+/>
+                  );
+                })}
+              </div>
+            </div>
           )}
-        </div>
-      );
-    };
+
+          {/* Сообщение когда выбрана категория но нет товаров */}
+          {categoryNavigation.currentCategory && displayProducts.length === 0 && (
+            <div className="text-center py-8 text-gray-600 text-lg">
+              {t.noProductsFound}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
 
     if (loading) {
       return (
@@ -3954,12 +4380,15 @@ const renderTotalWithButtons = () => {
       {!isRightColCollapsed &&
       <div className="flex-1 min-h-0">
         {/* Таб "Заказ" */}
-       {activeTab === 'order' && (
-          <div className="h-full overflow-y-auto space-y-4 ">
-            {getOrderItems()
-      .filter(item => item.status !== OrderItemStatus.IN_PROGRESS)
+      {activeTab === 'order' && (
+  <div className="h-full overflow-y-auto space-y-4 ">
+    {/* Сначала обычные элементы (не комбо и не дочерние) */}
+    {getOrderItems()
+      .filter(item => 
+        item.status !== OrderItemStatus.IN_PROGRESS && 
+        !item.parentComboId // Исключаем дочерние элементы комбо
+      )
       .sort((a, b) => {
-        // Сортируем по дате создания (старые сверху)
         const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
         const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
         return dateA - dateB;
@@ -3968,17 +4397,20 @@ const renderTotalWithButtons = () => {
     
     {/* Затем готовящиеся позиции (IN_PROGRESS) в конце */}
     {getOrderItems()
-      .filter(item => item.status === OrderItemStatus.IN_PROGRESS)
+      .filter(item => 
+        item.status === OrderItemStatus.IN_PROGRESS && 
+        !item.parentComboId // Исключаем дочерние элементы комбо
+      )
       .sort((a, b) => {
-        // Сортируем по дате создания (старые сверху)
         const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
         const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
         return dateA - dateB;
       })
       .map(renderCompactItemCard)}
-            {renderTotalWithButtons()}
-          </div>
-        )}
+    
+    {renderTotalWithButtons()}
+  </div>
+)}
                 
         {/* Таб "История" */}
         {activeTab === 'history' && (
@@ -4237,7 +4669,7 @@ const renderTotalWithButtons = () => {
               onPaymentComplete={confirmCompleteOrder}
             />
           )}
-
+          
           <AlertDialog open={showRefundDialog} onOpenChange={setShowRefundDialog}>
             <AlertDialogContent className="max-w-md">
               <AlertDialogHeader>
@@ -4529,3 +4961,445 @@ const AdditivesDialog: React.FC<AdditivesDialogProps> = ({
 };
 
 
+
+
+// Типы для комбо
+interface ComboItem {
+  id: string;
+  type: 'STATIC' | 'CHOICE' | 'OPTIONAL';
+  minSelect: number;
+  maxSelect: number;
+  groupName: string | null;
+  sortOrder: number;
+  products: ComboProduct[];
+}
+
+interface ComboProduct {
+  id: string;
+  comboItemId: string;
+  productId: string;
+  quantity: number;
+  additionalPrice: number;
+  allowMultiple: boolean;
+  maxQuantity: number | null;
+  sortOrder: number;
+  product: Product;
+}
+
+interface ComboSelection {
+  parentOrderItemId?: string; 
+  comboId: string;
+  selections: {
+    [comboItemId: string]: {
+      selectedProducts: Array<{
+        productId: string;
+        quantity: number;
+      }>;
+    };
+  };
+}
+
+interface ComboSelectionDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  combo: Product;
+  comboItems: ComboItem[];
+  onConfirm: (selection: ComboSelection) => void;
+  isOrderEditable: boolean;
+}
+
+const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
+  open,
+  onOpenChange,
+  combo,
+  comboItems,
+  onConfirm,
+  isOrderEditable
+}) => {
+  // Используем useState для хранения выбранных опций
+  const [selections, setSelections] = useState<ComboSelection['selections']>({});
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  
+  // Добавляем ref для хранения предыдущего выбора
+  const previousSelectionRef = useRef<ComboSelection['selections'] | null>(null);
+
+  // Инициализация при открытии
+  useEffect(() => {
+    if (open) {
+      // Сначала пробуем восстановить предыдущий выбор
+      if (previousSelectionRef.current && Object.keys(previousSelectionRef.current).length > 0) {
+        // Проверяем, что предыдущий выбор все еще валиден (все группы существуют)
+        const isValidPreviousSelection = Object.keys(previousSelectionRef.current).every(
+          itemId => comboItems.some(item => item.id === itemId)
+        );
+        
+        if (isValidPreviousSelection) {
+          setSelections(previousSelectionRef.current);
+          setValidationErrors({});
+          return;
+        }
+      }
+      
+      // Если нет предыдущего выбора или он невалиден, создаем начальный
+      const initialSelections: ComboSelection['selections'] = {};
+      
+      comboItems.forEach(item => {
+        if (item.type === 'STATIC') {
+          // Для статических групп выбираем все продукты с указанным количеством
+          initialSelections[item.id] = {
+            selectedProducts: item.products.map(p => ({
+              productId: p.productId,
+              quantity: p.quantity
+            }))
+          };
+        } else {
+          // Для групп выбора (CHOICE и OPTIONAL) начинаем с пустого массива
+          initialSelections[item.id] = {
+            selectedProducts: []
+          };
+        }
+      });
+      
+      setSelections(initialSelections);
+      setValidationErrors({});
+    }
+  }, [open, comboItems]);
+
+  const handleProductSelect = (comboItemId: string, productId: string) => {
+    const item = comboItems.find(i => i.id === comboItemId);
+    if (!item || item.type === 'STATIC') return;
+
+    const currentSelections = selections[comboItemId]?.selectedProducts || [];
+    const selectedProductIds = currentSelections.map(sp => sp.productId);
+    
+    let newSelectedProducts = [...currentSelections];
+
+    if (selectedProductIds.includes(productId)) {
+      // Убираем продукт, если он уже выбран
+      newSelectedProducts = newSelectedProducts.filter(sp => sp.productId !== productId);
+    } else {
+      // Проверяем лимит выбора ТОЛЬКО для CHOICE (не для OPTIONAL)
+      if (item.type === 'CHOICE' && newSelectedProducts.length >= item.maxSelect) {
+        setValidationErrors(prev => ({
+          ...prev,
+          [comboItemId]: `Можно выбрать не более ${item.maxSelect} позиций`
+        }));
+        
+        // Сбрасываем ошибку через 3 секунды
+        setTimeout(() => {
+          setValidationErrors(prev => {
+            const newErrors = { ...prev };
+            delete newErrors[comboItemId];
+            return newErrors;
+          });
+        }, 3000);
+        
+        return;
+      }
+      
+      const comboProduct = item.products.find(p => p.productId === productId);
+      if (comboProduct) {
+        newSelectedProducts.push({
+          productId,
+          quantity: comboProduct.quantity || 1
+        });
+      }
+    }
+
+    // Очищаем ошибку валидации для этой группы, если она была
+    if (validationErrors[comboItemId]) {
+      setValidationErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[comboItemId];
+        return newErrors;
+      });
+    }
+
+    setSelections(prev => ({
+      ...prev,
+      [comboItemId]: {
+        selectedProducts: newSelectedProducts
+      }
+    }));
+  };
+
+  const validateSelections = (): boolean => {
+    const errors: Record<string, string> = {};
+    let isValid = true;
+
+    comboItems.forEach(item => {
+      // Валидация ТОЛЬКО для CHOICE (не для OPTIONAL)
+      if (item.type !== 'CHOICE') return;
+
+      const selection = selections[item.id];
+      const count = selection?.selectedProducts.length || 0;
+
+      if (count < item.minSelect) {
+        errors[item.id] = `Выберите минимум ${item.minSelect} ${getPluralForm(item.minSelect)}`;
+        isValid = false;
+      }
+    });
+
+    setValidationErrors(errors);
+    return isValid;
+  };
+
+  const getPluralForm = (count: number): string => {
+    if (count === 1) return 'позицию';
+    if (count >= 2 && count <= 4) return 'позиции';
+    return 'позиций';
+  };
+
+  const handleConfirm = () => {
+    if (!validateSelections()) return;
+
+    console.log('Combo selection confirmed:', {
+      comboId: combo.id,
+      selections
+    });
+
+    // Сохраняем текущий выбор в ref перед подтверждением
+    previousSelectionRef.current = selections;
+
+    onConfirm({
+      comboId: combo.id,
+      selections
+    });
+    onOpenChange(false);
+  };
+
+  const handleCancel = () => {
+    // При отмене сбрасываем состояние
+    setSelections({});
+    previousSelectionRef.current = null;
+    onOpenChange(false);
+  };
+
+  const calculateTotalPrice = (): number => {
+    let total = combo.price;
+
+    Object.entries(selections).forEach(([itemId, selection]) => {
+      const item = comboItems.find(i => i.id === itemId);
+      if (!item) return;
+
+      selection.selectedProducts.forEach(selected => {
+        const product = item.products.find(p => p.productId === selected.productId);
+        if (product) {
+          total += product.additionalPrice * selected.quantity;
+        }
+      });
+    });
+
+    return total;
+  };
+
+  const calculateItemTotal = (item: ComboItem): number => {
+    const selection = selections[item.id];
+    if (!selection) return 0;
+
+    return selection.selectedProducts.reduce((sum, selected) => {
+      const product = item.products.find(p => p.productId === selected.productId);
+      if (product) {
+        return sum + (product.additionalPrice * selected.quantity);
+      }
+      return sum;
+    }, 0);
+  };
+
+  // Если диалог закрыт, не рендерим содержимое
+  if (!open) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={(newOpen) => {
+      if (!newOpen) {
+        handleCancel();
+      } else {
+        onOpenChange(true);
+      }
+    }}>
+      <DialogContentExtraWide 
+        className="max-w-4xl max-h-[90vh] flex flex-col p-0 gap-0"
+        onInteractOutside={(e) => {
+          e.preventDefault();
+        }}
+      >
+        <DialogHeader className="p-6 pb-2">
+          <DialogTitle className="text-2xl flex items-center gap-3">
+            Выберите состав комбо: {combo.title}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-8">
+          {comboItems
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map((item) => {
+              const selection = selections[item.id];
+              const selectedCount = selection?.selectedProducts.length || 0;
+              const error = validationErrors[item.id];
+              const itemTotal = calculateItemTotal(item);
+
+              return (
+                <div key={item.id} className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-semibold">
+                        {item.groupName || (
+                          item.type === 'STATIC' ? 'В составе комбо' :
+                          item.type === 'CHOICE' ? 'На выбор' :
+                          'Дополнительно'
+                        )}
+                      </h3>
+                      {item.type !== 'STATIC' && (
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className="text-sm text-gray-500">
+                            {item.type === 'CHOICE' 
+                              ? `Выберите от ${item.minSelect} до ${item.maxSelect} позиций`
+                              : 'Можно добавить по желанию (необязательно)'
+                            }
+                          </p>
+                          {selectedCount > 0 && (
+                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                              Выбрано: {selectedCount}
+                            </Badge>
+                          )}
+                          {itemTotal > 0 && (
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                              +{itemTotal} ₽
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
+                      {error}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {item.products
+                      .sort((a, b) => a.sortOrder - b.sortOrder)
+                      .map((comboProduct) => {
+                        const product = comboProduct.product;
+                        const isSelected = selection?.selectedProducts.some(
+                          sp => sp.productId === comboProduct.productId
+                        );
+                        
+                        // Проверяем доступность выбора
+                        let isDisabled = false;
+                        let disabledReason = '';
+                        
+                        if (item.type === 'STATIC') {
+                          isDisabled = true;
+                        } else if (item.type === 'CHOICE') {
+                          if (!isSelected && selectedCount >= item.maxSelect) {
+                            isDisabled = true;
+                            disabledReason = `Максимум ${item.maxSelect} позиций`;
+                          }
+                        }
+                        // Для OPTIONAL нет ограничений на максимальное количество
+
+                        return (
+                          <div
+                            key={comboProduct.id}
+                            className={`
+                              relative rounded-xl border-2 transition-all cursor-pointer
+                              ${item.type === 'STATIC' ? 'border-green-200 bg-green-50/50 cursor-default' : ''}
+                              ${isSelected ? 'border-green-500 bg-green-50 shadow-md' : 'border-gray-200 hover:border-green-300 hover:shadow-sm'}
+                              ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
+                            `}
+                            onClick={() => !isDisabled && item.type !== 'STATIC' && handleProductSelect(item.id, comboProduct.productId)}
+                          >
+                            {isSelected && (
+                              <div className="absolute top-2 right-2">
+                                <Check className="h-5 w-5 text-green-500" />
+                              </div>
+                            )}
+                            
+                            {isDisabled && disabledReason && (
+                              <div className="absolute top-2 right-2">
+                                <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-200 text-xs">
+                                  {disabledReason}
+                                </Badge>
+                              </div>
+                            )}
+                            
+                            <div className="p-4">
+                              <div className="flex gap-4">
+                                <div className="flex-shrink-0 w-20 h-20 bg-gray-100 rounded-lg overflow-hidden">
+                                  {product.images?.[0] ? (
+                                    <img 
+                                      src={product.images[0]} 
+                                      alt={product.title}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                      <Utensils className="h-8 w-8 text-gray-400" />
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                <div className="flex-1 min-w-0">
+                                  <h4 className="font-semibold text-lg mb-1">
+                                    {product.title}
+                                  </h4>
+                                  
+                                  <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+                                    {product.description || 'Без описания'}
+                                  </p>
+                                  
+                                  <div className="flex items-center justify-start">
+                                    {comboProduct.additionalPrice > 0 && (
+                                      <span className="font-bold text-green-600">
+                                        +{comboProduct.additionalPrice} ₽
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+
+        <DialogFooter className="p-6 pt-4">
+          <div className="flex items-center justify-between w-full">
+            <div className="text-lg">
+              <span className="text-gray-600">Итого за комбо:</span>
+              <span className="font-bold text-2xl text-green-600 ml-3">
+                {calculateTotalPrice()} ₽
+              </span>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={handleCancel}
+                className="h-12 px-6 text-lg"
+              >
+                Отмена
+              </Button>
+              <Button
+                size="lg"
+                onClick={handleConfirm}
+                disabled={!isOrderEditable || Object.keys(validationErrors).length > 0}
+                className="h-12 px-6 text-lg"
+              >
+                <Check className="h-5 w-5 mr-2" />
+                Подтвердить выбор
+              </Button>
+            </div>
+          </div>
+        </DialogFooter>
+      </DialogContentExtraWide>
+    </Dialog>
+  );
+};

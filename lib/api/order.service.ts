@@ -10,7 +10,7 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = getAccessTokenFromCookie(); // Ваша функция для получения токена из кук
+  const token = getAccessTokenFromCookie();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -45,19 +45,17 @@ api.interceptors.response.use(
 
       try {
         const { data } = await api.post('/auth/refresh');
-        setNewAccessToken(data.accessToken); // Сохраняем новый токен
+        setNewAccessToken(data.accessToken);
         
-        // Обновляем заголовок для оригинального запроса
         originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
         
-        // Повторяем запросы из очереди
         failedRequestsQueue.forEach(pending => pending.resolve(data.accessToken));
         
         return api(originalRequest);
       } catch (refreshError) {
         failedRequestsQueue.forEach(pending => pending.reject(refreshError));
-        clearAuthData(); // Очищаем данные аутентификации
-        redirectToLogin(); // Перенаправляем на страницу входа
+        clearAuthData();
+        redirectToLogin();
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
@@ -70,24 +68,21 @@ api.interceptors.response.use(
 );
 
 function getAccessTokenFromCookie(): string | null {
-  if (typeof document === 'undefined') return null; // Для SSR
+  if (typeof document === 'undefined') return null;
   const value = `; ${document.cookie}`;
   const parts = value.split(`; accessToken=`);
   return parts.length === 2 ? parts.pop()?.split(';').shift() || null : null;
 }
 
-// Сохранение нового токена
 function setNewAccessToken(token: string) {
-  document.cookie = `accessToken=${token}; path=/; max-age=3600`; // Пример
+  document.cookie = `accessToken=${token}; path=/; max-age=3600`;
 }
 
-// Очистка данных аутентификации
 function clearAuthData() {
   document.cookie = 'accessToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
   document.cookie = 'refreshToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
 }
 
-// Перенаправление на страницу входа
 function redirectToLogin() {
   if (typeof window !== 'undefined') {
     window.location.href = '/login';
@@ -104,16 +99,15 @@ export interface DeliveryCourierDto {
   phone: string;
 }
 
-// Обновленный DTO для информации о доставке
 export interface DeliveryInfoExtendedDto {
   address: string;
   time?: Date;
   notes?: string;
-  entrance?: string;        // Подъезд
-  intercom?: string;        // Домофон
-  floor?: string;           // Этаж
-  apartment?: string;       // Квартира/офис
-  courierComment?: string;  // Комментарий для курьера
+  entrance?: string;
+  intercom?: string;
+  floor?: string;
+  apartment?: string;
+  courierComment?: string;
   startedAt?: Date;
   courier?: DeliveryCourierDto;
 }
@@ -138,7 +132,6 @@ export enum EnumOrderType {
 export enum EnumPaymentMethod {
   CASH = 'CASH',
   CARD = 'CARD',
-  //ONLINE = 'ONLINE'
 }
 
 export interface UpdateOrderItemStatusDto {
@@ -239,16 +232,15 @@ export interface RestaurantDto {
   address: string;
 }
 
-// Обновленный DTO для деталей доставки при создании заказа
 export interface DeliveryDetailsDto {
   address?: string;
   deliveryTime?: Date;
   notes?: string;
-  entrance?: string;        // Подъезд
-  intercom?: string;        // Домофон
-  floor?: string;           // Этаж
-  apartment?: string;       // Квартира/офис
-  courierComment?: string;  // Комментарий для курьера
+  entrance?: string;
+  intercom?: string;
+  floor?: string;
+  apartment?: string;
+  courierComment?: string;
 }
 
 export interface CreateOrderItemDto {
@@ -263,10 +255,9 @@ export interface CreatePaymentDto {
   externalId?: string;
 }
 
-// Обновленный DTO для создания заказа
 export interface CreateOrderDto {
   customerId?: string;
-  customerName?: string;    // Имя клиента (если не привязан к существующему)
+  customerName?: string;
   restaurantId: string;
   shiftId?: string;
   type: EnumOrderType;
@@ -275,7 +266,7 @@ export interface CreateOrderDto {
   comment?: string;
   phone?: string;
   payment?: CreatePaymentDto;
-  delivery?: DeliveryDetailsDto;  // Заменяем отдельные поля на объект delivery
+  delivery?: DeliveryDetailsDto;
   deliveryZone?: {
     title: string;
     price: number;
@@ -292,17 +283,28 @@ export interface UpdateOrderStatusDto {
   status: string;
 }
 
+// Обновленный DTO для добавления позиции с поддержкой parentComboId
+export interface AddItemToOrderDto {
+  productId: string;
+  quantity: number;
+  additiveIds?: string[];
+  comment?: string;
+  parentComboId?: string; 
+   price?: number;
+  parentOrderItemId?: string;
+}
+
 // Обновленный DTO для обновления заказа
 export interface UpdateOrderDto {
   type?: OrderType;
   customerPhone?: string;
   customerId?: string | null;
-  customerName?: string;    // Имя клиента
+  customerName?: string;
   numberOfPeople?: number;
   tableNumber?: string;
   comment?: string;
   tableId?: string | null;
-  delivery?: DeliveryDetailsDto;  // Объект доставки
+  delivery?: DeliveryDetailsDto;
   scheduledAt?: string;
   shiftId?: string;
   payment?: {
@@ -329,7 +331,7 @@ export interface OrderResponse {
   scheduledAt?: Date;
   comment?: string;
   isScheduled?: boolean
-  customerName?: string;    // Добавлено поле имени клиента
+  customerName?: string;
   customer?: Customer;
   restaurant: RestaurantDto;
   items: OrderItem[];
@@ -378,13 +380,6 @@ export interface OrderFilterParams {
 export interface GetOrdersParams {
   restaurantId: string;
   status?: string; 
-}
-
-export interface AddItemToOrderDto {
-  productId: string;
-  quantity: number;
-  additiveIds?: string[];
-  comment?: string;
 }
 
 export interface OrderArchiveFilterParams {
@@ -482,12 +477,11 @@ export const OrderService = {
       throw new Error('Status must be a string value');
     }
   
-    // Нормализация статуса
     const normalizedStatus = String(dto.status).toUpperCase();
     
     const { data } = await api.patch<OrderResponse>(
       `/orders/${id}/status`,
-      { status: normalizedStatus } // Явно передаем строку
+      { status: normalizedStatus }
     );
     
     return data;
@@ -579,6 +573,9 @@ export const OrderService = {
     return data;
   },
 
+  /**
+   * Добавить позицию в заказ (поддерживает добавление в комбо через parentComboId)
+   */
   addItemToOrder: async (orderId: string, item: AddItemToOrderDto): Promise<OrderResponse> => {
     try {
       const { data } = await api.post<OrderResponse>(
@@ -606,12 +603,10 @@ export const OrderService = {
 
   updateOrder: async (id: string, dto: UpdateOrderDto): Promise<OrderResponse> => {
     try {
-      // Prepare the data for the API
       const requestData: any = {
         ...dto,
       };
 
-      // Handle delivery object if present
       if (dto.delivery) {
         requestData.delivery = {
           ...dto.delivery,
@@ -621,7 +616,6 @@ export const OrderService = {
         };
       }
 
-      // Handle scheduledAt
       if (dto.scheduledAt) {
         requestData.scheduledAt = new Date(dto.scheduledAt).toISOString();
       }
@@ -737,7 +731,6 @@ export const OrderService = {
     params: OrderArchiveFilterParams = {}
   ): Promise<OrderArchiveResponse> => {
     try {
-      // Нормализация параметров
       const normalizedParams = {
         ...params,
         page: params.page || 1,
@@ -999,7 +992,6 @@ export const OrderService = {
     increment: number = 1,
     userId?: string
   ): Promise<OrderResponse> => {
-    // Сначала получаем текущее состояние заказа
     const order = await OrderService.getById(orderId);
     const item = order.items.find(i => i.id === itemId);
     
@@ -1144,8 +1136,8 @@ export const OrderService = {
   ): Promise<OrderResponse> => {
     try {
       const { data } = await api.post<OrderResponse>(
-        `/orders/${orderId}/order-additives`,
-        { orderAdditiveId, quantity }
+        `/orders/${orderId}/order-additives/${orderAdditiveId}`,
+        { quantity }
       );
       return data;
     } catch (error) {
@@ -1189,5 +1181,5 @@ export const OrderService = {
       console.error('Failed to update order additives:', error);
       throw error;
     }
-  }
+  },
 };

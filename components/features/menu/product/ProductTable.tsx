@@ -995,6 +995,9 @@ const ProductRow = ({
   const [loadingClientOrder, setLoadingClientOrder] = useState(false);
   const { user } = useAuth()
   const isSelected = selectedProducts.has(product.id);
+   const editUrl = product.isCombo 
+    ? `/combo/${product.id}` 
+    : `/products/${product.id}`;
 
   const handleMoveUp = async () => {
     if (isFirst) return;
@@ -1173,7 +1176,7 @@ const ProductRow = ({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => router.push(`/products/${product.id}`)}
+              onClick={() => router.push(editUrl)}
               title={language === 'ru' ? 'Редактировать' : 'რედაქტირება'}
             >
               <Pencil className="h-4 w-4" />
@@ -2002,6 +2005,7 @@ export const ProductTable = ({
         <Table>
           <TableHeader>
             <TableRow>
+              
               <TableHead className="w-10">
                 <button
                   onClick={handleSelectAll}

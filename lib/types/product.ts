@@ -11,6 +11,8 @@ export interface Product {
   id: string
   category: Category
   sortOrder: number
+  childProducts: any
+  isCombo: boolean
   clientSortOrder: number
   publishedOnWebsite: boolean
   printLabels: boolean
