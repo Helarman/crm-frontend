@@ -771,65 +771,74 @@ const loadData = async () => {
     return true
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-      
-    if (!selectedNetworkId) {
-      toast.error(language === 'ru' 
-        ? 'Сеть не выбрана. Выберите сеть на странице продуктов' 
-        : 'ქსელი არ არის არჩეული. აირჩიეთ ქსელი პროდუქტების გვერდზე')
-      router.push('/menu?tab=menu')
-      return
-    }
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault()
     
-    if (!validateForm()) return
-
-    setIsSaving(true)
-
-    try {
-      // Формируем элементы комбо для отправки
-      const items = comboItems.map(item => ({
-        type: item.type,
-        minSelect: item.type === ComboItemType.CHOICE ? item.minSelect : undefined,
-        maxSelect: item.type === ComboItemType.CHOICE ? item.maxSelect : undefined,
-        groupName: item.groupName || undefined,
-        sortOrder: item.sortOrder,
-        products: item.products.map(p => ({
-          productId: p.productId,
-          quantity: p.quantity,
-          additionalPrice: p.additionalPrice || 0,
-          allowMultiple: p.allowMultiple || false,
-          maxQuantity: p.maxQuantity,
-          sortOrder: p.sortOrder
-        }))
-      }))
-
-      const comboData = {
-        title: formData.title,
-        description: formData.description || '',
-        price: formData.price,
-        items,
-        categoryId: formData.categoryId,
-        networkId: selectedNetworkId,
-        workshopIds: selectedWorkshops,
-        additives: selectedAdditives,
-        images: formData.images.filter(img => img.trim()),
-      }
-
-      console.log('Updating combo data:', JSON.stringify(comboData, null, 2))
-
-      // Обновляем комбо
-      await ProductService.updateCombo(comboId, comboData)
-
-      toast.success(language === 'ru' ? 'Комбо обновлено' : 'კომბო განახლებულია')
-      router.push('/menu?tab=menu')
-    } catch (error) {
-      console.error('Error updating combo:', error)
-      toast.error(language === 'ru' ? 'Ошибка обновления комбо' : 'კომბოს განახლების შეცდომა')
-    } finally {
-      setIsSaving(false)
-    }
+  if (!selectedNetworkId) {
+    toast.error(language === 'ru' 
+      ? 'Сеть не выбрана. Выберите сеть на странице продуктов' 
+      : 'ქსელი არ არის არჩეული. აირჩიეთ ქსელი პროდუქტების გვერდზე')
+    router.push('/menu?tab=menu')
+    return
   }
+  
+  if (!validateForm()) return
+
+  setIsSaving(true)
+
+  try {
+    // Формируем элементы комбо для отправки
+    const items = comboItems.map(item => ({
+      type: item.type,
+      minSelect: item.type === ComboItemType.CHOICE ? item.minSelect : undefined,
+      maxSelect: item.type === ComboItemType.CHOICE ? item.maxSelect : undefined,
+      groupName: item.groupName || undefined,
+      sortOrder: item.sortOrder,
+      products: item.products.map(p => ({
+        productId: p.productId,
+        quantity: p.quantity,
+        additionalPrice: p.additionalPrice || 0,
+        allowMultiple: p.allowMultiple || false,
+        maxQuantity: p.maxQuantity,
+        sortOrder: p.sortOrder
+      }))
+    }))
+
+    // ВАЖНО: Фильтруем цены только для выбранных ресторанов
+    const filteredPrices = restaurantPrices.filter(rp =>
+      selectedRestaurants.includes(rp.restaurantId)
+    )
+
+    console.log('Saving restaurant prices:', filteredPrices) // Для отладки
+
+    const comboData = {
+      title: formData.title,
+      description: formData.description || '',
+      price: formData.price,
+      items,
+      categoryId: formData.categoryId,
+      networkId: selectedNetworkId,
+      workshopIds: selectedWorkshops,
+      additives: selectedAdditives,
+      images: formData.images.filter(img => img.trim()),
+      // ✅ Добавляем цены ресторанов
+      restaurantPrices: filteredPrices,
+    }
+
+    console.log('Updating combo data:', JSON.stringify(comboData, null, 2))
+
+    // Обновляем комбо
+    await ProductService.updateCombo(comboId, comboData)
+
+    toast.success(language === 'ru' ? 'Комбо обновлено' : 'კომბო განახლებულია')
+    router.push('/menu?tab=menu')
+  } catch (error) {
+    console.error('Error updating combo:', error)
+    toast.error(language === 'ru' ? 'Ошибка обновления комбо' : 'კომბოს განახლების შეცდომა')
+  } finally {
+    setIsSaving(false)
+  }
+}
 
   // Диалог выбора типа элемента комбо
   const AddItemDialog = ({ 
