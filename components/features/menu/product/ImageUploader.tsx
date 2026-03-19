@@ -22,39 +22,42 @@ export const ImageUploader = ({
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Функция для загрузки файла в Beget S3
-  const uploadToBegetS3 = async (file: File): Promise<string> => {
-    const formData = new FormData();
-    formData.append('file', file);
+const uploadToBegetS3 = async (file: File): Promise<string> => {
+  const formData = new FormData();
+  formData.append('file', file);
 
-    // Генерируем уникальное имя файла
-    const fileExtension = file.name.split('.').pop();
-    const fileName = `image_${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExtension}`;
+  const fileExtension = file.name.split('.').pop();
+  const fileName = `image_${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExtension}`;
 
-    try {
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-        headers: {
-          'X-File-Name': fileName, // Передаем имя файла в заголовке
-        },
-      });
+  try {
+    // Сначала проверим, доступен ли endpoint
+    const testResponse = await fetch('/api/upload', { method: 'OPTIONS' });
+    console.log('OPTIONS response:', testResponse.status);
+    
+    // Основной запрос
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+      headers: {
+        'X-File-Name': fileName,
+      },
+    });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Upload failed');
-      }
-
-      const data = await response.json();
-      return data.url; // URL загруженного изображения
-    } catch (error) {
-      console.error('Upload error:', error);
-      throw new Error(language === 'ru' 
-        ? 'Ошибка загрузки изображения' 
-        : 'სურათის ატვირთვის შეცდომა');
+    console.log('Upload response status:', response.status);
+    
+    if (!response.ok) {
+      const text = await response.text();
+      console.log('Error response:', text);
+      throw new Error(`Upload failed with status ${response.status}`);
     }
-  };
 
+    const data = await response.json();
+    return data.url;
+  } catch (error) {
+    console.error('Upload error details:', error);
+    throw error;
+  }
+};
   const handleUpload = async (file: File) => {
     if (!file) return;
     
