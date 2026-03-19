@@ -31,11 +31,11 @@ const uploadToBegetS3 = async (file: File): Promise<string> => {
 
   try {
     // Сначала проверим, доступен ли endpoint
-    const testResponse = await fetch('/api/upload', { method: 'OPTIONS' });
+    const testResponse = await fetch('/upload', { method: 'OPTIONS' });
     console.log('OPTIONS response:', testResponse.status);
     
     // Основной запрос
-    const response = await fetch('/api/upload', {
+    const response = await fetch('/upload', {
       method: 'POST',
       body: formData,
       headers: {
