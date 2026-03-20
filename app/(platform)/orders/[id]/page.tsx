@@ -5019,9 +5019,37 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
   // Используем useState для хранения выбранных опций
   const [selections, setSelections] = useState<ComboSelection['selections']>({});
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [currentStep, setCurrentStep] = useState(0);
+  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
   
   // Добавляем ref для хранения предыдущего выбора
   const previousSelectionRef = useRef<ComboSelection['selections'] | null>(null);
+
+  // Сортируем элементы комбо
+  const sortedItems = useMemo(() => 
+    [...comboItems].sort((a, b) => a.sortOrder - b.sortOrder),
+    [comboItems]
+  );
+
+  // Получаем текущий шаг
+  const currentItem = sortedItems[currentStep];
+  const isLastStep = currentStep === sortedItems.length - 1;
+
+  // Проверяем, валиден ли текущий шаг
+  const isCurrentStepValid = useMemo(() => {
+    if (!currentItem) return false;
+    
+    // Для STATIC всегда валиден
+    if (currentItem.type === 'STATIC') return true;
+    
+    // Для OPTIONAL всегда валиден (опционально)
+    if (currentItem.type === 'OPTIONAL') return true;
+    
+    // Для CHOICE проверяем минимальное количество
+    const selection = selections[currentItem.id];
+    const count = selection?.selectedProducts.length || 0;
+    return count >= currentItem.minSelect;
+  }, [currentItem, selections]);
 
   // Инициализация при открытии
   useEffect(() => {
@@ -5036,6 +5064,8 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
         if (isValidPreviousSelection) {
           setSelections(previousSelectionRef.current);
           setValidationErrors({});
+          setCurrentStep(0);
+          setCompletedSteps(new Set());
           return;
         }
       }
@@ -5062,6 +5092,8 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
       
       setSelections(initialSelections);
       setValidationErrors({});
+      setCurrentStep(0);
+      setCompletedSteps(new Set());
     }
   }, [open, comboItems]);
 
@@ -5123,6 +5155,44 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
     }));
   };
 
+  const goToNextStep = () => {
+    if (!isCurrentStepValid) return;
+    
+    // Отмечаем текущий шаг как завершенный
+    setCompletedSteps(prev => new Set([...prev, currentStep]));
+    
+    // Переходим к следующему шагу
+    if (!isLastStep) {
+      setCurrentStep(prev => prev + 1);
+    }
+  };
+
+  const goToPreviousStep = () => {
+    if (currentStep > 0) {
+      setCurrentStep(prev => prev - 1);
+    }
+  };
+
+  const goToStep = (step: number) => {
+    // Проверяем, можно ли перейти к этому шагу (все предыдущие шаги должны быть завершены)
+    let canNavigate = true;
+    for (let i = 0; i < step; i++) {
+      const item = sortedItems[i];
+      if (item.type === 'CHOICE') {
+        const selection = selections[item.id];
+        const count = selection?.selectedProducts.length || 0;
+        if (count < item.minSelect) {
+          canNavigate = false;
+          break;
+        }
+      }
+    }
+    
+    if (canNavigate) {
+      setCurrentStep(step);
+    }
+  };
+
   const validateSelections = (): boolean => {
     const errors: Record<string, string> = {};
     let isValid = true;
@@ -5172,6 +5242,8 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
     // При отмене сбрасываем состояние
     setSelections({});
     previousSelectionRef.current = null;
+    setCurrentStep(0);
+    setCompletedSteps(new Set());
     onOpenChange(false);
   };
 
@@ -5209,6 +5281,32 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
   // Если диалог закрыт, не рендерим содержимое
   if (!open) return null;
 
+  // Если нет элементов, показываем сообщение
+  if (sortedItems.length === 0) {
+    return (
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ошибка</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-center text-gray-600">
+              Нет доступных элементов для выбора
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleCancel}>Закрыть</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  const selection = selections[currentItem.id];
+  const selectedCount = selection?.selectedProducts.length || 0;
+  const error = validationErrors[currentItem.id];
+  const itemTotal = calculateItemTotal(currentItem);
+
   return (
     <Dialog open={open} onOpenChange={(newOpen) => {
       if (!newOpen) {
@@ -5229,148 +5327,177 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-8">
-          {comboItems
-            .sort((a, b) => a.sortOrder - b.sortOrder)
-            .map((item) => {
-              const selection = selections[item.id];
-              const selectedCount = selection?.selectedProducts.length || 0;
-              const error = validationErrors[item.id];
-              const itemTotal = calculateItemTotal(item);
-
+        {/* Шаги навигации */}
+        <div className="px-6 py-4 border-b">
+          <div className="flex items-center justify-between gap-2">
+            {sortedItems.map((item, index) => {
+              const isCompleted = completedSteps.has(index);
+              const isCurrent = index === currentStep;
+              const isAvailable = index === 0 || completedSteps.has(index - 1);
+              
               return (
-                <div key={item.id} className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-xl font-semibold">
-                        {item.groupName || (
-                          item.type === 'STATIC' ? 'В составе комбо' :
-                          item.type === 'CHOICE' ? 'На выбор' :
-                          'Дополнительно'
-                        )}
-                      </h3>
-                      {item.type !== 'STATIC' && (
-                        <div className="flex items-center gap-2 mt-1">
-                          <p className="text-sm text-gray-500">
-                            {item.type === 'CHOICE' 
-                              ? `Выберите от ${item.minSelect} до ${item.maxSelect} позиций`
-                              : 'Можно добавить по желанию (необязательно)'
-                            }
-                          </p>
-                          {selectedCount > 0 && (
-                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                              Выбрано: {selectedCount}
-                            </Badge>
-                          )}
-                          {itemTotal > 0 && (
-                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                              +{itemTotal} ₽
-                            </Badge>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {error && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
-                      {error}
-                    </div>
+                <button
+                  key={item.id}
+                  onClick={() => isAvailable && goToStep(index)}
+                  className={`
+                    flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg transition-all
+                    ${isCurrent ? 'bg-green-50 border-2 border-green-500' : 'border border-gray-200'}
+                    ${isCompleted ? 'bg-green-50' : 'bg-white'}
+                    ${!isAvailable ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}
+                  `}
+                  disabled={!isAvailable}
+                >
+                  {isCompleted ? (
+                    <Check className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <span className="text-sm font-medium text-gray-500">{index + 1}</span>
                   )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {item.products
-                      .sort((a, b) => a.sortOrder - b.sortOrder)
-                      .map((comboProduct) => {
-                        const product = comboProduct.product;
-                        const isSelected = selection?.selectedProducts.some(
-                          sp => sp.productId === comboProduct.productId
-                        );
-                        
-                        // Проверяем доступность выбора
-                        let isDisabled = false;
-                        let disabledReason = '';
-                        
-                        if (item.type === 'STATIC') {
-                          isDisabled = true;
-                        } else if (item.type === 'CHOICE') {
-                          if (!isSelected && selectedCount >= item.maxSelect) {
-                            isDisabled = true;
-                            disabledReason = `Максимум ${item.maxSelect} позиций`;
-                          }
-                        }
-                        // Для OPTIONAL нет ограничений на максимальное количество
-
-                        return (
-                          <div
-                            key={comboProduct.id}
-                            className={`
-                              relative rounded-xl border-2 transition-all cursor-pointer
-                              ${item.type === 'STATIC' ? 'border-green-200 bg-green-50/50 cursor-default' : ''}
-                              ${isSelected ? 'border-green-500 bg-green-50 shadow-md' : 'border-gray-200 hover:border-green-300 hover:shadow-sm'}
-                              ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
-                            `}
-                            onClick={() => !isDisabled && item.type !== 'STATIC' && handleProductSelect(item.id, comboProduct.productId)}
-                          >
-                            {isSelected && (
-                              <div className="absolute top-2 right-2">
-                                <Check className="h-5 w-5 text-green-500" />
-                              </div>
-                            )}
-                            
-                            {isDisabled && disabledReason && (
-                              <div className="absolute top-2 right-2">
-                                <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-200 text-xs">
-                                  {disabledReason}
-                                </Badge>
-                              </div>
-                            )}
-                            
-                            <div className="p-4">
-                              <div className="flex gap-4">
-                                <div className="flex-shrink-0 w-20 h-20 bg-gray-100 rounded-lg overflow-hidden">
-                                  {product.images?.[0] ? (
-                                    <img 
-                                      src={product.images[0]} 
-                                      alt={product.title}
-                                      className="w-full h-full object-cover"
-                                    />
-                                  ) : (
-                                    <div className="w-full h-full flex items-center justify-center">
-                                      <Utensils className="h-8 w-8 text-gray-400" />
-                                    </div>
-                                  )}
-                                </div>
-                                
-                                <div className="flex-1 min-w-0">
-                                  <h4 className="font-semibold text-lg mb-1">
-                                    {product.title}
-                                  </h4>
-                                  
-                                  <p className="text-sm text-gray-600 mb-2 line-clamp-2">
-                                    {product.description || 'Без описания'}
-                                  </p>
-                                  
-                                  <div className="flex items-center justify-start">
-                                    {comboProduct.additionalPrice > 0 && (
-                                      <span className="font-bold text-green-600">
-                                        +{comboProduct.additionalPrice} ₽
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
+                  <span className={`text-sm font-medium ${isCurrent ? 'text-green-700' : 'text-gray-700'}`}>
+                    {item.groupName || (
+                      item.type === 'STATIC' ? 'Состав' :
+                      item.type === 'CHOICE' ? 'На выбор' :
+                      'Дополнительно'
+                    )}
+                  </span>
+                </button>
               );
             })}
+          </div>
         </div>
 
-        <DialogFooter className="p-6 pt-4">
+        {/* Контент текущего шага */}
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-semibold">
+                  {currentItem.groupName || (
+                    currentItem.type === 'STATIC' ? 'В составе комбо' :
+                    currentItem.type === 'CHOICE' ? 'На выбор' :
+                    'Дополнительно'
+                  )}
+                </h3>
+                {currentItem.type !== 'STATIC' && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-sm text-gray-500">
+                      {currentItem.type === 'CHOICE' 
+                        ? `Выберите от ${currentItem.minSelect} до ${currentItem.maxSelect} позиций`
+                        : 'Можно добавить по желанию (необязательно)'
+                      }
+                    </p>
+                    {selectedCount > 0 && (
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                        Выбрано: {selectedCount}
+                      </Badge>
+                    )}
+                    {itemTotal > 0 && (
+                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                        +{itemTotal} ₽
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {currentItem.products
+                .sort((a, b) => a.sortOrder - b.sortOrder)
+                .map((comboProduct) => {
+                  const product = comboProduct.product;
+                  const isSelected = selection?.selectedProducts.some(
+                    sp => sp.productId === comboProduct.productId
+                  );
+                  
+                  // Проверяем доступность выбора
+                  let isDisabled = false;
+                  let disabledReason = '';
+                  
+                  if (currentItem.type === 'STATIC') {
+                    isDisabled = true;
+                  } else if (currentItem.type === 'CHOICE') {
+                    if (!isSelected && selectedCount >= currentItem.maxSelect) {
+                      isDisabled = true;
+                      disabledReason = `Максимум ${currentItem.maxSelect} позиций`;
+                    }
+                  }
+                  // Для OPTIONAL нет ограничений на максимальное количество
+
+                  return (
+                    <div
+                      key={comboProduct.id}
+                      className={`
+                        relative rounded-xl border-2 transition-all cursor-pointer
+                        ${currentItem.type === 'STATIC' ? 'border-green-200 bg-green-50/50 cursor-default' : ''}
+                        ${isSelected ? 'border-green-500 bg-green-50 shadow-md' : 'border-gray-200 hover:border-green-300 hover:shadow-sm'}
+                        ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
+                      `}
+                      onClick={() => !isDisabled && currentItem.type !== 'STATIC' && handleProductSelect(currentItem.id, comboProduct.productId)}
+                    >
+                      {isSelected && (
+                        <div className="absolute top-2 right-2">
+                          <Check className="h-5 w-5 text-green-500" />
+                        </div>
+                      )}
+                      
+                      {isDisabled && disabledReason && (
+                        <div className="absolute top-2 right-2">
+                          <Badge variant="outline" className="bg-gray-100 text-gray-600 border-gray-200 text-xs">
+                            {disabledReason}
+                          </Badge>
+                        </div>
+                      )}
+                      
+                      <div className="p-4">
+                        <div className="flex gap-4">
+                          <div className="flex-shrink-0 w-20 h-20 bg-gray-100 rounded-lg overflow-hidden">
+                            {product.images?.[0] ? (
+                              <img 
+                                src={product.images[0]} 
+                                alt={product.title}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <Utensils className="h-8 w-8 text-gray-400" />
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-lg mb-1">
+                              {product.title}
+                            </h4>
+                            
+                            <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+                              {product.description || 'Без описания'}
+                            </p>
+                            
+                            <div className="flex items-center justify-start">
+                              {comboProduct.additionalPrice > 0 && (
+                                <span className="font-bold text-green-600">
+                                  +{comboProduct.additionalPrice} ₽
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+
+        {/* Футер с навигацией */}
+        <DialogFooter className="p-6 pt-4 border-t">
           <div className="flex items-center justify-between w-full">
             <div className="text-lg">
               <span className="text-gray-600">Итого за комбо:</span>
@@ -5387,15 +5514,36 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
               >
                 Отмена
               </Button>
-              <Button
-                size="lg"
-                onClick={handleConfirm}
-                disabled={!isOrderEditable || Object.keys(validationErrors).length > 0}
-                className="h-12 px-6 text-lg"
-              >
-                <Check className="h-5 w-5 mr-2" />
-                Подтвердить выбор
-              </Button>
+              {currentStep > 0 && (
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={goToPreviousStep}
+                  className="h-12 px-6 text-lg"
+                >
+                  ← Назад
+                </Button>
+              )}
+              {!isLastStep ? (
+                <Button
+                  size="lg"
+                  onClick={goToNextStep}
+                  disabled={!isCurrentStepValid}
+                  className="h-12 px-6 text-lg"
+                >
+                  Далее →
+                </Button>
+              ) : (
+                <Button
+                  size="lg"
+                  onClick={handleConfirm}
+                  disabled={!isOrderEditable || !isCurrentStepValid || Object.keys(validationErrors).length > 0}
+                  className="h-12 px-6 text-lg"
+                >
+                  <Check className="h-5 w-5 mr-2" />
+                  Подтвердить выбор
+                </Button>
+              )}
             </div>
           </div>
         </DialogFooter>
