@@ -5352,13 +5352,7 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
                   ) : (
                     <span className="text-sm font-medium text-gray-500">{index + 1}</span>
                   )}
-                  <span className={`text-sm font-medium ${isCurrent ? 'text-green-700' : 'text-gray-700'}`}>
-                    {item.groupName || (
-                      item.type === 'STATIC' ? 'Состав' :
-                      item.type === 'CHOICE' ? 'На выбор' :
-                      'Дополнительно'
-                    )}
-                  </span>
+                 
                 </button>
               );
             })}
