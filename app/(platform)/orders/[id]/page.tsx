@@ -5328,36 +5328,22 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
         </DialogHeader>
 
         {/* Шаги навигации */}
-        <div className="px-6 py-4 border-b">
-          <div className="flex items-center justify-between gap-2">
-            {sortedItems.map((item, index) => {
-              const isCompleted = completedSteps.has(index);
-              const isCurrent = index === currentStep;
-              const isAvailable = index === 0 || completedSteps.has(index - 1);
-              
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => isAvailable && goToStep(index)}
-                  className={`
-                    flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg transition-all
-                    ${isCurrent ? 'bg-green-50 border-2 border-green-500' : 'border border-gray-200'}
-                    ${isCompleted ? 'bg-green-50' : 'bg-white'}
-                    ${!isAvailable ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}
-                  `}
-                  disabled={!isAvailable}
-                >
-                  {isCompleted ? (
-                    <Check className="h-4 w-4 text-green-500" />
-                  ) : (
-                    <span className="text-sm font-medium text-gray-500">{index + 1}</span>
-                  )}
-                 
-                </button>
-              );
-            })}
-          </div>
-        </div>
+     <div className="px-6 py-4 ">
+  {/* Прогресс-бар */}
+  <div >
+    <div className="flex justify-between text-sm text-gray-500 mb-2">
+      <span>Шаг {currentStep + 1} из {sortedItems.length}</span>
+    </div>
+    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+      <div 
+        className="h-full bg-green-500 transition-all duration-300 ease-out rounded-full"
+        style={{ width: `${((currentStep + 1) / sortedItems.length) * 100}%` }}
+      />
+    </div>
+  </div>
+  
+ 
+</div>
 
         {/* Контент текущего шага */}
         <div className="flex-1 overflow-y-auto p-6">
@@ -5491,7 +5477,7 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
         </div>
 
         {/* Футер с навигацией */}
-        <DialogFooter className="p-6 pt-4 border-t">
+        <DialogFooter className="p-6 pt-4 ">
           <div className="flex items-center justify-between w-full">
             <div className="text-lg">
               <span className="text-gray-600">Итого за комбо:</span>
