@@ -1366,36 +1366,9 @@ const handleSubmit = async (e: React.FormEvent) => {
                     />
                   </div>
 
-                  <div className="space-y-2 col-span-2">
-                    <Label className="text-sm">
-                      {language === 'ru' ? 'Цехи' : 'სახელოსნოები'}
-                    </Label>
-                    {isWorkshopsLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <SearchableSelect
-                        options={workshops.map(w => ({ id: w.id, label: w.name }))}
-                        value={selectedWorkshops}
-                        onChange={setSelectedWorkshops}
-                        placeholder={language === 'ru' ? 'Выберите цехи' : 'აირჩიეთ სახელოსნოები'}
-                        searchPlaceholder={language === 'ru' ? 'Поиск цехов...' : 'სახელოსნოების ძებნა...'}
-                        emptyText={language === 'ru' ? 'Цехи не найдены' : 'სახელოსნოები ვერ მოიძებნა'}
-                      />
-                    )}
-                  </div>
                 </div>
 
                 <div className="space-y-3 pt-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="printLabels" className="text-sm">
-                      {language === 'ru' ? 'Печать лейблов' : 'ლეიბლების დაბეჭდვა'}
-                    </Label>
-                    <Switch
-                      id="printLabels"
-                      checked={formData.printLabels}
-                      onCheckedChange={checked => handleSwitchChange('printLabels', checked)}
-                    />
-                  </div>
 
                   <div className="flex items-center justify-between">
                     <Label htmlFor="publishedOnWebsite" className="text-sm">
@@ -1419,16 +1392,6 @@ const handleSubmit = async (e: React.FormEvent) => {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="isStopList" className="text-sm">
-                      {language === 'ru' ? 'В стоп-листе' : 'სტოპ ლისტში'}
-                    </Label>
-                    <Switch
-                      id="isStopList"
-                      checked={formData.isStopList}
-                      onCheckedChange={checked => handleSwitchChange('isStopList', checked)}
-                    />
-                  </div>
                 </div>
               </div>
             </CardContent>

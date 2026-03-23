@@ -126,6 +126,27 @@ function SheetDescription({
     />
   )
 }
+function MobileSheetContent({
+  className,
+  children,
+  
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Content>) {
+  return (
+    <SheetPrimitive.Content
+      data-slot="sheet-content"
+      className={cn(
+        "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
+        "inset-y-0 right-0 h-full w-full border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right",
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </SheetPrimitive.Content>
+  )
+}
+
 
 export {
   Sheet,
@@ -136,4 +157,5 @@ export {
   SheetFooter,
   SheetTitle,
   SheetDescription,
+  MobileSheetContent
 }

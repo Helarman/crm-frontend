@@ -18,6 +18,14 @@
   import { Input } from '@/components/ui/input'
   import { Textarea } from '@/components/ui/textarea'
   import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  MobileSheetContent,
+  SheetTrigger,
+} from "@/components/ui/sheet"
+  import {
     ArrowLeft,
     Check,
     X,
@@ -103,7 +111,7 @@
   import { PaymentDialog } from '@/components/features/order/PaymentDialog'
   import { format } from 'date-fns'
   import { ru, ka } from 'date-fns/locale'
-  import PrecheckDialog from '../default/[id]/PrecheckDialog'
+  import PrecheckDialog from './PrecheckDialog'
   import { CustomerService } from '@/lib/api/customer.service'
   import React from 'react'
   import { ShiftService } from '@/lib/api/shift.service'
@@ -398,6 +406,8 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
 
     const t = translations.ru; // Используем только русский язык
 
+    const [activeMenuTab, setActiveMenuTab] = useState<'menu' | 'order'>('menu');
+    const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
     const [order, setOrder] = useState<OrderResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -1456,6 +1466,8 @@ const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => 
     toast.success('Заказ завершен');
     setShowCompleteDialog(false);
     setShowPaymentDialog(false);
+
+    router.push('/orders');
   } catch (error) {
     console.error('Error completing order:', error);
     toast.error('Ошибка завершения заказа');
@@ -2066,6 +2078,19 @@ const timer = setTimeout(async () => {
 
   return existingItem ? existingItem.quantity : 0;
 }
+
+const getOrderHeader = () => {
+  if (!order) return '';
+  
+  switch (order.type) {
+    case 'DINE_IN':
+      return `Стол ${order.tableNumber || '—'}`;
+       case 'BANQUET':
+      return `Стол ${order.tableNumber || '—'}`;
+    default:
+      return `Заказ ${order.number}`;
+  }
+};
 
     const handleAdditivesChange = (productId: string, newAdditives: string[]) => {
       setProductAdditives(prev => ({
@@ -2817,9 +2842,6 @@ const ItemHistoryDialog = ({ item, open, onOpenChange }: {
 
       return (
         <div className="mt-3 flex items-center justify-between border-t pt-3">
-          <div className="text-sm">
-            {getStatusBadge(item.status)}
-          </div>
           <div className="flex items-center flex-col gap-2 justify-between">
             {canEditQuantity && (
               <div className="flex items-center gap-2">
@@ -2913,8 +2935,362 @@ const ItemHistoryDialog = ({ item, open, onOpenChange }: {
         </div>
       );
     };
+const ItemCard = ({ item }: { item: OrderItem }) => {
+  const [isComboExpanded, setIsComboExpanded] = useState(false);
 
-const renderCompactItemCard = (item: OrderItem) => {
+  const getCookingTime = () => {
+    if (!item.timestamps.startedAt) return null;
+
+    const startTime = new Date(item.timestamps.startedAt).getTime();
+    let endTime = item.timestamps.completedAt
+      ? new Date(item.timestamps.completedAt).getTime()
+      : Date.now();
+
+    const cookingTimeMinutes = Math.round((endTime - startTime) / (1000 * 60));
+
+    return cookingTimeMinutes;
+  };
+
+  const cookingTime = getCookingTime();
+  
+  // Определяем, является ли элемент родительским комбо
+  const isParentCombo = item.isComboParent || false;
+  const isChildItem = !!item.parentOrderItemId;
+  const canEditQuantity = item.status === OrderItemStatus.CREATED && isOrderEditable && !isParentCombo;
+  
+  // Находим дочерние элементы для родительского комбо
+  const childItems = isParentCombo 
+    ? getOrderItems().filter(childItem => childItem.parentOrderItemId === item.id && !childItem.isRefund)
+    : [];
+    
+  const refundedChildItems = isParentCombo
+    ? getOrderItems().filter(childItem => childItem.parentOrderItemId === item.id && childItem.isRefund)
+    : [];
+  
+  const hasChildren = childItems.length > 0;
+  const hasRefundedChildren = refundedChildItems.length > 0;
+  
+  // Подсчет общего количества блюд в комбо
+  const totalComboItems = childItems.length + refundedChildItems.length;
+  const activeComboItems = childItems.length;
+  
+  // Если это дочерний элемент комбо (не возвращенный), скрываем его
+  if (isChildItem && !item.isRefund) {
+    return null;
+  }
+
+  return (
+    <Card
+      key={item.id}
+      className={`p-4 ${item.isReordered ? 'border-l-4 border-blue-500 dark:border-blue-400' : ''} ${
+        item.isRefund ? 'bg-red-50 dark:bg-red-900/20' : 'bg-card'
+      } ${isParentCombo ? 'border-2 border-purple-200 bg-purple-50/30' : ''}`}
+    >
+      <div className="flex justify-between items-start gap-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Кнопка сворачивания для комбо */}
+            {isParentCombo && hasChildren && (
+              <button
+                onClick={() => setIsComboExpanded(!isComboExpanded)}
+                className="flex-shrink-0 p-1 hover:bg-purple-100 rounded-md transition-colors flex items-center"
+                title={isComboExpanded ? "Свернуть состав" : "Развернуть состав"}
+              >
+                {isComboExpanded ? (
+                  <ChevronDown className="h-4 w-4 text-purple-600" />
+                ) : (
+                  <ChevronRight className="h-4 w-4 text-purple-600" />
+                )}
+                {item.product.title}
+              </button>
+            )}
+            {!isParentCombo && <h3 className="font-medium">
+              {item.product.title}
+            </h3>}
+            {item.isReordered && (
+              <Badge variant="secondary" className="text-xs">
+                {t.reorderedItem}
+              </Badge>
+            )}
+          </div>
+
+          {/* Количество и цена */}
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-sm font-bold text-green-600">
+              {calculateItemPrice(item)} ₽
+            </p>
+          </div>
+
+          {item.product.restaurantPrices[0] && !canEditQuantity && !isParentCombo && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {getProductPrice(item.product)} ₽ × {item.quantity}шт.
+            </p>
+          )}
+
+          {item.timestamps.startedAt && cookingTime !== null && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {item.timestamps.completedAt
+                ? `${t.cookedIn} ${getCookingTimeText(cookingTime)}`
+                : `${t.cookingFor} ${getCookingTimeText(cookingTime)}`}
+            </p>
+          )}
+
+          <div className="mt-2 pl-4 border-l-2 border-muted">
+            {item.additives.length > 0 && (
+              <div className="text-xs text-muted-foreground mt-1 flex items-center">
+                <Plus className="h-3 w-3 mr-1" />
+                {t.additives}: {item.additives.map(a => a.title).join(', ')}
+              </div>
+            )}
+            {item.comment && !item.comment.startsWith('combo-') && (
+              <div className="text-xs text-muted-foreground mt-1 flex items-center">
+                <MessageSquare className="h-3 w-3 mr-1" />
+                {t.comment}: {item.comment}
+              </div>
+            )}
+            {item.isRefund && item.refundReason && (
+              <div className="text-xs text-red-500 dark:text-red-400 mt-1 flex items-center">
+                <AlertCircle className="h-3 w-3 mr-1" />
+                {language === 'ru' ? 'Причина' : 'მიზეზი'}: {item.refundReason}
+              </div>
+            )}
+          </div>
+          
+          {/* Дочерние элементы комбо - с анимацией сворачивания */}
+          {hasChildren && (
+            <div 
+              className={`mt-3 pl-4 border-l-2 border-purple-200 space-y-2 overflow-hidden transition-all duration-300 ${
+                isComboExpanded ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'
+              }`}
+            >
+              <p className="text-xs font-semibold text-purple-600 mb-1">В составе комбо:</p>
+              {childItems.map(childItem => (
+                <div key={childItem.id} className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-3 w-3 text-gray-500" />
+                    <span className="text-gray-700">{childItem.product.title}</span>
+                  </div>
+                  <span className="text-gray-500 text-xs">x{childItem.quantity}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {/* Возвращенные дочерние элементы комбо - всегда видны */}
+          {hasRefundedChildren && (
+            <div className="mt-3 pl-4 border-l-2 border-red-200 space-y-2">
+              <p className="text-xs font-semibold text-red-500 mb-1">Возвращенные блюда:</p>
+              {refundedChildItems.map(childItem => (
+                <div key={childItem.id} className="flex items-center justify-between text-sm opacity-70">
+                  <div className="flex items-center gap-2">
+                    <Undo className="h-3 w-3 text-red-500" />
+                    <span className="text-gray-700 line-through">{childItem.product.title}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-red-500 text-xs">x{childItem.quantity}</span>
+                    {childItem.refundReason && (
+                      <span className="text-xs text-red-400" title={childItem.refundReason}>
+                        ({childItem.refundReason})
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <details className="text-sm text-muted-foreground mt-3">
+        <summary className="cursor-pointer">{t.showLogs}</summary>
+        <div className="mt-2 space-y-1">
+          <div className="flex items-center">
+            <Clock className="h-3 w-3 mr-2" />
+            {t.createdAt}: {new Date(item.timestamps.createdAt).toLocaleString()}
+          </div>
+
+          {item.timestamps.startedAt && (
+            <div className="flex flex-col">
+              <span className='flex items-center'>
+                <Play className="h-3 w-3 mr-2" />
+                {t.startedAt}: {new Date(item.timestamps.startedAt).toLocaleString()}
+              </span>
+              <span className='text-xs ml-5'>
+                ({item.startedBy && item.startedBy.name})
+              </span>
+            </div>
+          )}
+
+          {item.timestamps.completedAt && (
+            <div className="flex items-center">
+              <Check className="h-3 w-3 mr-2" />
+              {t.completedAt}: {new Date(item.timestamps.completedAt).toLocaleString()}
+              {item.completedBy && (
+                <span className="ml-2 text-xs text-muted-foreground">
+                  ({language === 'ru' ? 'завершил' : 'დაასრულა'}: {item.completedBy.name})
+                </span>
+              )}
+            </div>
+          )}
+
+          {item.timestamps.pausedAt && (
+            <div className="flex items-center">
+              <Pause className="h-3 w-3 mr-2" />
+              {t.pausedAt}: {new Date(item.timestamps.pausedAt).toLocaleString()}
+              {item.pausedBy && (
+                <span className="ml-2 text-xs text-muted-foreground">
+                  ({language === 'ru' ? 'приостановил' : 'შეაჩერა'}: {item.pausedBy.name})
+                </span>
+              )}
+            </div>
+          )}
+
+          {item.timestamps.refundedAt && (
+            <div className="flex items-center text-red-500 dark:text-red-400">
+              <Undo className="h-3 w-3 mr-2" />
+              {t.refundedAt}: {new Date(item.timestamps.refundedAt).toLocaleString()}
+              {item.refundedBy && (
+                <span className="ml-2 text-xs text-red-400">
+                  ({language === 'ru' ? 'вернул' : 'დაბრუნება'}: {item.refundedBy.name})
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </details>
+
+      {/* Кнопки действий - outline как в compact */}
+      <div className="mt-3 flex items-center justify-end gap-2 border-t pt-3">
+         {canEditQuantity ? (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => handleQuantitItemChange(item, item.quantity - 1)}
+                  disabled={item.quantity <= 1}
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <span className="text-lg font-bold w-8 text-center">
+                  {item.quantity}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => handleQuantitItemChange(item, item.quantity + 1)}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <span className="text-sm font-medium text-gray-600">
+                {item.quantity} шт.
+              </span>
+            )}
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 w-8 p-0 text-gray-500 hover:text-gray-600 hover:bg-gray-50"
+          onClick={() => {
+            setSelectedItemForHistory(item);
+            setShowItemHistoryDialog(true);
+          }}
+          title="История"
+        >
+          <History className="h-4 w-4" />
+        </Button>
+
+        {/* Повтор (дозаказ) - не показываем для комбо */}
+        {[
+          OrderItemStatus.COMPLETED,
+          OrderItemStatus.IN_PROGRESS,
+          OrderItemStatus.CREATED,
+        ].includes(item.status) && isOrderEditable && !item.isRefund && !isParentCombo && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 w-8 p-0 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
+            onClick={() => handleReorderItem(item)}
+            disabled={isUpdating}
+            title="Повторить"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        )}
+
+        {/* Возврат - показываем для комбо через отдельный диалог */}
+        {['COMPLETED', 'DELIVERING', 'PREPARING', 'READY'].includes(order?.status || '') && !item.isRefund && (
+          (() => {
+            const isBeforeKitchen = order?.status === 'CREATED';
+            
+            const isAfterKitchenButBeforePrecheck = 
+              order?.status === 'PREPARING' && 
+              item.status === OrderItemStatus.COMPLETED;
+            
+            const canKitchenStaffReturn = 
+              isAfterKitchenButBeforePrecheck && 
+              ['WAITER', 'CASHIER','MANAGER', 'SUPERVISOR'].includes(user.role);
+            
+            const isAfterPrecheck = order?.attentionFlags?.isPrecheck;
+            const canManagerReturn = 
+              isAfterPrecheck && 
+              ['MANAGER', 'SUPERVISOR'].includes(user.role);
+            
+            const shouldShow = 
+              isBeforeKitchen || 
+              canKitchenStaffReturn || 
+              canManagerReturn;
+            
+            return shouldShow && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                onClick={() => {
+                  if (isParentCombo && hasChildren) {
+                    // Открываем диалог выбора блюд для возврата из комбо
+                    prepareComboItemsForRefund(item);
+                    setShowComboRefundDialog(true);
+                  } else {
+                    setSelectedItemForRefund(item);
+                    setMaxRefundQuantity(item.quantity);
+                    setRefundQuantity(1);
+                    setShowRefundDialog(true);
+                  }
+                }}
+                disabled={isUpdating || (!canManagerReturn && !isParentCombo)}
+                title={isParentCombo ? 'Вернуть блюда из комбо' : 'Возврат'}
+              >
+                <Undo className="h-4 w-4" />
+              </Button>
+            );
+          })()
+        )}
+
+        {/* Удаление - для CREATED позиций, включая комбо */}
+        {item.status === OrderItemStatus.CREATED && isOrderEditable && !item.isRefund && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+            onClick={() => handleQuantitItemChange(item, 0)}
+            disabled={isUpdating}
+            title="Удалить"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+};
+
+
+const CompactItemCard = ({ item }: { item: OrderItem }) => {
+  const [isComboExpanded, setIsComboExpanded] = useState(false);
+
   const getCookingTime = () => {
     if (!item.timestamps.startedAt) return null;
 
@@ -2960,6 +3336,10 @@ const renderCompactItemCard = (item: OrderItem) => {
     childItems.length === 0 && 
     hasRefundedChildren;
 
+  // Подсчет общего количества блюд в комбо (включая возвращенные)
+  const totalComboItems = childItems.length + refundedChildItems.length;
+  const activeComboItems = childItems.length;
+
   // ИЗМЕНЕНИЕ: Показываем дочерние элементы только если они возвращены
   // Игнорируем обычные дочерние элементы (не возвращенные)
   if (isChildItem && !item.isRefund) {
@@ -3003,10 +3383,32 @@ const renderCompactItemCard = (item: OrderItem) => {
           <div className="flex flex-col">
             {/* Заголовок и цена */}
             <div className="flex justify-between items-start gap-2">
-              <h3 className="font-bold text-sm 2xl:text-md xl:text-md truncate flex-1">
-                {item.product.title} 
-                {!canEditQuantity && ` x ${item.quantity}`}
-              </h3>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  {isParentCombo && hasChildren && (
+                    <button
+                      onClick={() => setIsComboExpanded(!isComboExpanded)}
+                      className="flex-shrink-0 p-1 hover:bg-purple-100 rounded-md transition-colors flex"
+                      title={isComboExpanded ? "Свернуть состав" : "Развернуть состав"}
+                    >
+                      {isComboExpanded ? (
+                        <ChevronDown className="h-4 w-4 2xl:h-5 2xl:w-5 text-purple-600" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 2xl:h-5 2xl:w-5 text-purple-600" />
+                      )}
+                      <h3 className="font-bold text-sm 2xl:text-md xl:text-md truncate">
+                    {item.product.title}
+                  </h3>
+                    </button>
+                  )}
+                   {!isParentCombo && <h3 className="font-bold text-sm 2xl:text-md xl:text-md truncate">
+                    {item.product.title}
+                  </h3>}
+                </div>
+                {!canEditQuantity && (
+                  <span className="text-xs text-gray-500">x {item.quantity}</span>
+                )}
+              </div>
               <p className="text-md 2xl:text-lg font-bold whitespace-nowrap ml-2">
                 {calculateItemPrice(item)} ₽
               </p>
@@ -3034,9 +3436,13 @@ const renderCompactItemCard = (item: OrderItem) => {
               )}
             </div>
 
-            {/* Дочерние элементы комбо (обычные, не возвращенные) */}
+            {/* Дочерние элементы комбо (обычные, не возвращенные) - с анимацией сворачивания */}
             {hasChildren && (
-              <div className="mt-3 pl-3 border-l-2 border-purple-200 space-y-2">
+              <div 
+                className={`mt-3 pl-3 border-l-2 border-purple-200 space-y-2 overflow-hidden transition-all duration-300 ${
+                  isComboExpanded ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'
+                }`}
+              >
                 {childItems.map(childItem => (
                   <div key={childItem.id} className="flex items-center gap-2 text-sm">
                     <div className="w-6 h-6 bg-gray-200 rounded flex items-center justify-center flex-shrink-0">
@@ -3066,7 +3472,7 @@ const renderCompactItemCard = (item: OrderItem) => {
               </div>
             )}
 
-            {/* Дочерние элементы комбо (возвращенные) */}
+            {/* Дочерние элементы комбо (возвращенные) - всегда видны, не сворачиваются */}
             {hasRefundedChildren && (
               <div className="mt-3 pl-3 border-l-2 border-red-200 space-y-2">
                 <p className="text-xs font-semibold text-red-500 mb-1">Возвращенные блюда:</p>
@@ -3573,51 +3979,46 @@ const renderOrderAdditivesBlock = () => {
   );
 };
 
-    // Рендер карточек категорий с горизонтальной прокруткой
-   // Рендер карточек категорий с горизонтальной прокруткой
 const renderCategoryCards = () => {
   const displayCategories = getDisplayCategories();
   const displayProducts = searchQuery ? searchResults : getDisplayProducts();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Поиск */}
       <SearchInput />
       
       {/* Показываем результаты поиска */}
       {searchQuery && (
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-2xl font-bold">
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-semibold">
               Результаты поиска
               {searchResults.length > 0 && ` (${searchResults.length})`}
             </h3>
             <Button
-              variant="outline"
-              size="lg"
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setSearchQuery('');
                 setSearchResults([]);
               }}
-              className="h-12"
+              className="h-8 text-sm"
             >
-              Очистить поиск
+              Очистить
             </Button>
           </div>
 
           {searchResults.length === 0 ? (
-            <div className="text-center py-8 text-gray-600 text-lg">
+            <div className="text-center py-6 text-gray-500 text-sm">
               Продукты не найдены
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3 md:gap-4 lg:gap-5 xl:gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
               {searchResults.map((product) => {
                 const additives = productAdditives[product.id] || []
                 const comment = productComments[product.id] || ''
                 const quantity = getDisplayQuantity(product, additives, comment)
-
-                // Получаем comboItems из продукта (они должны быть загружены в продукт)
-                // В вашем JSON они приходят в поле comboItems
                 const comboItems = (product as any).comboItems || [];
 
                 return (
@@ -3638,7 +4039,7 @@ const renderCategoryCards = () => {
                     }
                     isOrderEditable={isOrderEditable!}
                     getProductPrice={getProductPrice}
-                    comboItems={comboItems} // ВАЖНО: передаем comboItems
+                    comboItems={comboItems}
                   />
                 );
               })}
@@ -3652,90 +4053,88 @@ const renderCategoryCards = () => {
         <>
           {/* Горизонтальная прокрутка категорий */}
           {(displayCategories.length > 0 || categoryNavigation.parentCategory) && (
-              <div className="flex ">
-                <div className="grid grid-flow-col auto-cols-[minmax(200px,1fr)] overflow-x-auto pb-6 scrollbar-hide gap-2 px-2 ">
-                  {/* Кнопка назад */}
-                  {(categoryNavigation.parentCategory || categoryNavigation.breadcrumbs.length > 0) && (
-                    <div
-                      onClick={handleBackToCategories}
-                      className={`transition-all flex flex-col text-lg font-semibold items-center text-center justify-center p-6 rounded-xl border-2 transition-all border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50`}
+            <div className="relative">
+              <div className="flex overflow-x-auto pb-3 scrollbar-hide gap-2">
+                {/* Кнопка назад */}
+                {(categoryNavigation.parentCategory || categoryNavigation.breadcrumbs.length > 0) && (
+                  <button
+                    onClick={handleBackToCategories}
+                    className="flex-shrink-0 flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 transition-all whitespace-nowrap"
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    {t.backToCategories}
+                  </button>
+                )}
+
+                {/* Карточки категорий */}
+                {displayCategories.map((category) => {
+                  const productCount = getDisplayProducts().filter(
+                    product => product.categoryId === category.id
+                  ).length;
+
+                  return (
+                    <button
+                      onClick={() => handleCategoryClick(category)}
+                      key={category.id}
+                      className={`flex-shrink-0 flex flex-col items-center justify-center px-4 py-2 text-sm font-medium rounded-lg border transition-all whitespace-nowrap ${
+                        categoryNavigation.currentCategory && category.id === categoryNavigation.currentCategory!.id
+                          ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
+                          : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50'
+                      }`}
                     >
-                      {t.backToCategories}
-                    </div>
-                  )}
-
-                  {/* Карточки категорий */}
-                  {displayCategories.map((category) => {
-                    const productsInCategory = getDisplayProducts().filter(
-                      product => product.categoryId === category.id
-                    );
-
-                    return (
-                      <div
-                        onClick={() => handleCategoryClick(category)}
-                        key={category.id}
-                        className={`flex flex-col text-lg font-semibold items-center text-center justify-center transition-all  p-6 rounded-xl border-2 ${
-                          categoryNavigation.currentCategory && category.id === categoryNavigation.currentCategory!.id
-                            ? 'border-blue-600 bg-blue-50 text-blue-700'
-                            : 'border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50'
-                        }`}
-                      >
-                      {category.title}
-                      </div>
-                    );
-                  })}
-                </div>
+                      <span className="text-sm font-medium">{category.title}</span>
+                    </button>
+                  );
+                })}
               </div>
-            )}
+            </div>
+          )}
 
           {/* Сообщение когда нет категорий с товарами */}
           {displayCategories.length === 0 && !categoryNavigation.parentCategory && (
-            <div className="text-center py-8 text-gray-600 text-lg">
+            <div className="text-center py-8 text-gray-500 text-sm">
               {t.noProductsFound}
             </div>
           )}
 
           {/* Товары отображаются ТОЛЬКО когда выбрана конкретная категория */}
           {categoryNavigation.currentCategory && displayProducts.length > 0 && (
-            <div className="mt-8">
-              <h4 className="text-2xl font-bold mb-6 text-center">
+            <div className="mt-4">
+              <h4 className="text-base font-semibold mb-3 text-gray-700">
                 {categoryNavigation.currentCategory.title}
               </h4>
 
-            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3 md:gap-4 lg:gap-5 xl:gap-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                 {displayProducts.map((product) => {
                   const additives = productAdditives[product.id] || []
                   const comment = productComments[product.id] || ''
                   const quantity = getDisplayQuantity(product, additives, comment)
-
-                  // Получаем comboItems из продукта (они должны быть загружены в продукт)
                   const comboItems = (product as any).comboItems || [];
 
                   return (
-                  <ProductCard
-  key={product.id}
-  product={product}
-  additives={additives}
-  comment={comment}
-  quantity={quantity}
-  onAdditivesChange={(newAdditives) => {
-    handleAdditivesChange(product.id, newAdditives);
-    if (quantity > 0) {
-      handleQuantityChange(product, quantity, newAdditives, comment);
-    }
-  }}
-  onQuantityChange={(newQuantity) =>
-    handleQuantityChange(product, newQuantity, additives, comment)
-  }
-  isOrderEditable={isOrderEditable!}
-  getProductPrice={getProductPrice}
-  comboItems={comboItems}
-  onComboSelect={(selection) => {
-    // Сохраняем выбранные опции комбо
-    setPendingComboSelection(selection);
-    pendingComboSelectionRef.current = selection;
-  }}
-/>
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      additives={additives}
+                      comment={comment}
+                      quantity={quantity}
+                      onAdditivesChange={(newAdditives) => {
+                        handleAdditivesChange(product.id, newAdditives);
+                        if (quantity > 0) {
+                          handleQuantityChange(product, quantity, newAdditives, comment);
+                        }
+                      }}
+                      onQuantityChange={(newQuantity) =>
+                        handleQuantityChange(product, newQuantity, additives, comment)
+                      }
+                      isOrderEditable={isOrderEditable!}
+                      getProductPrice={getProductPrice}
+                      comboItems={comboItems}
+                      onComboSelect={(selection) => {
+                        setPendingComboSelection(selection);
+                        pendingComboSelectionRef.current = selection;
+                      }}
+                    />
                   );
                 })}
               </div>
@@ -3744,7 +4143,7 @@ const renderCategoryCards = () => {
 
           {/* Сообщение когда выбрана категория но нет товаров */}
           {categoryNavigation.currentCategory && displayProducts.length === 0 && (
-            <div className="text-center py-8 text-gray-600 text-lg">
+            <div className="text-center py-8 text-gray-500 text-sm">
               {t.noProductsFound}
             </div>
           )}
@@ -3869,7 +4268,7 @@ const renderTotalWithButtons = () => {
               ) : (
                 <Check className="h-3 w-3 mr-1" />
               )}
-              {order.scheduledAt ? 'Подтв.' : t.confirm}({getOrderItems().filter(item => item.status === OrderItemStatus.CREATED).length})
+              {order.scheduledAt ? 'Подтв.' : t.confirm}
             </Button>
           )}
 
@@ -4039,7 +4438,6 @@ const renderTotalWithButtons = () => {
           <Check className="h-6 w-6 mr-1" />
         )}
         {order.scheduledAt ? 'Подтвердить' : t.confirm}
-        ({getOrderItems().filter(item => item.status === OrderItemStatus.CREATED).length})
       </Button>
     )}
 
@@ -4108,17 +4506,63 @@ const renderTotalWithButtons = () => {
             <div className={isRightColCollapsed ? 'lg:col-span-11' : 'lg:col-span-2'}>
               <div className="bg-white rounded-2xl shadow-lg sticky h-[100vh] flex flex-col">
                 {/* Заголовок меню - sticky */}
-                <div className="sticky top-0 z-10 bg-white border-b  pb-4  flex justify-between">
+                <div className="sticky top-0 z-10 bg-white border-b  pb-4  flex flex-col md:flex-row pt-4 md:pt-0 items-center justify-between">
                   <div className='flex flex-col  justify-center items-start gap-2'>
-                 
-                    <h2 className="text-2xl font-bold flex items-center gap-3 flex ">
-                      <Utensils className="h-8 w-8 text-blue-600" />
-                      Меню
-                     </h2>
-                        <Button onClick={() => handleRouteChange('/orders')} variant="outline">
-  <ArrowLeft className="h-4 w-4 mr-2" />
-  {t.back}
-</Button>
+                <div className="flex-col justify-start items-center gap-1 ml-2">
+                  <Button 
+                    variant="outline" 
+                    className="rounded-lg px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 transition-all w-full"
+                    onClick={() => handleRouteChange('/orders')}
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                    <span className="ml-2">Назад</span>
+                  </Button>
+                  
+                  <div className="relative flex ml-4">
+                    <button
+                      className={`px-5 py-2 text-base font-medium transition-all relative ${
+                        activeMenuTab === 'menu' 
+                          ? 'text-blue-600' 
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                      onClick={() => setActiveMenuTab('menu')}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Utensils className="h-5 w-5" />
+                        <span>Меню</span>
+                      </div>
+                      {activeMenuTab === 'menu' && (
+                        <motion.div 
+                          layoutId="activeTab"
+                          className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full"
+                          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        />
+                      )}
+                    </button>
+                    
+                    <button
+                      className={`px-5 py-2 text-base font-medium transition-all relative ${
+                        activeMenuTab === 'order' 
+                          ? 'text-blue-600' 
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                      onClick={() => setActiveMenuTab('order')}
+                    >
+                      <div className="flex items-center gap-2">
+                        <ShoppingCart className="h-5 w-5" />
+                        <span>Заказ</span>
+                      </div>
+                      {activeMenuTab === 'order' && (
+                        <motion.div 
+                          layoutId="activeTab"
+                          className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600 rounded-full"
+                          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        />
+                      )}
+                    </button>
+                  </div>
+                </div>
+                    
                   </div>
                   <div className="flex gap-2 justify-cente text-center p-2 sm:p-3">
                   {order.type === 'DINE_IN' && (
@@ -4242,28 +4686,63 @@ const renderTotalWithButtons = () => {
                 </div>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto px-6 py-4">
-                  <div className="space-y-6">
-                    {categories.length > 0 && products.length > 0 ? (
-                      renderCategoryCards()
-                    ) : (
-                      <div className="p-6 border-2 rounded-xl text-center text-lg">
-                        {t.noProductsFound}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <div className="flex-1 overflow-y-auto px-6 py-4 w-full">
+  {activeMenuTab === 'menu' ? (
+    <div className="space-y-6">
+      {categories.length > 0 && products.length > 0 ? (
+        renderCategoryCards()
+      ) : (
+        <div className="p-6 border-2 rounded-xl text-center text-lg">
+          {t.noProductsFound}
+        </div>
+      )}
+    </div>
+  ) : (
+    <div className="space-y-4 ">
+      
+      {order?.items?.length === 0 ? (
+  <div className="text-center py-8 text-muted-foreground flex flex-col items-center">
+    <Package className="h-8 w-8 mb-2" />
+    {t.emptyOrder}
+  </div>
+) : (
+<div className="space-y-4">
+  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
+    {getOrderItems()
+      .filter(item => !item.isRefund)
+      .map(item => <ItemCard key={item.id} item={item} />)}
+  </div>
+
+  {getOrderItems().some(item => item.isRefund) && (
+    <div className="space-y-4 border-t pt-6">
+      <h3 className="text-lg font-semibold flex items-center gap-2">
+        <Ban className="h-5 w-5" />
+        {t.itemReturned}
+      </h3>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-4">
+        {getOrderItems()
+          .filter(item => item.isRefund)
+          .map(item => <ItemCard key={item.id} item={item} />)}
+      </div>
+    </div>
+  )}
+</div>
+)}
+    </div>
+  )}
+</div>
               </div>
               </div>
 
             {/* Правая колонка - Информация о заказе */}
-          <div className={`h-[100vh] flex flex-col w-full `}>
+          <div className={`h-[100vh] hidden lg:flex lg:flex-col w-full `}>
   {/* Карточка с табами - фиксированной высоты со скроллом */}
   <div className="bg-white rounded-2xl pb-4 shadow-lg flex-1 flex flex-col min-h-0  justify-between px-6 ">
     {!isRightColCollapsed && <h1 className={`text-xl md:text-2xl font-bold text-gray-900 py-4  ${isRightColCollapsed ? 'text-center': 'text-left'}`}>
-      Заказ {order.number}
-    </h1>
-  }
+  {getOrderHeader()}
+</h1>
+} 
     {/* Кастомная реализация табов */}
     <div className={`w-full flex flex-col flex-1 min-h-0 ${isRightColCollapsed ? 'pt-4 justify-center' : ''}`}>
       {/* Навигация табов */}
@@ -4381,35 +4860,35 @@ const renderTotalWithButtons = () => {
       <div className="flex-1 min-h-0">
         {/* Таб "Заказ" */}
       {activeTab === 'order' && (
-  <div className="h-full overflow-y-auto space-y-4 ">
-    {/* Сначала обычные элементы (не комбо и не дочерние) */}
-    {getOrderItems()
-      .filter(item => 
-        item.status !== OrderItemStatus.IN_PROGRESS && 
-        !item.parentComboId // Исключаем дочерние элементы комбо
-      )
-      .sort((a, b) => {
-        const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
-        const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
-        return dateA - dateB;
-      })
-      .map(renderCompactItemCard)}
-    
-    {/* Затем готовящиеся позиции (IN_PROGRESS) в конце */}
-    {getOrderItems()
-      .filter(item => 
-        item.status === OrderItemStatus.IN_PROGRESS && 
-        !item.parentComboId // Исключаем дочерние элементы комбо
-      )
-      .sort((a, b) => {
-        const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
-        const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
-        return dateA - dateB;
-      })
-      .map(renderCompactItemCard)}
-    
-    {renderTotalWithButtons()}
-  </div>
+ <div className="h-full overflow-y-auto space-y-4 ">
+  {/* Сначала обычные элементы (не комбо и не дочерние) */}
+  {getOrderItems()
+    .filter(item => 
+      item.status !== OrderItemStatus.IN_PROGRESS && 
+      !item.parentComboId // Исключаем дочерние элементы комбо
+    )
+    .sort((a, b) => {
+      const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
+      const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
+      return dateA - dateB;
+    })
+    .map(item => <CompactItemCard key={item.id} item={item} />)}
+  
+  {/* Затем готовящиеся позиции (IN_PROGRESS) в конце */}
+  {getOrderItems()
+    .filter(item => 
+      item.status === OrderItemStatus.IN_PROGRESS && 
+      !item.parentComboId // Исключаем дочерние элементы комбо
+    )
+    .sort((a, b) => {
+      const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
+      const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
+      return dateA - dateB;
+    })
+    .map(item => <CompactItemCard key={item.id} item={item} />)}
+  
+  {renderTotalWithButtons()}
+</div>
 )}
                 
         {/* Таб "История" */}
@@ -4657,6 +5136,318 @@ const renderTotalWithButtons = () => {
   
 </div>
 
+<div className="fixed bottom-20 right-6 z-50 lg:hidden ">
+        <Button
+          onClick={() => setIsMobileSheetOpen(true)}
+          className="h-14 w-14 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 text-white"
+          size="icon"
+        >
+          <ShoppingCart className="h-6 w-6" />
+        </Button>
+      </div>
+
+      <Sheet open={isMobileSheetOpen} onOpenChange={setIsMobileSheetOpen}>
+        <MobileSheetContent className=" p-0" >
+          <SheetHeader className="p-4 border-b">
+            <SheetTitle className="flex items-center justify-between">
+              <span>{getOrderHeader()}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsMobileSheetOpen(false)}
+                className="h-8 w-8 p-0"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </SheetTitle>
+          </SheetHeader>
+          
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* Табы для мобильной версии */}
+            <div className="grid grid-cols-5 gap-2">
+              {[
+                { id: 'order', icon: ShoppingCart, label: 'Заказ' },
+                { id: 'history', icon: History, label: 'История' },
+                { id: 'discount', icon: Tag, label: 'Скидки' },
+                { id: 'additives', icon: PlusSquare, label: 'Добавки' },
+                { id: 'info', icon: Info, label: 'Инфо' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex flex-col items-center justify-center p-2 rounded-lg border-2 transition-all ${
+                    activeTab === tab.id
+                      ? 'border-blue-600 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 bg-white text-gray-700'
+                  }`}
+                >
+                  <tab.icon className="w-5 h-5" />
+                </button>
+              ))}
+            </div>
+
+            {/* Контент табов */}
+            <div className="min-h-[300px]">
+              {/* Таб "Заказ" */}
+              {activeTab === 'order' && (
+                <div className="space-y-4">
+                  {getOrderItems()
+                    .filter(item => item.status !== OrderItemStatus.IN_PROGRESS && !item.parentComboId)
+                    .sort((a, b) => {
+                      const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
+                      const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
+                      return dateA - dateB;
+                    })
+                    .map(item => <CompactItemCard key={item.id} item={item} />)}
+                  
+                  {getOrderItems()
+                    .filter(item => item.status === OrderItemStatus.IN_PROGRESS && !item.parentComboId)
+                    .sort((a, b) => {
+                      const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
+                      const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
+                      return dateA - dateB;
+                    })
+                    .map(item => <CompactItemCard key={item.id} item={item} />)}
+                  
+                  {/* Компактная версия итоговой суммы и кнопок для мобилки */}
+                  <div className="bg-white rounded-xl shadow-md p-3 flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Итого:</span>
+                      <span className="font-bold text-green-600 text-lg">{calculateOrderTotal().toFixed(0)} ₽</span>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 justify-end">
+                      {order.status !== 'CANCELLED' && (
+                        <Button
+                          size="sm"
+                          disabled={isUpdating}
+                          onClick={handlePrecheck}
+                          variant={order.attentionFlags?.isPrecheck ? "default" : "outline"}
+                          className="flex-1 h-9 text-xs"
+                        >
+                          {isUpdating ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : order.attentionFlags?.isPrecheck ? (
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                          ) : (
+                            <Check className="h-3 w-3 mr-1" />
+                          )}
+                          {order.attentionFlags?.isPrecheck ? t.precheckFormed : t.formPrecheck}
+                        </Button>
+                      )}
+
+                      {getOrderItems().some(item => item.status === OrderItemStatus.CREATED) && (
+                        <Button
+                          size="sm"
+                          disabled={isUpdating || getOrderItems().length === 0}
+                          onClick={handleConfirmOrder}
+                          className="bg-emerald-500 hover:bg-emerald-400 text-white flex-1 h-9 text-xs"
+                        >
+                          {isUpdating ? (
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                          ) : (
+                            <Check className="h-3 w-3 mr-1" />
+                          )}
+                          {order.scheduledAt ? 'Подтв.' : t.confirm}({getOrderItems().filter(item => item.status === OrderItemStatus.CREATED).length})
+                        </Button>
+                      )}
+
+                      {order.status === 'CREATED' && (
+                        <Button
+                          size="sm"
+                          disabled={isUpdating}
+                          onClick={handleCancelOrder}
+                          className="bg-red-500 hover:bg-red-400 text-white flex-1 h-9 text-xs"
+                        >
+                          {isUpdating ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <X className="h-3 w-3" />
+                          )}
+                        </Button>
+                      )}
+
+                      {(order.status === 'READY' && order.type !== 'DELIVERY') && (
+                        <Button
+                          size="sm"
+                          disabled={
+                            isUpdating || 
+                            shiftLoading || 
+                            !order.attentionFlags.isPrecheck || 
+                            getOrderItems().some(item => 
+                              item.status !== OrderItemStatus.COMPLETED && 
+                              item.status !== OrderItemStatus.REFUNDED
+                            )
+                          }
+                          onClick={handleCalculateOrder}
+                          className={`flex-1 h-9 text-xs ${
+                            getOrderItems().some(item => 
+                              item.status !== OrderItemStatus.COMPLETED && 
+                              item.status !== OrderItemStatus.REFUNDED
+                            )
+                              ? 'hidden'
+                              : 'bg-emerald-500 hover:bg-emerald-400 text-white'
+                          }`}
+                        >
+                          {(isUpdating || shiftLoading) ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : getOrderItems().some(item => 
+                              item.status !== OrderItemStatus.COMPLETED && 
+                              item.status !== OrderItemStatus.REFUNDED
+                            ) ? (
+                            <Clock className="h-3 w-3" />
+                          ) : (
+                            <CheckCircle className="h-3 w-3" />
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Таб "История" */}
+              {activeTab === 'history' && (
+                <div className="max-h-[60vh] overflow-y-auto">
+                  {renderLogs()}
+                </div>
+              )}
+              
+              {/* Таб "Скидки" */}
+              {activeTab === 'discount' && (
+                <div className="max-h-[60vh] overflow-y-auto">
+                  {renderDiscountsBlock()}
+                </div>
+              )}
+              
+              {/* Таб "Добавки" */}
+              {activeTab === 'additives' && (
+                <div className="max-h-[60vh] overflow-y-auto">
+                  {renderOrderAdditivesBlock()}
+                </div>
+              )}
+              
+              {/* Таб "Инфо" */}
+              {activeTab === 'info' && (
+                <div className="space-y-6 max-h-[60vh] overflow-y-auto">
+                  {/* Тип заказа */}
+                  <div>
+                    <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
+                      {getOrderType(editFormData.type)}
+                    </h2>
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { value: 'DINE_IN', icon: <Utensils className="h-6 w-6" />, label: 'В ресторане' },
+                        { value: 'TAKEAWAY', icon: <ShoppingBag className="h-6 w-6" />, label: 'Самовывоз' },
+                        { value: 'DELIVERY', icon: <Truck className="h-6 w-6" />, label: 'Доставка' },
+                        { value: 'BANQUET', icon: <Calendar className="h-6 w-6" />, label: 'Банкет' }
+                      ].map((type) => (
+                        <button
+                          key={type.value}
+                          onClick={() => setEditFormData({
+                            ...editFormData,
+                            type: type.value as OrderType,
+                            tableNumber: (type.value === 'TAKEAWAY' || type.value === 'DELIVERY') ? '0' : editFormData.tableNumber
+                          })}
+                          disabled={!isOrderEditable}
+                          className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 ${
+                            editFormData.type === type.value
+                              ? 'border-blue-600 bg-blue-50 text-blue-700'
+                              : 'border-gray-200 bg-white'
+                          } ${!isOrderEditable ? 'opacity-60' : ''}`}
+                        >
+                          {type.icon}
+                          <span className="text-xs mt-1">{type.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Количество людей */}
+                  <div>
+                    <Label className="text-sm font-semibold flex items-center gap-2 mb-2">
+                      <Users className="h-4 w-4" />
+                      {t.persons}
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-10 w-10"
+                        onClick={() => setEditFormData({
+                          ...editFormData,
+                          numberOfPeople: Math.max(1, editFormData.numberOfPeople - 1)
+                        })}
+                        disabled={!isOrderEditable}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={editFormData.numberOfPeople}
+                        onChange={(e) => setEditFormData({
+                          ...editFormData,
+                          numberOfPeople: parseInt(e.target.value) || 1
+                        })}
+                        disabled={!isOrderEditable}
+                        className="h-10 text-center font-bold flex-1"
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-10 w-10"
+                        onClick={() => setEditFormData({
+                          ...editFormData,
+                          numberOfPeople: editFormData.numberOfPeople + 1
+                        })}
+                        disabled={!isOrderEditable}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Комментарий */}
+                  <div>
+                    <Label className="text-sm font-semibold flex items-center gap-2 mb-2">
+                      <MessageSquare className="h-4 w-4" />
+                      {t.comment}
+                    </Label>
+                    <Textarea
+                      value={editFormData.comment}
+                      onChange={(e) => setEditFormData({
+                        ...editFormData,
+                        comment: e.target.value
+                      })}
+                      placeholder={t.comment}
+                      disabled={!isOrderEditable}
+                      className="min-h-[80px] text-sm"
+                    />
+                  </div>
+
+                  {/* Кнопка сохранения */}
+                  {isOrderEditable && (
+                    <Button
+                      onClick={handleEditOrderSubmit}
+                      disabled={isUpdating}
+                      className="w-full h-10 text-sm"
+                    >
+                      {isUpdating ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <Check className="h-4 w-4 mr-2" />
+                      )}
+                      {t.saveChanges}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </MobileSheetContent>
+      </Sheet>
           </div>
 
           {/* Диалоговые окна */}
@@ -5531,3 +6322,5 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
     </Dialog>
   );
 };
+
+
