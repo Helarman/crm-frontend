@@ -4100,7 +4100,7 @@ const renderCategoryCards = () => {
   const displayProducts = searchQuery ? searchResults : getDisplayProducts();
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Поиск */}
       <SearchInput />
       
@@ -4167,42 +4167,50 @@ const renderCategoryCards = () => {
       {/* Обычное отображение категорий (только если нет поиска) */}
       {!searchQuery && (
         <>
-          {/* Горизонтальная прокрутка категорий */}
-          {(displayCategories.length > 0 || categoryNavigation.parentCategory) && (
-            <div className="relative">
-              <div className="flex overflow-x-auto pb-3 scrollbar-hide gap-2">
-                {/* Кнопка назад */}
-                {(categoryNavigation.parentCategory || categoryNavigation.breadcrumbs.length > 0) && (
+          {/* Кнопка "Назад" - всегда показываем когда есть родительская категория */}
+          {(categoryNavigation.parentCategory || categoryNavigation.breadcrumbs.length > 0) && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 mb-6">
+              <button
+                onClick={handleBackToRoot}
+                className="flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium rounded-xl border-2 border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 transition-all"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                <span>Все категории</span>
+              </button>
+            </div>
+          )}
+
+          {/* Отображаем категории в виде сетки, если есть категории для показа */}
+          {displayCategories.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+              {displayCategories.map((category) => {
+                // Проверяем, является ли эта категория текущей (отображаются её товары)
+                const isSelected = categoryNavigation.currentCategory?.id === category.id;
+                // Или проверяем, является ли эта категория родительской (показываем подкатегории)
+                const isParent = categoryNavigation.parentCategory?.id === category.id;
+                
+                return (
                   <button
-                    onClick={handleBackToCategories}
-                    className="flex-shrink-0 flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 transition-all whitespace-nowrap"
+                    onClick={() => handleCategoryClick(category)}
+                    key={category.id}
+                    className={`
+                      flex items-center justify-center px-4 py-3 text-sm font-medium rounded-xl border-2 transition-all
+                      ${isSelected 
+                        ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                        : isParent
+                          ? 'border-purple-300 bg-purple-50 text-purple-700'
+                          : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600'
+                      }
+                    `}
                   >
-                    <ChevronLeft className="h-4 w-4 mr-1" />
-                    {t.backToCategories}
+                    <span className="text-sm font-medium">{category.title}</span>
+                 
+                    {isParent && (
+                      <ChevronRight className="h-4 w-4 ml-2 text-purple-500" />
+                    )}
                   </button>
-                )}
-
-                {/* Карточки категорий */}
-                {displayCategories.map((category) => {
-                  const productCount = getDisplayProducts().filter(
-                    product => product.categoryId === category.id
-                  ).length;
-
-                  return (
-                    <button
-                      onClick={() => handleCategoryClick(category)}
-                      key={category.id}
-                      className={`flex-shrink-0 flex flex-col items-center justify-center px-4 py-2 text-sm font-medium rounded-lg border transition-all whitespace-nowrap ${
-                        categoryNavigation.currentCategory && category.id === categoryNavigation.currentCategory!.id
-                          ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm'
-                          : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50'
-                      }`}
-                    >
-                      <span className="text-sm font-medium">{category.title}</span>
-                    </button>
-                  );
-                })}
-              </div>
+                );
+              })}
             </div>
           )}
 
@@ -4213,12 +4221,15 @@ const renderCategoryCards = () => {
             </div>
           )}
 
-          {/* Товары отображаются ТОЛЬКО когда выбрана конкретная категория */}
-          {categoryNavigation.currentCategory && displayProducts.length > 0 && (
+          {/* Товары отображаются когда выбрана конкретная категория или есть родительская категория */}
+          {(categoryNavigation.currentCategory || categoryNavigation.parentCategory) && displayProducts.length > 0 && (
             <div className="mt-4">
-              <h4 className="text-base font-semibold mb-3 text-gray-700">
-                {categoryNavigation.currentCategory.title}
-              </h4>
+              {categoryNavigation.currentCategory && (
+                <h4 className="text-base font-semibold mb-3 text-gray-700 flex items-center gap-2">
+                  <span>{categoryNavigation.currentCategory.title}</span>
+                  
+                </h4>
+              )}
 
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                 {displayProducts.map((product) => {
@@ -4258,7 +4269,7 @@ const renderCategoryCards = () => {
           )}
 
           {/* Сообщение когда выбрана категория но нет товаров */}
-          {categoryNavigation.currentCategory && displayProducts.length === 0 && (
+          {(categoryNavigation.currentCategory || categoryNavigation.parentCategory) && displayProducts.length === 0 && (
             <div className="text-center py-8 text-gray-500 text-sm">
               {t.noProductsFound}
             </div>
