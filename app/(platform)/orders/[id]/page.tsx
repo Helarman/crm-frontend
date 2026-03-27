@@ -231,8 +231,8 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
         precheckFormed: "Пречек",
         formPrecheck: "Пречек",
         refundItem: "Вернуть блюдо",
-        refundReason: "Причина возврата",
-        confirmRefund: "Подтвердить возврат",
+        refundReason: "Комментарий",
+        confirmRefund: "Подтвердить",
         reorderedItem: "Дозаказ",
         itemReturned: "Возвращено",
         originalItems: "Основной заказ",
@@ -488,6 +488,46 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
       quantity: number;
       selected: boolean;
     }>>([]);
+    const [orderItemsScrollRef, setOrderItemsScrollRef] = useState<HTMLDivElement | null>(null);
+    const [showScrollDown, setShowScrollDown] = useState(false);
+const [refundReasonType, setRefundReasonType] = useState<'chef_error' | 'waiter_error' | 'long_wait' | 'other' | ''>('');
+const [refundMode, setRefundMode] = useState<'refund' | 'replace'>('refund');
+
+const refundReasons = [
+  { value: 'chef_error', label: 'Ошибка повара' },
+  { value: 'waiter_error', label: 'Ошибка официанта' },
+  { value: 'long_wait', label: 'Долго ждать' },
+  { value: 'other', label: 'Другое' }
+];
+
+    const checkScrollPosition = useCallback(() => {
+  if (orderItemsScrollRef) {
+    const { scrollTop, scrollHeight, clientHeight } = orderItemsScrollRef;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    setShowScrollDown(!isNearBottom);
+  }
+}, [orderItemsScrollRef]);
+
+// Добавьте функцию для прокрутки вниз
+const scrollToBottom = useCallback(() => {
+  if (orderItemsScrollRef) {
+    orderItemsScrollRef.scrollTo({
+      top: orderItemsScrollRef.scrollHeight,
+      behavior: 'smooth'
+    });
+  }
+}, [orderItemsScrollRef]);
+
+
+useEffect(() => {
+  if (orderItemsScrollRef) {
+    // Небольшая задержка для обновления DOM
+    setTimeout(() => {
+      checkScrollPosition();
+    }, 100);
+  }
+}, [order?.items, orderItemsScrollRef, checkScrollPosition]);
+
 
     const {
       isConnected: isWebSocketConnected,
@@ -684,7 +724,7 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
     };
 
     const handleComboItemsRefund = async () => {
-  if (!order || !selectedItemForRefund || !refundReason.trim()) return;
+  if (!order || !selectedItemForRefund ) return;
 
   const selectedItems = selectedComboItems.filter(item => item.selected);
   
@@ -695,6 +735,8 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
 
   try {
     setIsUpdating(true);
+    const reasonTypeText = refundReasons.find(r => r.value === refundReasonType)?.label || '';
+    const fullRefundReason = refundReason ? `${reasonTypeText}: ${refundReason}` : reasonTypeText;
 
     // Возвращаем каждое выбранное блюдо
     for (const { item, quantity } of selectedItems) {
@@ -702,7 +744,7 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
         order.id,
         item.id,
         quantity,
-        refundReason,
+         fullRefundReason,
         user?.id
       );
     }
@@ -1203,22 +1245,25 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
     };
 
     const handlePartialRefund = async () => {
-      if (!order || !selectedItemForRefund || !refundReason.trim() || refundQuantity <= 0) return;
+      if (!order || !selectedItemForRefund || refundQuantity <= 0) return;
 
       try {
         setIsUpdating(true);
+        const reasonTypeText = refundReasons.find(r => r.value === refundReasonType)?.label || '';
+        const fullRefundReason = refundReason ? `${reasonTypeText}: ${refundReason}` : reasonTypeText;
+
         const updatedOrder = await OrderService.partialRefundOrderItem(
           order.id,
           selectedItemForRefund.id,
           refundQuantity,
-          refundReason,
+          fullRefundReason,
           user?.id
         );
         setOrder(updatedOrder);
 
         await recalculateDiscount();
         await createOrderLog(
-          `${t.logs.itemRefunded}: ${selectedItemForRefund.product.title} x ${refundQuantity}`
+          `${t.logs.itemRefunded}: ${selectedItemForRefund.product.title} x ${refundQuantity} (${fullRefundReason})`
         );
 
         toast.success(
@@ -1227,6 +1272,7 @@ import { TablesService, TableStatus } from '@/lib/api/tables.service'
 
         setShowPartialRefundDialog(false);
         setRefundReason('');
+        setRefundReasonType('');
         setRefundQuantity(1);
       } catch (error) {
         toast.error(
@@ -1605,18 +1651,76 @@ console.log(order)
         setIsUpdating(false);
       }
     };
+const handleReplaceItem = async () => {
+  if (!order || !selectedItemForRefund || refundQuantity <= 0) return;
+
+  try {
+    setIsUpdating(true);
+    const reasonTypeText = refundReasons.find(r => r.value === refundReasonType)?.label || '';
+    const fullRefundReason = refundReason ? `${reasonTypeText}: ${refundReason}` : reasonTypeText;
+
+    // Сначала возвращаем текущее блюдо
+    const updatedOrder = await OrderService.partialRefundOrderItem(
+      order.id,
+      selectedItemForRefund.id,
+      refundQuantity,
+      fullRefundReason,
+      user?.id
+    );
+
+    // Затем добавляем новое блюдо (замена)
+    // Для замены создаем новый orderItem с ценой 0
+    await OrderService.addItemToOrder(
+      order.id,
+      {
+        productId: selectedItemForRefund.product.id,
+        quantity: refundQuantity,
+        additiveIds: selectedItemForRefund.additives.map(a => a.id),
+        comment: `ЗАМЕНА: ${fullRefundReason || 'Без причины'}`,
+        price: 0 // Цена 0 для замены
+      }
+    );
+
+    // Обновляем заказ
+    const refreshedOrder = await OrderService.getById(order.id);
+    setOrder(refreshedOrder);
+
+    await recalculateDiscount();
+    await createOrderLog(
+      `Замена: ${selectedItemForRefund.product.title} x ${refundQuantity} → добавлено новое блюдо (${fullRefundReason})`
+    );
+
+    toast.success(`Замена выполнена: ${refundQuantity} шт.`);
+
+    // Закрываем диалог и сбрасываем состояния
+    setShowRefundDialog(false);
+    setRefundReason('');
+    setRefundReasonType('');
+    setRefundQuantity(1);
+    setRefundMode('refund');
+
+  } catch (error) {
+    console.error('Error replacing item:', error);
+    toast.error('Ошибка при замене блюда');
+  } finally {
+    setIsUpdating(false);
+  }
+};
 
     const handleRefundItem = async () => {
       if (!order) return;
-      if (!selectedItemForRefund || !refundReason.trim()) return;
-
+      if (!selectedItemForRefund ) return;
       try {
         setIsUpdating(true);
+
+        const reasonTypeText = refundReasons.find(r => r.value === refundReasonType)?.label || '';
+        const fullRefundReason = refundReason ? `${reasonTypeText}: ${refundReason}` : reasonTypeText;
+
         const updatedOrder = await OrderService.refundItem(
           order.id,
           selectedItemForRefund.id,
           {
-            reason: refundReason,
+            reason: fullRefundReason,
             userId: user?.id
           }
         );
@@ -1624,7 +1728,7 @@ console.log(order)
 
         await recalculateDiscount();
 
-        await createOrderLog(`${t.logs.itemRefunded} : ${selectedItemForRefund.product.title} x ${selectedItemForRefund.quantity}`);
+        await createOrderLog(`${t.logs.itemRefunded} : ${selectedItemForRefund.product.title} x ${selectedItemForRefund.quantity} (${fullRefundReason})`);
 
         toast.success('Блюдо возвращено');
         setShowRefundDialog(false);
@@ -1897,6 +2001,7 @@ const calculateComboTotalPrice = (product: Product, comboSelection: ComboSelecti
 };
 
 const handleQuantityChange = useCallback(async (product: Product, newQuantity: number, additives: string[], comment: string, parentComboId?: string) => {
+
   if (!orderId || !isOrderEditable || !order || !getOrderItems()) return;
 
   // Защита от отрицательных значений
@@ -2044,6 +2149,8 @@ const timer = setTimeout(async () => {
     console.error('Ошибка при обновлении заказа:', err);
     toast.error('Ошибка при обновлении заказа');
   } finally {
+    scrollToBottom()
+
     setIsUpdating(false);
   }
 }, 1000);
@@ -2838,6 +2945,7 @@ const ItemHistoryDialog = ({ item, open, onOpenChange }: {
 
       const canRefundItem = [
         OrderItemStatus.COMPLETED,
+        OrderItemStatus.IN_PROGRESS, 
       ].includes(item.status) && isOrderEditable && !item.isRefund;
 
       return (
@@ -3313,7 +3421,7 @@ const CompactItemCard = ({ item }: { item: OrderItem }) => {
 
   const canRefund = ['COMPLETED', 'DELIVERING', 'PREPARING', 'READY'].includes(order?.status || '') && !item.isRefund;
   const canRefundItem = [
-    OrderItemStatus.COMPLETED,
+    OrderItemStatus.COMPLETED, OrderItemStatus.IN_PROGRESS,
   ].includes(item.status) && isOrderEditable && !item.isRefund;
   
   const isCooking = item.status === OrderItemStatus.IN_PROGRESS && item.timestamps.startedAt && !item.timestamps.completedAt;
@@ -3558,54 +3666,62 @@ const CompactItemCard = ({ item }: { item: OrderItem }) => {
                   </Button>
                 )}
 
-                {/* Возврат */}
-                {canRefund && canRefundItem && !isParentCombo && !item.isRefund && (
-                  (() => {
-                    const isBeforeKitchen = order?.status === 'CREATED';
-                    
-                    const isAfterKitchenButBeforePrecheck = 
-                      order?.status === 'PREPARING' && 
-                      item.status === OrderItemStatus.COMPLETED;
-                    
-                    const canKitchenStaffReturn = 
-                      isAfterKitchenButBeforePrecheck && 
-                      ['WAITER', 'CASHIER','MANAGER', 'SUPERVISOR'].includes(user.role);
-                    
-                    const isAfterPrecheck = order?.attentionFlags?.isPrecheck;
-                    const canManagerReturn = 
-                      isAfterPrecheck && 
-                      ['MANAGER', 'SUPERVISOR'].includes(user.role);
-                    
-                    const shouldShow = 
-                      isBeforeKitchen || 
-                      canKitchenStaffReturn || 
-                      canManagerReturn;
-                    
-                    return shouldShow && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={`${!canManagerReturn && !isParentCombo ? 'hidden' : ''} h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50`}
-                        onClick={() => {
-                          if (isParentCombo && hasChildren) {
-                            // Открываем диалог выбора блюд для возврата из комбо
-                            setSelectedItemForRefund(item);
-                            setShowComboRefundDialog(true);
-                          } else {
-                            setSelectedItemForRefund(item);
-                            setMaxRefundQuantity(item.quantity);
-                            setRefundQuantity(1);
-                            setShowRefundDialog(true);
-                          }
-                        }}
-                        disabled={isUpdating || (!canManagerReturn && !isParentCombo)}
-                        title={isParentCombo ? 'Вернуть блюда из комбо' : 'Возврат'}
-                      >
-                        <Undo className="h-4 w-4 2xl:h-5 2xl:w-5" />
-                      </Button>
-                    );
-                  })()
-                )}
+   
+            {!item.isRefund && !isParentCombo && (
+  (() => {
+    // Возврат для блюд в статусе CREATED (можно вернуть до отправки на кухню)
+    const isBeforeKitchen = order?.status === 'CREATED' && 
+                            item.status === OrderItemStatus.CREATED;
+    
+    // Возврат для блюд в статусе IN_PROGRESS (готовится) или COMPLETED (готов)
+    // для заказа в статусе PREPARING (до пречека)
+    const isDuringCooking = 
+      order?.status === 'PREPARING' && 
+      !order?.attentionFlags?.isPrecheck &&
+      (item.status === OrderItemStatus.IN_PROGRESS || 
+       item.status === OrderItemStatus.COMPLETED);
+    
+    // Возврат для блюд в статусе COMPLETED после пречека (только менеджеры)
+    const isAfterPrecheck = 
+      order?.attentionFlags?.isPrecheck && 
+      item.status === OrderItemStatus.COMPLETED &&
+      ['MANAGER', 'SUPERVISOR'].includes(user.role);
+    
+    // Обычные официанты могут возвращать:
+    // 1. Блюда до отправки на кухню (CREATED)
+    // 2. Блюда во время готовки (IN_PROGRESS) до пречека
+    const canWaiterReturn = (isBeforeKitchen || isDuringCooking) && 
+                            ['WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR'].includes(user.role);
+    
+    // Менеджеры могут возвращать в любых случаях
+    const canManagerReturn = isAfterPrecheck;
+    
+    const shouldShow = canWaiterReturn || canManagerReturn;
+    
+    return shouldShow && (
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+        onClick={() => {
+          if (isParentCombo && hasChildren) {
+            setSelectedItemForRefund(item);
+            setShowComboRefundDialog(true);
+          } else {
+            setSelectedItemForRefund(item);
+            setMaxRefundQuantity(item.quantity);
+            setRefundQuantity(1);
+            setShowRefundDialog(true);
+          }
+        }}
+        disabled={isUpdating}
+        title="Возврат"
+      >
+        <Undo className="h-4 w-4 2xl:h-5 2xl:w-5" />
+      </Button>
+    );
+  })()
+)}
 
                 {/* Удаление - только для CREATED позиций */}
                 {canEditQuantity && (
@@ -4859,36 +4975,48 @@ const renderTotalWithButtons = () => {
       {!isRightColCollapsed &&
       <div className="flex-1 min-h-0">
         {/* Таб "Заказ" */}
-      {activeTab === 'order' && (
- <div className="h-full overflow-y-auto space-y-4 ">
-  {/* Сначала обычные элементы (не комбо и не дочерние) */}
-  {getOrderItems()
-    .filter(item => 
-      item.status !== OrderItemStatus.IN_PROGRESS && 
-      !item.parentComboId // Исключаем дочерние элементы комбо
-    )
-    .sort((a, b) => {
-      const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
-      const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
-      return dateA - dateB;
-    })
-    .map(item => <CompactItemCard key={item.id} item={item} />)}
-  
-  {/* Затем готовящиеся позиции (IN_PROGRESS) в конце */}
-  {getOrderItems()
-    .filter(item => 
-      item.status === OrderItemStatus.IN_PROGRESS && 
-      !item.parentComboId // Исключаем дочерние элементы комбо
-    )
-    .sort((a, b) => {
-      const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
-      const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
-      return dateA - dateB;
-    })
-    .map(item => <CompactItemCard key={item.id} item={item} />)}
-  
-  {renderTotalWithButtons()}
-</div>
+ {activeTab === 'order' && (
+  <div className="h-full relative">
+    {/* Кастомный скролл контейнер */}
+    <div 
+      ref={setOrderItemsScrollRef}
+      onScroll={checkScrollPosition}
+      className="h-full overflow-y-auto space-y-4 pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400"
+      style={{
+        scrollbarWidth: 'thin',
+        scrollbarColor: '#cbd5e1 #f1f5f9'
+      }}
+    >
+      {/* Сначала обычные элементы (не комбо и не дочерние) */}
+      {getOrderItems()
+        .filter(item => 
+          item.status !== OrderItemStatus.IN_PROGRESS && 
+          !item.parentComboId // Исключаем дочерние элементы комбо
+        )
+        .sort((a, b) => {
+          const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
+          const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
+          return dateA - dateB;
+        })
+        .map(item => <CompactItemCard key={item.id} item={item} />)}
+      
+      {/* Затем готовящиеся позиции (IN_PROGRESS) в конце */}
+      {getOrderItems()
+        .filter(item => 
+          item.status === OrderItemStatus.IN_PROGRESS && 
+          !item.parentComboId // Исключаем дочерние элементы комбо
+        )
+        .sort((a, b) => {
+          const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
+          const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
+          return dateA - dateB;
+        })
+        .map(item => <CompactItemCard key={item.id} item={item} />)}
+         {renderTotalWithButtons()}
+    </div>
+    
+    
+  </div>
 )}
                 
         {/* Таб "История" */}
@@ -5461,99 +5589,163 @@ const renderTotalWithButtons = () => {
             />
           )}
           
-          <AlertDialog open={showRefundDialog} onOpenChange={setShowRefundDialog}>
-            <AlertDialogContent className="max-w-md">
-              <AlertDialogHeader>
-                <AlertDialogTitle className="text-2xl">
-                  {t.refundItem}
-                </AlertDialogTitle>
-                <AlertDialogDescription className="text-lg">
-                  {selectedItemForRefund?.product.title} ({selectedItemForRefund?.quantity} шт.)
-                </AlertDialogDescription>
-              </AlertDialogHeader>
+        <AlertDialog open={showRefundDialog} onOpenChange={(open) => {
+  setShowRefundDialog(open);
+  if (!open) {
+    // Сбрасываем режим при закрытии
+    setRefundMode('refund');
+    setRefundReasonType('');
+    setRefundReason('');
+  }
+}}>
+  <AlertDialogContent className="max-w-md">
+    <AlertDialogHeader>
+      <AlertDialogTitle className="text-2xl">
+        {refundMode === 'refund' ? t.refundItem : 'Замена блюда'}
+      </AlertDialogTitle>
+      <AlertDialogDescription className="text-lg">
+        {selectedItemForRefund?.product.title} ({refundQuantity} шт.)
+      </AlertDialogDescription>
+    </AlertDialogHeader>
 
-              <div className="space-y-6">
-                <div className="space-y-3">
-                  <Label className="text-lg font-semibold">
-                    Количество для возврата:
-                  </Label>
-                  <div className="flex items-center gap-3">
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      onClick={() => setRefundQuantity(prev => Math.max(1, prev - 1))}
-                      disabled={refundQuantity <= 1}
-                      className="h-12 w-12"
-                    >
-                      <Minus className="h-5 w-5" />
-                    </Button>
-                    <Input
-                      type="number"
-                      min="1"
-                      max={maxRefundQuantity}
-                      value={refundQuantity}
-                      onChange={(e) => {
-                        const value = parseInt(e.target.value) || 1;
-                        setRefundQuantity(Math.max(1, Math.min(maxRefundQuantity, value)));
-                      }}
-                      className="h-12 text-xl text-center font-bold w-24"
-                    />
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      onClick={() => setRefundQuantity(prev => Math.min(maxRefundQuantity, prev + 1))}
-                      disabled={refundQuantity >= maxRefundQuantity}
-                      className="h-12 w-12"
-                    >
-                      <Plus className="h-5 w-5" />
-                    </Button>
-                    <span className="text-lg text-gray-600">
-                      / {maxRefundQuantity} шт.
-                    </span>
-                  </div>
-                </div>
+    <div className="space-y-6">
+      {/* Переключатель режимов */}
+      <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
+        <button
+          onClick={() => setRefundMode('refund')}
+          className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${
+            refundMode === 'refund'
+              ? 'bg-white text-red-600 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Возврат
+        </button>
+        <button
+          onClick={() => setRefundMode('replace')}
+          className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${
+            refundMode === 'replace'
+              ? 'bg-white text-blue-600 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          Замена
+        </button>
+      </div>
 
-                <div className="space-y-3">
-                  <Label className="text-lg font-semibold">
-                    {t.refundReason}
-                  </Label>
-                  <Textarea
-                    value={refundReason}
-                    onChange={(e) => setRefundReason(e.target.value)}
-                    placeholder={t.cookingError}
-                    className="min-h-[100px] text-lg"
-                  />
-                </div>
-              </div>
+      {/* Количество для возврата */}
+      <div className="space-y-3">
+        <Label className="text-lg font-semibold">
+          Количество:
+        </Label>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={() => setRefundQuantity(prev => Math.max(1, prev - 1))}
+            disabled={refundQuantity <= 1}
+            className="h-12 w-12"
+          >
+            <Minus className="h-5 w-5" />
+          </Button>
+          <Input
+            type="number"
+            min="1"
+            max={maxRefundQuantity}
+            value={refundQuantity}
+            onChange={(e) => {
+              const value = parseInt(e.target.value) || 1;
+              setRefundQuantity(Math.max(1, Math.min(maxRefundQuantity, value)));
+            }}
+            className="h-12 text-xl text-center font-bold w-24"
+          />
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={() => setRefundQuantity(prev => Math.min(maxRefundQuantity, prev + 1))}
+            disabled={refundQuantity >= maxRefundQuantity}
+            className="h-12 w-12"
+          >
+            <Plus className="h-5 w-5" />
+          </Button>
+          <span className="text-lg text-gray-600">
+            / {maxRefundQuantity} шт.
+          </span>
+        </div>
+      </div>
 
-              <AlertDialogFooter className="gap-3  mt-6 g">
-                {refundQuantity < maxRefundQuantity && (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setRefundQuantity(maxRefundQuantity);
-                    }}
-                    className="h-12 text-lg"
-                  >
-                    Вернуть все
-                  </Button>
-                )}
-                <AlertDialogCancel className="h-12 text-lg">
-                  {t.cancel}
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={refundQuantity === maxRefundQuantity ? handleRefundItem : handlePartialRefund}
-                  disabled={!refundReason.trim() || isUpdating}
-                  className="h-12 text-lg"
-                >
-                  {isUpdating && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
-                  {refundQuantity === maxRefundQuantity
-                    ? t.confirmRefund
-                    : `Вернуть ${refundQuantity} шт.`}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+      {/* Причина возврата/замены */}
+      <div className="space-y-3">
+        <Label className="text-lg font-semibold">
+          Причина {refundMode === 'refund' ? 'возврата' : 'замены'}
+        </Label>
+        <Select 
+          value={refundReasonType} 
+          onValueChange={(value) => setRefundReasonType(value as any)}
+        >
+          <SelectTrigger className="h-12 text-lg w-full">
+            <SelectValue placeholder="Выберите причину" />
+          </SelectTrigger>
+          <SelectContent>
+            {refundReasons.map(reason => (
+              <SelectItem key={reason.value} value={reason.value} className="text-lg py-2">
+                {reason.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Комментарий */}
+      <div className="space-y-3">
+        <Label className="text-lg font-semibold">
+          Дополнительный комментарий
+        </Label>
+        <Textarea
+          value={refundReason}
+          onChange={(e) => setRefundReason(e.target.value)}
+          placeholder={refundMode === 'refund' ? t.cookingError : "Например: Подать другое блюдо"}
+          className="min-h-[100px] text-lg"
+        />
+      </div>
+
+     
+    </div>
+
+    <AlertDialogFooter className="gap-3 mt-6">
+      {refundQuantity < maxRefundQuantity && (
+        <Button
+          variant="outline"
+          onClick={() => {
+            setRefundQuantity(maxRefundQuantity);
+          }}
+          className="h-12 text-lg"
+        >
+          {refundMode === 'refund' ? 'Вернуть все' : 'Заменить все'}
+        </Button>
+      )}
+      <AlertDialogCancel className="h-12 text-lg">
+        {t.cancel}
+      </AlertDialogCancel>
+      <AlertDialogAction
+        onClick={refundMode === 'refund' 
+          ? (refundQuantity === maxRefundQuantity ? handleRefundItem : handlePartialRefund)
+          : handleReplaceItem
+        }
+        disabled={!refundReasonType.trim() || isUpdating}
+        className={`h-12 text-lg ${refundMode === 'replace' ? 'bg-blue-500 hover:bg-blue-600' : ''}`}
+      >
+        {isUpdating && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
+        {refundMode === 'refund' 
+          ? (refundQuantity === maxRefundQuantity ? t.confirmRefund : `Вернуть ${refundQuantity} шт.`)
+          : `Подтвердить`
+        }
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+
+        
 
           <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
   <AlertDialogContent className="max-w-md">
