@@ -139,16 +139,16 @@ import {
 import { motion, useAnimationControls } from 'framer-motion'
 import { TablesService, TableStatus } from '@/lib/api/tables.service'
 
-type OptimisticOrderItem = Pick<OrderItem, 
-  'id' | 
-  'product' | 
-  'productId' | 
-  'quantity' | 
-  'additives' | 
-  'comment' | 
-  'parentComboId' | 
-  'status' | 
-  'isRefund' | 
+type OptimisticOrderItem = Pick<OrderItem,
+  'id' |
+  'product' |
+  'productId' |
+  'quantity' |
+  'additives' |
+  'comment' |
+  'parentComboId' |
+  'status' |
+  'isRefund' |
   'createdAt'
 > & {
   timestamps?: { createdAt: string };
@@ -170,28 +170,28 @@ const useOptimisticOrderUpdate = (initialOrder: OrderResponse | null) => {
     }
   }, [initialOrder?.items]);
 
- const addOptimisticItem = (product: Product, quantity: number, additives: string[], comment: string, parentComboId?: string) => {
-  const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  
-  const newItem: OptimisticOrderItem = {
-    id: tempId,
-    productId: product.id,
-    product: product,
-    quantity: quantity,
-    additives: additives.map(id => ({ id, title: '', price: 0 })),
-    comment: comment,
-    parentComboId: parentComboId,
-    status: OrderItemStatus.CREATED,
-    isRefund: false,
-    createdAt: new Date(),
-    timestamps: { createdAt: new Date().toISOString() },
-    additiveIds: additives,
-    isReordered: false,
-    parentOrderItemId: null,
-  };
+  const addOptimisticItem = (product: Product, quantity: number, additives: string[], comment: string, parentComboId?: string) => {
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+    const newItem: OptimisticOrderItem = {
+      id: tempId,
+      productId: product.id,
+      product: product,
+      quantity: quantity,
+      additives: additives.map(id => ({ id, title: '', price: 0 })),
+      comment: comment,
+      parentComboId: parentComboId,
+      status: OrderItemStatus.CREATED,
+      isRefund: false,
+      createdAt: new Date(),
+      timestamps: { createdAt: new Date().toISOString() },
+      additiveIds: additives,
+      isReordered: false,
+      parentOrderItemId: null,
+    };
 
     setOptimisticItems(prev => [...prev, newItem]);
-    
+
     setPendingOperations(prev => {
       const newMap = new Map(prev);
       newMap.set(tempId, { type: 'add', item: newItem });
@@ -202,10 +202,10 @@ const useOptimisticOrderUpdate = (initialOrder: OrderResponse | null) => {
   };
 
   const updateOptimisticItem = (itemId: string, newQuantity: number) => {
-    setOptimisticItems(prev => prev.map(item => 
+    setOptimisticItems(prev => prev.map(item =>
       item.id === itemId ? { ...item, quantity: newQuantity } : item
     ));
-    
+
     setPendingOperations(prev => {
       const newMap = new Map(prev);
       newMap.set(itemId, { type: 'update', item: { id: itemId, quantity: newQuantity } });
@@ -215,7 +215,7 @@ const useOptimisticOrderUpdate = (initialOrder: OrderResponse | null) => {
 
   const removeOptimisticItem = (itemId: string) => {
     setOptimisticItems(prev => prev.filter(item => item.id !== itemId));
-    
+
     setPendingOperations(prev => {
       const newMap = new Map(prev);
       newMap.set(itemId, { type: 'remove', item: { id: itemId } });
@@ -796,7 +796,7 @@ export default function WaiterOrderPage() {
     }
   };
 
-    const getOrderItems = () => {
+  const getOrderItems = () => {
     // Используем оптимистичные items, если они есть, иначе реальные
     if (optimisticItems.length > 0 && pendingOperations.size > 0) {
       return optimisticItems;
@@ -1346,7 +1346,6 @@ export default function WaiterOrderPage() {
     return total;
   };
 
-  // ОСНОВНАЯ ОПТИМИЗИРОВАННАЯ ФУНКЦИЯ ДЛЯ ДОБАВЛЕНИЯ В ЗАКАЗ
   const handleQuantityChange = useCallback(async (
     product: Product,
     newQuantity: number,
@@ -1365,26 +1364,34 @@ export default function WaiterOrderPage() {
       clearTimeout(pendingAdditions[key].timer!);
     }
 
-    if (newQuantity === 0) {
-      // Находим существующий item для удаления
-      const existingItem = getOrderItems().find(item =>
-        item.product.id === product.id &&
-        JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
-        (item.parentComboId || null) === (parentComboId || null) &&
-        item.status === OrderItemStatus.CREATED
-      );
+    // Поиск существующего item в реальном заказе (не оптимистичном)
+    const existingRealItem = order?.items?.find(item =>
+      item.product.id === product.id &&
+      JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
+      (item.parentComboId || null) === (parentComboId || null) &&
+      item.status === OrderItemStatus.CREATED
+    );
 
-      if (existingItem) {
-        // Оптимистичное удаление
-        removeOptimisticItem(existingItem.id);
+    // Проверяем, есть ли оптимистичный item (с temp- id)
+    const optimisticItem = optimisticItems.find(item =>
+      item.product.id === product.id &&
+      JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
+      (item.parentComboId || null) === (parentComboId || null) &&
+      item.id?.startsWith('temp-')
+    );
+
+    // Если есть реальный item на сервере - используем update
+    if (existingRealItem) {
+      if (newQuantity === 0) {
+        // Удаление существующего
+        removeOptimisticItem(existingRealItem.id);
 
         const timer = setTimeout(async () => {
           try {
             setIsUpdating(true);
-            await OrderService.removeItemFromOrder(orderId as string, existingItem.id);
+            await OrderService.removeItemFromOrder(orderId as string, existingRealItem.id);
             await createOrderLog(`${t.logs.itemRemoved}: ${product.title}`);
-
-            clearPendingOperation(existingItem.id);
+            clearPendingOperation(existingRealItem.id);
           } catch (err) {
             console.error('Ошибка при удалении:', err);
             toast.error('Ошибка при удалении позиции');
@@ -1403,58 +1410,164 @@ export default function WaiterOrderPage() {
           ...prev,
           [key]: { quantity: newQuantity, additives, comment, parentComboId, timer }
         }));
+      } else {
+        // Обновление существующего
+        updateOptimisticItem(existingRealItem.id, newQuantity);
+
+        const timer = setTimeout(async () => {
+          try {
+            setIsUpdating(true);
+            const updatedOrder = await OrderService.updateOrderItemQuantity(
+              orderId as string,
+              existingRealItem.id,
+              newQuantity,
+              user?.id
+            );
+
+            if (updatedOrder) {
+              setOrder(updatedOrder);
+            }
+
+            clearPendingOperation(existingRealItem.id);
+            await createOrderLog(`Изменено количество: ${product.title} → ${newQuantity}`);
+          } catch (err) {
+            console.error('Ошибка при обновлении:', err);
+            toast.error('Ошибка при обновлении количества');
+            await fetchOrder();
+          } finally {
+            setIsUpdating(false);
+            setPendingAdditions(prev => {
+              const newState = { ...prev };
+              delete newState[key];
+              return newState;
+            });
+          }
+        }, 500);
+
+        setPendingAdditions(prev => ({
+          ...prev,
+          [key]: { quantity: newQuantity, additives, comment, parentComboId, timer }
+        }));
       }
       return;
     }
 
-    // Поиск существующего элемента
-    const existingItem = getOrderItems().find(item =>
-      item.product.id === product.id &&
-      JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
-      (item.parentComboId || null) === (parentComboId || null) &&
-      item.status === OrderItemStatus.CREATED
-    );
+    // Если есть оптимистичный item (еще не на сервере) - обновляем его количество локально
+    if (optimisticItem) {
+      if (newQuantity === 0) {
+        // Удаляем оптимистичный item
+        removeOptimisticItem(optimisticItem.id);
+        clearPendingOperation(optimisticItem.id);
 
-    if (existingItem) {
-      // Обновление существующего - оптимистичное обновление
-      updateOptimisticItem(existingItem.id, newQuantity);
+        setPendingAdditions(prev => {
+          const newState = { ...prev };
+          delete newState[key];
+          return newState;
+        });
+      } else {
+        // Обновляем количество оптимистичного item'a
+        updateOptimisticItem(optimisticItem.id, newQuantity);
 
-      const timer = setTimeout(async () => {
-        try {
-          setIsUpdating(true);
-          const updatedOrder = await OrderService.updateOrderItemQuantity(
-            orderId as string,
-            existingItem.id,
-            newQuantity,
-            user?.id
-          );
-
-          if (updatedOrder) {
-            setOrder(updatedOrder);
-          }
-
-          clearPendingOperation(existingItem.id);
-          await createOrderLog(`Изменено количество: ${product.title} → ${newQuantity}`);
-        } catch (err) {
-          console.error('Ошибка при обновлении:', err);
-          toast.error('Ошибка при обновлении количества');
-          await fetchOrder();
-        } finally {
-          setIsUpdating(false);
-          setPendingAdditions(prev => {
-            const newState = { ...prev };
-            delete newState[key];
-            return newState;
-          });
+        // Отменяем предыдущий таймер для этого ключа
+        if (pendingAdditions[key]?.timer) {
+          clearTimeout(pendingAdditions[key].timer);
         }
-      }, 500);
 
-      setPendingAdditions(prev => ({
-        ...prev,
-        [key]: { quantity: newQuantity, additives, comment, parentComboId, timer }
-      }));
-    } else {
-      // Добавление нового - оптимистичное добавление
+        // Устанавливаем новый таймер для отправки на сервер
+        const timer = setTimeout(async () => {
+          try {
+            setIsUpdating(true);
+
+            if (product.isCombo && pendingComboSelectionRef.current) {
+              // Обработка комбо...
+              const comboSelection = pendingComboSelectionRef.current;
+              const comboGroupId = `combo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+              const comboTotalPrice = calculateComboTotalPrice(product, comboSelection, (product as any).comboItems);
+
+              const mainOrderItem = await OrderService.addItemToOrder(orderId as string, {
+                productId: product.id,
+                quantity: newQuantity,
+                additiveIds: [],
+                comment: comboGroupId,
+                price: comboTotalPrice
+              });
+
+              await new Promise(resolve => setTimeout(resolve, 300));
+              const currentOrder = await OrderService.getById(orderId as string);
+              const parentItem = currentOrder.items.find(item =>
+                item.comment === comboGroupId && item.product.id === product.id
+              );
+
+              if (parentItem) {
+                const childPromises = [];
+                for (const [comboItemId, selection] of Object.entries(comboSelection.selections)) {
+                  for (const selectedProduct of selection.selectedProducts) {
+                    childPromises.push(
+                      OrderService.addItemToOrder(orderId as string, {
+                        productId: selectedProduct.productId,
+                        quantity: selectedProduct.quantity * newQuantity,
+                        additiveIds: [],
+                        parentComboId: product.id,
+                        parentOrderItemId: parentItem.id,
+                        comment: comboGroupId,
+                        price: 0
+                      })
+                    );
+                  }
+                }
+                await Promise.all(childPromises);
+              }
+
+              setPendingComboSelection(null);
+              pendingComboSelectionRef.current = null;
+            } else {
+              // Добавляем новый item на сервер
+              await OrderService.addItemToOrder(orderId as string, {
+                productId: product.id,
+                quantity: newQuantity,
+                additiveIds: additives,
+                comment,
+                parentComboId
+              });
+            }
+
+            const finalUpdatedOrder = await OrderService.getById(orderId as string);
+            setOrder(finalUpdatedOrder);
+
+            // Очищаем оптимистичный item (он заменится реальным)
+            if (optimisticItem.id) {
+              clearPendingOperation(optimisticItem.id);
+            }
+
+            await createOrderLog(`${t.logs.itemAdded}: ${product.title} x ${newQuantity}`);
+            scrollToBottom();
+          } catch (err) {
+            console.error('Ошибка при добавлении:', err);
+            toast.error('Ошибка при добавлении позиции');
+            await fetchOrder();
+            if (optimisticItem.id) {
+              clearPendingOperation(optimisticItem.id);
+            }
+          } finally {
+            setIsUpdating(false);
+            setPendingAdditions(prev => {
+              const newState = { ...prev };
+              delete newState[key];
+              return newState;
+            });
+          }
+        }, 500);
+
+        setPendingAdditions(prev => ({
+          ...prev,
+          [key]: { quantity: newQuantity, additives, comment, parentComboId, timer }
+        }));
+      }
+      return;
+    }
+
+    // Совсем новый продукт - добавляем оптимистично
+    if (newQuantity > 0) {
       tempId = addOptimisticItem(product, newQuantity, additives, comment, parentComboId);
 
       const timer = setTimeout(async () => {
@@ -1462,6 +1575,7 @@ export default function WaiterOrderPage() {
           setIsUpdating(true);
 
           if (product.isCombo && pendingComboSelectionRef.current) {
+            // Обработка комбо...
             const comboSelection = pendingComboSelectionRef.current;
             const comboGroupId = `combo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             const comboTotalPrice = calculateComboTotalPrice(product, comboSelection, (product as any).comboItems);
@@ -1543,7 +1657,7 @@ export default function WaiterOrderPage() {
         [key]: { quantity: newQuantity, additives, comment, parentComboId, timer }
       }));
     }
-  }, [orderId, isOrderEditable, order, getOrderItems, user, scrollToBottom]);
+  }, [orderId, isOrderEditable, order, optimisticItems, order?.items, user, scrollToBottom]);
 
   // Очистка pending операций при получении WebSocket обновлений
   useEffect(() => {
@@ -2170,18 +2284,18 @@ export default function WaiterOrderPage() {
 
     return total;
   };
-const getOrderHeader = () => {
-  if (!order) return '';
+  const getOrderHeader = () => {
+    if (!order) return '';
 
-  switch (order.type) {
-    case 'DINE_IN':
-      return `Стол ${order.tableNumber || '—'}`;
-    case 'BANQUET':
-      return `Стол ${order.tableNumber || '—'}`;
-    default:
-      return `Заказ ${order.number}`;
-  }
-};
+    switch (order.type) {
+      case 'DINE_IN':
+        return `Стол ${order.tableNumber || '—'}`;
+      case 'BANQUET':
+        return `Стол ${order.tableNumber || '—'}`;
+      default:
+        return `Заказ ${order.number}`;
+    }
+  };
   const handleReorderItem = async (item: OrderItem) => {
     if (!order) return;
 
@@ -2645,7 +2759,7 @@ const getOrderHeader = () => {
     const handleAddToOrder = () => {
       if (!isOrderEditable) return;
 
-      if (product.isCombo && comboItems && comboItems.length > 0) {
+      if (product.isCombo) {
         setShowComboDialog(true);
       } else {
         onQuantityChange(quantity + 1);
@@ -2718,31 +2832,49 @@ const getOrderHeader = () => {
               </h3>
             </div>
 
-            <div className="mt-auto pt-3 border-t border-gray-100">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="default"
-                  className="flex-1 h-11 text-base font-medium"
-                  onClick={() => {
-                    const newQuantity = Math.max(0, quantity - 1);
-                    onQuantityChange(newQuantity);
-                  }}
-                  disabled={quantity === 0 || !isOrderEditable}
-                >
-                  <Minus className="h-5 w-5 mr-1" />
-                </Button>
 
+            <div className="mt-auto pt-3 border-t border-gray-100">
+              {quantity > 0 ? (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="default"
+                    className="flex-1 h-11 text-base font-medium"
+                    onClick={() => {
+                      const newQuantity = Math.max(0, quantity - 1);
+                      onQuantityChange(newQuantity);
+                    }}
+                    disabled={quantity === 0 || !isOrderEditable}
+                  >
+                    <Minus className="h-5 w-5 mr-1" />
+                  </Button>
+
+                  <div className="flex-1 text-center font-bold text-lg">
+                    {quantity}
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="default"
+                    className="flex-1 h-11 text-base font-medium"
+                    onClick={() => onQuantityChange(quantity + 1)}
+                    disabled={!isOrderEditable}
+                  >
+                    <Plus className="h-5 w-5 mr-1" />
+                  </Button>
+                </div>
+              ) : (
                 <Button
-                  variant="outline"
+                  variant="default"
                   size="default"
-                  className="flex-1 h-11 text-base font-medium"
-                  onClick={handleAddToOrder}
+                  className="w-full h-11 text-base font-medium bg-green-500 hover:bg-green-600"
+                  onClick={() => handleAddToOrder()}
                   disabled={!isOrderEditable}
                 >
                   <Plus className="h-5 w-5 mr-1" />
+                  Добавить
                 </Button>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -2751,6 +2883,354 @@ const getOrderHeader = () => {
           <ComboSelectionDialog {...dialogProps} />
         )}
       </>
+    );
+  };
+
+  const ItemCard = ({ item }: { item: OrderItem }) => {
+    const [isComboExpanded, setIsComboExpanded] = useState(false);
+
+    const getCookingTime = () => {
+      if (!item.timestamps.startedAt) return null;
+
+      const startTime = new Date(item.timestamps.startedAt).getTime();
+      let endTime = item.timestamps.completedAt
+        ? new Date(item.timestamps.completedAt).getTime()
+        : Date.now();
+
+      const cookingTimeMinutes = Math.round((endTime - startTime) / (1000 * 60));
+
+      return cookingTimeMinutes;
+    };
+
+    const cookingTime = getCookingTime();
+
+    // Определяем, является ли элемент родительским комбо
+    const isParentCombo = item.isComboParent || false;
+    const isChildItem = !!item.parentOrderItemId;
+    const canEditQuantity = item.status === OrderItemStatus.CREATED && isOrderEditable && !isParentCombo;
+
+    // Находим дочерние элементы для родительского комбо
+    const childItems = isParentCombo
+      ? getOrderItems().filter(childItem => childItem.parentOrderItemId === item.id && !childItem.isRefund)
+      : [];
+
+    const refundedChildItems = isParentCombo
+      ? getOrderItems().filter(childItem => childItem.parentOrderItemId === item.id && childItem.isRefund)
+      : [];
+
+    const hasChildren = childItems.length > 0;
+    const hasRefundedChildren = refundedChildItems.length > 0;
+
+    // Подсчет общего количества блюд в комбо
+    const totalComboItems = childItems.length + refundedChildItems.length;
+    const activeComboItems = childItems.length;
+
+    // Если это дочерний элемент комбо (не возвращенный), скрываем его
+    if (isChildItem && !item.isRefund) {
+      return null;
+    }
+
+    return (
+      <Card
+        key={item.id}
+        className={`p-4 ${item.isReordered ? 'border-l-4 border-blue-500 dark:border-blue-400' : ''} ${item.isRefund ? 'bg-red-50 dark:bg-red-900/20' : 'bg-card'
+          } ${isParentCombo ? 'border-2 border-purple-200 bg-purple-50/30' : ''}`}
+      >
+        <div className="flex justify-between items-start gap-4">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Кнопка сворачивания для комбо */}
+              {isParentCombo && hasChildren && (
+                <button
+                  onClick={() => setIsComboExpanded(!isComboExpanded)}
+                  className="flex-shrink-0 p-1 hover:bg-purple-100 rounded-md transition-colors flex items-center"
+                  title={isComboExpanded ? "Свернуть состав" : "Развернуть состав"}
+                >
+                  {isComboExpanded ? (
+                    <ChevronDown className="h-4 w-4 text-purple-600" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-purple-600" />
+                  )}
+                  {item.product.title}
+                </button>
+              )}
+              {!isParentCombo && <h3 className="font-medium">
+                {item.product.title}
+              </h3>}
+              {item.isReordered && (
+                <Badge variant="secondary" className="text-xs">
+                  {t.reorderedItem}
+                </Badge>
+              )}
+            </div>
+
+            {/* Количество и цена */}
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-sm font-bold text-green-600">
+                {calculateItemPrice(item)} ₽
+              </p>
+            </div>
+
+            {item.product.restaurantPrices[0] && !canEditQuantity && !isParentCombo && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {getProductPrice(item.product)} ₽ × {item.quantity}шт.
+              </p>
+            )}
+
+            {item.timestamps.startedAt && cookingTime !== null && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {item.timestamps.completedAt
+                  ? `${t.cookedIn} ${getCookingTimeText(cookingTime)}`
+                  : `${t.cookingFor} ${getCookingTimeText(cookingTime)}`}
+              </p>
+            )}
+
+            <div className="mt-2 pl-4 border-l-2 border-muted">
+              {item.additives.length > 0 && (
+                <div className="text-xs text-muted-foreground mt-1 flex items-center">
+                  <Plus className="h-3 w-3 mr-1" />
+                  {t.additives}: {item.additives.map(a => a.title).join(', ')}
+                </div>
+              )}
+              {item.comment && !item.comment.startsWith('combo-') && (
+                <div className="text-xs text-muted-foreground mt-1 flex items-center">
+                  <MessageSquare className="h-3 w-3 mr-1" />
+                  {t.comment}: {item.comment}
+                </div>
+              )}
+              {item.isRefund && item.refundReason && (
+                <div className="text-xs text-red-500 dark:text-red-400 mt-1 flex items-center">
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  {language === 'ru' ? 'Причина' : 'მიზეზი'}: {item.refundReason}
+                </div>
+              )}
+            </div>
+
+            {/* Дочерние элементы комбо - с анимацией сворачивания */}
+            {hasChildren && (
+              <div
+                className={`mt-3 pl-4 border-l-2 border-purple-200 space-y-2 overflow-hidden transition-all duration-300 ${isComboExpanded ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'
+                  }`}
+              >
+                <p className="text-xs font-semibold text-purple-600 mb-1">В составе комбо:</p>
+                {childItems.map(childItem => (
+                  <div key={childItem.id} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <Package className="h-3 w-3 text-gray-500" />
+                      <span className="text-gray-700">{childItem.product.title}</span>
+                    </div>
+                    <span className="text-gray-500 text-xs">x{childItem.quantity}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Возвращенные дочерние элементы комбо - всегда видны */}
+            {hasRefundedChildren && (
+              <div className="mt-3 pl-4 border-l-2 border-red-200 space-y-2">
+                <p className="text-xs font-semibold text-red-500 mb-1">Возвращенные блюда:</p>
+                {refundedChildItems.map(childItem => (
+                  <div key={childItem.id} className="flex items-center justify-between text-sm opacity-70">
+                    <div className="flex items-center gap-2">
+                      <Undo className="h-3 w-3 text-red-500" />
+                      <span className="text-gray-700 line-through">{childItem.product.title}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-red-500 text-xs">x{childItem.quantity}</span>
+                      {childItem.refundReason && (
+                        <span className="text-xs text-red-400" title={childItem.refundReason}>
+                          ({childItem.refundReason})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <details className="text-sm text-muted-foreground mt-3">
+          <summary className="cursor-pointer">{t.showLogs}</summary>
+          <div className="mt-2 space-y-1">
+            <div className="flex items-center">
+              <Clock className="h-3 w-3 mr-2" />
+              {t.createdAt}: {new Date(item.timestamps.createdAt).toLocaleString()}
+            </div>
+
+            {item.timestamps.startedAt && (
+              <div className="flex flex-col">
+                <span className='flex items-center'>
+                  <Play className="h-3 w-3 mr-2" />
+                  {t.startedAt}: {new Date(item.timestamps.startedAt).toLocaleString()}
+                </span>
+                <span className='text-xs ml-5'>
+                  ({item.startedBy && item.startedBy.name})
+                </span>
+              </div>
+            )}
+
+            {item.timestamps.completedAt && (
+              <div className="flex items-center">
+                <Check className="h-3 w-3 mr-2" />
+                {t.completedAt}: {new Date(item.timestamps.completedAt).toLocaleString()}
+                {item.completedBy && (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    ({language === 'ru' ? 'завершил' : 'დაასრულა'}: {item.completedBy.name})
+                  </span>
+                )}
+              </div>
+            )}
+
+            {item.timestamps.pausedAt && (
+              <div className="flex items-center">
+                <Pause className="h-3 w-3 mr-2" />
+                {t.pausedAt}: {new Date(item.timestamps.pausedAt).toLocaleString()}
+                {item.pausedBy && (
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    ({language === 'ru' ? 'приостановил' : 'შეაჩერა'}: {item.pausedBy.name})
+                  </span>
+                )}
+              </div>
+            )}
+
+            {item.timestamps.refundedAt && (
+              <div className="flex items-center text-red-500 dark:text-red-400">
+                <Undo className="h-3 w-3 mr-2" />
+                {t.refundedAt}: {new Date(item.timestamps.refundedAt).toLocaleString()}
+                {item.refundedBy && (
+                  <span className="ml-2 text-xs text-red-400">
+                    ({language === 'ru' ? 'вернул' : 'დაბრუნება'}: {item.refundedBy.name})
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        </details>
+
+        {/* Кнопки действий - outline как в compact */}
+        <div className="mt-3 flex items-center justify-end gap-2 border-t pt-3">
+          {canEditQuantity ? (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => handleQuantitItemChange(item, item.quantity - 1)}
+                disabled={item.quantity <= 1}
+              >
+                <Minus className="h-4 w-4" />
+              </Button>
+              <span className="text-lg font-bold w-8 text-center">
+                {item.quantity}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => handleQuantitItemChange(item, item.quantity + 1)}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <span className="text-sm font-medium text-gray-600">
+              {item.quantity} шт.
+            </span>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 w-8 p-0 text-gray-500 hover:text-gray-600 hover:bg-gray-50"
+            onClick={() => {
+              setSelectedItemForHistory(item);
+              setShowItemHistoryDialog(true);
+            }}
+            title="История"
+          >
+            <History className="h-4 w-4" />
+          </Button>
+
+          {/* Повтор (дозаказ) - не показываем для комбо */}
+          {[
+            OrderItemStatus.COMPLETED,
+            OrderItemStatus.IN_PROGRESS,
+          ].includes(item.status) && isOrderEditable && !item.isRefund && !isParentCombo && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 w-8 p-0 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
+                onClick={() => handleReorderItem(item)}
+                disabled={isUpdating}
+                title="Повторить"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            )}
+          {/* Возврат - показываем для комбо через отдельный диалог */}
+          {['COMPLETED', 'DELIVERING', 'PREPARING', 'READY'].includes(order?.status || '') && !item.isRefund &&  ['COMPLETED', 'IN_PROGRESS'].includes(item.status || '') &&(
+            (() => {
+              const isBeforeKitchen = order?.status === 'CREATED';
+
+              const isAfterKitchenButBeforePrecheck =
+                order?.status === 'PREPARING' &&
+                item.status === OrderItemStatus.COMPLETED;
+
+              const canKitchenStaffReturn =
+                isAfterKitchenButBeforePrecheck &&
+                ['WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR'].includes(user.role);
+
+              const isAfterPrecheck = order?.attentionFlags?.isPrecheck;
+              const canManagerReturn =
+                isAfterPrecheck &&
+                ['MANAGER', 'SUPERVISOR'].includes(user.role);
+
+              const shouldShow =
+                isBeforeKitchen ||
+                canKitchenStaffReturn ||
+                canManagerReturn;
+
+              return shouldShow && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                  onClick={() => {
+                    if (isParentCombo && hasChildren) {
+                      // Открываем диалог выбора блюд для возврата из комбо
+                      prepareComboItemsForRefund(item);
+                      setShowComboRefundDialog(true);
+                    } else {
+                      setSelectedItemForRefund(item);
+                      setMaxRefundQuantity(item.quantity);
+                      setRefundQuantity(1);
+                      setShowRefundDialog(true);
+                    }
+                  }}
+                  disabled={isUpdating || (!canManagerReturn && !isParentCombo)}
+                  title={isParentCombo ? 'Вернуть блюда из комбо' : 'Возврат'}
+                >
+                  <Undo className="h-4 w-4" />
+                </Button>
+              );
+            })()
+          )}
+
+          {/* Удаление - для CREATED позиций, включая комбо */}
+          {item.status === OrderItemStatus.CREATED && isOrderEditable && !item.isRefund && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+              onClick={() => handleQuantitItemChange(item, 0)}
+              disabled={isUpdating}
+              title="Удалить"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+      </Card>
     );
   };
 
@@ -3774,7 +4254,7 @@ const getOrderHeader = () => {
   };
 
   const renderTotalWithButtons = () => {
-    if(!order) return;
+    if (!order) return;
     if (isRightColCollapsed) {
       return (
         <div className="bg-white rounded-xl shadow-md p-3 flex items-center justify-between gap-2">
@@ -3849,8 +4329,8 @@ const getOrderHeader = () => {
                   item.status !== OrderItemStatus.COMPLETED &&
                   item.status !== OrderItemStatus.REFUNDED
                 )
-                    ? 'hidden'
-                    : 'bg-emerald-500 hover:bg-emerald-400 text-white'
+                  ? 'hidden'
+                  : 'bg-emerald-500 hover:bg-emerald-400 text-white'
                   }`}
               >
                 {(isUpdating || shiftLoading) ? (
@@ -3869,7 +4349,7 @@ const getOrderHeader = () => {
         </div>
       );
     }
-    if(!order) return;
+    if (!order) return;
     return (
       <div className="bg-white rounded-2xl shadow-lg flex-shrink-0">
         <div className="flex-col items-center justify-between mb-4">
@@ -4015,8 +4495,8 @@ const getOrderHeader = () => {
                 item.status !== OrderItemStatus.COMPLETED &&
                 item.status !== OrderItemStatus.REFUNDED
               )
-                  ? 'hidden'
-                  : 'bg-emerald-500 hover:bg-emerald-400'
+                ? 'hidden'
+                : 'bg-emerald-500 hover:bg-emerald-400'
                 }`}
             >
               {isUpdating || shiftLoading ? (
@@ -4113,8 +4593,8 @@ const getOrderHeader = () => {
                     <div className="relative flex ml-4">
                       <button
                         className={`px-5 py-2 text-base font-medium transition-all relative ${activeMenuTab === 'menu'
-                            ? 'text-blue-600'
-                            : 'text-gray-600 hover:text-gray-900'
+                          ? 'text-blue-600'
+                          : 'text-gray-600 hover:text-gray-900'
                           }`}
                         onClick={() => setActiveMenuTab('menu')}
                       >
@@ -4133,8 +4613,8 @@ const getOrderHeader = () => {
 
                       <button
                         className={`px-5 py-2 text-base font-medium transition-all relative ${activeMenuTab === 'order'
-                            ? 'text-blue-600'
-                            : 'text-gray-600 hover:text-gray-900'
+                          ? 'text-blue-600'
+                          : 'text-gray-600 hover:text-gray-900'
                           }`}
                         onClick={() => setActiveMenuTab('order')}
                       >
@@ -4183,23 +4663,23 @@ const getOrderHeader = () => {
 
                   <div
                     className={`flex flex-col items-center p-1 sm:p-2 2xl:p-3 rounded-lg border-1 2xl:border-2 ${order.status === 'CREATED' ? 'border-amber-200 bg-amber-50' :
-                        order.status === 'CONFIRMED' ? 'border-blue-200 bg-blue-50' :
-                          order.status === 'PREPARING' ? 'border-purple-200 bg-purple-50' :
-                            order.status === 'READY' ? 'border-green-200 bg-green-50' :
-                              order.status === 'DELIVERING' ? 'border-cyan-200 bg-cyan-50' :
-                                order.status === 'COMPLETED' ? 'border-gray-200 bg-gray-50' :
-                                  'bg-red-500'
+                      order.status === 'CONFIRMED' ? 'border-blue-200 bg-blue-50' :
+                        order.status === 'PREPARING' ? 'border-purple-200 bg-purple-50' :
+                          order.status === 'READY' ? 'border-green-200 bg-green-50' :
+                            order.status === 'DELIVERING' ? 'border-cyan-200 bg-cyan-50' :
+                              order.status === 'COMPLETED' ? 'border-gray-200 bg-gray-50' :
+                                'bg-red-500'
                       }`}
                     title={order.status ? order.status : ''}
                   >
                     {order.status && (
                       <div className={`h-5 w-5 sm:h-6 sm:w-6 rounded-full flex items-center justify-center ${order.status === 'CREATED' ? 'bg-amber-500' :
-                          order.status === 'CONFIRMED' ? 'bg-blue-500' :
-                            order.status === 'PREPARING' ? 'bg-purple-500' :
-                              order.status === 'READY' ? 'bg-green-500' :
-                                order.status === 'DELIVERING' ? 'bg-cyan-500' :
-                                  order.status === 'COMPLETED' ? 'bg-gray-500' :
-                                    'bg-red-500'
+                        order.status === 'CONFIRMED' ? 'bg-blue-500' :
+                          order.status === 'PREPARING' ? 'bg-purple-500' :
+                            order.status === 'READY' ? 'bg-green-500' :
+                              order.status === 'DELIVERING' ? 'bg-cyan-500' :
+                                order.status === 'COMPLETED' ? 'bg-gray-500' :
+                                  'bg-red-500'
                         }`}>
                         <span className="text-white text-xs font-bold">
                           {order.status.charAt(0)}
@@ -4283,7 +4763,8 @@ const getOrderHeader = () => {
                     )}
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-4 ">
+
                     {order?.items?.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground flex flex-col items-center">
                         <Package className="h-8 w-8 mb-2" />
@@ -4294,7 +4775,7 @@ const getOrderHeader = () => {
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
                           {getOrderItems()
                             .filter(item => !item.isRefund)
-                            .map(item => <CompactItemCard key={item.id} item={item as any} />)}
+                            .map(item => <ItemCard key={item.id} item={item as any} />)}
                         </div>
 
                         {getOrderItems().some(item => item.isRefund) && (
@@ -4307,7 +4788,7 @@ const getOrderHeader = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-4">
                               {getOrderItems()
                                 .filter(item => item.isRefund)
-                                .map(item => <CompactItemCard key={item.id} item={item as any} />)}
+                                .map(item => <ItemCard key={item.id} item={item as any} />)}
                             </div>
                           </div>
                         )}
@@ -4347,8 +4828,8 @@ const getOrderHeader = () => {
                       key={tab.id}
                       onClick={() => { setActiveTab(tab.id); setIsRightColCollapsed(false) }}
                       className={`aspect-square text-lg font-semibold flex flex-col items-center justify-center p-2 sm:p-3 md:p-4 rounded-lg border-2 transition-all ${activeTab === tab.id
-                          ? 'border-blue-600 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 text-gray-700'
+                        ? 'border-blue-600 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50 text-gray-700'
                         }`}
                     >
                       <tab.icon className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
@@ -4358,8 +4839,8 @@ const getOrderHeader = () => {
                     disabled={isUpdating}
                     onClick={handlePrecheck}
                     className={`aspect-square text-lg font-semibold flex flex-col items-center justify-center p-2 sm:p-3 md:p-4 rounded-lg border-2 transition-all ${order.attentionFlags?.isPrecheck
-                        ? 'border-green-600 bg-green-50 text-green-700'
-                        : 'border-gray-200 bg-white hover:border-green-400 hover:bg-green-50'
+                      ? 'border-green-600 bg-green-50 text-green-700'
+                      : 'border-gray-200 bg-white hover:border-green-400 hover:bg-green-50'
                       }`}
                     title={order.attentionFlags?.isPrecheck ? t.precheckFormed : t.formPrecheck}
                   >
@@ -4413,8 +4894,8 @@ const getOrderHeader = () => {
                       }
                       onClick={handleCalculateOrder}
                       className={`aspect-square text-lg font-semibold flex flex-col items-center justify-center p-2 sm:p-3 md:p-4 rounded-lg border-2 transition-all ${getOrderItems().some(item => item.status !== OrderItemStatus.COMPLETED)
-                          ? 'hidden'
-                          : 'bg-emerald-500 hover:bg-emerald-400 text-white'
+                        ? 'hidden'
+                        : 'bg-emerald-500 hover:bg-emerald-400 text-white'
                         }`}
                       title={t.calculate}
                     >
@@ -4459,7 +4940,7 @@ const getOrderHeader = () => {
                               item.status === OrderItemStatus.IN_PROGRESS &&
                               !item.parentComboId
                             )
-                           .sort((a, b) => {
+                            .sort((a, b) => {
                               const dateA = new Date(a.createdAt || a.timestamps?.createdAt || 0).getTime();
                               const dateB = new Date(b.createdAt || b.timestamps?.createdAt || 0).getTime();
                               return dateA - dateB;
@@ -4511,13 +4992,13 @@ const getOrderHeader = () => {
                                 })}
                                 disabled={!isOrderEditable}
                                 className={`flex flex-col items-center justify-center rounded-xl border-2 ${editFormData.type === type.value
-                                    ? 'border-blue-600 bg-blue-50 text-blue-700'
-                                    : 'border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50'
+                                  ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                  : 'border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50'
                                   } ${!isOrderEditable ? 'opacity-60 cursor-not-allowed' : ''}`}
                               >
                                 <div className={`p-3 rounded-full items-center ${editFormData.type === type.value
-                                    ? ' text-blue-600'
-                                    : ' text-gray-600'
+                                  ? ' text-blue-600'
+                                  : ' text-gray-600'
                                   }`}>
                                   {type.icon}
                                 </div>
@@ -4673,8 +5154,8 @@ const getOrderHeader = () => {
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id)}
                       className={`flex flex-col items-center justify-center p-2 rounded-lg border-2 transition-all ${activeTab === tab.id
-                          ? 'border-blue-600 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 bg-white text-gray-700'
+                        ? 'border-blue-600 bg-blue-50 text-blue-700'
+                        : 'border-gray-200 bg-white text-gray-700'
                         }`}
                     >
                       <tab.icon className="w-5 h-5" />
@@ -4777,8 +5258,8 @@ const getOrderHeader = () => {
                                 item.status !== OrderItemStatus.COMPLETED &&
                                 item.status !== OrderItemStatus.REFUNDED
                               )
-                                  ? 'hidden'
-                                  : 'bg-emerald-500 hover:bg-emerald-400 text-white'
+                                ? 'hidden'
+                                : 'bg-emerald-500 hover:bg-emerald-400 text-white'
                                 }`}
                             >
                               {(isUpdating || shiftLoading) ? (
@@ -4839,8 +5320,8 @@ const getOrderHeader = () => {
                               })}
                               disabled={!isOrderEditable}
                               className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 ${editFormData.type === type.value
-                                  ? 'border-blue-600 bg-blue-50 text-blue-700'
-                                  : 'border-gray-200 bg-white'
+                                ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                : 'border-gray-200 bg-white'
                                 } ${!isOrderEditable ? 'opacity-60' : ''}`}
                             >
                               {type.icon}
@@ -4966,8 +5447,8 @@ const getOrderHeader = () => {
                 <button
                   onClick={() => setRefundMode('refund')}
                   className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${refundMode === 'refund'
-                      ? 'bg-white text-red-600 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
+                    ? 'bg-white text-red-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
                     }`}
                 >
                   Возврат
@@ -4975,8 +5456,8 @@ const getOrderHeader = () => {
                 <button
                   onClick={() => setRefundMode('replace')}
                   className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-all ${refundMode === 'replace'
-                      ? 'bg-white text-blue-600 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
                     }`}
                 >
                   Замена
@@ -5238,8 +5719,8 @@ const AdditivesDialog: React.FC<AdditivesDialogProps> = ({
                 <div
                   key={additive.id}
                   className={`flex items-center justify-between p-4 rounded-lg border-2 cursor-pointer transition-all ${isSelected
-                      ? 'border-green-500 bg-green-50'
-                      : 'border-gray-200 hover:border-gray-300'
+                    ? 'border-green-500 bg-green-50'
+                    : 'border-gray-200 hover:border-gray-300'
                     }`}
                   onClick={() => handleAdditiveToggle(additive.id)}
                 >
