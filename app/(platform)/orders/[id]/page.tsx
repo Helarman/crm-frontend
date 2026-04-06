@@ -139,6 +139,108 @@ import {
 import { motion, useAnimationControls } from 'framer-motion'
 import { TablesService, TableStatus } from '@/lib/api/tables.service'
 
+type OptimisticOrderItem = Pick<OrderItem, 
+  'id' | 
+  'product' | 
+  'productId' | 
+  'quantity' | 
+  'additives' | 
+  'comment' | 
+  'parentComboId' | 
+  'status' | 
+  'isRefund' | 
+  'createdAt'
+> & {
+  timestamps?: { createdAt: string };
+  isReordered?: boolean;
+  parentOrderItemId?: string | null;
+  additiveIds?: string[];
+  refundReason?: string | null;
+  ingredients?: any[];
+};
+
+// Хук для оптимистичного обновления UI
+const useOptimisticOrderUpdate = (initialOrder: OrderResponse | null) => {
+  const [optimisticItems, setOptimisticItems] = useState<OptimisticOrderItem[]>([]);
+  const [pendingOperations, setPendingOperations] = useState<Map<string, { type: 'add' | 'update' | 'remove', item: any }>>(new Map());
+
+  useEffect(() => {
+    if (initialOrder?.items) {
+      setOptimisticItems(initialOrder.items as any);
+    }
+  }, [initialOrder?.items]);
+
+ const addOptimisticItem = (product: Product, quantity: number, additives: string[], comment: string, parentComboId?: string) => {
+  const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
+  const newItem: OptimisticOrderItem = {
+    id: tempId,
+    productId: product.id,
+    product: product,
+    quantity: quantity,
+    additives: additives.map(id => ({ id, title: '', price: 0 })),
+    comment: comment,
+    parentComboId: parentComboId,
+    status: OrderItemStatus.CREATED,
+    isRefund: false,
+    createdAt: new Date(),
+    timestamps: { createdAt: new Date().toISOString() },
+    additiveIds: additives,
+    isReordered: false,
+    parentOrderItemId: null,
+  };
+
+    setOptimisticItems(prev => [...prev, newItem]);
+    
+    setPendingOperations(prev => {
+      const newMap = new Map(prev);
+      newMap.set(tempId, { type: 'add', item: newItem });
+      return newMap;
+    });
+
+    return tempId;
+  };
+
+  const updateOptimisticItem = (itemId: string, newQuantity: number) => {
+    setOptimisticItems(prev => prev.map(item => 
+      item.id === itemId ? { ...item, quantity: newQuantity } : item
+    ));
+    
+    setPendingOperations(prev => {
+      const newMap = new Map(prev);
+      newMap.set(itemId, { type: 'update', item: { id: itemId, quantity: newQuantity } });
+      return newMap;
+    });
+  };
+
+  const removeOptimisticItem = (itemId: string) => {
+    setOptimisticItems(prev => prev.filter(item => item.id !== itemId));
+    
+    setPendingOperations(prev => {
+      const newMap = new Map(prev);
+      newMap.set(itemId, { type: 'remove', item: { id: itemId } });
+      return newMap;
+    });
+  };
+
+  const clearPendingOperation = (tempId: string) => {
+    setPendingOperations(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(tempId);
+      return newMap;
+    });
+  };
+
+  return {
+    optimisticItems,
+    pendingOperations,
+    addOptimisticItem,
+    updateOptimisticItem,
+    removeOptimisticItem,
+    clearPendingOperation
+  };
+};
+
 interface ComboSelection {
   comboId: string;
   selections: {
@@ -157,7 +259,6 @@ interface CategoryNavigation {
   breadcrumbs: Category[]
 }
 
-// Интерфейс для модификатора заказа в компоненте
 interface OrderAdditiveItem {
   id: string;
   title: string;
@@ -168,18 +269,6 @@ interface OrderAdditiveItem {
   quantity?: number;
   networkId?: string;
   inventoryItem?: any | null;
-}
-
-// Интерфейс для связи заказа с модификатором
-interface OrderOrderAdditive {
-  id: string;
-  orderId: string;
-  orderAdditiveId: string;
-  orderAdditive: OrderAdditiveWithRelations;
-  quantity: number;
-  price: number;
-  createdAt: Date;
-  updatedAt: Date;
 }
 
 export default function WaiterOrderPage() {
@@ -404,7 +493,7 @@ export default function WaiterOrderPage() {
     }
   } as const;
 
-  const t = translations.ru; // Используем только русский язык
+  const t = translations.ru;
 
   const [activeMenuTab, setActiveMenuTab] = useState<'menu' | 'order'>('menu');
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
@@ -492,6 +581,19 @@ export default function WaiterOrderPage() {
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [refundReasonType, setRefundReasonType] = useState<'chef_error' | 'waiter_error' | 'long_wait' | 'other' | ''>('');
   const [refundMode, setRefundMode] = useState<'refund' | 'replace'>('refund');
+  const [pendingComboSelection, setPendingComboSelection] = useState<ComboSelection | null>(null);
+  const pendingComboSelectionRef = useRef<ComboSelection | null>(null);
+  const comboItemsMapRef = useRef<Record<string, ComboItem>>({});
+
+  // Оптимистичное обновление UI
+  const {
+    optimisticItems,
+    pendingOperations,
+    addOptimisticItem,
+    updateOptimisticItem,
+    removeOptimisticItem,
+    clearPendingOperation
+  } = useOptimisticOrderUpdate(order);
 
   const refundReasons = [
     { value: 'chef_error', label: 'Ошибка повара' },
@@ -508,7 +610,6 @@ export default function WaiterOrderPage() {
     }
   }, [orderItemsScrollRef]);
 
-  // Добавьте функцию для прокрутки вниз
   const scrollToBottom = useCallback(() => {
     if (orderItemsScrollRef) {
       orderItemsScrollRef.scrollTo({
@@ -518,16 +619,13 @@ export default function WaiterOrderPage() {
     }
   }, [orderItemsScrollRef]);
 
-
   useEffect(() => {
     if (orderItemsScrollRef) {
-      // Небольшая задержка для обновления DOM
       setTimeout(() => {
         checkScrollPosition();
       }, 100);
     }
-  }, [order?.items, orderItemsScrollRef, checkScrollPosition]);
-
+  }, [order?.items, orderItemsScrollRef, checkScrollPosition, optimisticItems]);
 
   const {
     isConnected: isWebSocketConnected,
@@ -574,7 +672,6 @@ export default function WaiterOrderPage() {
       return serverOrder;
     }
 
-    // Глубокое слияние items с сохранением порядка и локальных данных
     const mergedItems = serverOrder.items?.map(serverItem => {
       const localItem = localOrder.items?.find(item => item.id === serverItem.id);
       return localItem ? { ...serverItem, ...localItem } : serverItem;
@@ -602,14 +699,12 @@ export default function WaiterOrderPage() {
     }, 50);
   }, []);
 
-  // Загрузка модификаторов заказа
   const fetchOrderAdditives = async () => {
     if (!order || !order.restaurant?.id) return;
 
     try {
       setOrderAdditivesLoading(true);
 
-      // Получаем доступные модификаторы для сети ресторана
       let additives: OrderAdditiveWithRelations[] = [];
 
       if (order.restaurant.network?.id) {
@@ -618,12 +713,9 @@ export default function WaiterOrderPage() {
         additives = await OrderAdditiveService.getAll();
       }
 
-      // Преобразуем в формат для компонента
       const formattedAdditives: OrderAdditiveItem[] = additives
         .filter(additive => {
-          // Фильтрация по типу (если включена)
           const typeFilter = filterOrderAdditiveType === 'all' || additive.type === filterOrderAdditiveType;
-          // Фильтрация по активности (если включена)
           const activeFilter = !filterActiveOnly || additive.isActive;
           return typeFilter && activeFilter;
         })
@@ -640,7 +732,6 @@ export default function WaiterOrderPage() {
 
       setAvailableOrderAdditives(formattedAdditives);
 
-      // Загружаем текущие модификаторы заказа из данных заказа
       if (order.orderAdditives && order.orderAdditives.length > 0) {
         const currentAdditives: OrderAdditiveItem[] = order.orderAdditives
           .filter((item: any) => item.orderAdditive && item.orderAdditive.id)
@@ -668,24 +759,21 @@ export default function WaiterOrderPage() {
       setOrderAdditivesLoading(false);
     }
   };
+
   const releaseTable = async (tableId: string, reason: string) => {
     try {
-      // Обновляем статус стола на "Свободен" и убираем привязку к заказу
       await TablesService.updateTableStatus(
         tableId,
         TableStatus.AVAILABLE,
-        undefined // Сбрасываем orderId
+        undefined
       );
 
-      // Создаем лог об освобождении стола
       await createOrderLog(`Стол освобожден: ${reason}`);
-
-      console.log(`Стол ${tableId} освобожден: ${reason}`);
     } catch (error) {
       console.error('Ошибка при освобождении стола:', error);
-      // Не прерываем основную операцию, только логируем ошибку
     }
   };
+
   const loadWarehouseData = async () => {
     if (!order?.restaurant?.id) return;
 
@@ -708,6 +796,14 @@ export default function WaiterOrderPage() {
     }
   };
 
+    const getOrderItems = () => {
+    // Используем оптимистичные items, если они есть, иначе реальные
+    if (optimisticItems.length > 0 && pendingOperations.size > 0) {
+      return optimisticItems;
+    }
+    return order?.items || [];
+  };
+
   const prepareComboItemsForRefund = (comboItem: OrderItem) => {
     const childItems = getOrderItems().filter(
       child => child.parentOrderItemId === comboItem.id && !child.isRefund
@@ -719,7 +815,7 @@ export default function WaiterOrderPage() {
       selected: false
     }));
 
-    setSelectedComboItems(itemsForRefund);
+    setSelectedComboItems(itemsForRefund as any);
     setSelectedItemForRefund(comboItem);
   };
 
@@ -738,7 +834,6 @@ export default function WaiterOrderPage() {
       const reasonTypeText = refundReasons.find(r => r.value === refundReasonType)?.label || '';
       const fullRefundReason = refundReason ? `${reasonTypeText}: ${refundReason}` : reasonTypeText;
 
-      // Возвращаем каждое выбранное блюдо
       for (const { item, quantity } of selectedItems) {
         await OrderService.partialRefundOrderItem(
           order.id,
@@ -749,16 +844,13 @@ export default function WaiterOrderPage() {
         );
       }
 
-      // Проверяем, остались ли непогашенные элементы в комбо
       const remainingItems = getOrderItems().filter(
         child =>
           child.parentOrderItemId === selectedItemForRefund.id &&
           !child.isRefund
       );
 
-      // Если все элементы возвращены, помечаем родительское комбо как частично возвращенное
       if (remainingItems.length === 0) {
-        // Можно добавить специальный флаг для родительского комбо
         await createOrderLog(`Все блюда из комбо "${selectedItemForRefund.product.title}" возвращены`);
       }
 
@@ -773,7 +865,6 @@ export default function WaiterOrderPage() {
       setRefundReason('');
       setSelectedComboItems([]);
 
-      // Обновляем заказ
       const updatedOrder = await OrderService.getById(order.id);
       setOrder(updatedOrder);
 
@@ -794,10 +885,8 @@ export default function WaiterOrderPage() {
       const additiveToAdd = availableOrderAdditives.find(a => a.id === selectedOrderAdditive);
       if (!additiveToAdd) return;
 
-      // Добавляем модификатор к заказу
       await OrderAdditiveService.addToOrder(selectedOrderAdditive, order.id, Number(1));
 
-      // Обновляем список модификаторов
       const updatedAdditive: OrderAdditiveItem = {
         ...additiveToAdd,
         quantity: 1
@@ -806,12 +895,10 @@ export default function WaiterOrderPage() {
       setOrderAdditives(prev => [...prev, updatedAdditive]);
       setSelectedOrderAdditive('');
 
-      // Обновляем общую информацию о заказе
       await fetchOrder();
 
       toast.success(t.orderAdditiveAdded);
 
-      // Создаем лог
       await createOrderLog(`Добавлен модификатор: ${additiveToAdd.title}`);
 
     } catch (error) {
@@ -822,7 +909,6 @@ export default function WaiterOrderPage() {
     }
   };
 
-  // Удаление модификатора из заказа
   const handleRemoveOrderAdditive = async (additiveId: string) => {
     if (!order || !isOrderEditable) return;
 
@@ -832,18 +918,14 @@ export default function WaiterOrderPage() {
       const additiveToRemove = orderAdditives.find(a => a.id === additiveId);
       if (!additiveToRemove) return;
 
-      // Удаляем модификатор из заказа
       await OrderAdditiveService.removeFromOrder(additiveId, order.id);
 
-      // Обновляем список
       setOrderAdditives(prev => prev.filter(a => a.id !== additiveId));
 
-      // Обновляем общую информацию о заказе
       await fetchOrder();
 
       toast.success(t.orderAdditiveRemoved);
 
-      // Создаем лог
       await createOrderLog(`Удален модификатор: ${additiveToRemove.title}`);
 
     } catch (error) {
@@ -854,7 +936,6 @@ export default function WaiterOrderPage() {
     }
   };
 
-  // Обновление количества модификатора
   const handleUpdateOrderAdditiveQuantity = async (additiveId: string, newQuantity: number) => {
     if (!order || !isOrderEditable || newQuantity < 1) return;
 
@@ -864,23 +945,18 @@ export default function WaiterOrderPage() {
       const additive = orderAdditives.find(a => a.id === additiveId);
       if (!additive) return;
 
-      // Сначала удаляем старый
       await OrderAdditiveService.removeFromOrder(additiveId, order.id);
 
-      // Добавляем с новым количеством
       if (newQuantity > 0) {
         await OrderAdditiveService.addToOrder(additiveId, order.id, newQuantity);
 
-        // Обновляем в состоянии
         setOrderAdditives(prev => prev.map(a =>
           a.id === additiveId ? { ...a, quantity: newQuantity } : a
         ));
       } else {
-        // Если количество 0, удаляем
         setOrderAdditives(prev => prev.filter(a => a.id !== additiveId));
       }
 
-      // Обновляем общую информацию о заказу
       await fetchOrder();
 
     } catch (error) {
@@ -891,7 +967,6 @@ export default function WaiterOrderPage() {
     }
   };
 
-  // Расчет стоимости модификатора
   const calculateAdditivePrice = (additive: OrderAdditiveItem): number => {
     if (!order) return additive.price;
 
@@ -908,16 +983,13 @@ export default function WaiterOrderPage() {
     }
   };
 
-  // Общая стоимость всех модификаторов
   const calculateTotalOrderAdditivesPrice = (): number => {
     return orderAdditives.reduce((total, additive) => {
       return total + calculateAdditivePrice(additive);
     }, 0);
   };
 
-  // Фильтрация доступных модификаторов
   const filteredAvailableOrderAdditives = availableOrderAdditives.filter(additive => {
-    // Исключаем уже добавленные
     const isAlreadyAdded = orderAdditives.some(a => a.id === additive.id);
     return !isAlreadyAdded;
   });
@@ -954,28 +1026,24 @@ export default function WaiterOrderPage() {
   const assignOrderToShift = async (orderId: string, shiftId: string) => {
     try {
       await OrderService.assignOrderToShift(orderId, shiftId);
-      console.log('Order assigned to shift:', shiftId);
     } catch (error) {
       console.error('Failed to assign order to shift:', error);
     }
   };
 
-  // Функции для работы с категориями
   const handleCategoryClick = (category: Category) => {
     const subcategories = categories.filter(cat =>
       cat.parentId === category.id &&
-      hasProductsInCategory(cat.id) // Проверяем, есть ли товары в категории
+      hasProductsInCategory(cat.id)
     );
 
     if (subcategories.length > 0) {
-      // Если есть подкатегории с товарами, переходим к ним
       setCategoryNavigation(prev => ({
         currentCategory: null,
         parentCategory: category,
         breadcrumbs: [...prev.breadcrumbs, category]
       }));
     } else {
-      // Если нет подкатегорий, показываем товары этой категории
       setCategoryNavigation(prev => ({
         currentCategory: category,
         parentCategory: prev.parentCategory,
@@ -984,16 +1052,12 @@ export default function WaiterOrderPage() {
     }
   };
 
-  // Функция проверки наличия товаров в категории (включая подкатегории)
   const hasProductsInCategory = (categoryId: string): boolean => {
-    // Проверяем товары непосредственно в категории
     const directProducts = products.filter(product => product.categoryId === categoryId);
     if (directProducts.length > 0) return true;
 
-    // Проверяем подкатегории
     const subcategories = categories.filter(cat => cat.parentId === categoryId);
 
-    // Рекурсивно проверяем каждую подкатегорию
     for (const subcategory of subcategories) {
       if (hasProductsInCategory(subcategory.id)) {
         return true;
@@ -1003,19 +1067,15 @@ export default function WaiterOrderPage() {
     return false;
   };
 
-  // Получаем категории для отображения (только те, в которых есть товары)
   const getDisplayCategories = () => {
-
     let categoriesToDisplay: Category[] = [];
 
     if (categoryNavigation.parentCategory) {
-      // Показываем подкатегории выбранной категории, в которых есть товары
       categoriesToDisplay = categories.filter(cat =>
         cat.parentId === categoryNavigation.parentCategory?.id &&
         hasProductsInCategory(cat.id)
       );
     } else {
-      // Показываем корневые категории, в которых есть товары
       categoriesToDisplay = categories.filter(cat =>
         !cat.parentId &&
         hasProductsInCategory(cat.id)
@@ -1025,21 +1085,17 @@ export default function WaiterOrderPage() {
     return categoriesToDisplay;
   };
 
-  // Получаем товары для отображения
   const getDisplayProducts = () => {
     if (categoryNavigation.currentCategory) {
-      // Показываем товары выбранной категории
       return products.filter(product => product.categoryId === categoryNavigation.currentCategory?.id);
     } else if (categoryNavigation.parentCategory) {
-      // Показываем все товары из всех подкатегорий родительской категории
       const getAllSubcategoryIds = (categoryId: string): string[] => {
         const subcategoryIds = categories
           .filter(cat => cat.parentId === categoryId)
           .map(cat => cat.id);
 
-        let allIds = [categoryId]; // Включаем саму категорию
+        let allIds = [categoryId];
 
-        // Рекурсивно получаем IDs всех вложенных подкатегорий
         for (const subId of subcategoryIds) {
           allIds = [...allIds, ...getAllSubcategoryIds(subId)];
         }
@@ -1050,14 +1106,12 @@ export default function WaiterOrderPage() {
       const allCategoryIds = getAllSubcategoryIds(categoryNavigation.parentCategory.id);
       return products.filter(product => allCategoryIds.includes(product.categoryId));
     } else {
-      // Показываем все товары
       return products;
     }
   };
 
   const handleBackToCategories = () => {
     if (categoryNavigation.breadcrumbs.length > 0) {
-      // Возвращаемся на уровень выше
       const newBreadcrumbs = [...categoryNavigation.breadcrumbs];
       const parentCategory = newBreadcrumbs.pop();
 
@@ -1067,7 +1121,6 @@ export default function WaiterOrderPage() {
         breadcrumbs: newBreadcrumbs
       });
     } else {
-      // Возвращаемся к корневым категориям
       setCategoryNavigation({
         currentCategory: null,
         parentCategory: null,
@@ -1128,19 +1181,15 @@ export default function WaiterOrderPage() {
 
       const writeOffPromises: Promise<any>[] = [];
 
-      // Проходим по всем модификаторам заказа
       for (const additive of orderAdditives) {
         if (additive.inventoryItem && additive.quantity) {
-          // Рассчитываем количество для списания
           let quantityToWriteOff = additive.quantity;
 
-          // Для модификаторов PER_PERSON умножаем на количество персон
           if (additive.type === OrderAdditiveType.PER_PERSON) {
             const numberOfPeople = parseInt(order.numberOfPeople || '1');
             quantityToWriteOff = additive.quantity * numberOfPeople;
           }
 
-          // Создаем транзакцию списания
           writeOffPromises.push(
             WarehouseService.createTransaction({
               inventoryItemId: additive.inventoryItem.id,
@@ -1154,7 +1203,6 @@ export default function WaiterOrderPage() {
         }
       }
 
-      // Выполняем все списания
       if (writeOffPromises.length > 0) {
         await Promise.all(writeOffPromises);
         toast.success('Инвентарные товары модификаторов списаны');
@@ -1163,7 +1211,7 @@ export default function WaiterOrderPage() {
     } catch (error) {
       console.error('Error writing off order additives:', error);
       toast.error('Ошибка списания инвентарных товаров модификаторов');
-      throw error; // Пробрасываем ошибку дальше
+      throw error;
     } finally {
       setIsWritingOff(false);
     }
@@ -1220,6 +1268,7 @@ export default function WaiterOrderPage() {
       });
     };
   }, [order?.items, t.exitConfirmMessage]);
+
   const handleUpdateQuantity = async (item: OrderItem, newQuantity: number) => {
     if (!order || !isOrderEditable) return;
 
@@ -1266,27 +1315,260 @@ export default function WaiterOrderPage() {
         `${t.logs.itemRefunded}: ${selectedItemForRefund.product.title} x ${refundQuantity} (${fullRefundReason})`
       );
 
-      toast.success(
-        `Возвращено ${refundQuantity} шт.`
-      );
+      toast.success(`Возвращено ${refundQuantity} шт.`);
 
       setShowPartialRefundDialog(false);
       setRefundReason('');
       setRefundReasonType('');
       setRefundQuantity(1);
     } catch (error) {
-      toast.error(
-        'Ошибка при возврате'
-      );
+      toast.error('Ошибка при возврате');
     } finally {
       setIsUpdating(false);
     }
   };
 
+  const calculateComboTotalPrice = (product: Product, comboSelection: ComboSelection, comboItems: any[]): number => {
+    let total = product.price;
+
+    Object.entries(comboSelection.selections).forEach(([comboItemId, selection]) => {
+      const comboItem = (product as any).comboItems?.find((item: any) => item.id === comboItemId);
+      if (!comboItem) return;
+
+      selection.selectedProducts.forEach(selected => {
+        const comboProduct = comboItem.products?.find((p: any) => p.productId === selected.productId);
+        if (comboProduct) {
+          total += comboProduct.additionalPrice * selected.quantity;
+        }
+      });
+    });
+
+    return total;
+  };
+
+  // ОСНОВНАЯ ОПТИМИЗИРОВАННАЯ ФУНКЦИЯ ДЛЯ ДОБАВЛЕНИЯ В ЗАКАЗ
+  const handleQuantityChange = useCallback(async (
+    product: Product,
+    newQuantity: number,
+    additives: string[],
+    comment: string,
+    parentComboId?: string
+  ) => {
+    if (!orderId || !isOrderEditable || !order) return;
+    if (newQuantity < 0) return;
+
+    const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}-${parentComboId || ''}`;
+    let tempId: string | null = null;
+
+    // Отменяем предыдущий таймер для этого продукта
+    if (pendingAdditions[key]?.timer) {
+      clearTimeout(pendingAdditions[key].timer!);
+    }
+
+    if (newQuantity === 0) {
+      // Находим существующий item для удаления
+      const existingItem = getOrderItems().find(item =>
+        item.product.id === product.id &&
+        JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
+        (item.parentComboId || null) === (parentComboId || null) &&
+        item.status === OrderItemStatus.CREATED
+      );
+
+      if (existingItem) {
+        // Оптимистичное удаление
+        removeOptimisticItem(existingItem.id);
+
+        const timer = setTimeout(async () => {
+          try {
+            setIsUpdating(true);
+            await OrderService.removeItemFromOrder(orderId as string, existingItem.id);
+            await createOrderLog(`${t.logs.itemRemoved}: ${product.title}`);
+
+            clearPendingOperation(existingItem.id);
+          } catch (err) {
+            console.error('Ошибка при удалении:', err);
+            toast.error('Ошибка при удалении позиции');
+            await fetchOrder();
+          } finally {
+            setIsUpdating(false);
+            setPendingAdditions(prev => {
+              const newState = { ...prev };
+              delete newState[key];
+              return newState;
+            });
+          }
+        }, 300);
+
+        setPendingAdditions(prev => ({
+          ...prev,
+          [key]: { quantity: newQuantity, additives, comment, parentComboId, timer }
+        }));
+      }
+      return;
+    }
+
+    // Поиск существующего элемента
+    const existingItem = getOrderItems().find(item =>
+      item.product.id === product.id &&
+      JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
+      (item.parentComboId || null) === (parentComboId || null) &&
+      item.status === OrderItemStatus.CREATED
+    );
+
+    if (existingItem) {
+      // Обновление существующего - оптимистичное обновление
+      updateOptimisticItem(existingItem.id, newQuantity);
+
+      const timer = setTimeout(async () => {
+        try {
+          setIsUpdating(true);
+          const updatedOrder = await OrderService.updateOrderItemQuantity(
+            orderId as string,
+            existingItem.id,
+            newQuantity,
+            user?.id
+          );
+
+          if (updatedOrder) {
+            setOrder(updatedOrder);
+          }
+
+          clearPendingOperation(existingItem.id);
+          await createOrderLog(`Изменено количество: ${product.title} → ${newQuantity}`);
+        } catch (err) {
+          console.error('Ошибка при обновлении:', err);
+          toast.error('Ошибка при обновлении количества');
+          await fetchOrder();
+        } finally {
+          setIsUpdating(false);
+          setPendingAdditions(prev => {
+            const newState = { ...prev };
+            delete newState[key];
+            return newState;
+          });
+        }
+      }, 500);
+
+      setPendingAdditions(prev => ({
+        ...prev,
+        [key]: { quantity: newQuantity, additives, comment, parentComboId, timer }
+      }));
+    } else {
+      // Добавление нового - оптимистичное добавление
+      tempId = addOptimisticItem(product, newQuantity, additives, comment, parentComboId);
+
+      const timer = setTimeout(async () => {
+        try {
+          setIsUpdating(true);
+
+          if (product.isCombo && pendingComboSelectionRef.current) {
+            const comboSelection = pendingComboSelectionRef.current;
+            const comboGroupId = `combo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const comboTotalPrice = calculateComboTotalPrice(product, comboSelection, (product as any).comboItems);
+
+            const mainOrderItem = await OrderService.addItemToOrder(orderId as string, {
+              productId: product.id,
+              quantity: newQuantity,
+              additiveIds: [],
+              comment: comboGroupId,
+              price: comboTotalPrice
+            });
+
+            await new Promise(resolve => setTimeout(resolve, 300));
+            const currentOrder = await OrderService.getById(orderId as string);
+            const parentItem = currentOrder.items.find(item =>
+              item.comment === comboGroupId && item.product.id === product.id
+            );
+
+            if (parentItem) {
+              const childPromises = [];
+              for (const [comboItemId, selection] of Object.entries(comboSelection.selections)) {
+                for (const selectedProduct of selection.selectedProducts) {
+                  childPromises.push(
+                    OrderService.addItemToOrder(orderId as string, {
+                      productId: selectedProduct.productId,
+                      quantity: selectedProduct.quantity * newQuantity,
+                      additiveIds: [],
+                      parentComboId: product.id,
+                      parentOrderItemId: parentItem.id,
+                      comment: comboGroupId,
+                      price: 0
+                    })
+                  );
+                }
+              }
+              await Promise.all(childPromises);
+            }
+
+            setPendingComboSelection(null);
+            pendingComboSelectionRef.current = null;
+          } else {
+            await OrderService.addItemToOrder(orderId as string, {
+              productId: product.id,
+              quantity: newQuantity,
+              additiveIds: additives,
+              comment,
+              parentComboId
+            });
+          }
+
+          const finalUpdatedOrder = await OrderService.getById(orderId as string);
+          setOrder(finalUpdatedOrder);
+
+          if (tempId) {
+            clearPendingOperation(tempId);
+          }
+
+          await createOrderLog(`${t.logs.itemAdded}: ${product.title} x ${newQuantity}`);
+          scrollToBottom();
+        } catch (err) {
+          console.error('Ошибка при добавлении:', err);
+          toast.error('Ошибка при добавлении позиции');
+          await fetchOrder();
+          if (tempId) {
+            clearPendingOperation(tempId);
+          }
+        } finally {
+          setIsUpdating(false);
+          setPendingAdditions(prev => {
+            const newState = { ...prev };
+            delete newState[key];
+            return newState;
+          });
+        }
+      }, 500);
+
+      setPendingAdditions(prev => ({
+        ...prev,
+        [key]: { quantity: newQuantity, additives, comment, parentComboId, timer }
+      }));
+    }
+  }, [orderId, isOrderEditable, order, getOrderItems, user, scrollToBottom]);
+
+  // Очистка pending операций при получении WebSocket обновлений
+  useEffect(() => {
+    if (!order) return;
+
+    const cleanupPendingOperations = () => {
+      for (const [tempId, op] of pendingOperations) {
+        const matchingRealItem = order.items?.find(item =>
+          item.product.id === op.item.product?.id &&
+          JSON.stringify(item.additives.map(a => a.id).sort()) ===
+          JSON.stringify(op.item.additives?.map((a: any) => a.id).sort())
+        );
+
+        if (matchingRealItem) {
+          clearPendingOperation(tempId);
+        }
+      }
+    };
+
+    cleanupPendingOperations();
+  }, [order, pendingOperations, clearPendingOperation]);
+
   const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => {
     if (!order || newQuantity < 0 || !isOrderEditable) return;
 
-    // Явная проверка что можно редактировать только CREATED items
     if (item.status !== OrderItemStatus.CREATED) {
       toast.error('Можно изменять только неподтвержденные позиции');
       return;
@@ -1296,23 +1578,17 @@ export default function WaiterOrderPage() {
       setIsUpdating(true);
 
       if (newQuantity === 0) {
-        // Сначала собираем все ID элементов для удаления
         const itemsToDelete: string[] = [];
-
-        // Добавляем сам элемент
         itemsToDelete.push(item.id);
 
-        // Проверяем, является ли элемент родительским комбо
         const childItems = getOrderItems().filter(
           childItem => childItem.parentOrderItemId === item.id
         );
 
-        // Добавляем все дочерние элементы
         childItems.forEach(childItem => {
           itemsToDelete.push(childItem.id);
         });
 
-        // Также проверяем старую логику с parentComboId
         if (item.parentComboId) {
           const childItemsByCombo = getOrderItems().filter(
             childItem => childItem.parentComboId === item.parentComboId &&
@@ -1326,15 +1602,12 @@ export default function WaiterOrderPage() {
           });
         }
 
-        // Удаляем элементы в обратном порядке (сначала дочерние, потом родительские)
-        // Сортируем так, чтобы дочерние элементы (с parentOrderItemId) удалялись первыми
         const sortedItemsToDelete = [...itemsToDelete].sort((a, b) => {
           const aIsChild = getOrderItems().find(i => i.id === a)?.parentOrderItemId ? 1 : 0;
           const bIsChild = getOrderItems().find(i => i.id === b)?.parentOrderItemId ? 1 : 0;
-          return bIsChild - aIsChild; // Дочерние первыми
+          return bIsChild - aIsChild;
         });
 
-        // Удаляем элементы по одному с обработкой ошибок
         let successCount = 0;
         for (const itemId of sortedItemsToDelete) {
           try {
@@ -1361,7 +1634,6 @@ export default function WaiterOrderPage() {
         );
       }
 
-      // Получаем обновленный заказ
       const updatedOrder = await OrderService.getById(order.id);
       setOrder(updatedOrder);
 
@@ -1414,7 +1686,6 @@ export default function WaiterOrderPage() {
           createdItems.map(item =>
             OrderService.updateItemStatus(order.id, item.id, { status: OrderItemStatus.IN_PROGRESS })
           )
-
         );
       }
       const refreshedOrder = await OrderService.getById(order.id);
@@ -1483,13 +1754,11 @@ export default function WaiterOrderPage() {
         currentShiftId = shiftId;
       }
 
-      // Привязываем заказ к смене
       if (currentShiftId) {
         await assignOrderToShift(order.id, currentShiftId);
       }
 
       if (restaurantData?.useWarehouse && orderAdditives.length > 0) {
-        // Фильтруем модификаторы с инвентарными товарами
         const additivesWithInventory = orderAdditives.filter(
           additive => additive.inventoryItem && additive.quantity && additive.quantity > 0
         );
@@ -1499,7 +1768,6 @@ export default function WaiterOrderPage() {
         }
       }
 
-      // Освобождаем стол перед завершением заказа
       if (order.tableId && restaurantData.useReservation) {
         await releaseTable(order.tableId, 'Заказ завершен');
       }
@@ -1521,6 +1789,7 @@ export default function WaiterOrderPage() {
       setIsUpdating(false);
     }
   };
+
   const updateTableStatusBasedOnOrder = async () => {
     if (!order?.tableId || !restaurantData.useReservation) return;
 
@@ -1560,13 +1829,11 @@ export default function WaiterOrderPage() {
     }
   };
 
-  // Вызываем при изменении статуса заказа
   useEffect(() => {
     if (order?.tableId && restaurantData.useReservation) {
       updateTableStatusBasedOnOrder();
     }
   }, [order?.status, order?.tableId, restaurantData?.useReservation]);
-
 
   const handleCalculateOrder = async () => {
     if (!order) return;
@@ -1586,27 +1853,22 @@ export default function WaiterOrderPage() {
         currentShiftId = shiftId;
       }
 
-      // Убеждаемся, что заказ привязан к смене
       if (currentShiftId) {
         await assignOrderToShift(order.id, currentShiftId);
       }
-      console.log(order)
-      // Проверяем оплату
-      if (order && order.payment && order.payment.status !== 'PAID' && calculateOrderTotal() > 0) {
 
+      if (order && order.payment && order.payment.status !== 'PAID' && calculateOrderTotal() > 0) {
         setShowPaymentDialog(true);
         setIsUpdating(false);
         return;
       }
 
-      // Проверяем наличие пречека
       if (!order.attentionFlags.isPrecheck) {
         toast.error('Сначала необходимо сформировать пречек');
         setIsUpdating(false);
         return;
       }
 
-      // Вызываем завершение заказа (расчет)
       setShowCompleteDialog(true);
     } catch (error) {
       console.error('Error during calculate order:', error);
@@ -1616,7 +1878,6 @@ export default function WaiterOrderPage() {
     }
   };
 
-  // Обновите useEffect для проверки смены
   useEffect(() => {
     if (order?.restaurant?.id && order?.id) {
       checkAndCreateShift(order.restaurant.id);
@@ -1625,7 +1886,6 @@ export default function WaiterOrderPage() {
 
   const handleCancelOrder = () => {
     setShowCancelDialog(true);
-
   };
 
   const confirmCancelOrder = async () => {
@@ -1636,7 +1896,6 @@ export default function WaiterOrderPage() {
         await releaseTable(order.tableId, 'Заказ отменен');
       }
 
-
       const updatedOrder = await OrderService.updateStatus(order.id, { status: 'CANCELLED' });
       setOrder(updatedOrder);
 
@@ -1644,13 +1903,14 @@ export default function WaiterOrderPage() {
 
       toast.success('Заказ отменен');
       setShowCancelDialog(false);
-      router.push('/orders')
+      router.push('/orders');
     } catch (error) {
       toast.error('Ошибка отмены заказа');
     } finally {
       setIsUpdating(false);
     }
   };
+
   const handleReplaceItem = async () => {
     if (!order || !selectedItemForRefund || refundQuantity <= 0) return;
 
@@ -1659,7 +1919,6 @@ export default function WaiterOrderPage() {
       const reasonTypeText = refundReasons.find(r => r.value === refundReasonType)?.label || '';
       const fullRefundReason = refundReason ? `${reasonTypeText}: ${refundReason}` : reasonTypeText;
 
-      // Сначала возвращаем текущее блюдо
       const updatedOrder = await OrderService.partialRefundOrderItem(
         order.id,
         selectedItemForRefund.id,
@@ -1668,8 +1927,6 @@ export default function WaiterOrderPage() {
         user?.id
       );
 
-      // Затем добавляем новое блюдо (замена)
-      // Для замены создаем новый orderItem с ценой 0
       await OrderService.addItemToOrder(
         order.id,
         {
@@ -1677,11 +1934,10 @@ export default function WaiterOrderPage() {
           quantity: refundQuantity,
           additiveIds: selectedItemForRefund.additives.map(a => a.id),
           comment: `ЗАМЕНА: ${fullRefundReason || 'Без причины'}`,
-          price: 0 // Цена 0 для замены
+          price: 0
         }
       );
 
-      // Обновляем заказ
       const refreshedOrder = await OrderService.getById(order.id);
       setOrder(refreshedOrder);
 
@@ -1692,7 +1948,6 @@ export default function WaiterOrderPage() {
 
       toast.success(`Замена выполнена: ${refundQuantity} шт.`);
 
-      // Закрываем диалог и сбрасываем состояния
       setShowRefundDialog(false);
       setRefundReason('');
       setRefundReasonType('');
@@ -1769,6 +2024,7 @@ export default function WaiterOrderPage() {
       setIsUpdating(false);
     }
   };
+
   type OrderTypes = 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY' | 'BANQUET';
   const getOrderType = (type: OrderTypes): string => {
     const translations: Record<OrderTypes, string> = {
@@ -1777,10 +2033,8 @@ export default function WaiterOrderPage() {
       'DELIVERY': 'Доставка',
       'BANQUET': 'Банкет'
     };
-
     return translations[type] || type;
-  }
-
+  };
 
   const handleApplyPromoCode = async () => {
     if (!orderId || !promoCode.trim()) return;
@@ -1791,13 +2045,11 @@ export default function WaiterOrderPage() {
 
       const discount = await DiscountService.getByPromoCode(promoCode);
 
-      // Проверка минимальной суммы заказа
       if (discount.minOrderAmount && calculateOrderTotal() < discount.minOrderAmount) {
         setPromoCodeError(t.discountMinAmount.replace('{amount}', discount.minOrderAmount.toString()));
         return;
       }
 
-      // ПРОВЕРКА МАКСИМАЛЬНОЙ СУММЫ ЗАКАЗА
       if (discount.maxOrderAmount && calculateOrderTotal() > discount.maxOrderAmount) {
         setPromoCodeError(t.maxOrderAmount.replace('{amount}', discount.maxOrderAmount.toString()));
         return;
@@ -1869,10 +2121,6 @@ export default function WaiterOrderPage() {
     return price;
   };
 
-  const getOrderItems = () => {
-    return order?.items || [];
-  };
-
   const getOriginalItems = () => {
     return getOrderItems().filter(item => !item.isRefund);
   };
@@ -1897,10 +2145,9 @@ export default function WaiterOrderPage() {
     if (!order || !getOrderItems()) return 0;
     const items = getOrderItems();
     const itemsTotal = items.reduce((sum, item) => {
-      return sum + calculateItemPrice(item);
+      return sum + calculateItemPrice(item as any);
     }, 0);
 
-    // Исправление: проверка на существование surcharges
     const surchargesTotal = (order.surcharges || []).reduce((sum, surcharge) => {
       if (surcharge.type === 'FIXED') {
         return sum + surcharge.amount;
@@ -1909,7 +2156,6 @@ export default function WaiterOrderPage() {
       }
     }, 0) || 0;
 
-    // Добавляем стоимость модификаторов заказа
     const orderAdditivesTotal = calculateTotalOrderAdditivesPrice();
 
     let total = itemsTotal + surchargesTotal + orderAdditivesTotal;
@@ -1924,8 +2170,18 @@ export default function WaiterOrderPage() {
 
     return total;
   };
+const getOrderHeader = () => {
+  if (!order) return '';
 
-
+  switch (order.type) {
+    case 'DINE_IN':
+      return `Стол ${order.tableNumber || '—'}`;
+    case 'BANQUET':
+      return `Стол ${order.tableNumber || '—'}`;
+    default:
+      return `Заказ ${order.number}`;
+  }
+};
   const handleReorderItem = async (item: OrderItem) => {
     if (!order) return;
 
@@ -1955,225 +2211,29 @@ export default function WaiterOrderPage() {
       setIsUpdating(false);
     }
   };
-  const pendingComboSelectionRef = useRef<ComboSelection | null>(null);
 
-  // Состояние для хранения выбранных опций комбо
-  const [pendingComboSelection, setPendingComboSelection] = useState<ComboSelection | null>(null);
-
-  // Map для быстрого доступа к comboItems по ID
-  const comboItemsMapRef = useRef<Record<string, ComboItem>>({});
-
-  // Обновляем map при загрузке комбо
-  useEffect(() => {
-    if (products.length > 0) {
-      const map: Record<string, ComboItem> = {};
-      products.forEach(product => {
-        if ((product as any).comboItems) {
-          (product as any).comboItems.forEach((item: ComboItem) => {
-            map[item.id] = item;
-          });
-        }
-      });
-      comboItemsMapRef.current = map;
-    }
-  }, [products]);
-  const calculateComboTotalPrice = (product: Product, comboSelection: ComboSelection, comboItems: any[]): number => {
-    let total = product.price; // Базовая цена комбо
-
-    // Проходим по всем выбранным опциям
-    Object.entries(comboSelection.selections).forEach(([comboItemId, selection]) => {
-      // Находим соответствующий comboItem в product
-      const comboItem = (product as any).comboItems?.find((item: any) => item.id === comboItemId);
-      if (!comboItem) return;
-
-      // Для каждого выбранного продукта в этой группе
-      selection.selectedProducts.forEach(selected => {
-        // Находим информацию о продукте в comboItem
-        const comboProduct = comboItem.products?.find((p: any) => p.productId === selected.productId);
-        if (comboProduct) {
-          // Добавляем дополнительную стоимость за каждый выбранный продукт
-          total += comboProduct.additionalPrice * selected.quantity;
-        }
-      });
-    });
-
-    return total;
-  };
-
-  const handleQuantityChange = useCallback(async (product: Product, newQuantity: number, additives: string[], comment: string, parentComboId?: string) => {
-
-    if (!orderId || !isOrderEditable || !order || !getOrderItems()) return;
-
-    // Защита от отрицательных значений
-    if (newQuantity < 0) return;
-
-    const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}-${parentComboId || ''}`;
-
-    if (pendingAdditions[key]?.timer) {
-      clearTimeout(pendingAdditions[key].timer!);
-    }
-
-    if (newQuantity === 0) {
-      setPendingAdditions(prev => {
-        const newState = { ...prev };
-        delete newState[key];
-        return newState;
-      });
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      try {
-        setIsUpdating(true);
-
-
-       const existingItem = getOrderItems().find(item =>
-          item.product.id === product.id &&
-          JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
-          (item.parentComboId || null) === (parentComboId || null) && 
-          item.status === OrderItemStatus.CREATED
-        );
-        if (existingItem) {
-          await OrderService.updateOrderItemQuantity(
-            orderId as string,
-            existingItem.id,
-            newQuantity
-          );
-        } else {
-          // Проверяем, является ли продукт комбо
-          if (product.isCombo && pendingComboSelectionRef.current) {
-            const comboSelection = pendingComboSelectionRef.current;
-            const comboGroupId = `combo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
-            // Рассчитываем итоговую цену комбо
-            const comboTotalPrice = calculateComboTotalPrice(product, comboSelection, (product as any).comboItems);
-
-            // Создаем родительское комбо с рассчитанной ценой
-            const mainOrderItem = await OrderService.addItemToOrder(
-              orderId as string,
-              {
-                productId: product.id,
-                quantity: newQuantity,
-                additiveIds: [],
-                comment: comboGroupId,
-                price: comboTotalPrice // Передаем рассчитанную цену
-              }
-            );
-
-            console.log('Родительский элемент создан с ценой:', comboTotalPrice, 'и comment:', comboGroupId);
-
-            // Ждем немного, чтобы элемент точно появился в заказе
-            await new Promise(resolve => setTimeout(resolve, 300));
-
-            // Получаем актуальный заказ
-            const currentOrder = await OrderService.getById(orderId as string);
-
-            // Ищем родительский элемент по comment (не по ID!)
-            const parentItem = currentOrder.items.find(item =>
-              item.comment === comboGroupId &&
-              item.product.id === product.id
-            );
-
-            if (!parentItem) {
-              throw new Error('Родительский элемент не найден по comment');
-            }
-
-            console.log('Найден родительский элемент с реальным ID:', parentItem.id);
-
-            // Используем найденный ID для дочерних элементов
-            const childPromises = [];
-
-            for (const [comboItemId, selection] of Object.entries(comboSelection.selections)) {
-              for (const selectedProduct of selection.selectedProducts) {
-                console.log('Добавление дочернего элемента с parentOrderItemId:', parentItem.id);
-
-                childPromises.push(
-                  OrderService.addItemToOrder(
-                    orderId as string,
-                    {
-                      productId: selectedProduct.productId,
-                      quantity: selectedProduct.quantity * newQuantity,
-                      additiveIds: [],
-                      parentComboId: product.id,
-                      parentOrderItemId: parentItem.id, // Используем ID из заказа
-                      comment: comboGroupId,
-                      price: 0 // Цена 0 для дочерних элементов
-                    }
-                  )
-                );
-              }
-            }
-
-            await Promise.all(childPromises);
-
-            // Обновляем заказ
-            const finalUpdatedOrder = await OrderService.getById(orderId as string);
-            setOrder(finalUpdatedOrder);
-
-            setPendingComboSelection(null);
-            pendingComboSelectionRef.current = null;
-
-          } else {
-            // Обычный продукт
-            await OrderService.addItemToOrder(
-              orderId as string,
-              {
-                productId: product.id,
-                quantity: newQuantity,
-                additiveIds: additives,
-                comment,
-                parentComboId
-              }
-            );
-
-            const finalUpdatedOrder = await OrderService.getById(orderId as string);
-            setOrder(finalUpdatedOrder);
-          }
-        }
-
-        await applyAutoDiscounts(order);
-        await createOrderLog(
-          existingItem
-            ? `Обновлено количество: ${product.title} → ${newQuantity}`
-            : `${t.logs.itemAdded}: ${product.title} x ${newQuantity}`
-        );
-
-        setPendingAdditions(prev => {
-          const newState = { ...prev };
-          delete newState[key];
-          return newState;
-        });
-      } catch (err) {
-        console.error('Ошибка при обновлении заказа:', err);
-        toast.error('Ошибка при обновлении заказа');
-      } finally {
-        scrollToBottom()
-
-        setIsUpdating(false);
-      }
-    }, 1000);
-
-    setPendingAdditions(prev => ({
-      ...prev,
-      [key]: {
-        quantity: newQuantity,
-        additives,
-        comment,
-        parentComboId,
-        timer,
-      },
-    }));
-  }, [orderId, isOrderEditable, order, getOrderItems]);
-
-  const getDisplayQuantity = (product: Product, additives: string[], comment: string) => {
-    const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`
+  // ОБНОВЛЕННАЯ ФУНКЦИЯ getDisplayQuantity
+  const getDisplayQuantity = useCallback((product: Product, additives: string[], comment: string) => {
+    const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}`;
 
     // Сначала проверяем pending additions
     if (pendingAdditions[key]) {
-      return pendingAdditions[key].quantity
+      return pendingAdditions[key].quantity;
     }
 
-    // Затем проверяем существующие items только со статусом CREATED
+    // Затем проверяем оптимистичные items
+    const optimisticItem = optimisticItems.find(item =>
+      item.product.id === product.id &&
+      JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
+      item.comment === comment &&
+      item.status === OrderItemStatus.CREATED
+    );
+
+    if (optimisticItem) {
+      return optimisticItem.quantity;
+    }
+
+    // Затем проверяем существующие items из заказа
     const existingItem = order?.items?.find(item =>
       item.product.id === product.id &&
       JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
@@ -2182,34 +2242,21 @@ export default function WaiterOrderPage() {
     );
 
     return existingItem ? existingItem.quantity : 0;
-  }
-
-  const getOrderHeader = () => {
-    if (!order) return '';
-
-    switch (order.type) {
-      case 'DINE_IN':
-        return `Стол ${order.tableNumber || '—'}`;
-      case 'BANQUET':
-        return `Стол ${order.tableNumber || '—'}`;
-      default:
-        return `Заказ ${order.number}`;
-    }
-  };
+  }, [pendingAdditions, optimisticItems, order?.items]);
 
   const handleAdditivesChange = (productId: string, newAdditives: string[]) => {
     setProductAdditives(prev => ({
       ...prev,
       [productId]: newAdditives
-    }))
-  }
+    }));
+  };
 
   const handleCommentChange = (productId: string, newComment: string) => {
     setProductComments(prev => ({
       ...prev,
       [productId]: newComment
-    }))
-  }
+    }));
+  };
 
   const fetchOrder = async () => {
     try {
@@ -2287,9 +2334,9 @@ export default function WaiterOrderPage() {
         const now = new Date();
         const isActive = !discount.endDate || new Date(discount.endDate) > now;
         const meetsMinAmount = !discount.minOrderAmount || orderTotal >= discount.minOrderAmount;
-        const meetsMaxAmount = !discount.maxOrderAmount || orderTotal <= discount.maxOrderAmount; // Добавлено
+        const meetsMaxAmount = !discount.maxOrderAmount || orderTotal <= discount.maxOrderAmount;
 
-        return isActive && meetsMinAmount && meetsMaxAmount; // Обновлено
+        return isActive && meetsMinAmount && meetsMaxAmount;
       });
 
       if (applicableDiscounts.length > 0) {
@@ -2487,7 +2534,6 @@ export default function WaiterOrderPage() {
 
       setIsSearching(true);
 
-      // Используем debounce для поиска
       const timeoutId = setTimeout(() => {
         const filtered = products.filter(product =>
           product.title.toLowerCase().includes(query.toLowerCase())
@@ -2501,7 +2547,7 @@ export default function WaiterOrderPage() {
     };
 
     return (
-      <div >
+      <div>
         <div className="flex">
           <Input
             ref={searchInputRef}
@@ -2542,9 +2588,9 @@ export default function WaiterOrderPage() {
     onQuantityChange: (quantity: number) => void;
     isOrderEditable: boolean;
     getProductPrice: (product: Product) => number;
-    parentComboId?: string
+    parentComboId?: string;
     comboItems?: ComboItem[];
-    onComboSelect?: (selection: ComboSelection) => void
+    onComboSelect?: (selection: ComboSelection) => void;
   }
 
   const ProductCard: React.FC<ProductCardProps> = ({
@@ -2563,9 +2609,7 @@ export default function WaiterOrderPage() {
     const titleRef = useRef<HTMLHeadingElement>(null);
     const [isOverflowing, setIsOverflowing] = useState(false);
     const [showComboDialog, setShowComboDialog] = useState(false);
-    const [pendingComboSelection, setPendingComboSelection] = useState<ComboSelection | null>(null);
 
-    // Проверка переполнения текста
     useEffect(() => {
       const checkOverflow = () => {
         if (titleRef.current) {
@@ -2579,7 +2623,6 @@ export default function WaiterOrderPage() {
       return () => window.removeEventListener('resize', checkOverflow);
     }, [product.title]);
 
-    // Используем useRef для отслеживания монтирования
     const isMounted = useRef(false);
 
     useEffect(() => {
@@ -2592,14 +2635,10 @@ export default function WaiterOrderPage() {
     const handleComboConfirm = (selection: ComboSelection) => {
       if (!isMounted.current) return;
 
-      console.log('Combo selection saved:', selection);
-
-      // Сохраняем выбранные опции
       if (onComboSelect) {
         onComboSelect(selection);
       }
 
-      // После выбора комбо, увеличиваем количество
       onQuantityChange(quantity + 1);
     };
 
@@ -2607,7 +2646,6 @@ export default function WaiterOrderPage() {
       if (!isOrderEditable) return;
 
       if (product.isCombo && comboItems && comboItems.length > 0) {
-        console.log('Opening combo dialog for:', product.title);
         setShowComboDialog(true);
       } else {
         onQuantityChange(quantity + 1);
@@ -2620,7 +2658,6 @@ export default function WaiterOrderPage() {
       }
     };
 
-    // Мемоизируем пропсы для диалога, чтобы избежать лишних ререндеров
     const dialogProps = useMemo(() => ({
       open: showComboDialog,
       onOpenChange: handleDialogOpenChange,
@@ -2633,7 +2670,6 @@ export default function WaiterOrderPage() {
     return (
       <>
         <div className="group bg-white rounded-xl shadow-sm hover:shadow-md border border-gray-100 hover:border-green-100 transition-all duration-200 flex flex-col h-full">
-          {/* Изображение */}
           <div className="relative aspect-square bg-gradient-to-br from-gray-50 to-gray-100">
             {product.images?.[0] ? (
               <Image
@@ -2649,7 +2685,6 @@ export default function WaiterOrderPage() {
               </div>
             )}
 
-            {/* Бейдж с количеством */}
             {quantity > 0 && (
               <div className="absolute top-3 right-3 bg-green-500 text-white text-lg font-bold rounded-xl px-3 py-1.5 shadow-lg">
                 {quantity} шт
@@ -2660,7 +2695,6 @@ export default function WaiterOrderPage() {
               {getProductPrice(product)} ₽
             </div>
 
-            {/* Кнопка добавок (только для обычных продуктов) */}
             {!product.isCombo && product.additives && product.additives.length > 0 && (
               <div className="absolute top-3 left-3">
                 <AdditivesDialog
@@ -2673,7 +2707,6 @@ export default function WaiterOrderPage() {
             )}
           </div>
 
-          {/* Контент */}
           <div className="p-4 flex flex-col flex-grow">
             <div className="mb-3 flex flex-col gap-2">
               <h3
@@ -2714,7 +2747,6 @@ export default function WaiterOrderPage() {
           </div>
         </div>
 
-        {/* Диалог выбора комбо - рендерим только если есть comboItems */}
         {product.isCombo && comboItems && comboItems.length > 0 && (
           <ComboSelectionDialog {...dialogProps} />
         )}
@@ -2722,27 +2754,23 @@ export default function WaiterOrderPage() {
     );
   };
 
-
   const ItemHistoryDialog = ({ item, open, onOpenChange }: {
     item: OrderItem;
     open: boolean;
     onOpenChange: (open: boolean) => void;
   }) => {
-    const { language } = useLanguageStore();
-    const t = translations[language as keyof typeof translations];
-
     const formatDate = (dateString?: any) => {
       if (!dateString) return '-';
       const date = new Date(dateString);
       return format(date, 'PPpp', {
-        locale: language === 'ru' ? ru : ka
+        locale: ru
       });
     };
 
     const getStatusText = (status: OrderItemStatus) => {
       const statusMap = {
         [OrderItemStatus.CREATED]: t.statusCreated,
-        [OrderItemStatus.CONFIRMED]: language === 'ru' ? 'Подтвержден' : 'დადასტურებული',
+        [OrderItemStatus.CONFIRMED]: 'Подтвержден',
         [OrderItemStatus.IN_PROGRESS]: t.statusPreparing,
         [OrderItemStatus.COMPLETED]: t.statusReady,
         [OrderItemStatus.REFUNDED]: t.itemReturned,
@@ -2752,10 +2780,8 @@ export default function WaiterOrderPage() {
       };
       return statusMap[status] || status;
     };
-    if (!item) {
-      return;
 
-    }
+    if (!item) return null;
 
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -2768,10 +2794,9 @@ export default function WaiterOrderPage() {
           </DialogHeader>
 
           <div className="space-y-6 py-4">
-            {/* Основная информация */}
             <div className="bg-muted/50 p-4 rounded-lg space-y-2">
               <div className="flex justify-between">
-                <span className="font-medium">{language === 'ru' ? 'Статус' : 'სტატუსი'}:</span>
+                <span className="font-medium">Статус:</span>
                 <Badge variant={
                   item.status === OrderItemStatus.COMPLETED ? 'default' :
                     item.status === OrderItemStatus.REFUNDED ? 'destructive' :
@@ -2781,42 +2806,39 @@ export default function WaiterOrderPage() {
                 </Badge>
               </div>
               <div className="flex justify-between">
-                <span className="font-medium">{language === 'ru' ? 'Количество' : 'რაოდენობა'}:</span>
+                <span className="font-medium">Количество:</span>
                 <span>{item.quantity} шт.</span>
               </div>
               <div className="flex justify-between">
-                <span className="font-medium">{language === 'ru' ? 'Цена' : 'ფასი'}:</span>
+                <span className="font-medium">Цена:</span>
                 <span className="font-bold text-green-600">
                   {calculateItemPrice(item)} ₽
                 </span>
               </div>
             </div>
 
-            {/* Таймлайн событий */}
             <div className="space-y-4">
-              <h3 className="font-semibold text-lg">{language === 'ru' ? 'Хронология' : 'ქრონოლოგია'}</h3>
+              <h3 className="font-semibold text-lg">Хронология</h3>
 
-              {/* Создание */}
               {item.timestamps?.createdAt && (
                 <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                    <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                    <Clock className="h-4 w-4 text-blue-600" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium">{language === 'ru' ? 'Создан' : 'შექმნილია'}</p>
+                    <p className="font-medium">Создан</p>
                     <p className="text-sm text-muted-foreground">{formatDate(item.timestamps.createdAt)}</p>
                   </div>
                 </div>
               )}
 
-              {/* Начало приготовления */}
               {item.timestamps?.startedAt && (
                 <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-yellow-100 dark:bg-yellow-900/30 flex items-center justify-center">
-                    <Play className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-yellow-100 flex items-center justify-center">
+                    <Play className="h-4 w-4 text-yellow-600" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium">{language === 'ru' ? 'Начато приготовление' : 'დაიწყო მომზადება'}</p>
+                    <p className="font-medium">Начато приготовление</p>
                     <p className="text-sm text-muted-foreground">{formatDate(item.timestamps.startedAt)}</p>
                     {item.startedBy && (
                       <p className="text-xs text-muted-foreground mt-1">
@@ -2827,14 +2849,13 @@ export default function WaiterOrderPage() {
                 </div>
               )}
 
-              {/* Завершение */}
               {item.timestamps?.completedAt && (
                 <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                    <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                    <Check className="h-4 w-4 text-green-600" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium">{language === 'ru' ? 'Готово' : 'მზადაა'}</p>
+                    <p className="font-medium">Готово</p>
                     <p className="text-sm text-muted-foreground">{formatDate(item.timestamps.completedAt)}</p>
                     {item.completedBy && (
                       <p className="text-xs text-muted-foreground mt-1">
@@ -2845,14 +2866,13 @@ export default function WaiterOrderPage() {
                 </div>
               )}
 
-              {/* Приостановка */}
               {item.timestamps?.pausedAt && (
                 <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-                    <Pause className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center">
+                    <Pause className="h-4 w-4 text-orange-600" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium">{language === 'ru' ? 'Приостановлено' : 'შეჩერებულია'}</p>
+                    <p className="font-medium">Приостановлено</p>
                     <p className="text-sm text-muted-foreground">{formatDate(item.timestamps.pausedAt)}</p>
                     {item.pausedBy && (
                       <p className="text-xs text-muted-foreground mt-1">
@@ -2863,14 +2883,13 @@ export default function WaiterOrderPage() {
                 </div>
               )}
 
-              {/* Возврат */}
               {item.timestamps?.refundedAt && (
                 <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-                    <Undo className="h-4 w-4 text-red-600 dark:text-red-400" />
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
+                    <Undo className="h-4 w-4 text-red-600" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium">{language === 'ru' ? 'Возврат' : 'დაბრუნება'}</p>
+                    <p className="font-medium">Возврат</p>
                     <p className="text-sm text-muted-foreground">{formatDate(item.timestamps.refundedAt)}</p>
                     {item.refundedBy && (
                       <p className="text-xs text-muted-foreground mt-1">
@@ -2878,8 +2897,8 @@ export default function WaiterOrderPage() {
                       </p>
                     )}
                     {item.refundReason && (
-                      <p className="text-xs text-red-500 dark:text-red-400 mt-1">
-                        {language === 'ru' ? 'Причина' : 'მიზეზი'}: {item.refundReason}
+                      <p className="text-xs text-red-500 mt-1">
+                        Причина: {item.refundReason}
                       </p>
                     )}
                   </div>
@@ -2887,16 +2906,13 @@ export default function WaiterOrderPage() {
               )}
             </div>
 
-            {/* Дополнительная информация */}
             {(item.additives?.length > 0 || item.comment) && (
               <div className="border-t pt-4">
-                <h3 className="font-semibold text-lg mb-3">{language === 'ru' ? 'Дополнительно' : 'დამატებით'}</h3>
+                <h3 className="font-semibold text-lg mb-3">Дополнительно</h3>
 
                 {item.additives?.length > 0 && (
                   <div className="mb-2">
-                    <p className="text-sm font-medium text-muted-foreground mb-1">
-                      {language === 'ru' ? 'Модификаторы' : 'დანამატები'}:
-                    </p>
+                    <p className="text-sm font-medium text-muted-foreground mb-1">Модификаторы:</p>
                     <div className="flex flex-wrap gap-2">
                       {item.additives.map(additive => (
                         <Badge key={additive.id} variant="outline" className="text-xs">
@@ -2909,9 +2925,7 @@ export default function WaiterOrderPage() {
 
                 {item.comment && (
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground mb-1">
-                      {language === 'ru' ? 'Комментарий' : 'კომენტარი'}:
-                    </p>
+                    <p className="text-sm font-medium text-muted-foreground mb-1">Комментарий:</p>
                     <p className="text-sm bg-muted/50 p-2 rounded">{item.comment}</p>
                   </div>
                 )}
@@ -2921,476 +2935,13 @@ export default function WaiterOrderPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              {language === 'ru' ? 'Закрыть' : 'დახურვა'}
+              Закрыть
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     );
   };
-
-  const renderItemActions = (item: OrderItem) => {
-    if (!order) return null;
-
-    const canEditQuantity = item.status === OrderItemStatus.CREATED && isOrderEditable;
-    const canReorder = [
-      OrderItemStatus.COMPLETED,
-      OrderItemStatus.IN_PROGRESS,
-      OrderItemStatus.CREATED,
-    ].includes(item.status) && isOrderEditable && !item.isRefund;
-
-    const canRefund = ['COMPLETED', 'DELIVERING', 'PREPARING', 'READY'].includes(order.status) && !item.isRefund;
-
-    const canRefundItem = [
-      OrderItemStatus.COMPLETED,
-      OrderItemStatus.IN_PROGRESS,
-    ].includes(item.status) && isOrderEditable && !item.isRefund;
-
-    return (
-      <div className="mt-3 flex items-center justify-between border-t pt-3">
-        <div className="flex items-center flex-col gap-2 justify-between">
-          {canEditQuantity && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="lg"
-                className="h-8 w-8 p-0"
-                onClick={() => handleQuantitItemChange(item, item.quantity - 1)}
-              >
-                <Minus className="h-4 w-4" />
-              </Button>
-              <span className="text-lg font-bold w-8 text-center">
-                {item.quantity}
-              </span>
-              <Button
-                variant="outline"
-                size="lg"
-                className="h-8 w-8 p-0"
-                onClick={() => handleQuantitItemChange(item, item.quantity + 1)}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-          {canReorder && (
-            <div className='flex justify-end text-right'>
-              <Button
-                variant="ghost"
-                size="lg"
-                className="text-blue-500 hover:text-blue-600 hidden 2xl:flex h-10"
-                onClick={() => handleReorderItem(item)}
-                disabled={isUpdating}
-              >
-                <RefreshCw className="h-5 w-5 mr-2" />
-                Дозаказ
-              </Button>
-              <Button
-                variant="outline"
-                size="lg"
-                className="text-blue-500 hover:text-blue-600 2xl:hidden flex h-10"
-                onClick={() => handleReorderItem(item)}
-                disabled={isUpdating}
-              >
-                <RefreshCw className="h-5 w-5" />
-              </Button>
-            </div>
-          )}
-
-          {canRefund && canRefundItem && (
-            (() => {
-              const isBeforeKitchen = order?.status === 'CREATED';
-
-              const isAfterKitchenButBeforePrecheck =
-                order?.status === 'PREPARING' &&
-                item.status === OrderItemStatus.COMPLETED;
-
-              const canKitchenStaffReturn =
-                isAfterKitchenButBeforePrecheck &&
-                ['WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR'].includes(user.role);
-
-              const isAfterPrecheck = order?.attentionFlags?.isPrecheck;
-              const canManagerReturn =
-                isAfterPrecheck &&
-                ['MANAGER', 'SUPERVISOR'].includes(user.role);
-
-              const shouldShow =
-                isBeforeKitchen ||
-                canKitchenStaffReturn ||
-                canManagerReturn;
-
-              return shouldShow && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-                  onClick={() => {
-                    setSelectedItemForRefund(item);
-                    setMaxRefundQuantity(item.quantity);
-                    setRefundQuantity(1);
-                    setShowRefundDialog(true);
-                  }}
-                  disabled={isUpdating}
-                  title='Возврат'
-                >
-                  <Undo className="h-4 w-4 2xl:h-5 2xl:w-5" />
-                </Button>
-              );
-            })()
-          )}
-        </div>
-      </div>
-    );
-  };
-  const ItemCard = ({ item }: { item: OrderItem }) => {
-    const [isComboExpanded, setIsComboExpanded] = useState(false);
-
-    const getCookingTime = () => {
-      if (!item.timestamps.startedAt) return null;
-
-      const startTime = new Date(item.timestamps.startedAt).getTime();
-      let endTime = item.timestamps.completedAt
-        ? new Date(item.timestamps.completedAt).getTime()
-        : Date.now();
-
-      const cookingTimeMinutes = Math.round((endTime - startTime) / (1000 * 60));
-
-      return cookingTimeMinutes;
-    };
-
-    const cookingTime = getCookingTime();
-
-    // Определяем, является ли элемент родительским комбо
-    const isParentCombo = item.isComboParent || false;
-    const isChildItem = !!item.parentOrderItemId;
-    const canEditQuantity = item.status === OrderItemStatus.CREATED && isOrderEditable && !isParentCombo;
-
-    // Находим дочерние элементы для родительского комбо
-    const childItems = isParentCombo
-      ? getOrderItems().filter(childItem => childItem.parentOrderItemId === item.id && !childItem.isRefund)
-      : [];
-
-    const refundedChildItems = isParentCombo
-      ? getOrderItems().filter(childItem => childItem.parentOrderItemId === item.id && childItem.isRefund)
-      : [];
-
-    const hasChildren = childItems.length > 0;
-    const hasRefundedChildren = refundedChildItems.length > 0;
-
-    // Подсчет общего количества блюд в комбо
-    const totalComboItems = childItems.length + refundedChildItems.length;
-    const activeComboItems = childItems.length;
-
-    // Если это дочерний элемент комбо (не возвращенный), скрываем его
-    if (isChildItem && !item.isRefund) {
-      return null;
-    }
-
-    return (
-      <Card
-        key={item.id}
-        className={`p-4 ${item.isReordered ? 'border-l-4 border-blue-500 dark:border-blue-400' : ''} ${item.isRefund ? 'bg-red-50 dark:bg-red-900/20' : 'bg-card'
-          } ${isParentCombo ? 'border-2 border-purple-200 bg-purple-50/30' : ''}`}
-      >
-        <div className="flex justify-between items-start gap-4">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Кнопка сворачивания для комбо */}
-              {isParentCombo && hasChildren && (
-                <button
-                  onClick={() => setIsComboExpanded(!isComboExpanded)}
-                  className="flex-shrink-0 p-1 hover:bg-purple-100 rounded-md transition-colors flex items-center"
-                  title={isComboExpanded ? "Свернуть состав" : "Развернуть состав"}
-                >
-                  {isComboExpanded ? (
-                    <ChevronDown className="h-4 w-4 text-purple-600" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4 text-purple-600" />
-                  )}
-                  {item.product.title}
-                </button>
-              )}
-              {!isParentCombo && <h3 className="font-medium">
-                {item.product.title}
-              </h3>}
-              {item.isReordered && (
-                <Badge variant="secondary" className="text-xs">
-                  {t.reorderedItem}
-                </Badge>
-              )}
-            </div>
-
-            {/* Количество и цена */}
-            <div className="flex items-center justify-between mt-2">
-              <p className="text-sm font-bold text-green-600">
-                {calculateItemPrice(item)} ₽
-              </p>
-            </div>
-
-            {item.product.restaurantPrices[0] && !canEditQuantity && !isParentCombo && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {getProductPrice(item.product)} ₽ × {item.quantity}шт.
-              </p>
-            )}
-
-            {item.timestamps.startedAt && cookingTime !== null && (
-              <p className="text-xs text-muted-foreground mt-1">
-                {item.timestamps.completedAt
-                  ? `${t.cookedIn} ${getCookingTimeText(cookingTime)}`
-                  : `${t.cookingFor} ${getCookingTimeText(cookingTime)}`}
-              </p>
-            )}
-
-            <div className="mt-2 pl-4 border-l-2 border-muted">
-              {item.additives.length > 0 && (
-                <div className="text-xs text-muted-foreground mt-1 flex items-center">
-                  <Plus className="h-3 w-3 mr-1" />
-                  {t.additives}: {item.additives.map(a => a.title).join(', ')}
-                </div>
-              )}
-              {item.comment && !item.comment.startsWith('combo-') && (
-                <div className="text-xs text-muted-foreground mt-1 flex items-center">
-                  <MessageSquare className="h-3 w-3 mr-1" />
-                  {t.comment}: {item.comment}
-                </div>
-              )}
-              {item.isRefund && item.refundReason && (
-                <div className="text-xs text-red-500 dark:text-red-400 mt-1 flex items-center">
-                  <AlertCircle className="h-3 w-3 mr-1" />
-                  {language === 'ru' ? 'Причина' : 'მიზეზი'}: {item.refundReason}
-                </div>
-              )}
-            </div>
-
-            {/* Дочерние элементы комбо - с анимацией сворачивания */}
-            {hasChildren && (
-              <div
-                className={`mt-3 pl-4 border-l-2 border-purple-200 space-y-2 overflow-hidden transition-all duration-300 ${isComboExpanded ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'
-                  }`}
-              >
-                <p className="text-xs font-semibold text-purple-600 mb-1">В составе комбо:</p>
-                {childItems.map(childItem => (
-                  <div key={childItem.id} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <Package className="h-3 w-3 text-gray-500" />
-                      <span className="text-gray-700">{childItem.product.title}</span>
-                    </div>
-                    <span className="text-gray-500 text-xs">x{childItem.quantity}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Возвращенные дочерние элементы комбо - всегда видны */}
-            {hasRefundedChildren && (
-              <div className="mt-3 pl-4 border-l-2 border-red-200 space-y-2">
-                <p className="text-xs font-semibold text-red-500 mb-1">Возвращенные блюда:</p>
-                {refundedChildItems.map(childItem => (
-                  <div key={childItem.id} className="flex items-center justify-between text-sm opacity-70">
-                    <div className="flex items-center gap-2">
-                      <Undo className="h-3 w-3 text-red-500" />
-                      <span className="text-gray-700 line-through">{childItem.product.title}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-red-500 text-xs">x{childItem.quantity}</span>
-                      {childItem.refundReason && (
-                        <span className="text-xs text-red-400" title={childItem.refundReason}>
-                          ({childItem.refundReason})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <details className="text-sm text-muted-foreground mt-3">
-          <summary className="cursor-pointer">{t.showLogs}</summary>
-          <div className="mt-2 space-y-1">
-            <div className="flex items-center">
-              <Clock className="h-3 w-3 mr-2" />
-              {t.createdAt}: {new Date(item.timestamps.createdAt).toLocaleString()}
-            </div>
-
-            {item.timestamps.startedAt && (
-              <div className="flex flex-col">
-                <span className='flex items-center'>
-                  <Play className="h-3 w-3 mr-2" />
-                  {t.startedAt}: {new Date(item.timestamps.startedAt).toLocaleString()}
-                </span>
-                <span className='text-xs ml-5'>
-                  ({item.startedBy && item.startedBy.name})
-                </span>
-              </div>
-            )}
-
-            {item.timestamps.completedAt && (
-              <div className="flex items-center">
-                <Check className="h-3 w-3 mr-2" />
-                {t.completedAt}: {new Date(item.timestamps.completedAt).toLocaleString()}
-                {item.completedBy && (
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    ({language === 'ru' ? 'завершил' : 'დაასრულა'}: {item.completedBy.name})
-                  </span>
-                )}
-              </div>
-            )}
-
-            {item.timestamps.pausedAt && (
-              <div className="flex items-center">
-                <Pause className="h-3 w-3 mr-2" />
-                {t.pausedAt}: {new Date(item.timestamps.pausedAt).toLocaleString()}
-                {item.pausedBy && (
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    ({language === 'ru' ? 'приостановил' : 'შეაჩერა'}: {item.pausedBy.name})
-                  </span>
-                )}
-              </div>
-            )}
-
-            {item.timestamps.refundedAt && (
-              <div className="flex items-center text-red-500 dark:text-red-400">
-                <Undo className="h-3 w-3 mr-2" />
-                {t.refundedAt}: {new Date(item.timestamps.refundedAt).toLocaleString()}
-                {item.refundedBy && (
-                  <span className="ml-2 text-xs text-red-400">
-                    ({language === 'ru' ? 'вернул' : 'დაბრუნება'}: {item.refundedBy.name})
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        </details>
-
-        {/* Кнопки действий - outline как в compact */}
-        <div className="mt-3 flex items-center justify-end gap-2 border-t pt-3">
-          {canEditQuantity ? (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={() => handleQuantitItemChange(item, item.quantity - 1)}
-                disabled={item.quantity <= 1}
-              >
-                <Minus className="h-4 w-4" />
-              </Button>
-              <span className="text-lg font-bold w-8 text-center">
-                {item.quantity}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={() => handleQuantitItemChange(item, item.quantity + 1)}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-          ) : (
-            <span className="text-sm font-medium text-gray-600">
-              {item.quantity} шт.
-            </span>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 w-8 p-0 text-gray-500 hover:text-gray-600 hover:bg-gray-50"
-            onClick={() => {
-              setSelectedItemForHistory(item);
-              setShowItemHistoryDialog(true);
-            }}
-            title="История"
-          >
-            <History className="h-4 w-4" />
-          </Button>
-
-          {/* Повтор (дозаказ) - не показываем для комбо */}
-          {[
-            OrderItemStatus.COMPLETED,
-            OrderItemStatus.IN_PROGRESS,
-            OrderItemStatus.CREATED,
-          ].includes(item.status) && isOrderEditable && !item.isRefund && !isParentCombo && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 w-8 p-0 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
-                onClick={() => handleReorderItem(item)}
-                disabled={isUpdating}
-                title="Повторить"
-              >
-                <RefreshCw className="h-4 w-4" />
-              </Button>
-            )}
-
-          {/* Возврат - показываем для комбо через отдельный диалог */}
-          {['COMPLETED', 'DELIVERING', 'PREPARING', 'READY'].includes(order?.status || '') && !item.isRefund && (
-            (() => {
-              const isBeforeKitchen = order?.status === 'CREATED';
-
-              const isAfterKitchenButBeforePrecheck =
-                order?.status === 'PREPARING' &&
-                item.status === OrderItemStatus.COMPLETED;
-
-              const canKitchenStaffReturn =
-                isAfterKitchenButBeforePrecheck &&
-                ['WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR'].includes(user.role);
-
-              const isAfterPrecheck = order?.attentionFlags?.isPrecheck;
-              const canManagerReturn =
-                isAfterPrecheck &&
-                ['MANAGER', 'SUPERVISOR'].includes(user.role);
-
-              const shouldShow =
-                isBeforeKitchen ||
-                canKitchenStaffReturn ||
-                canManagerReturn;
-
-              return shouldShow && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-                  onClick={() => {
-                    if (isParentCombo && hasChildren) {
-                      // Открываем диалог выбора блюд для возврата из комбо
-                      prepareComboItemsForRefund(item);
-                      setShowComboRefundDialog(true);
-                    } else {
-                      setSelectedItemForRefund(item);
-                      setMaxRefundQuantity(item.quantity);
-                      setRefundQuantity(1);
-                      setShowRefundDialog(true);
-                    }
-                  }}
-                  disabled={isUpdating || (!canManagerReturn && !isParentCombo)}
-                  title={isParentCombo ? 'Вернуть блюда из комбо' : 'Возврат'}
-                >
-                  <Undo className="h-4 w-4" />
-                </Button>
-              );
-            })()
-          )}
-
-          {/* Удаление - для CREATED позиций, включая комбо */}
-          {item.status === OrderItemStatus.CREATED && isOrderEditable && !item.isRefund && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-              onClick={() => handleQuantitItemChange(item, 0)}
-              disabled={isUpdating}
-              title="Удалить"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-      </Card>
-    );
-  };
-
 
   const CompactItemCard = ({ item }: { item: OrderItem }) => {
     const [isComboExpanded, setIsComboExpanded] = useState(false);
@@ -3425,7 +2976,6 @@ export default function WaiterOrderPage() {
     const isParentCombo = item.isComboParent || false;
     const isChildItem = !!item.parentOrderItemId;
 
-    // Находим все дочерние элементы для этого родительского комбо (по parentOrderItemId)
     const childItems = isParentCombo
       ? getOrderItems().filter(childItem => childItem.parentOrderItemId === item.id && !childItem.isRefund)
       : [];
@@ -3440,12 +2990,6 @@ export default function WaiterOrderPage() {
       childItems.length === 0 &&
       hasRefundedChildren;
 
-    // Подсчет общего количества блюд в комбо (включая возвращенные)
-    const totalComboItems = childItems.length + refundedChildItems.length;
-    const activeComboItems = childItems.length;
-
-    // ИЗМЕНЕНИЕ: Показываем дочерние элементы только если они возвращены
-    // Игнорируем обычные дочерние элементы (не возвращенные)
     if (isChildItem && !item.isRefund) {
       return null;
     }
@@ -3462,7 +3006,6 @@ export default function WaiterOrderPage() {
       `}
       >
         <div className="flex items-start gap-3 2xl:gap-4">
-          {/* Изображение продукта */}
           <div className="flex-shrink-0 w-12 h-12 2xl:w-16 2xl:h-16 relative bg-gray-100 rounded-lg overflow-hidden">
             {item.product.images?.[0] ? (
               <img
@@ -3482,10 +3025,8 @@ export default function WaiterOrderPage() {
             )}
           </div>
 
-          {/* Основная информация */}
           <div className="flex-1 min-w-0">
             <div className="flex flex-col">
-              {/* Заголовок и цена */}
               <div className="flex justify-between items-start gap-2">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -3518,7 +3059,6 @@ export default function WaiterOrderPage() {
                 </p>
               </div>
 
-              {/* Дополнения и комментарии */}
               <div className="space-y-1 2xl:space-y-2">
                 {item.additives.length > 0 && (
                   <div className="text-xs 2xl:text-sm text-gray-600 flex items-start">
@@ -3540,7 +3080,6 @@ export default function WaiterOrderPage() {
                 )}
               </div>
 
-              {/* Дочерние элементы комбо (обычные, не возвращенные) - с анимацией сворачивания */}
               {hasChildren && (
                 <div
                   className={`mt-3 pl-3 border-l-2 border-purple-200 space-y-2 overflow-hidden transition-all duration-300 ${isComboExpanded ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'
@@ -3559,7 +3098,7 @@ export default function WaiterOrderPage() {
                           size="sm"
                           className="h-6 w-6 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
                           onClick={() => {
-                            setSelectedItemForRefund(childItem);
+                            setSelectedItemForRefund(childItem as any);
                             setMaxRefundQuantity(childItem.quantity);
                             setRefundQuantity(1);
                             setShowRefundDialog(true);
@@ -3575,7 +3114,6 @@ export default function WaiterOrderPage() {
                 </div>
               )}
 
-              {/* Дочерние элементы комбо (возвращенные) - всегда видны, не сворачиваются */}
               {hasRefundedChildren && (
                 <div className="mt-3 pl-3 border-l-2 border-red-200 space-y-2">
                   <p className="text-xs font-semibold text-red-500 mb-1">Возвращенные блюда:</p>
@@ -3596,9 +3134,7 @@ export default function WaiterOrderPage() {
                 </div>
               )}
 
-              {/* Статус и элементы управления */}
-              <div className="flex items-center justify-between gap-2 mt-3 ">
-                {/* Время приготовления или счетчик */}
+              <div className="flex items-center justify-between gap-2 mt-3">
                 <div className="flex min-w-0">
                   {canEditQuantity && !isParentCombo ? (
                     <div className="flex items-center justify-end gap-1">
@@ -3634,7 +3170,6 @@ export default function WaiterOrderPage() {
                   )}
                 </div>
 
-                {/* Кнопки действий */}
                 <div className="flex items-center gap-1 2xl:gap-3 flex-shrink-0">
                   <Button
                     variant="outline"
@@ -3661,34 +3196,25 @@ export default function WaiterOrderPage() {
                     </Button>
                   )}
 
-
                   {!item.isRefund && !isParentCombo && (
                     (() => {
-                      // Возврат для блюд в статусе CREATED (можно вернуть до отправки на кухню)
                       const isBeforeKitchen = order?.status === 'CREATED' &&
                         item.status === OrderItemStatus.CREATED;
 
-                      // Возврат для блюд в статусе IN_PROGRESS (готовится) или COMPLETED (готов)
-                      // для заказа в статусе PREPARING (до пречека)
                       const isDuringCooking =
                         order?.status === 'PREPARING' &&
                         !order?.attentionFlags?.isPrecheck &&
                         (item.status === OrderItemStatus.IN_PROGRESS ||
                           item.status === OrderItemStatus.COMPLETED);
 
-                      // Возврат для блюд в статусе COMPLETED после пречека (только менеджеры)
                       const isAfterPrecheck =
                         order?.attentionFlags?.isPrecheck &&
                         item.status === OrderItemStatus.COMPLETED &&
                         ['MANAGER', 'SUPERVISOR'].includes(user.role);
 
-                      // Обычные официанты могут возвращать:
-                      // 1. Блюда до отправки на кухню (CREATED)
-                      // 2. Блюда во время готовки (IN_PROGRESS) до пречека
                       const canWaiterReturn = (isBeforeKitchen || isDuringCooking) &&
                         ['WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR'].includes(user.role);
 
-                      // Менеджеры могут возвращать в любых случаях
                       const canManagerReturn = isAfterPrecheck;
 
                       const shouldShow = canWaiterReturn || canManagerReturn;
@@ -3718,7 +3244,6 @@ export default function WaiterOrderPage() {
                     })()
                   )}
 
-                  {/* Удаление - только для CREATED позиций */}
                   {canEditQuantity && (
                     <Button
                       variant="outline"
@@ -3739,7 +3264,6 @@ export default function WaiterOrderPage() {
       </div>
     );
   };
-
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -3768,7 +3292,7 @@ export default function WaiterOrderPage() {
     const sortedLogs = [...logs].sort((a, b) => {
       const dateA = new Date(a.createdAt).getTime();
       const dateB = new Date(b.createdAt).getTime();
-      return dateA - dateB; // от старых к новым
+      return dateA - dateB;
     });
 
     return (
@@ -3778,7 +3302,7 @@ export default function WaiterOrderPage() {
             <div className="flex items-start">
               <div className="flex-1 flex justify-between gap-4">
                 <div className="flex-1 min-w-0">
-                  <div className="ext-center">
+                  <div className="text-center">
                     {log.userName}, {formatDate(log.createdAt)}
                   </div>
                   <div className="font-bold text-lg">{log.action}</div>
@@ -3815,7 +3339,7 @@ export default function WaiterOrderPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            <div className="space-y-3 ">
+            <div className="space-y-3">
               <Label className="text-lg font-semibold">{t.enterDiscountCode}</Label>
               <div className="flex items-center gap-3 flex-col 2xl:flex-row">
                 <Input
@@ -3875,13 +3399,11 @@ export default function WaiterOrderPage() {
     );
   };
 
-  // Компонент для отображения модификаторов заказа
   const renderOrderAdditivesBlock = () => {
     if (!order?.restaurant?.id) return null;
 
     return (
       <div className="space-y-6">
-        {/* Фильтры */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           <div className="w-full sm:flex-1">
             <Select
@@ -3904,7 +3426,6 @@ export default function WaiterOrderPage() {
           </div>
         </div>
 
-        {/* Список доступных модификаторов */}
         {orderAdditivesLoading ? (
           <div className="flex justify-center py-4">
             <Loader2 className="h-6 w-6 animate-spin" />
@@ -3917,21 +3438,18 @@ export default function WaiterOrderPage() {
                   key={additive.id}
                   className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-6 border border-gray-200 rounded-xl hover:bg-gray-50/50 transition-all duration-200 hover:shadow-sm gap-3 sm:gap-4"
                 >
-                  {/* Левая часть - контент */}
                   <div className="w-full sm:w-auto sm:flex-1">
                     <p className="font-semibold text-gray-900 text-base sm:text-lg mb-2 sm:mb-3">
                       {additive.title}
                     </p>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      {/* Бейдж с ценой */}
                       <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-100">
                         <span className="text-emerald-700 font-medium text-sm">
                           {additive.price} ₽
                         </span>
                       </div>
 
-                      {/* Бейдж с типом */}
                       <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-blue-50 border border-blue-100">
                         <span className="text-blue-700 font-medium text-sm">
                           {t.orderAdditiveTypes[additive.type] || additive.type}
@@ -3940,7 +3458,6 @@ export default function WaiterOrderPage() {
                     </div>
                   </div>
 
-                  {/* Правая часть - кнопка */}
                   <div className="w-full sm:w-auto self-stretch sm:self-center">
                     <Button
                       size="lg"
@@ -3953,7 +3470,6 @@ export default function WaiterOrderPage() {
                       className="h-12 w-full sm:w-12 sm:h-12 p-0 sm:p-0 border-gray-300 hover:bg-gray-100 hover:border-gray-400 transition-colors"
                       title={t.addOrderAdditive}
                     >
-                      {/* На мобильных показываем текст, на десктопе только иконку */}
                       <div className="flex items-center justify-center sm:justify-center w-full">
                         <Plus className="h-5 w-5" />
                         <span className="ml-2 sm:hidden">
@@ -3972,39 +3488,33 @@ export default function WaiterOrderPage() {
           </div>
         )}
 
-        {/* Текущие модификаторы */}
         {orderAdditives.length > 0 && (
           <div className="space-y-6">
             <h4 className="font-bold text-xl sm:text-2xl">{t.currentOrderAdditives}</h4>
             <div className="space-y-4">
-
               {orderAdditives.map(additive => (
                 <div
                   key={additive.id}
                   className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-6 border border-gray-200 rounded-xl hover:bg-gray-50/50 transition-all duration-200 hover:shadow-sm gap-3 sm:gap-4"
                 >
-                  {/* Левая часть - контент */}
                   <div className="w-full sm:w-auto sm:flex-1">
                     <p className="font-semibold text-gray-900 text-base sm:text-lg mb-2 sm:mb-3">
                       {additive.title}
                     </p>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      {/* Бейдж с ценой */}
                       <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-100">
                         <span className="text-emerald-700 font-medium text-sm">
                           {calculateAdditivePrice(additive)} ₽
                         </span>
                       </div>
 
-                      {/* Бейдж с типом */}
                       <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-blue-50 border border-blue-100">
                         <span className="text-blue-700 font-medium text-sm">
                           {t.orderAdditiveTypes[additive.type] || additive.type}
                         </span>
                       </div>
 
-                      {/* Бейдж "на человека" */}
                       {additive.type === OrderAdditiveType.PER_PERSON && (
                         <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-100">
                           <span className="text-indigo-700 font-medium text-sm">
@@ -4015,10 +3525,8 @@ export default function WaiterOrderPage() {
                     </div>
                   </div>
 
-                  {/* Правая часть - управление количеством */}
                   <div className="w-full sm:w-auto self-stretch sm:self-center">
                     <div className="flex flex-col sm:flex-row items-center justify-end gap-3 w-full">
-                      {/* Управление количеством */}
                       <div className="flex items-center gap-3">
                         <Button
                           variant="outline"
@@ -4029,7 +3537,7 @@ export default function WaiterOrderPage() {
                             (additive.quantity || 1) - 1
                           )}
                           disabled={!isOrderEditable || (additive.quantity || 1) <= 1}
-                          title="+"
+                          title="Уменьшить"
                         >
                           <Minus className="h-4 w-4" />
                         </Button>
@@ -4049,21 +3557,19 @@ export default function WaiterOrderPage() {
                             (additive.quantity || 1) + 1
                           )}
                           disabled={!isOrderEditable}
-                          title="-"
+                          title="Увеличить"
                         >
                           <Plus className="h-4 w-4" />
                         </Button>
                       </div>
 
-                      {/* Кнопка удаления */}
                       <Button
                         variant="outline"
                         size="lg"
                         className="h-10 w-10 p-0 border-red-200 text-red-600 hover:text-red-700 hover:bg-red-50 hover:border-red-300 transition-colors"
-
                         onClick={() => handleRemoveOrderAdditive(additive.id)}
                         disabled={!isOrderEditable}
-                        title="-"
+                        title="Удалить"
                       >
                         <X className="h-4 w-4" />
                       </Button>
@@ -4075,7 +3581,6 @@ export default function WaiterOrderPage() {
           </div>
         )}
 
-        {/* Итоговая стоимость модификаторов */}
         {orderAdditives.length > 0 && (
           <div className="pt-6 border-t">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-0">
@@ -4096,10 +3601,8 @@ export default function WaiterOrderPage() {
 
     return (
       <div className="space-y-6">
-        {/* Поиск */}
         <SearchInput />
 
-        {/* Показываем результаты поиска */}
         {searchQuery && (
           <div className="mb-4">
             <div className="flex items-center justify-between mb-3">
@@ -4127,9 +3630,9 @@ export default function WaiterOrderPage() {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                 {searchResults.map((product) => {
-                  const additives = productAdditives[product.id] || []
-                  const comment = productComments[product.id] || ''
-                  const quantity = getDisplayQuantity(product, additives, comment)
+                  const additives = productAdditives[product.id] || [];
+                  const comment = productComments[product.id] || '';
+                  const quantity = getDisplayQuantity(product, additives, comment);
                   const comboItems = (product as any).comboItems || [];
 
                   return (
@@ -4140,9 +3643,9 @@ export default function WaiterOrderPage() {
                       comment={comment}
                       quantity={quantity}
                       onAdditivesChange={(newAdditives) => {
-                        handleAdditivesChange(product.id, newAdditives)
+                        handleAdditivesChange(product.id, newAdditives);
                         if (quantity > 0) {
-                          handleQuantityChange(product, quantity, newAdditives, comment)
+                          handleQuantityChange(product, quantity, newAdditives, comment);
                         }
                       }}
                       onQuantityChange={(newQuantity) =>
@@ -4151,6 +3654,10 @@ export default function WaiterOrderPage() {
                       isOrderEditable={isOrderEditable!}
                       getProductPrice={getProductPrice}
                       comboItems={comboItems}
+                      onComboSelect={(selection) => {
+                        setPendingComboSelection(selection);
+                        pendingComboSelectionRef.current = selection;
+                      }}
                     />
                   );
                 })}
@@ -4159,10 +3666,8 @@ export default function WaiterOrderPage() {
           </div>
         )}
 
-        {/* Обычное отображение категорий (только если нет поиска) */}
         {!searchQuery && (
           <>
-            {/* Кнопка "Назад" - всегда показываем когда есть родительская категория */}
             {(categoryNavigation.parentCategory || categoryNavigation.breadcrumbs.length > 0) && (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 mb-6">
                 <button
@@ -4175,13 +3680,10 @@ export default function WaiterOrderPage() {
               </div>
             )}
 
-            {/* Отображаем категории в виде сетки, если есть категории для показа */}
             {displayCategories.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                 {displayCategories.map((category) => {
-                  // Проверяем, является ли эта категория текущей (отображаются её товары)
                   const isSelected = categoryNavigation.currentCategory?.id === category.id;
-                  // Или проверяем, является ли эта категория родительской (показываем подкатегории)
                   const isParent = categoryNavigation.parentCategory?.id === category.id;
 
                   return (
@@ -4209,28 +3711,25 @@ export default function WaiterOrderPage() {
               </div>
             )}
 
-            {/* Сообщение когда нет категорий с товарами */}
             {displayCategories.length === 0 && !categoryNavigation.parentCategory && (
               <div className="text-center py-8 text-gray-500 text-sm">
                 {t.noProductsFound}
               </div>
             )}
 
-            {/* Товары отображаются когда выбрана конкретная категория или есть родительская категория */}
             {(categoryNavigation.currentCategory || categoryNavigation.parentCategory) && displayProducts.length > 0 && (
               <div className="mt-4">
                 {categoryNavigation.currentCategory && (
                   <h4 className="text-base font-semibold mb-3 text-gray-700 flex items-center gap-2">
                     <span>{categoryNavigation.currentCategory.title}</span>
-
                   </h4>
                 )}
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                   {displayProducts.map((product) => {
-                    const additives = productAdditives[product.id] || []
-                    const comment = productComments[product.id] || ''
-                    const quantity = getDisplayQuantity(product, additives, comment)
+                    const additives = productAdditives[product.id] || [];
+                    const comment = productComments[product.id] || '';
+                    const quantity = getDisplayQuantity(product, additives, comment);
                     const comboItems = (product as any).comboItems || [];
 
                     return (
@@ -4263,7 +3762,6 @@ export default function WaiterOrderPage() {
               </div>
             )}
 
-            {/* Сообщение когда выбрана категория но нет товаров */}
             {(categoryNavigation.currentCategory || categoryNavigation.parentCategory) && displayProducts.length === 0 && (
               <div className="text-center py-8 text-gray-500 text-sm">
                 {t.noProductsFound}
@@ -4275,83 +3773,8 @@ export default function WaiterOrderPage() {
     );
   };
 
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-[200px]" />
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-4">
-            <Skeleton className="h-[500px] w-full" />
-          </div>
-          <div className="space-y-4">
-            <Skeleton className="h-[200px] w-full" />
-            <Skeleton className="h-[300px] w-full" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
-        <AlertCircle className="h-12 w-12 text-red-500" />
-        <h2 className="text-xl font-semibold">{t.orderNotFound}</h2>
-        <p className="text-gray-600">{error}</p>
-        <Button onClick={() => handleRouteChange('/orders')} variant="outline">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          {t.back}
-        </Button>
-      </div>
-    );
-  }
-
-  if (!order) {
-    return (
-      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
-        <AlertCircle className="h-12 w-12 text-red-500" />
-        <h2 className="text-xl font-semibold">{t.orderNotFound}</h2>
-        <Button onClick={() => handleRouteChange('/orders')} variant="outline">
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          {t.back}
-        </Button>
-      </div>
-    );
-  }
-  const statusTranslations = {
-    CREATED: {
-      ru: 'Создан',
-      ka: 'შექმნილი'
-    },
-    CONFIRMED: {
-      ru: 'Подтвержден',
-      ka: 'დადასტურებული'
-    },
-    PREPARING: {
-      ru: 'Готовится',
-      ka: 'მზადდება'
-    },
-    READY: {
-      ru: 'Готов',
-      ka: 'მზადაა'
-    },
-    DELIVERING: {
-      ru: 'Доставляется',
-      ka: 'იტანება'
-    },
-    COMPLETED: {
-      ru: 'Завершен',
-      ka: 'დასრულებული'
-    },
-    CANCELLED: {
-      ru: 'Отменен',
-      ka: 'გაუქმებული'
-    }
-  }
-
-  // Обновленная функция renderTotalWithButtons
   const renderTotalWithButtons = () => {
-    // Даже если правая колонка свернута, показываем кнопки в компактном виде
+    if(!order) return;
     if (isRightColCollapsed) {
       return (
         <div className="bg-white rounded-xl shadow-md p-3 flex items-center justify-between gap-2">
@@ -4446,9 +3869,9 @@ export default function WaiterOrderPage() {
         </div>
       );
     }
-
+    if(!order) return;
     return (
-      <div className="bg-white rounded-2xl  shadow-lg flex-shrink-0">
+      <div className="bg-white rounded-2xl shadow-lg flex-shrink-0">
         <div className="flex-col items-center justify-between mb-4">
           {(!((order.surcharges && order.surcharges.length > 0) || order.discountAmount > 0 || calculateTotalOrderAdditivesPrice() > 0)) && <div className="flex items-center gap-3">
             <Receipt className="h-6 w-6 text-green-600" />
@@ -4460,7 +3883,6 @@ export default function WaiterOrderPage() {
           {((order.surcharges && order.surcharges.length > 0) || order.discountAmount > 0 || calculateTotalOrderAdditivesPrice() > 0) && (
             <Collapsible>
               <CollapsibleTrigger asChild>
-                {/* Обернули заголовок в триггер */}
                 <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded-lg transition-colors">
                   <div className="flex items-center gap-3 flex-1">
                     <Receipt className="h-6 w-6 text-green-600" />
@@ -4491,7 +3913,6 @@ export default function WaiterOrderPage() {
                     </div>
                   )}
 
-                  {/* Добавляем стоимость модификаторов в детализацию */}
                   {calculateTotalOrderAdditivesPrice() > 0 && (
                     <div className="flex justify-between text-lg">
                       <span>{t.orderAdditives}:</span>
@@ -4616,18 +4037,69 @@ export default function WaiterOrderPage() {
     );
   };
 
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-10 w-[200px]" />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-4">
+            <Skeleton className="h-[500px] w-full" />
+          </div>
+          <div className="space-y-4">
+            <Skeleton className="h-[200px] w-full" />
+            <Skeleton className="h-[300px] w-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+        <AlertCircle className="h-12 w-12 text-red-500" />
+        <h2 className="text-xl font-semibold">{t.orderNotFound}</h2>
+        <p className="text-gray-600">{error}</p>
+        <Button onClick={() => handleRouteChange('/orders')} variant="outline">
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          {t.back}
+        </Button>
+      </div>
+    );
+  }
+
+  if (!order) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[60vh] space-y-4">
+        <AlertCircle className="h-12 w-12 text-red-500" />
+        <h2 className="text-xl font-semibold">{t.orderNotFound}</h2>
+        <Button onClick={() => handleRouteChange('/orders')} variant="outline">
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          {t.back}
+        </Button>
+      </div>
+    );
+  }
+
+  const statusTranslations = {
+    CREATED: { ru: 'Создан', ka: 'შექმნილი' },
+    CONFIRMED: { ru: 'Подтвержден', ka: 'დადასტურებული' },
+    PREPARING: { ru: 'Готовится', ka: 'მზადდება' },
+    READY: { ru: 'Готов', ka: 'მზადაა' },
+    DELIVERING: { ru: 'Доставляется', ka: 'იტანება' },
+    COMPLETED: { ru: 'Завершен', ka: 'დასრულებული' },
+    CANCELLED: { ru: 'Отменен', ka: 'გაუქმებული' }
+  };
 
   return (
     <AccessCheck allowedRoles={['WAITER', 'MANAGER', 'SUPERVISOR', 'CASHIER']}>
       <div className='absolute top-0'>
-        {/* Основная сетка */}
-        <div className={`grid ${isRightColCollapsed ? 'grid-cols-1 lg:grid-cols-12' : 'grid-cols-1 lg:grid-cols-3'}  gap-8 h-[100vh] mt-0 pt-0 `}>
+        <div className={`grid ${isRightColCollapsed ? 'grid-cols-1 lg:grid-cols-12' : 'grid-cols-1 lg:grid-cols-3'} gap-8 h-[100vh] mt-0 pt-0`}>
           {/* Левая колонка - Меню */}
           <div className={isRightColCollapsed ? 'lg:col-span-11' : 'lg:col-span-2'}>
             <div className="bg-white rounded-2xl shadow-lg sticky h-[100vh] flex flex-col">
-              {/* Заголовок меню - sticky */}
-              <div className="sticky top-0 z-10 bg-white border-b  pb-4  flex flex-col md:flex-row pt-4 md:pt-0 items-center justify-between">
-                <div className='flex flex-col  justify-center items-start gap-2'>
+              <div className="sticky top-0 z-10 bg-white border-b pb-4 flex flex-col md:flex-row pt-4 md:pt-0 items-center justify-between">
+                <div className='flex flex-col justify-center items-start gap-2'>
                   <div className="flex-col justify-start items-center gap-1 ml-2">
                     <Button
                       variant="outline"
@@ -4680,8 +4152,8 @@ export default function WaiterOrderPage() {
                       </button>
                     </div>
                   </div>
-
                 </div>
+
                 <div className="flex gap-2 justify-cente text-center p-2 sm:p-3">
                   {order.type === 'DINE_IN' && (
                     <div
@@ -4697,7 +4169,6 @@ export default function WaiterOrderPage() {
                     </div>
                   )}
 
-                  {/* Количество персон */}
                   <div
                     className={`flex flex-col items-center p-1 sm:p-2 2xl:p-3 rounded-lg ${order.numberOfPeople ? 'bg-green-50 border-1 2xl:border-2 border-green-200' : 'bg-gray-100'}`}
                     title={order.numberOfPeople ? `${order.numberOfPeople} персон` : ''}
@@ -4710,7 +4181,6 @@ export default function WaiterOrderPage() {
                     <span className="text-xs sm:text-sm font-semibold mt-1 hidden 2xl:block">Персон</span>
                   </div>
 
-                  {/* Статус заказа */}
                   <div
                     className={`flex flex-col items-center p-1 sm:p-2 2xl:p-3 rounded-lg border-1 2xl:border-2 ${order.status === 'CREATED' ? 'border-amber-200 bg-amber-50' :
                         order.status === 'CONFIRMED' ? 'border-blue-200 bg-blue-50' :
@@ -4739,7 +4209,6 @@ export default function WaiterOrderPage() {
                     <span className="text-xs sm:text-sm font-semibold mt-1 hidden 2xl:block">{statusTranslations[order.status]?.[language] || order.status}</span>
                   </div>
 
-                  {/* Время создания */}
                   <div
                     className={`flex flex-col items-center p-1 sm:p-2 2xl:p-3 rounded-lg ${order.createdAt ? 'bg-orange-50 border-1 2xl:border-2 border-orange-200' : 'bg-gray-100'}`}
                     title={order.createdAt ? new Date(order.createdAt).toLocaleTimeString() : ''}
@@ -4814,8 +4283,7 @@ export default function WaiterOrderPage() {
                     )}
                   </div>
                 ) : (
-                  <div className="space-y-4 ">
-
+                  <div className="space-y-4">
                     {order?.items?.length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground flex flex-col items-center">
                         <Package className="h-8 w-8 mb-2" />
@@ -4826,7 +4294,7 @@ export default function WaiterOrderPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
                           {getOrderItems()
                             .filter(item => !item.isRefund)
-                            .map(item => <ItemCard key={item.id} item={item} />)}
+                            .map(item => <CompactItemCard key={item.id} item={item as any} />)}
                         </div>
 
                         {getOrderItems().some(item => item.isRefund) && (
@@ -4839,7 +4307,7 @@ export default function WaiterOrderPage() {
                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-4">
                               {getOrderItems()
                                 .filter(item => item.isRefund)
-                                .map(item => <ItemCard key={item.id} item={item} />)}
+                                .map(item => <CompactItemCard key={item.id} item={item as any} />)}
                             </div>
                           </div>
                         )}
@@ -4852,16 +4320,14 @@ export default function WaiterOrderPage() {
           </div>
 
           {/* Правая колонка - Информация о заказе */}
-          <div className={`h-[100vh] hidden lg:flex lg:flex-col w-full `}>
-            {/* Карточка с табами - фиксированной высоты со скроллом */}
-            <div className="bg-white rounded-2xl pb-4 shadow-lg flex-1 flex flex-col min-h-0  justify-between px-6 ">
-              {!isRightColCollapsed && <h1 className={`text-xl md:text-2xl font-bold text-gray-900 py-4  ${isRightColCollapsed ? 'text-center' : 'text-left'}`}>
+          <div className={`h-[100vh] hidden lg:flex lg:flex-col w-full`}>
+            <div className="bg-white rounded-2xl pb-4 shadow-lg flex-1 flex flex-col min-h-0 justify-between px-6">
+              {!isRightColCollapsed && <h1 className={`text-xl md:text-2xl font-bold text-gray-900 py-4 ${isRightColCollapsed ? 'text-center' : 'text-left'}`}>
                 {getOrderHeader()}
               </h1>
               }
-              {/* Кастомная реализация табов */}
+
               <div className={`w-full flex flex-col flex-1 min-h-0 ${isRightColCollapsed ? 'pt-4 justify-center' : ''}`}>
-                {/* Навигация табов */}
                 <div className={`grid ${isRightColCollapsed ? 'grid-cols-1' : 'grid-cols-4 sm:grid-cols-6'} gap-2 mb-4 bg-white`}>
                   <button
                     className={`aspect-square text-lg font-semibold flex flex-col items-center justify-center p-2 sm:p-3 md:p-4 rounded-lg border-2 transition-all`}
@@ -4906,7 +4372,7 @@ export default function WaiterOrderPage() {
                     )}
                   </button>
                   }
-                  {/* 2. Рассчитать/Подтвердить */}
+
                   {getOrderItems().some(item => item.status === OrderItemStatus.CREATED) && isRightColCollapsed && (
                     <button
                       disabled={isUpdating || getOrderItems().length === 0}
@@ -4922,7 +4388,6 @@ export default function WaiterOrderPage() {
                     </button>
                   )}
 
-                  {/* 3. Отменить (только для статуса CREATED) */}
                   {order.status === 'CREATED' && isRightColCollapsed && (
                     <button
                       disabled={isUpdating}
@@ -4938,7 +4403,6 @@ export default function WaiterOrderPage() {
                     </button>
                   )}
 
-                  {/* 4. Рассчитать (для статуса READY) */}
                   {(order.status === 'READY' && order.type !== 'DELIVERY') && isRightColCollapsed && (
                     <button
                       disabled={
@@ -4963,18 +4427,12 @@ export default function WaiterOrderPage() {
                       )}
                     </button>
                   )}
-
-                  {/* 5. Итого */}
-
                 </div>
 
-                {/* Контент табов */}
                 {!isRightColCollapsed &&
                   <div className="flex-1 min-h-0">
-                    {/* Таб "Заказ" */}
                     {activeTab === 'order' && (
                       <div className="h-full relative">
-                        {/* Кастомный скролл контейнер */}
                         <div
                           ref={setOrderItemsScrollRef}
                           onScroll={checkScrollPosition}
@@ -4984,63 +4442,54 @@ export default function WaiterOrderPage() {
                             scrollbarColor: '#cbd5e1 #f1f5f9'
                           }}
                         >
-                          {/* Сначала обычные элементы (не комбо и не дочерние) */}
                           {getOrderItems()
                             .filter(item =>
                               item.status !== OrderItemStatus.IN_PROGRESS &&
-                              !item.parentComboId // Исключаем дочерние элементы комбо
+                              !item.parentComboId
                             )
                             .sort((a, b) => {
-                              const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
-                              const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
+                              const dateA = new Date(a.createdAt || a.timestamps?.createdAt || 0).getTime();
+                              const dateB = new Date(b.createdAt || b.timestamps?.createdAt || 0).getTime();
                               return dateA - dateB;
                             })
-                            .map(item => <CompactItemCard key={item.id} item={item} />)}
+                            .map(item => <CompactItemCard key={item.id} item={item as any} />)}
 
-                          {/* Затем готовящиеся позиции (IN_PROGRESS) в конце */}
                           {getOrderItems()
                             .filter(item =>
                               item.status === OrderItemStatus.IN_PROGRESS &&
-                              !item.parentComboId // Исключаем дочерние элементы комбо
+                              !item.parentComboId
                             )
-                            .sort((a, b) => {
-                              const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
-                              const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
+                           .sort((a, b) => {
+                              const dateA = new Date(a.createdAt || a.timestamps?.createdAt || 0).getTime();
+                              const dateB = new Date(b.createdAt || b.timestamps?.createdAt || 0).getTime();
                               return dateA - dateB;
                             })
-                            .map(item => <CompactItemCard key={item.id} item={item} />)}
+                            .map(item => <CompactItemCard key={item.id} item={item as any} />)}
                           {renderTotalWithButtons()}
                         </div>
-
-
                       </div>
                     )}
 
-                    {/* Таб "История" */}
                     {activeTab === 'history' && (
                       <div className="h-full overflow-y-auto">
                         {renderLogs()}
                       </div>
                     )}
 
-                    {/* Таб "Скидки" */}
                     {activeTab === 'discount' && (
                       <div className="h-full overflow-y-auto">
                         {renderDiscountsBlock()}
                       </div>
                     )}
 
-                    {/* Таб "Добавки" */}
                     {activeTab === 'additives' && (
                       <div className="h-full overflow-y-auto">
                         {renderOrderAdditivesBlock()}
                       </div>
                     )}
 
-                    {/* Таб "Инфо" */}
                     {activeTab === 'info' && (
                       <div className="space-y-8">
-                        {/* Тип заказа */}
                         <div>
                           <h2 className="text-xl font-bold mb-6 flex items-center gap-3">
                             {getOrderType(editFormData.type)}
@@ -5048,26 +4497,10 @@ export default function WaiterOrderPage() {
 
                           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                             {[
-                              {
-                                value: 'DINE_IN',
-                                icon: <Utensils className="h-8 w-8" />,
-                                label: 'В ресторане',
-                              },
-                              {
-                                value: 'TAKEAWAY',
-                                icon: <ShoppingBag className="h-8 w-8" />,
-                                label: 'Самовывоз',
-                              },
-                              {
-                                value: 'DELIVERY',
-                                icon: <Truck className="h-8 w-8" />,
-                                label: 'Доставка',
-                              },
-                              {
-                                value: 'BANQUET',
-                                icon: <Calendar className="h-8 w-8" />,
-                                label: 'Банкет',
-                              }
+                              { value: 'DINE_IN', icon: <Utensils className="h-8 w-8" />, label: 'В ресторане' },
+                              { value: 'TAKEAWAY', icon: <ShoppingBag className="h-8 w-8" />, label: 'Самовывоз' },
+                              { value: 'DELIVERY', icon: <Truck className="h-8 w-8" />, label: 'Доставка' },
+                              { value: 'BANQUET', icon: <Calendar className="h-8 w-8" />, label: 'Банкет' }
                             ].map((type) => (
                               <button
                                 key={type.value}
@@ -5077,7 +4510,7 @@ export default function WaiterOrderPage() {
                                   tableNumber: (type.value === 'TAKEAWAY' || type.value === 'DELIVERY') ? '0' : editFormData.tableNumber
                                 })}
                                 disabled={!isOrderEditable}
-                                className={`flex flex-col items-center justify-center  rounded-xl border-2  ${editFormData.type === type.value
+                                className={`flex flex-col items-center justify-center rounded-xl border-2 ${editFormData.type === type.value
                                     ? 'border-blue-600 bg-blue-50 text-blue-700'
                                     : 'border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50'
                                   } ${!isOrderEditable ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -5093,63 +4526,10 @@ export default function WaiterOrderPage() {
                           </div>
                         </div>
 
-                        {/* Основная информация */}
                         <div>
-                          <h2 className="text-2xl font-bold mb-6">
-                            Детали заказа
-                          </h2>
+                          <h2 className="text-2xl font-bold mb-6">Детали заказа</h2>
 
                           <div className="flex flex-col 2xl:flex-row gap-6 mb-6">
-                            {editFormData.type === 'DINE_IN' && false && (
-                              <div className="flex-1 min-w-0">
-                                <div className="space-y-3">
-                                  <Label className="text-xl font-semibold flex items-center gap-3">
-                                    <Table className="h-6 w-6 text-gray-600" />
-                                    {t.table}
-                                  </Label>
-                                  <div className="flex items-center">
-                                    <Button
-                                      variant="outline"
-                                      size="lg"
-                                      className="h-14 w-14 flex-shrink-0 text-2xl"
-                                      onClick={() => setEditFormData({
-                                        ...editFormData,
-                                        tableNumber: Math.max(0, parseInt(editFormData.tableNumber) - 1).toString()
-                                      })}
-                                      disabled={!isOrderEditable}
-                                    >
-                                      <Minus className='h-8 w-8' />
-                                    </Button>
-                                    <div className="flex-1 mx-2">
-                                      <Input
-                                        type="number"
-                                        min="0"
-                                        value={editFormData.tableNumber}
-                                        onChange={(e) => setEditFormData({
-                                          ...editFormData,
-                                          tableNumber: (parseInt(e.target.value) || 0).toString()
-                                        })}
-                                        disabled={!isOrderEditable}
-                                        className="h-14 text-2xl text-center font-bold"
-                                      />
-                                    </div>
-                                    <Button
-                                      variant="outline"
-                                      size="lg"
-                                      className="h-14 w-14 flex-shrink-0 text-2xl"
-                                      onClick={() => setEditFormData({
-                                        ...editFormData,
-                                        tableNumber: (parseInt(editFormData.tableNumber) + 1).toString()
-                                      })}
-                                      disabled={!isOrderEditable}
-                                    >
-                                      <Plus className='h-8 w-8' />
-                                    </Button>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                            {/* Количество людей */}
                             <div className="flex-1 min-w-0">
                               <div className="space-y-3">
                                 <Label className="text-xl font-semibold flex items-center gap-3">
@@ -5197,13 +4577,9 @@ export default function WaiterOrderPage() {
                                 </div>
                               </div>
                             </div>
-
-                            {/* Номер стола (только для DINE_IN) */}
-
                           </div>
 
                           {order.customerName}
-                          {/* Комментарий */}
                           <div className="space-y-3">
                             <Label className="text-xl font-semibold flex items-center gap-3">
                               <MessageSquare className="h-6 w-6 text-gray-600" />
@@ -5221,7 +4597,7 @@ export default function WaiterOrderPage() {
                             />
                           </div>
                         </div>
-                        {/* Кнопки сохранения */}
+
                         {isOrderEditable && (
                           <div className="flex justify-end gap-4 pt-4 border-t">
                             <Button
@@ -5248,18 +4624,17 @@ export default function WaiterOrderPage() {
                   </div>
                 }
               </div>
-              {isRightColCollapsed && <div className=" text-lg font-semibold flex flex-col items-center justify-center ">
+              {isRightColCollapsed && <div className="text-lg font-semibold flex flex-col items-center justify-center">
                 Итого:
-                <span className="text-lg font-bold ">
+                <span className="text-lg font-bold">
                   <p>{calculateOrderTotal().toFixed(0)}₽</p>
                 </span>
               </div>
               }
             </div>
-
           </div>
 
-          <div className="fixed bottom-20 right-6 z-50 lg:hidden ">
+          <div className="fixed bottom-20 right-6 z-50 lg:hidden">
             <Button
               onClick={() => setIsMobileSheetOpen(true)}
               className="h-14 w-14 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 text-white"
@@ -5270,7 +4645,7 @@ export default function WaiterOrderPage() {
           </div>
 
           <Sheet open={isMobileSheetOpen} onOpenChange={setIsMobileSheetOpen}>
-            <MobileSheetContent className=" p-0" >
+            <MobileSheetContent className="p-0">
               <SheetHeader className="p-4 border-b">
                 <SheetTitle className="flex items-center justify-between">
                   <span>{getOrderHeader()}</span>
@@ -5286,7 +4661,6 @@ export default function WaiterOrderPage() {
               </SheetHeader>
 
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {/* Табы для мобильной версии */}
                 <div className="grid grid-cols-5 gap-2">
                   {[
                     { id: 'order', icon: ShoppingCart, label: 'Заказ' },
@@ -5308,30 +4682,27 @@ export default function WaiterOrderPage() {
                   ))}
                 </div>
 
-                {/* Контент табов */}
                 <div className="min-h-[300px]">
-                  {/* Таб "Заказ" */}
                   {activeTab === 'order' && (
                     <div className="space-y-4">
                       {getOrderItems()
                         .filter(item => item.status !== OrderItemStatus.IN_PROGRESS && !item.parentComboId)
                         .sort((a, b) => {
-                          const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
-                          const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
+                          const dateA = new Date(a.createdAt || a.timestamps?.createdAt || 0).getTime();
+                          const dateB = new Date(b.createdAt || b.timestamps?.createdAt || 0).getTime();
                           return dateA - dateB;
                         })
-                        .map(item => <CompactItemCard key={item.id} item={item} />)}
+                        .map(item => <CompactItemCard key={item.id} item={item any} />)}
 
                       {getOrderItems()
                         .filter(item => item.status === OrderItemStatus.IN_PROGRESS && !item.parentComboId)
                         .sort((a, b) => {
-                          const dateA = new Date(a.createdAt || a.timestamps?.createdAt).getTime();
-                          const dateB = new Date(b.createdAt || b.timestamps?.createdAt).getTime();
+                          const dateA = new Date(a.createdAt || a.timestamps?.createdAt || 0).getTime();
+                          const dateB = new Date(b.createdAt || b.timestamps?.createdAt || 0).getTime();
                           return dateA - dateB;
                         })
-                        .map(item => <CompactItemCard key={item.id} item={item} />)}
+                        .map(item => <CompactItemCard key={item.id} item={item as any} />)}
 
-                      {/* Компактная версия итоговой суммы и кнопок для мобилки */}
                       <div className="bg-white rounded-xl shadow-md p-3 flex flex-col gap-3">
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-medium">Итого:</span>
@@ -5427,31 +4798,26 @@ export default function WaiterOrderPage() {
                     </div>
                   )}
 
-                  {/* Таб "История" */}
                   {activeTab === 'history' && (
                     <div className="max-h-[60vh] overflow-y-auto">
                       {renderLogs()}
                     </div>
                   )}
 
-                  {/* Таб "Скидки" */}
                   {activeTab === 'discount' && (
                     <div className="max-h-[60vh] overflow-y-auto">
                       {renderDiscountsBlock()}
                     </div>
                   )}
 
-                  {/* Таб "Добавки" */}
                   {activeTab === 'additives' && (
                     <div className="max-h-[60vh] overflow-y-auto">
                       {renderOrderAdditivesBlock()}
                     </div>
                   )}
 
-                  {/* Таб "Инфо" */}
                   {activeTab === 'info' && (
                     <div className="space-y-6 max-h-[60vh] overflow-y-auto">
-                      {/* Тип заказа */}
                       <div>
                         <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
                           {getOrderType(editFormData.type)}
@@ -5484,7 +4850,6 @@ export default function WaiterOrderPage() {
                         </div>
                       </div>
 
-                      {/* Количество людей */}
                       <div>
                         <Label className="text-sm font-semibold flex items-center gap-2 mb-2">
                           <Users className="h-4 w-4" />
@@ -5529,7 +4894,6 @@ export default function WaiterOrderPage() {
                         </div>
                       </div>
 
-                      {/* Комментарий */}
                       <div>
                         <Label className="text-sm font-semibold flex items-center gap-2 mb-2">
                           <MessageSquare className="h-4 w-4" />
@@ -5547,7 +4911,6 @@ export default function WaiterOrderPage() {
                         />
                       </div>
 
-                      {/* Кнопка сохранения */}
                       {isOrderEditable && (
                         <Button
                           onClick={handleEditOrderSubmit}
@@ -5570,7 +4933,6 @@ export default function WaiterOrderPage() {
           </Sheet>
         </div>
 
-        {/* Диалоговые окна */}
         {order.payment && (
           <PaymentDialog
             open={showPaymentDialog}
@@ -5584,7 +4946,6 @@ export default function WaiterOrderPage() {
         <AlertDialog open={showRefundDialog} onOpenChange={(open) => {
           setShowRefundDialog(open);
           if (!open) {
-            // Сбрасываем режим при закрытии
             setRefundMode('refund');
             setRefundReasonType('');
             setRefundReason('');
@@ -5601,7 +4962,6 @@ export default function WaiterOrderPage() {
             </AlertDialogHeader>
 
             <div className="space-y-6">
-              {/* Переключатель режимов */}
               <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
                 <button
                   onClick={() => setRefundMode('refund')}
@@ -5623,11 +4983,8 @@ export default function WaiterOrderPage() {
                 </button>
               </div>
 
-              {/* Количество для возврата */}
               <div className="space-y-3">
-                <Label className="text-lg font-semibold">
-                  Количество:
-                </Label>
+                <Label className="text-lg font-semibold">Количество:</Label>
                 <div className="flex items-center gap-3">
                   <Button
                     variant="outline"
@@ -5664,7 +5021,6 @@ export default function WaiterOrderPage() {
                 </div>
               </div>
 
-              {/* Причина возврата/замены */}
               <div className="space-y-3">
                 <Label className="text-lg font-semibold">
                   Причина {refundMode === 'refund' ? 'возврата' : 'замены'}
@@ -5686,11 +5042,8 @@ export default function WaiterOrderPage() {
                 </Select>
               </div>
 
-              {/* Комментарий */}
               <div className="space-y-3">
-                <Label className="text-lg font-semibold">
-                  Дополнительный комментарий
-                </Label>
+                <Label className="text-lg font-semibold">Дополнительный комментарий</Label>
                 <Textarea
                   value={refundReason}
                   onChange={(e) => setRefundReason(e.target.value)}
@@ -5698,8 +5051,6 @@ export default function WaiterOrderPage() {
                   className="min-h-[100px] text-lg"
                 />
               </div>
-
-
             </div>
 
             <AlertDialogFooter className="gap-3 mt-6">
@@ -5735,14 +5086,10 @@ export default function WaiterOrderPage() {
           </AlertDialogContent>
         </AlertDialog>
 
-
-
         <AlertDialog open={showCompleteDialog} onOpenChange={setShowCompleteDialog}>
           <AlertDialogContent className="max-w-md">
             <AlertDialogHeader>
-              <AlertDialogTitle className="text-2xl">
-                {t.confirmation}
-              </AlertDialogTitle>
+              <AlertDialogTitle className="text-2xl">{t.confirmation}</AlertDialogTitle>
               <AlertDialogDescription className="text-lg">
                 {t.confirmCalculate}
               </AlertDialogDescription>
@@ -5766,9 +5113,7 @@ export default function WaiterOrderPage() {
         <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
           <AlertDialogContent className="max-w-md">
             <AlertDialogHeader>
-              <AlertDialogTitle className="text-2xl">
-                {t.confirmation}
-              </AlertDialogTitle>
+              <AlertDialogTitle className="text-2xl">{t.confirmation}</AlertDialogTitle>
               <AlertDialogDescription className="text-lg">
                 {t.confirmCancel}
               </AlertDialogDescription>
@@ -5792,9 +5137,7 @@ export default function WaiterOrderPage() {
         <AlertDialog open={showExitConfirmDialog} onOpenChange={setShowExitConfirmDialog}>
           <AlertDialogContent className="max-w-md">
             <AlertDialogHeader>
-              <AlertDialogTitle className="text-2xl">
-                {t.exitConfirmTitle}
-              </AlertDialogTitle>
+              <AlertDialogTitle className="text-2xl">{t.exitConfirmTitle}</AlertDialogTitle>
               <AlertDialogDescription className="text-lg">
                 {t.exitConfirmMessage}
               </AlertDialogDescription>
@@ -5826,7 +5169,6 @@ export default function WaiterOrderPage() {
     </AccessCheck>
   );
 }
-
 
 interface AdditivesDialogProps {
   product: Product;
@@ -5915,8 +5257,6 @@ const AdditivesDialog: React.FC<AdditivesDialogProps> = ({
           </div>
         </div>
 
-
-
         <DialogFooter className="shrink-0 gap-2 pt-4 border-t">
           <DialogClose asChild>
             <Button variant="outline" onClick={handleCancel}>
@@ -5932,10 +5272,6 @@ const AdditivesDialog: React.FC<AdditivesDialogProps> = ({
   );
 };
 
-
-
-
-// Типы для комбо
 interface ComboItem {
   id: string;
   type: 'STATIC' | 'CHOICE' | 'OPTIONAL';
@@ -5958,19 +5294,6 @@ interface ComboProduct {
   product: Product;
 }
 
-interface ComboSelection {
-  parentOrderItemId?: string;
-  comboId: string;
-  selections: {
-    [comboItemId: string]: {
-      selectedProducts: Array<{
-        productId: string;
-        quantity: number;
-      }>;
-    };
-  };
-}
-
 interface ComboSelectionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -5988,47 +5311,33 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
   onConfirm,
   isOrderEditable
 }) => {
-  // Используем useState для хранения выбранных опций
   const [selections, setSelections] = useState<ComboSelection['selections']>({});
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [currentStep, setCurrentStep] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
 
-  // Добавляем ref для хранения предыдущего выбора
   const previousSelectionRef = useRef<ComboSelection['selections'] | null>(null);
 
-  // Сортируем элементы комбо
   const sortedItems = useMemo(() =>
     [...comboItems].sort((a, b) => a.sortOrder - b.sortOrder),
     [comboItems]
   );
 
-  // Получаем текущий шаг
   const currentItem = sortedItems[currentStep];
   const isLastStep = currentStep === sortedItems.length - 1;
 
-  // Проверяем, валиден ли текущий шаг
   const isCurrentStepValid = useMemo(() => {
     if (!currentItem) return false;
-
-    // Для STATIC всегда валиден
     if (currentItem.type === 'STATIC') return true;
-
-    // Для OPTIONAL всегда валиден (опционально)
     if (currentItem.type === 'OPTIONAL') return true;
-
-    // Для CHOICE проверяем минимальное количество
     const selection = selections[currentItem.id];
     const count = selection?.selectedProducts.length || 0;
     return count >= currentItem.minSelect;
   }, [currentItem, selections]);
 
-  // Инициализация при открытии
   useEffect(() => {
     if (open) {
-      // Сначала пробуем восстановить предыдущий выбор
       if (previousSelectionRef.current && Object.keys(previousSelectionRef.current).length > 0) {
-        // Проверяем, что предыдущий выбор все еще валиден (все группы существуют)
         const isValidPreviousSelection = Object.keys(previousSelectionRef.current).every(
           itemId => comboItems.some(item => item.id === itemId)
         );
@@ -6042,12 +5351,10 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
         }
       }
 
-      // Если нет предыдущего выбора или он невалиден, создаем начальный
       const initialSelections: ComboSelection['selections'] = {};
 
       comboItems.forEach(item => {
         if (item.type === 'STATIC') {
-          // Для статических групп выбираем все продукты с указанным количеством
           initialSelections[item.id] = {
             selectedProducts: item.products.map(p => ({
               productId: p.productId,
@@ -6055,7 +5362,6 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
             }))
           };
         } else {
-          // Для групп выбора (CHOICE и OPTIONAL) начинаем с пустого массива
           initialSelections[item.id] = {
             selectedProducts: []
           };
@@ -6079,17 +5385,14 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
     let newSelectedProducts = [...currentSelections];
 
     if (selectedProductIds.includes(productId)) {
-      // Убираем продукт, если он уже выбран
       newSelectedProducts = newSelectedProducts.filter(sp => sp.productId !== productId);
     } else {
-      // Проверяем лимит выбора ТОЛЬКО для CHOICE (не для OPTIONAL)
       if (item.type === 'CHOICE' && newSelectedProducts.length >= item.maxSelect) {
         setValidationErrors(prev => ({
           ...prev,
           [comboItemId]: `Можно выбрать не более ${item.maxSelect} позиций`
         }));
 
-        // Сбрасываем ошибку через 3 секунды
         setTimeout(() => {
           setValidationErrors(prev => {
             const newErrors = { ...prev };
@@ -6110,7 +5413,6 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
       }
     }
 
-    // Очищаем ошибку валидации для этой группы, если она была
     if (validationErrors[comboItemId]) {
       setValidationErrors(prev => {
         const newErrors = { ...prev };
@@ -6130,10 +5432,8 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
   const goToNextStep = () => {
     if (!isCurrentStepValid) return;
 
-    // Отмечаем текущий шаг как завершенный
     setCompletedSteps(prev => new Set([...prev, currentStep]));
 
-    // Переходим к следующему шагу
     if (!isLastStep) {
       setCurrentStep(prev => prev + 1);
     }
@@ -6146,7 +5446,6 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
   };
 
   const goToStep = (step: number) => {
-    // Проверяем, можно ли перейти к этому шагу (все предыдущие шаги должны быть завершены)
     let canNavigate = true;
     for (let i = 0; i < step; i++) {
       const item = sortedItems[i];
@@ -6170,7 +5469,6 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
     let isValid = true;
 
     comboItems.forEach(item => {
-      // Валидация ТОЛЬКО для CHOICE (не для OPTIONAL)
       if (item.type !== 'CHOICE') return;
 
       const selection = selections[item.id];
@@ -6195,12 +5493,6 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
   const handleConfirm = () => {
     if (!validateSelections()) return;
 
-    console.log('Combo selection confirmed:', {
-      comboId: combo.id,
-      selections
-    });
-
-    // Сохраняем текущий выбор в ref перед подтверждением
     previousSelectionRef.current = selections;
 
     onConfirm({
@@ -6211,7 +5503,6 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
   };
 
   const handleCancel = () => {
-    // При отмене сбрасываем состояние
     setSelections({});
     previousSelectionRef.current = null;
     setCurrentStep(0);
@@ -6250,10 +5541,8 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
     }, 0);
   };
 
-  // Если диалог закрыт, не рендерим содержимое
   if (!open) return null;
 
-  // Если нет элементов, показываем сообщение
   if (sortedItems.length === 0) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -6299,10 +5588,8 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
           </DialogTitle>
         </DialogHeader>
 
-        {/* Шаги навигации */}
-        <div className="px-6 py-4 ">
-          {/* Прогресс-бар */}
-          <div >
+        <div className="px-6 py-4">
+          <div>
             <div className="flex justify-between text-sm text-gray-500 mb-2">
               <span>Шаг {currentStep + 1} из {sortedItems.length}</span>
             </div>
@@ -6313,11 +5600,8 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
               />
             </div>
           </div>
-
-
         </div>
 
-        {/* Контент текущего шага */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -6367,7 +5651,6 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
                     sp => sp.productId === comboProduct.productId
                   );
 
-                  // Проверяем доступность выбора
                   let isDisabled = false;
                   let disabledReason = '';
 
@@ -6379,7 +5662,6 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
                       disabledReason = `Максимум ${currentItem.maxSelect} позиций`;
                     }
                   }
-                  // Для OPTIONAL нет ограничений на максимальное количество
 
                   return (
                     <div
@@ -6448,8 +5730,7 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
           </div>
         </div>
 
-        {/* Футер с навигацией */}
-        <DialogFooter className="p-6 pt-4 ">
+        <DialogFooter className="p-6 pt-4">
           <div className="flex items-center justify-between w-full">
             <div className="text-lg">
               <span className="text-gray-600">Итого за комбо:</span>
@@ -6503,5 +5784,3 @@ const ComboSelectionDialog: React.FC<ComboSelectionDialogProps> = ({
     </Dialog>
   );
 };
-
-
