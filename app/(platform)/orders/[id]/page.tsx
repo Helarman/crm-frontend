@@ -4692,7 +4692,7 @@ const getOrderHeader = () => {
                           const dateB = new Date(b.createdAt || b.timestamps?.createdAt || 0).getTime();
                           return dateA - dateB;
                         })
-                        .map(item => <CompactItemCard key={item.id} item={item any} />)}
+                        .map(item => <CompactItemCard key={item.id} item={item as any} />)}
 
                       {getOrderItems()
                         .filter(item => item.status === OrderItemStatus.IN_PROGRESS && !item.parentComboId)
