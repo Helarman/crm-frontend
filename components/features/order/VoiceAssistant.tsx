@@ -871,7 +871,7 @@ export function VoiceAssistantSheet({
     return `Ты - AI для определения намерений пользователя в ресторанном заказе.
     
 Твоя задача - определить, ЧТО ИМЕННО хочет сделать пользователь.
-
+Если пользователь просит помнять тип заказа на с собой или доставка, то отвечай "Я пока не научилась такому"
 Доступные действия (intent):
 1. ADD_ITEMS - добавить товары в заказ
 2. REMOVE_ITEMS - удалить товары из заказа
@@ -1894,7 +1894,7 @@ export function VoiceAssistantButton() {
   const [isOpen, setIsOpen] = useState(false);
   return (
     <>
-      <Button onClick={() => setIsOpen(true)} className="fixed md:bottom-8 bottom-24 right-6 h-14 w-14 rounded-full shadow-lg z-50 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600" size="icon"><Brain className="h-6 w-6" /></Button>
+      <Button onClick={() => setIsOpen(true)} className="fixed md:bottom-8 bottom-38 right-6 h-14 w-14 rounded-full shadow-lg z-50 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600" size="icon"><Brain className="h-6 w-6" /></Button>
       <VoiceAssistantSheet open={isOpen} onOpenChange={setIsOpen} />
     </>
   );
