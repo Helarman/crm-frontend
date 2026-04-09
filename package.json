@@ -47,6 +47,7 @@
     "formidable": "^3.5.4",
     "framer-motion": "^12.12.1",
     "fs": "^0.0.1-security",
+    "fuse.js": "^7.3.0",
     "js-cookie": "^3.0.5",
     "leaflet-color-markers": "^0.1.0",
     "lodash": "^4.17.21",

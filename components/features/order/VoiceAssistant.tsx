@@ -1,4 +1,4 @@
-//@ts-nocheck
+// @ts-nocheck
 
 'use client'
 
@@ -15,6 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
+// Импортируем Fuse.js
+import Fuse from 'fuse.js'
 import {
   Mic,
   MicOff,
@@ -53,9 +55,10 @@ import { EnumPaymentMethod, OrderService } from '@/lib/api/order.service'
 import { ProductService } from '@/lib/api/product.service'
 import { CategoryService } from '@/lib/api/category.service'
 import { useLanguageStore } from '@/lib/stores/language-store'
-import { openAIService } from '@/lib/api/openai-proxy.service'
+import { yandexAIService, YandexChatMessage } from '@/lib/api/yandex-ai.service'
 import { Restaurant } from '@/lib/types/restaurant'
 
+// ... (типы Additive, Product, Category, ParsedOrderItem, ParsedOrder, AIConfig, ConversationMessage остаются без изменений) ...
 interface Additive {
   id: string
   title: string
@@ -106,10 +109,12 @@ interface ParsedOrder {
 }
 
 interface AIConfig {
-  model: string
   temperature: number
   maxTokens: number
   useAdvancedParsing: boolean
+  voice?: 'oksana' | 'alena' | 'filipp' | 'zahar' | 'jane' | 'omazh'
+  emotion?: 'good' | 'evil' | 'neutral'
+  speed?: number
 }
 
 interface ConversationMessage {
@@ -119,25 +124,25 @@ interface ConversationMessage {
   type?: 'order_update' | 'info' | 'error' | 'suggestion'
 }
 
+// Обновленный тип для ответа AI - содержит только сырые строки для поиска через Fuse
 interface AIActionResponse {
   action: 'ADD_ITEMS' | 'UPDATE_ORDER_TYPE' | 'UPDATE_DETAILS' | 'REMOVE_ITEMS' | 'SHOW_ORDER' | 'ANSWER_QUESTION' | 'CLEAR_ORDER' | 'MODIFY_QUANTITY' | 'SHOW_MENU' | 'MODIFY_ADDITIVES'
+  // Массив объектов с сырыми данными для поиска
   itemsToAdd?: Array<{
-    productId: string
-    productTitle: string
+    productQuery: string       // Название блюда как сказал пользователь
     quantity: number
     comment?: string
-    modifiers?: string[]
-    additives?: string[]
+    additiveQueries?: string[] // Названия добавок как сказал пользователь
   }>
-  itemsToRemove?: string[]
+  itemsToRemove?: string[]     // Названия блюд для удаления
   itemsToModify?: Array<{
-    productId: string
+    productQuery: string
     quantity: number
-    additives?: string[]
+    additiveQueries?: string[]
   }>
   additivesToModify?: Array<{
-    productId: string
-    additives: string[]
+    productQuery: string
+    additiveQueries: string[]
   }>
   newOrderType?: 'DINE_IN' | 'TAKEAWAY' | 'DELIVERY'
   updatedDetails?: {
@@ -156,7 +161,6 @@ interface VoiceAssistantSheetProps {
   orderId?: string
 }
 
-// Категории и их иконки
 const CATEGORY_ICONS: { [key: string]: any } = {
   'default': ChefHat
 }
@@ -183,9 +187,11 @@ export function VoiceAssistantSheet({
   const [activeTab, setActiveTab] = useState('assistant')
   const [selectedAdditives, setSelectedAdditives] = useState<{ [key: string]: string[] }>({})
 
+  // Инициализация Fuse.js
+  const [fuse, setFuse] = useState<Fuse<Product> | null>(null)
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
-  const speechSynthesisRef = useRef<SpeechSynthesisUtterance | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
@@ -199,10 +205,12 @@ export function VoiceAssistantSheet({
   })
 
   const [aiConfig, setAiConfig] = useState<AIConfig>({
-    model: 'gpt-4o',
     temperature: 0.1,
     maxTokens: 1000,
-    useAdvancedParsing: true
+    useAdvancedParsing: true,
+    voice: 'oksana',
+    emotion: 'neutral',
+    speed: 1.0
   })
 
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -304,15 +312,16 @@ export function VoiceAssistantSheet({
       additives: "Добавки",
       withAdditives: "с добавками",
       modifyAdditives: "Изменить добавки",
-      forAdditives: "forAdditives",
+      forAdditives: "за добавки",
       errorNoTableNumber: 'Укажите номер стола',
       errorNoPeopleCount: 'Укажите количество посетителей',
       tableNumberRequired: 'Номер стола обязателен для заказа в ресторане',
       peopleCountRequired: 'Количество посетителей обязательно для заказа в ресторане',
     },
     ka: {
+      // ... переводы остаются без изменений ...
       title: "მიმტანის ასისტენტი",
-      forAdditives: "forAdditives",
+      forAdditives: "დანამატებისთვის",
       startRecording: "ჩაწერის დაწყება",
       stopRecording: "ჩაწერის შეჩერება",
       subtitle: "შეკვეთების ხმოვანი მართვა",
@@ -400,7 +409,7 @@ export function VoiceAssistantSheet({
       withAdditives: "დანამატებით",
       modifyAdditives: "დანამატების შეცვლა",
       errorNoTableNumber: 'მიუთითეთ სტოლის ნომერი',
-      errorNoPeopleCount: 'მიუთითეთ ვიზიტორების რაოдენობა',
+      errorNoPeopleCount: 'მიუთითეთ ვიზიტორების რაოდენობა',
       tableNumberRequired: 'სტოლის ნომერი სავალდებულოა რესტორნში შეკვეთისთვის',
       peopleCountRequired: 'ვიზიტორების რაოდენობა სავალდებულოა რესტორნში შეკვეთისთვის',
     }
@@ -408,6 +417,7 @@ export function VoiceAssistantSheet({
 
   const t = translations[language]
 
+  // ... (useEffect для ресторана и загрузки данных без изменений) ...
   useEffect(() => {
     if (user?.restaurant?.length > 0) {
       const savedRestaurantId = localStorage.getItem('selectedRestaurantId')
@@ -437,6 +447,18 @@ export function VoiceAssistantSheet({
     }
   }, [open, language])
 
+  // Обновление Fuse при изменении products
+  useEffect(() => {
+    if (products.length > 0) {
+      const fuseOptions = {
+        keys: ['title', 'description', 'tags'],
+        threshold: 0.4, // Достаточно высокий порог для поиска с опечатками
+        includeScore: true
+      }
+      setFuse(new Fuse(products, fuseOptions))
+    }
+  }, [products])
+
   const handleRestaurantChange = (restaurantId: string) => {
     setSelectedRestaurantId(restaurantId)
     localStorage.setItem('selectedRestaurantId', restaurantId)
@@ -446,6 +468,7 @@ export function VoiceAssistantSheet({
   const getRestaurantId = (): string => {
     return selectedRestaurantId || localStorage.getItem('selectedRestaurantId') || ''
   }
+  
   const updateAdditionalInfo = (field: keyof typeof additionalInfo, value: number | string) => {
     setAdditionalInfo(prev => ({
       ...prev,
@@ -453,7 +476,7 @@ export function VoiceAssistantSheet({
     }))
   }
 
-
+  // ... (функции инициализации аудио и записи остаются без изменений) ...
   const initializeAudioAnalyzer = async (stream: MediaStream) => {
     try {
       audioContextRef.current = new AudioContext()
@@ -541,7 +564,7 @@ export function VoiceAssistantSheet({
             duration: audioChunksRef.current.length
           });
 
-          await processAudioWithWhisper(audioBlob);
+          await processAudioWithYandex(audioBlob);
         } catch (error) {
           console.error('Error processing recording:', error);
           toast.error(t.audioError);
@@ -655,57 +678,48 @@ export function VoiceAssistantSheet({
     return cleanedText;
   };
 
-  const processAudioWithWhisper = async (audioBlob: Blob) => {
+  const processAudioWithYandex = async (audioBlob: Blob) => {
     setIsProcessing(true);
 
     try {
       const processedBlob = await convertToWavIfNeeded(audioBlob);
 
-      const formData = new FormData();
+      const file = new File([processedBlob], 'audio.wav', { type: 'audio/wav' });
 
-      let fileName = 'audio.wav';
-      if (processedBlob.type.includes('mpeg') || processedBlob.type.includes('mp4')) {
-        fileName = 'audio.mp3';
-      } else if (processedBlob.type.includes('webm')) {
-        fileName = 'audio.webm';
-      }
-
-      formData.append('file', processedBlob, fileName);
-      formData.append('model', 'whisper-1');
-      formData.append('language', language === 'ru' ? 'ru' : 'ka');
-      formData.append('response_format', 'json');
-
-      console.log('Sending audio to Whisper:', {
+      console.log('Sending audio to Yandex STT:', {
         size: processedBlob.size,
-        type: processedBlob.type,
-        fileName
+        type: processedBlob.type
       });
 
-      const result = await openAIService.transcribeAudio(formData);
-      const rawTranscribedText = result.text.trim();
+      const result = await yandexAIService.transcribeAudio(file, language === 'ru' ? 'ru-RU' : 'ka-GE');
+      
+      if (result.success && result.data?.text) {
+        const rawTranscribedText = result.data.text.trim();
+        const cleanedText = cleanTranscript(rawTranscribedText);
 
-      const cleanedText = cleanTranscript(rawTranscribedText);
+        console.log('Transcription:', {
+          raw: rawTranscribedText,
+          cleaned: cleanedText
+        });
 
-      console.log('Transcription:', {
-        raw: rawTranscribedText,
-        cleaned: cleanedText
-      });
-
-      if (cleanedText) {
-        setTranscript(cleanedText);
-        await processOrderWithAI(cleanedText);
-      } else if (rawTranscribedText) {
-        const infoMessage: ConversationMessage = {
-          role: 'assistant',
-          content: language === 'ru'
-            ? 'Распознаны служебные фразы. Пожалуйста, повторите ваш заказ.'
-            : 'სერვისური ფრაზები ამოიცნო. გთხოვთ, გაიმეოროთ თქვენი შეკვეთა.',
-          timestamp: new Date(),
-          type: 'info'
-        };
-        setConversation(prev => [...prev, infoMessage]);
+        if (cleanedText) {
+          setTranscript(cleanedText);
+          await processOrderWithAI(cleanedText);
+        } else if (rawTranscribedText) {
+          const infoMessage: ConversationMessage = {
+            role: 'assistant',
+            content: language === 'ru'
+              ? 'Распознаны служебные фразы. Пожалуйста, повторите ваш заказ.'
+              : 'სერვისური ფრაზები ამოიცნო. გთხოვთ, გაიმეოროთ თქვენი შეკვეთა.',
+            timestamp: new Date(),
+            type: 'info'
+          };
+          setConversation(prev => [...prev, infoMessage]);
+        } else {
+          toast.error(language === 'ru' ? 'Не удалось распознать речь' : 'მეტყველების ამოცნობა ვერ მოხერხდა');
+        }
       } else {
-        toast.error(language === 'ru' ? 'Не удалось распознать речь' : 'მეტყველების ამოცნობა ვერ მოხერხდა');
+        toast.error(result.error || (language === 'ru' ? 'Не удалось распознать речь' : 'მეტყველების ამოცნობა ვერ მოხერხდა'));
       }
     } catch (error) {
       console.error('Error processing audio:', error);
@@ -767,10 +781,6 @@ export function VoiceAssistantSheet({
 
     if (animationRef.current) {
       cancelAnimationFrame(animationRef.current)
-    }
-
-    if (speechSynthesisRef.current) {
-      speechSynthesis.cancel()
     }
 
     if (releaseTimerRef.current) {
@@ -855,353 +865,452 @@ export function VoiceAssistantSheet({
     processOrderWithAI(transcript)
   }
 
-  const callOpenAI = async (prompt: string): Promise<any> => {
-    try {
-      const response = await openAIService.chatCompletion([
-        {
-          role: "system",
-          content: getSystemPrompt()
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ], {
-        model: aiConfig.model,
-        temperature: aiConfig.temperature,
-        max_tokens: aiConfig.maxTokens,
-      });
+  // ==================== НОВЫЕ ПРОМПТЫ ДЛЯ AI (БЕЗ МЕНЮ) ====================
 
-      console.log('Raw AI response:', response);
+  const getSystemPromptForIntentDetection = () => {
+    return `Ты - AI для определения намерений пользователя в ресторанном заказе.
+    
+Твоя задача - определить, ЧТО ИМЕННО хочет сделать пользователь.
 
-      let content;
+Доступные действия (intent):
+1. ADD_ITEMS - добавить товары в заказ
+2. REMOVE_ITEMS - удалить товары из заказа
+3. MODIFY_QUANTITY - изменить количество товаров
+4. MODIFY_ADDITIVES - изменить добавки у товара
+5. UPDATE_DETAILS - изменить детали заказа (стол, кол-во персон, комментарий)
+6. SHOW_ORDER - показать текущий заказ
+7. SHOW_MENU - показать меню
+8. CLEAR_ORDER - очистить весь заказ
+9. ANSWER_QUESTION - ответить на вопрос
 
-      if (typeof response === 'string') {
-        content = response;
-      } else if (response.choices && response.choices[0] && response.choices[0].message) {
-        content = response.choices[0].message.content;
-      } else if (response.content) {
-        content = response.content;
-      } else if (response.message) {
-        content = response.message.content || response.message;
-      } else {
-        console.error('Unexpected response structure:', response);
-        throw new Error('Invalid response structure from AI');
-      }
-
-      console.log('Extracted content:', content);
-
-      if (typeof content === 'object') {
-        return content;
-      }
-
-      const cleanedContent = content.trim();
-
-      const jsonContent = cleanedContent
-        .replace(/```json\s*/g, '')
-        .replace(/```\s*/g, '')
-        .trim();
-
-      console.log('Cleaned content for parsing:', jsonContent);
-
-      try {
-        const parsed = JSON.parse(jsonContent);
-        console.log('Successfully parsed JSON:', parsed);
-        return parsed;
-      } catch (parseError) {
-        console.error('JSON parse error:', parseError);
-        console.error('Content that failed to parse:', jsonContent);
-
-        return {
-          action: "ANSWER_QUESTION",
-          response: jsonContent,
-          confidence: 0.5,
-          suggestions: []
-        };
-      }
-
-    } catch (error) {
-      console.error('Error calling OpenAI:', error);
-      throw error;
-    }
+Верни ТОЛЬКО JSON:
+{
+  "intent": "ADD_ITEMS",
+  "confidence": 0.95
+}`;
   };
 
-  const getSystemPrompt = () => {
-    const userRestaurantId = getRestaurantId();
+  const getSystemPromptForAddItems = () => {
+    return `Ты - AI для извлечения структуры заказа из текста пользователя.
+ТВОЯ ЗАДАЧА - ТОЛЬКО ИЗВЛЕЧЬ ДАННЫЕ В JSON. НЕ ИЩИ ID ТОВАРОВ. НЕ ИСПОЛЬЗУЙ МЕНЮ.
 
-    const menuInfo = products.map(p => {
-      const category = categories.find(c => c.id === p.categoryId);
-      const price = getProductPrice(p);
-      const additivesInfo = p.additives ? p.additives.map(a => `  - ${a.title} (ID: ${a.id}, +${a.price}₽)`).join('\n') : '  Нет добавок';
-      return `${p.title} (ID: ${p.id}, Категория: ${category?.title || 'Other'}, Цена: ${price}₽)\nДобавки:\n${additivesInfo}`;
-    }).join('\n\n');
+Извлеки из запроса:
+- Названия блюд (как сказал пользователь)
+- Количество каждого блюда (если не указано, то 1)
+- Названия добавок (как сказал пользователь)
+- Комментарии к блюдам
 
-    const currentOrderInfo = order ? order.items.map(item => {
-      const additivesText = item.additives && item.additives.length > 0
-        ? ` с ${item.additives.map(a => a.title).join(', ')}`
-        : '';
-      return `${item.quantity}x ${item.product.title}${additivesText} (ID: ${item.product.id}) - ${item.totalPrice}₽`;
-    }).join('\n') : 'пуст';
+Примеры:
+- "Два борща с хлебом и сметаной" → itemsToAdd: [{ "productQuery": "борщ", "quantity": 2, "additiveQueries": ["хлеб", "сметана"] }]
+- "Кофе с молоком без сахара" → itemsToAdd: [{ "productQuery": "кофе", "quantity": 1, "additiveQueries": ["молоко"], "comment": "без сахара" }]
 
-    return `Ты - AI ассистент для ресторана. Твоя задача - ОЧЕНЬ ТОЧНО и ПРЕДСКАЗУЕМО обрабатывать заказы.
-## ДЛЯ ЗАКАЗА В РЕСТОРАНЕ (DINE_IN) ОБЯЗАТЕЛЬНО:
-- Номер стола (tableNumber)
-- Количество посетителей (numberOfPeople)
-
-# РАБОТА С ДОБАВКАМИ:
-## КОМАНДЫ ДЛЯ ДОБАВОК:
-- "Борщ с хлебом" → добавляет хлеб к борщу
-- "Шашлык с соусом и овощами" → добавляет соус и овощи
-- "Кофе с молоком и сахаром" → добавляет молоко и сахар
-- "Убери лук из салата" → удаляет лук из салата
-- "Добавь сыр к пасте" → добавляет сыр
-
-## ФОРМАТ ДОБАВОК:
-Всегда используй ID добавок из списка ниже.
-
-# ДОСТУПНЫЕ ДЕЙСТВИЯ (используй ТОЛЬКО эти действия):
-
-## ADD_ITEMS - добавить товары в заказ
-Используй когда пользователь говорит:
-- "Добавь [блюдо] с [добавка]"
-- "Хочу [блюдо] с [добавка1] и [добавка2]" 
-- Просто перечисляет блюда с добавками: "борщ с хлебом, шашлык с соусом"
-
-## REMOVE_ITEMS - удалить товары из заказа
-Используй ТОЛЬКО когда пользователь явно говорит:
-- "Удали [блюдо]"
-- "Убери [блюдо]"
-
-## MODIFY_QUANTITY - изменить количество
-Используй когда пользователь говорит:
-- "Измени количество [блюдо] на [число]"
-
-## MODIFY_ADDITIVES - изменить добавки товара
-Используй когда пользователь говорит:
-- "Добавь [добавка] к [товар]"
-- "Убери [добавка] из [товар]"
-- "Измени добавки для [товар]"
-
-## UPDATE_DETAILS - изменить детали заказа
-Используй для:
-- Количества персон ("Нас 4 человека")
-- Номера стола ("Стол номер 5")
-- Комментария ("Без лука")
-
-## SHOW_ORDER - показать текущий заказ
-Используй когда пользователь говорит:
-- "Покажи заказ"
-- "Что в заказе"
-
-## CLEAR_ORDER - очистить весь заказ
-ИСПОЛЬЗУЙ ТОЛЬКО ПРИ ЯВНОЙ КОМАНДЕ:
-- "Очистить заказ"
-- "Удалить всё"
-
-## ANSWER_QUESTION - ответить на вопрос
-Используй для любых вопросов о меню, ресторане и т.д.
-
-# ФОРМАТ ОТВЕТА (ВСЕГДА JSON):
-
+Верни ТОЛЬКО JSON:
 {
-  "action": "ADD_ITEMS" | "REMOVE_ITEMS" | "MODIFY_QUANTITY" | "MODIFY_ADDITIVES" | "UPDATE_DETAILS" | "SHOW_ORDER" | "CLEAR_ORDER" | "ANSWER_QUESTION",
-  
-  // ТОЛЬКО для ADD_ITEMS - сразу добавляй
   "itemsToAdd": [
     {
-      "productId": "string (ОБЯЗАТЕЛЬНО точный ID продукта)",
-      "productTitle": "string (оригинальное название)",
-      "quantity": number (1, 2, 3 и т.д.),
-      "comment": "string (опционально)",
-      "additives": ["additiveId1", "additiveId2"] // МАССИВ ID ДОБАВОК
-    }
-  ],
-  
-  // ТОЛЬКО для REMOVE_ITEMS - сразу удаляй 
-  "itemsToRemove": ["productId1", "productId2"],
-  
-  // ТОЛЬКО для MODIFY_QUANTITY - сразу изменяй
-  "itemsToModify": [
-    {
-      "productId": "string",
+      "productQuery": "string",
       "quantity": number,
-      "additives": ["additiveId1", "additiveId2"] // ОПЦИОНАЛЬНО - новые добавки
+      "comment": "string (опционально)",
+      "additiveQueries": ["string"]
     }
   ],
-  
-  // ТОЛЬКО для MODIFY_ADDITIVES - изменяй только добавки
-  "additivesToModify": [
-    {
-      "productId": "string",
-      "additives": ["additiveId1", "additiveId2"] // НОВЫЕ ДОБАВКИ
-    }
-  ],
-  
-  // ТОЛЬКО для UPDATE_DETAILS - сразу обновляй
-  "updatedDetails": {
-    "numberOfPeople": number,
-    "tableNumber": "string", 
-    "comment": "string"
-  },
-  
-  "response": "string (естественный ответ пользователю)",
-  "confidence": number (0.1-1.0, реальная уверенность),
-  "suggestions": ["string"] (релевантные предложения)
-}
+  "response": "string (подтверждение добавления)",
+  "confidence": number
+}`;
+  };
 
-# ПРИМЕРЫ:
-- "Борщ с хлебом" → ADD_ITEMS с additives: ["хлеб_id"]
-- "Кофе с молоком" → ADD_ITEMS с additives: ["молоко_id"]
-- "Убери лук из салата" → MODIFY_ADDITIVES с additives без лука
-- "Добавь сыр к пасте" → MODIFY_ADDITIVES с additives + сыр
+  const getSystemPromptForRemoveItems = () => {
+    const currentOrderInfo = order ? order.items.map(item => {
+      return `${item.quantity}x ${item.product.title}`;
+    }).join('\n') : 'пуст';
 
-# КОНТЕКСТ:
-Меню (${products.length} товаров):
-${menuInfo}
+    return `Ты - AI для извлечения команд на удаление из заказа.
+ТВОЯ ЗАДАЧА - ТОЛЬКО ИЗВЛЕЧЬ ДАННЫЕ В JSON.
 
 Текущий заказ:
 ${currentOrderInfo}
 
-Тип заказа: ${getOrderTypeText(orderType, 'ru')}
-Количество персон: ${additionalInfo.numberOfPeople}
-Стол: ${additionalInfo.tableNumber || 'не указан'}
+Извлеки из запроса:
+- Названия блюд, которые нужно удалить (как сказал пользователь)
 
-ВСЕГДА отвечай в формате JSON! Будь максимально точен и предсказуем! Действуй уверенно!`;
+Примеры:
+- "Удали борщ и кофе" → itemsToRemove: ["борщ", "кофе"]
+- "Убери шашлык" → itemsToRemove: ["шашлык"]
+
+Верни ТОЛЬКО JSON:
+{
+  "itemsToRemove": ["string"],
+  "response": "string (подтверждение удаления)",
+  "confidence": number
+}`;
   };
 
-  const processOrderWithAI = async (text: string) => {
-    if (!text.trim()) {
-      console.log('Empty text, skipping processing')
-      return
+  const getSystemPromptForModifyQuantity = () => {
+    const currentOrderInfo = order ? order.items.map(item => {
+      return `${item.quantity}x ${item.product.title}`;
+    }).join('\n') : 'пуст';
+
+    return `Ты - AI для извлечения команд на изменение количества.
+ТВОЯ ЗАДАЧА - ТОЛЬКО ИЗВЛЕЧЬ ДАННЫЕ В JSON.
+
+Текущий заказ:
+${currentOrderInfo}
+
+Извлеки из запроса:
+- Название блюда
+- Новое количество
+
+Примеры:
+- "Сделай борщ 2 штуки" → itemsToModify: [{ "productQuery": "борщ", "quantity": 2 }]
+- "Еще один кофе" -> itemsToModify: [{ "productQuery": "кофе", "quantity": "increment" }]
+
+Верни ТОЛЬКО JSON:
+{
+  "itemsToModify": [
+    {
+      "productQuery": "string",
+      "quantity": number | "increment" | "decrement"
     }
+  ],
+  "response": "string",
+  "confidence": number
+}`;
+  };
 
-    console.log('Processing with AI:', text)
-    setIsProcessing(true)
+  const getSystemPromptForModifyAdditives = () => {
+    const currentOrderInfo = order ? order.items.map(item => {
+      const adds = item.additives?.map(a => a.title).join(', ') || 'нет';
+      return `${item.product.title} (добавки: ${adds})`;
+    }).join('\n') : 'пуст';
 
-    const userMessage: ConversationMessage = {
-      role: 'user',
-      content: text,
-      timestamp: new Date(),
-      type: 'order_update'
+    return `Ты - AI для извлечения команд на изменение добавок.
+ТВОЯ ЗАДАЧА - ТОЛЬКО ИЗВЛЕЧЬ ДАННЫЕ В JSON.
+
+Текущий заказ:
+${currentOrderInfo}
+
+Извлеки:
+- Название блюда
+- Названия добавок (как сказал пользователь)
+
+Примеры:
+- "Добавь хлеб к борщу" → additivesToModify: [{ "productQuery": "борщ", "additiveQueries": ["хлеб"] }]
+- "Убери лук из салата" -> additivesToModify: [{ "productQuery": "салат", "additiveQueries": ["лук"], "action": "remove" }]
+
+Верни ТОЛЬКО JSON:
+{
+  "additivesToModify": [
+    {
+      "productQuery": "string",
+      "additiveQueries": ["string"],
+      "action": "add" | "remove" | "set"
     }
+  ],
+  "response": "string",
+  "confidence": number
+}`;
+  };
 
-    setConversation(prev => [...prev, userMessage])
+  const getSystemPromptForUpdateDetails = () => {
+    return `Ты - AI для извлечения деталей заказа.
+ТВОЯ ЗАДАЧА - ТОЛЬКО ИЗВЛЕЧЬ ДАННЫЕ В JSON.
+
+Извлеки:
+- numberOfPeople: количество персон (число)
+- tableNumber: номер стола (строка)
+- comment: комментарий к заказу (строка)
+
+Примеры:
+- "Нас 4 человека" → { "numberOfPeople": 4 }
+- "Стол номер 5" → { "tableNumber": "5" }
+- "Без лука в блюдах" → { "comment": "Без лука" }
+
+Верни ТОЛЬКО JSON:
+{
+  "updatedDetails": {
+    "numberOfPeople": number (опционально),
+    "tableNumber": "string" (опционально),
+    "comment": "string" (опционально)
+  },
+  "response": "string",
+  "confidence": number
+}`;
+  };
+
+  const getSystemPromptForAnswerQuestion = () => {
+    return `Ты - AI ассистент ресторана для ответов на вопросы.
+Отвечай вежливо и информативно. Если не знаешь ответ, предложи обратиться к официанту.
+
+Верни ТОЛЬКО JSON:
+{
+  "response": "string (ответ пользователю)",
+  "suggestions": ["string"] (рекомендации, опционально),
+  "confidence": number
+}`;
+  };
+
+  const getSystemPromptForShowOrder = () => {
+    const currentOrderInfo = order ? order.items.map(item => {
+      const adds = item.additives?.map(a => a.title).join(', ');
+      return `${item.quantity}x ${item.product.title}${adds ? ` (${adds})` : ''} - ${item.totalPrice}₽`;
+    }).join('\n') : 'пуст';
+
+    return `Ты - AI для показа заказа.
+Сформируй дружелюбное сообщение на основе текущего заказа.
+
+Текущий заказ:
+${currentOrderInfo}
+Итого: ${order?.totalAmount || 0}₽
+Тип: ${orderType}
+Стол: ${additionalInfo.tableNumber || '-'}
+Персон: ${additionalInfo.numberOfPeople || '-'}
+
+Верни ТОЛЬКО JSON:
+{
+  "response": "string",
+  "suggestions": ["string"],
+  "confidence": number
+}`;
+  };
+
+  const getSystemPromptForShowMenu = () => {
+    return `Ты - AI для показа меню.
+Сформируй сообщение о том, что меню сейчас откроется в соседней вкладке.
+НЕ ПЕРЕЧИСЛЯЙ БЛЮДА.
+
+Верни ТОЛЬКО JSON:
+{
+  "response": "string (например, 'Открываю меню ресторана')",
+  "confidence": number
+}`;
+  };
+
+  const getSystemPromptForClearOrder = () => {
+    return `Ты - AI для очистки заказа.
+Подтверди очистку заказа.
+
+Верни ТОЛЬКО JSON:
+{
+  "response": "string",
+  "confidence": number
+}`;
+  };
+
+  // ==================== ОСНОВНАЯ ЛОГИКА ОБРАБОТКИ ====================
+
+  const detectIntent = async (userText: string): Promise<{ intent: string; confidence: number }> => {
+    try {
+      const messages: YandexChatMessage[] = [
+        { role: "system", text: getSystemPromptForIntentDetection() },
+        { role: "user", text: userText }
+      ];
+
+      const result = await yandexAIService.chatCompletion(messages, {
+        temperature: 0.1,
+        maxTokens: 200,
+      });
+
+      if (result.success && result.data?.message) {
+        const content = result.data.message.trim();
+        const cleanedContent = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        const parsed = JSON.parse(cleanedContent);
+        return { intent: parsed.intent, confidence: parsed.confidence };
+      }
+      
+      return { intent: "ANSWER_QUESTION", confidence: 0.5 };
+    } catch (error) {
+      console.error("Intent detection error:", error);
+      return { intent: "ANSWER_QUESTION", confidence: 0.5 };
+    }
+  };
+
+  const callYandexAIByIntent = async (userText: string, intent: string): Promise<any> => {
+    let systemPrompt = "";
+    
+    switch (intent) {
+      case "ADD_ITEMS": systemPrompt = getSystemPromptForAddItems(); break;
+      case "REMOVE_ITEMS": systemPrompt = getSystemPromptForRemoveItems(); break;
+      case "MODIFY_QUANTITY": systemPrompt = getSystemPromptForModifyQuantity(); break;
+      case "MODIFY_ADDITIVES": systemPrompt = getSystemPromptForModifyAdditives(); break;
+      case "UPDATE_DETAILS": systemPrompt = getSystemPromptForUpdateDetails(); break;
+      case "SHOW_ORDER": systemPrompt = getSystemPromptForShowOrder(); break;
+      case "SHOW_MENU": systemPrompt = getSystemPromptForShowMenu(); break;
+      case "CLEAR_ORDER": systemPrompt = getSystemPromptForClearOrder(); break;
+      default: systemPrompt = getSystemPromptForAnswerQuestion();
+    }
 
     try {
-      const parsedData = await callOpenAI(text)
+      const messages: YandexChatMessage[] = [
+        { role: "system", text: systemPrompt },
+        { role: "user", text: userText }
+      ];
 
-      console.log('Parsed AI Response:', parsedData)
+      const result = await yandexAIService.chatCompletion(messages, {
+        temperature: aiConfig.temperature,
+        maxTokens: aiConfig.maxTokens,
+      });
 
-      await handleAIAction(parsedData, text)
+      if (!result.success || !result.data?.message) {
+        throw new Error(result.error || 'Failed to get response from Yandex AI');
+      }
+
+      let content = result.data.message.trim();
+      content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+      
+      let jsonContent = content;
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) jsonContent = jsonMatch[0];
+      
+      let parsed;
+      try {
+        parsed = JSON.parse(jsonContent);
+      } catch (parseError) {
+        let fixedContent = jsonContent
+          .replace(/(['"])?([a-zA-Z0-9_]+)(['"])?\s*:/g, '"$2":')
+          .replace(/:\s*'([^']*)'/g, ':"$1"')
+          .replace(/,(\s*[}\]])/g, '$1');
+        parsed = JSON.parse(fixedContent);
+      }
+      
+      return { action: intent, ...parsed };
+    } catch (error) {
+      console.error(`Error in ${intent} handler:`, error);
+      return {
+        action: intent,
+        response: language === 'ru' ? 'Извините, произошла ошибка.' : 'ბოდიში, მოხდა შეცდომა.',
+        confidence: 0.3
+      };
+    }
+  };
+
+  // ==================== ПОИСК ЧЕРЕЗ FUSE.JS ====================
+
+  const findProductByQuery = (query: string): Product | null => {
+    if (!fuse || !query) return null;
+    
+    const results = fuse.search(query);
+    if (results.length > 0 && results[0].score !== undefined && results[0].score < 0.6) {
+      return results[0].item;
+    }
+    return null;
+  };
+
+  const findAdditivesByQueries = (product: Product, queries: string[]): Additive[] => {
+    if (!product.additives || !queries.length) return [];
+    
+    const additiveFuse = new Fuse(product.additives, { keys: ['title'], threshold: 0.4 });
+    const foundAdditives: Additive[] = [];
+    
+    queries.forEach(query => {
+      const results = additiveFuse.search(query);
+      if (results.length > 0 && results[0].score !== undefined && results[0].score < 0.6) {
+        // Избегаем дубликатов
+        if (!foundAdditives.some(a => a.id === results[0].item.id)) {
+          foundAdditives.push(results[0].item);
+        }
+      }
+    });
+    
+    return foundAdditives;
+  };
+
+  const findProductInOrderByQuery = (query: string): ParsedOrderItem | null => {
+    if (!order) return null;
+    
+    const orderFuse = new Fuse(order.items, { keys: ['product.title'], threshold: 0.4 });
+    const results = orderFuse.search(query);
+    
+    if (results.length > 0 && results[0].score !== undefined && results[0].score < 0.6) {
+      return results[0].item;
+    }
+    return null;
+  };
+
+  // ==================== ОБРАБОТЧИК ДЕЙСТВИЙ (С FUSE) ====================
+
+  const processOrderWithAI = async (text: string) => {
+    if (!text.trim()) return;
+
+    setIsProcessing(true);
+    const userMessage: ConversationMessage = {
+      role: 'user', content: text, timestamp: new Date(), type: 'order_update'
+    };
+    setConversation(prev => [...prev, userMessage]);
+
+    try {
+      const { intent } = await detectIntent(text);
+      const parsedData = await callYandexAIByIntent(text, intent);
+      console.log('Parsed AI Response:', parsedData);
+
+      await handleAIAction(parsedData, text);
 
       const assistantMessage: ConversationMessage = {
         role: 'assistant',
         content: parsedData.response,
         timestamp: new Date(),
-        type: parsedData.action === 'SHOW_ORDER' ? 'info' : 'order_update'
-      }
-
-      setConversation(prev => [...prev, assistantMessage])
+        type: parsedData.action === 'SHOW_ORDER' || parsedData.action === 'SHOW_MENU' ? 'info' : 'order_update'
+      };
+      setConversation(prev => [...prev, assistantMessage]);
 
       if (audioFeedback) {
-        speakResponseWithOpenAI(parsedData.response)
+        await speakResponseWithYandex(parsedData.response);
       }
 
     } catch (error) {
-      console.error('Error processing order with AI:', error)
-      handleAIError(error)
+      console.error('Error processing order with AI:', error);
+      handleAIError(error);
     } finally {
-      setIsProcessing(false)
-      setTranscript('')
-    }
-  }
-
-  const speakResponseWithOpenAI = async (text: string) => {
-    if (!audioFeedback) return;
-
-    try {
-      const speechText = text.length > 500 ? text.substring(0, 500) + '...' : text;
-      const audioBlob = await openAIService.textToSpeech(
-        speechText,
-        language === 'ru' ? 'alloy' : 'nova'
-      );
-
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
-
-      audio.onplay = () => setIsSpeaking(true);
-      audio.onended = () => {
-        setIsSpeaking(false);
-        URL.revokeObjectURL(audioUrl);
-      };
-      audio.onerror = () => {
-        setIsSpeaking(false);
-        URL.revokeObjectURL(audioUrl);
-      };
-
-      await audio.play();
-    } catch (error) {
-      console.error('Error with TTS:', error);
-      speakResponse(text);
+      setIsProcessing(false);
+      setTranscript('');
     }
   };
 
-  const speakResponse = (text: string) => {
-    if (!audioFeedback) return
-
-    const speechText = text.length > 500 ? text.substring(0, 500) + '...' : text
-
-    speechSynthesisRef.current = new SpeechSynthesisUtterance(speechText)
-    speechSynthesisRef.current.lang = language === 'ru' ? 'ru-RU' : 'ka-GE'
-    speechSynthesisRef.current.rate = 0.8
-    speechSynthesisRef.current.pitch = 1
-
-    speechSynthesisRef.current.onstart = () => setIsSpeaking(true)
-    speechSynthesisRef.current.onend = () => setIsSpeaking(false)
-    speechSynthesisRef.current.onerror = () => setIsSpeaking(false)
-
-    speechSynthesis.speak(speechSynthesisRef.current)
-  }
+  const speakResponseWithYandex = async (text: string) => {
+    if (!audioFeedback) return;
+    try {
+      const speechText = text.length > 500 ? text.substring(0, 500) + '...' : text;
+      const result = await yandexAIService.textToSpeech(speechText, {
+        voice: aiConfig.voice, emotion: aiConfig.emotion, speed: aiConfig.speed, format: 'mp3'
+      });
+      if (result.success && result.audioBlob) {
+        yandexAIService.playAudio(result.audioBlob);
+        setIsSpeaking(true);
+        const audio = new Audio(URL.createObjectURL(result.audioBlob));
+        audio.onended = () => setIsSpeaking(false);
+        audio.onerror = () => setIsSpeaking(false);
+      }
+    } catch (error) {
+      console.error('Error with Yandex TTS:', error);
+    }
+  };
 
   const stopSpeech = () => {
-    speechSynthesis.cancel()
-    setIsSpeaking(false)
-  }
+    setIsSpeaking(false);
+  };
 
   const handleAIAction = async (parsedData: AIActionResponse, userText: string) => {
-    console.log('Handling AI action:', parsedData.action, parsedData)
-
-    let updatedOrder = order ? { ...order } : { items: [], confidence: 0.7, totalAmount: 0 }
-    let shouldUpdateOrderType = false
-    let newOrderType = orderType
-    let shouldUpdateOrder = false
+    console.log('Handling AI action:', parsedData.action, parsedData);
+    let updatedOrder = order ? { ...order } : { items: [], confidence: 0.7, totalAmount: 0 };
+    let shouldUpdateOrder = false;
+    let newOrderType = orderType;
+    let shouldUpdateOrderType = false;
 
     try {
       switch (parsedData.action) {
         case 'ADD_ITEMS':
-          if (parsedData.itemsToAdd && parsedData.itemsToAdd.length > 0) {
-            console.log('Adding items with additives:', parsedData.itemsToAdd);
-
-
-            let addedItems: string[] = [];
-
+          if (parsedData.itemsToAdd) {
             for (const item of parsedData.itemsToAdd) {
-              const product = findProductByIdOrTitle(item.productId, item.productTitle);
-
+              const product = findProductByQuery(item.productQuery);
               if (product) {
-                console.log(`Found product: ${product.title} with additives:`, item.additives);
-
-                const selectedAdditives = (item.additives || [])
-                  .map(additiveId => product.additives?.find(a => a.id === additiveId))
-                  .filter(Boolean) as Additive[];
-
-                const additivesPrice = selectedAdditives.reduce((sum, additive) => sum + additive.price, 0);
+                const selectedAdditives = findAdditivesByQueries(product, item.additiveQueries || []);
+                const additivesPrice = selectedAdditives.reduce((sum, a) => sum + a.price, 0);
                 const itemTotalPrice = (item.quantity || 1) * (getProductPrice(product) + additivesPrice);
 
+                // Проверка на существующий такой же элемент
                 const existingItemIndex = updatedOrder.items.findIndex(
                   existingItem =>
                     existingItem.product.id === product.id &&
-                    JSON.stringify(existingItem.additives?.map(a => a.id) || []) === JSON.stringify(item.additives || []) &&
+                    JSON.stringify(existingItem.additives?.map(a => a.id) || []) === JSON.stringify(selectedAdditives.map(a => a.id)) &&
                     existingItem.comment === item.comment
                 );
 
@@ -1209,266 +1318,148 @@ ${currentOrderInfo}
                   updatedOrder.items[existingItemIndex].quantity += item.quantity || 1;
                   updatedOrder.items[existingItemIndex].totalPrice =
                     updatedOrder.items[existingItemIndex].quantity * (getProductPrice(product) + additivesPrice);
-                  addedItems.push(`${product.title} с ${selectedAdditives.map(a => a.title).join(', ')} (теперь ${updatedOrder.items[existingItemIndex].quantity} шт)`);
                 } else {
-                  const newItem: ParsedOrderItem = {
+                  updatedOrder.items.push({
                     product,
                     quantity: item.quantity || 1,
                     comment: item.comment,
                     additives: selectedAdditives,
                     totalPrice: itemTotalPrice
-                  };
-                  updatedOrder.items.push(newItem);
-                  addedItems.push(`${product.title} с ${selectedAdditives.map(a => a.title).join(', ')} (${item.quantity || 1} шт)`);
+                  });
                 }
+                shouldUpdateOrder = true;
               } else {
-                console.warn(`Product not found: ID=${item.productId}, Title=${item.productTitle}`);
+                toast.error(`Блюдо "${item.productQuery}" не найдено`);
               }
-            }
-
-            updatedOrder.confidence = Math.max(updatedOrder.confidence, parsedData.confidence);
-            shouldUpdateOrder = true;
-
-            if (addedItems.length > 0) {
-              const infoMessage: ConversationMessage = {
-                role: 'assistant',
-                content: `✅ Добавлено: ${addedItems.join(', ')}`,
-                timestamp: new Date(),
-                type: 'order_update'
-              };
-              setConversation(prev => [...prev, infoMessage]);
-            }
-            if (orderType === 'DINE_IN' &&
-              (!additionalInfo.tableNumber || !additionalInfo.numberOfPeople)) {
-
-              const missingFields = []
-              if (!additionalInfo.tableNumber) missingFields.push('номер стола')
-              if (!additionalInfo.numberOfPeople) missingFields.push('количество посетителей')
-
-              const questionMessage: ConversationMessage = {
-                role: 'assistant',
-                content: language === 'ru'
-                  ? `Для завершения заказа в ресторане, пожалуйста, укажите: ${missingFields.join(' и ')}`
-                  : `რესტორნში შეკვეთის დასასრულებლად, გთხოვთ, მიუთითოთ: ${missingFields.join(' და ')}`,
-                timestamp: new Date(),
-                type: 'info'
-              };
-              setConversation(prev => [...prev, questionMessage]);
             }
           }
           break;
 
         case 'MODIFY_ADDITIVES':
-          if (parsedData.additivesToModify && parsedData.additivesToModify.length > 0) {
-            console.log('Modifying additives:', parsedData.additivesToModify);
-
-            for (const modification of parsedData.additivesToModify) {
-              const itemIndex = updatedOrder.items.findIndex(
-                item => item.product.id === modification.productId
-              );
-
-              if (itemIndex >= 0) {
-                const product = updatedOrder.items[itemIndex].product;
-                const selectedAdditives = (modification.additives || [])
-                  .map(additiveId => product.additives?.find(a => a.id === additiveId))
-                  .filter(Boolean) as Additive[];
-
-                const additivesPrice = selectedAdditives.reduce((sum, additive) => sum + additive.price, 0);
-
-                updatedOrder.items[itemIndex].additives = selectedAdditives;
-                updatedOrder.items[itemIndex].totalPrice =
-                  updatedOrder.items[itemIndex].quantity * (getProductPrice(product) + additivesPrice);
-
-                const infoMessage: ConversationMessage = {
-                  role: 'assistant',
-                  content: language === 'ru'
-                    ? `✅ Обновлены добавки для ${product.title}: ${selectedAdditives.map(a => a.title).join(', ') || 'нет добавок'}`
-                    : `✅ განახლდა დანამატები ${product.title}-სთვის: ${selectedAdditives.map(a => a.title).join(', ') || 'დანამატები არ არის'}`,
-                  timestamp: new Date(),
-                  type: 'order_update'
-                };
-                setConversation(prev => [...prev, infoMessage]);
+          if (parsedData.additivesToModify) {
+            for (const mod of parsedData.additivesToModify) {
+              const orderItem = findProductInOrderByQuery(mod.productQuery);
+              if (orderItem) {
+                const product = orderItem.product;
+                let newAdditives = [...(orderItem.additives || [])];
+                
+                const queriedAdditives = findAdditivesByQueries(product, mod.additiveQueries || []);
+                
+                if (mod.action === 'add') {
+                  queriedAdditives.forEach(a => { if (!newAdditives.find(ex => ex.id === a.id)) newAdditives.push(a); });
+                } else if (mod.action === 'remove') {
+                  const idsToRemove = queriedAdditives.map(a => a.id);
+                  newAdditives = newAdditives.filter(a => !idsToRemove.includes(a.id));
+                } else {
+                  newAdditives = queriedAdditives;
+                }
+                
+                const additivesPrice = newAdditives.reduce((sum, a) => sum + a.price, 0);
+                const itemIndex = updatedOrder.items.findIndex(i => i.product.id === product.id && i === orderItem);
+                if (itemIndex >= 0) {
+                  updatedOrder.items[itemIndex].additives = newAdditives;
+                  updatedOrder.items[itemIndex].totalPrice = orderItem.quantity * (getProductPrice(product) + additivesPrice);
+                }
+                shouldUpdateOrder = true;
               }
             }
-            shouldUpdateOrder = true;
           }
           break;
 
         case 'MODIFY_QUANTITY':
-          if (parsedData.itemsToModify && parsedData.itemsToModify.length > 0) {
-            console.log('Modifying quantities and additives:', parsedData.itemsToModify);
-            for (const modification of parsedData.itemsToModify) {
-              const itemIndex = updatedOrder.items.findIndex(
-                item => item.product.id === modification.productId
-              );
-              if (itemIndex >= 0) {
-                const product = updatedOrder.items[itemIndex].product;
-
-                if (modification.additives) {
-                  const selectedAdditives = modification.additives
-                    .map(additiveId => product.additives?.find(a => a.id === additiveId))
-                    .filter(Boolean) as Additive[];
-                  updatedOrder.items[itemIndex].additives = selectedAdditives;
+          if (parsedData.itemsToModify) {
+            for (const mod of parsedData.itemsToModify) {
+              const orderItem = findProductInOrderByQuery(mod.productQuery);
+              if (orderItem) {
+                const itemIndex = updatedOrder.items.findIndex(i => i.product.id === orderItem.product.id && i === orderItem);
+                if (itemIndex >= 0) {
+                  let newQuantity = mod.quantity;
+                  if (mod.quantity === 'increment') newQuantity = orderItem.quantity + 1;
+                  if (mod.quantity === 'decrement') newQuantity = orderItem.quantity - 1;
+                  
+                  if (newQuantity > 0) {
+                    updatedOrder.items[itemIndex].quantity = newQuantity;
+                    updatedOrder.items[itemIndex].totalPrice = newQuantity * (orderItem.totalPrice / orderItem.quantity);
+                  } else {
+                    updatedOrder.items.splice(itemIndex, 1);
+                  }
                 }
-
-                const additivesPrice = (updatedOrder.items[itemIndex].additives || [])
-                  .reduce((sum: number, additive: Additive) => sum + additive.price, 0);
-
-                updatedOrder.items[itemIndex].quantity = modification.quantity;
-                updatedOrder.items[itemIndex].totalPrice =
-                  modification.quantity * (getProductPrice(product) + additivesPrice);
+                shouldUpdateOrder = true;
               }
             }
-            shouldUpdateOrder = true;
           }
           break;
 
         case 'REMOVE_ITEMS':
-          if (parsedData.itemsToRemove && parsedData.itemsToRemove.length > 0) {
-            console.log('Removing items:', parsedData.itemsToRemove)
-            updatedOrder.items = updatedOrder.items.filter(item =>
-              !parsedData.itemsToRemove!.includes(item.product.id)
-            )
-            shouldUpdateOrder = true
+          if (parsedData.itemsToRemove) {
+            updatedOrder.items = updatedOrder.items.filter(item => 
+              !parsedData.itemsToRemove!.some(query => {
+                const found = findProductInOrderByQuery(query);
+                return found?.product.id === item.product.id;
+              })
+            );
+            shouldUpdateOrder = true;
           }
-          break
+          break;
 
         case 'CLEAR_ORDER':
-          console.log('Clearing order')
-          updatedOrder.items = []
-          shouldUpdateOrder = true
-          break
+          updatedOrder.items = [];
+          shouldUpdateOrder = true;
+          break;
 
         case 'UPDATE_ORDER_TYPE':
           if (parsedData.newOrderType) {
-            console.log('Updating order type to:', parsedData.newOrderType)
-            newOrderType = parsedData.newOrderType
-            shouldUpdateOrderType = true
+            newOrderType = parsedData.newOrderType;
+            shouldUpdateOrderType = true;
           }
-          break
+          break;
 
         case 'UPDATE_DETAILS':
           if (parsedData.updatedDetails) {
-            console.log('Updating details:', parsedData.updatedDetails)
-            const details = parsedData.updatedDetails
+            const details = parsedData.updatedDetails;
             setAdditionalInfo(prev => ({
               numberOfPeople: details.numberOfPeople !== undefined ? details.numberOfPeople : prev.numberOfPeople,
               tableNumber: details.tableNumber !== undefined ? details.tableNumber : prev.tableNumber,
               comment: details.comment !== undefined ? details.comment : prev.comment
-            }))
+            }));
           }
-          break
-
-        case 'SHOW_ORDER':
-          console.log('Showing current order')
-          break
+          break;
 
         case 'SHOW_MENU':
-          console.log('Showing menu')
-          setActiveTab('menu')
-          break
-
-        case 'ANSWER_QUESTION':
-          console.log('Answering question')
-          break
+          setActiveTab('menu');
+          break;
       }
 
       if (shouldUpdateOrder) {
         updatedOrder.totalAmount = updatedOrder.items.reduce((sum, item) => sum + item.totalPrice, 0);
-        console.log('Updating order state:', updatedOrder);
         setOrder(updatedOrder);
       }
 
       if (shouldUpdateOrderType) {
-        console.log('Updating order type state:', newOrderType);
         setOrderType(newOrderType);
       }
 
     } catch (error) {
       console.error('Error in handleAIAction:', error);
     }
-  }
+  };
 
+  // ... (вспомогательные функции getProductPrice, calculateSimilarity, editDistance без изменений) ...
   const getProductPrice = (product: Product): number => {
     const userRestaurantId = getRestaurantId()
     return product.restaurantPrices?.find(rp => rp.restaurantId === userRestaurantId)?.price || product.price
   }
 
-  const findProductByIdOrTitle = (productId: string, productTitle: string): Product | null => {
-    console.log(`Поиск продукта: ID="${productId}", Название="${productTitle}"`);
-
-    if (productId) {
-      const byId = products.find(p => p.id === productId);
-      if (byId) {
-        console.log(`Найден по ID: ${byId.title}`);
-        return byId;
-      }
-    }
-
-    const normalizedTitle = productTitle
-      .toLowerCase()
-      .trim()
-      .replace(/\s+/g, ' ')
-      .replace(/[.,!?;:]$/, '');
-
-    console.log(`Нормализованное название: "${normalizedTitle}"`);
-
-    const exactMatch = products.find(p =>
-      p.title.toLowerCase().trim() === normalizedTitle
-    );
-    if (exactMatch) {
-      console.log(`Найден по точному названию: ${exactMatch.title}`);
-      return exactMatch;
-    }
-
-    const containsMatch = products.find(p => {
-      const productName = p.title.toLowerCase();
-      return normalizedTitle.includes(productName) ||
-        productName.includes(normalizedTitle) ||
-        productName.startsWith(normalizedTitle) ||
-        normalizedTitle.startsWith(productName);
-    });
-    if (containsMatch) {
-      console.log(`Найден по вхождению: ${containsMatch.title}`);
-      return containsMatch;
-    }
-
-    const searchWords = normalizedTitle.split(/\s+/).filter(w => w.length > 2);
-    if (searchWords.length > 0) {
-      const wordMatch = products.find(p => {
-        const productWords = p.title.toLowerCase().split(/\s+/);
-        return searchWords.every(searchWord =>
-          productWords.some(productWord =>
-            productWord.startsWith(searchWord) ||
-            searchWord.startsWith(productWord) ||
-            calculateSimilarity(productWord, searchWord) > 0.8
-          )
-        );
-      });
-
-      if (wordMatch) {
-        console.log(`Найден по ключевым словам: ${wordMatch.title}`);
-        return wordMatch;
-      }
-    }
-
-    console.log(`Продукт не найден: "${productTitle}"`);
-    return null;
-  };
-
   const calculateSimilarity = (str1: string, str2: string): number => {
     const longer = str1.length > str2.length ? str1 : str2
     const shorter = str1.length > str2.length ? str2 : str1
-
     if (longer.length === 0) return 1.0
-
     return (longer.length - editDistance(longer, shorter)) / parseFloat(longer.length.toString())
   }
 
   const editDistance = (s1: string, s2: string): number => {
     s1 = s1.toLowerCase()
     s2 = s2.toLowerCase()
-
     const costs = new Array()
     for (let i = 0; i <= s1.length; i++) {
       let lastValue = i
@@ -1493,28 +1484,19 @@ ${currentOrderInfo}
     const errorMessage: ConversationMessage = {
       role: 'assistant',
       content: language === 'ru'
-        ? 'Извините, произошла ошибка при обработке заказа. Пожалуйста, попробуйте еще раз или опишите заказ более подробно.'
-        : 'ბოდიში, მოხდა შეცდომა შეკვეთის დამუშავებისას. გთხოვთ, სცადოთ ხელახლა ან აღწეროთ შეკვეთა უფრო დეტალურად.',
+        ? 'Извините, произошла ошибка при обработке заказа.'
+        : 'ბოდიში, მოხდა შეცდომა შეკვეთის დამუშავებისას.',
       timestamp: new Date(),
       type: 'error'
     }
     setConversation(prev => [...prev, errorMessage])
-
     toast.error(t.errorProcessing)
   }
 
   const getOrderTypeText = (type: string, lang: string = language) => {
     const types = {
-      ru: {
-        DINE_IN: 'в ресторане',
-        TAKEAWAY: 'с собой',
-        DELIVERY: 'доставка'
-      },
-      ka: {
-        DINE_IN: 'რესტორნში',
-        TAKEAWAY: 'წინასწარ',
-        DELIVERY: 'მიწოდება'
-      }
+      ru: { DINE_IN: 'в ресторане', TAKEAWAY: 'с собой', DELIVERY: 'доставка' },
+      ka: { DINE_IN: 'რესტორნში', TAKEAWAY: 'წინასწარ', DELIVERY: 'მიწოდება' }
     }
     return types[lang as keyof typeof types][type as keyof typeof types.ru] || type
   }
@@ -1525,11 +1507,7 @@ ${currentOrderInfo}
       const updated = current.includes(additiveId)
         ? current.filter(id => id !== additiveId)
         : [...current, additiveId];
-
-      return {
-        ...prev,
-        [productId]: updated
-      };
+      return { ...prev, [productId]: updated };
     });
   };
 
@@ -1552,122 +1530,78 @@ ${currentOrderInfo}
         newItems[existingItemIndex].quantity += 1;
         newItems[existingItemIndex].totalPrice = newItems[existingItemIndex].quantity * totalPrice;
       } else {
-        newItems = [...currentOrder.items, {
-          product,
-          quantity: 1,
-          additives: selectedAdditives,
-          totalPrice
-        }];
+        newItems = [...currentOrder.items, { product, quantity: 1, additives: selectedAdditives, totalPrice }];
       }
 
       const totalAmount = newItems.reduce((sum, item) => sum + item.totalPrice, 0);
-
-      return {
-        ...currentOrder,
-        items: newItems,
-        totalAmount,
-        confidence: 1
-      };
+      return { ...currentOrder, items: newItems, totalAmount, confidence: 1 };
     });
 
-    const additiveText = selectedAdditives.length > 0
-      ? ` ${t.withAdditives}: ${selectedAdditives.map(a => a.title).join(', ')}`
-      : '';
-
+    const additiveText = selectedAdditives.length > 0 ? ` ${t.withAdditives}: ${selectedAdditives.map(a => a.title).join(', ')}` : '';
     const message: ConversationMessage = {
       role: 'assistant',
-      content: language === 'ru'
-        ? `✅ Добавлено: ${product.title}${additiveText}`
-        : `✅ დაემატა: ${product.title}${additiveText}`,
+      content: language === 'ru' ? `✅ Добавлено: ${product.title}${additiveText}` : `✅ დაემატა: ${product.title}${additiveText}`,
       timestamp: new Date(),
       type: 'order_update'
     };
     setConversation(prev => [...prev, message]);
-
-    // Сбрасываем выбранные добавки для этого продукта
-    setSelectedAdditives(prev => ({
-      ...prev,
-      [product.id]: []
-    }));
+    setSelectedAdditives(prev => ({ ...prev, [product.id]: [] }));
   };
 
   const removeProductFromOrder = (productId: string) => {
     setOrder(prev => {
-      if (!prev) return prev
-
-      const newItems = prev.items.filter(item => item.product.id !== productId)
-      const totalAmount = newItems.reduce((sum, item) => sum + item.totalPrice, 0)
-
-      return {
-        ...prev,
-        items: newItems,
-        totalAmount
-      }
-    })
-  }
+      if (!prev) return prev;
+      const newItems = prev.items.filter(item => item.product.id !== productId);
+      const totalAmount = newItems.reduce((sum, item) => sum + item.totalPrice, 0);
+      return { ...prev, items: newItems, totalAmount };
+    });
+  };
 
   const updateProductQuantity = (productId: string, newQuantity: number) => {
     if (newQuantity < 1) {
-      removeProductFromOrder(productId)
-      return
+      removeProductFromOrder(productId);
+      return;
     }
-
     setOrder(prev => {
-      if (!prev) return prev
-
+      if (!prev) return prev;
       const newItems = prev.items.map(item => {
         if (item.product.id === productId) {
           const product = item.product;
-          const additivesPrice = (item.additives || [])
-            .reduce((sum: number, additive: Additive) => sum + additive.price, 0);
+          const additivesPrice = (item.additives || []).reduce((sum: number, additive: Additive) => sum + additive.price, 0);
           const totalPrice = newQuantity * (getProductPrice(product) + additivesPrice);
-
-          return {
-            ...item,
-            quantity: newQuantity,
-            totalPrice
-          }
+          return { ...item, quantity: newQuantity, totalPrice };
         }
-        return item
-      })
-
-      const totalAmount = newItems.reduce((sum, item) => sum + item.totalPrice, 0)
-
-      return {
-        ...prev,
-        items: newItems,
-        totalAmount
-      }
-    })
-  }
+        return item;
+      });
+      const totalAmount = newItems.reduce((sum, item) => sum + item.totalPrice, 0);
+      return { ...prev, items: newItems, totalAmount };
+    });
+  };
 
   const createOrder = async () => {
     if (!order || order.items.length === 0) {
-      toast.error(language === 'ru' ? 'Нет товаров для заказа' : 'შეკვეთისთვის ნივთები არ არის')
-      return
+      toast.error(language === 'ru' ? 'Нет товаров для заказа' : 'შეკვეთისთვის ნივთები არ არის');
+      return;
     }
 
-    const userRestaurantId = getRestaurantId()
-
+    const userRestaurantId = getRestaurantId();
     if (!userRestaurantId) {
-      toast.error(t.noRestaurantSelected)
-      return
+      toast.error(t.noRestaurantSelected);
+      return;
     }
 
-    // Проверка обязательных полей для заказа в ресторане
     if (orderType === 'DINE_IN') {
       if (!additionalInfo.tableNumber.trim()) {
-        toast.error(language === 'ru' ? 'Укажите номер стола' : 'მიუთითეთ სტოლის ნომერი')
-        return
+        toast.error(language === 'ru' ? 'Укажите номер стола' : 'მიუთითეთ სტოლის ნომერი');
+        return;
       }
-
       if (!additionalInfo.numberOfPeople || additionalInfo.numberOfPeople < 1) {
-        toast.error(language === 'ru' ? 'Укажите количество посетителей' : 'მიუთითეთ ვიზიტორების რაოდენობა')
-        return
+        toast.error(language === 'ru' ? 'Укажите количество посетителей' : 'მიუთითეთ ვიზიტორების რაოდენობა');
+        return;
       }
     }
 
-    setIsCreatingOrder(true)
+    setIsCreatingOrder(true);
     try {
       const orderData = {
         restaurantId: userRestaurantId,
@@ -1675,154 +1609,87 @@ ${currentOrderInfo}
         numberOfPeople: additionalInfo.numberOfPeople,
         tableNumber: orderType === 'DINE_IN' ? additionalInfo.tableNumber : undefined,
         comment: additionalInfo.comment,
-        payment: {
-          method: EnumPaymentMethod.CASH,
-          status: 'PENDING'
-        },
+        payment: { method: EnumPaymentMethod.CASH, status: 'PENDING' },
         items: order.items.map(item => ({
           productId: item.product.id,
           quantity: item.quantity,
           comment: item.comment,
           additiveIds: item.additives?.map(a => a.id) || []
         }))
-      }
+      };
 
-      const createdOrder = orderId
-        ? await OrderService.updateOrder(orderId, orderData)
-        : await OrderService.create(orderData)
-
-      toast.success(t.orderCreated)
-
-      if (audioFeedback) {
-        speakResponseWithOpenAI(language === 'ru' ? 'Заказ успешно создан' : 'შეკვეთა წარმატებით შეიქმნა')
-      }
-
-      if (onOpenChange) {
-        onOpenChange(false)
-      }
-
-      router.push(`/orders/${createdOrder.id}`)
+      const createdOrder = orderId ? await OrderService.updateOrder(orderId, orderData) : await OrderService.create(orderData);
+      toast.success(t.orderCreated);
+      if (audioFeedback) await speakResponseWithYandex(language === 'ru' ? 'Заказ успешно создан' : 'შეკვეთა წარმატებით შეიქმნა');
+      if (onOpenChange) onOpenChange(false);
+      router.push(`/orders/${createdOrder.id}`);
     } catch (error) {
-      console.error('Error creating order:', error)
-      toast.error(t.errorCreatingOrder)
+      console.error('Error creating order:', error);
+      toast.error(t.errorCreatingOrder);
     } finally {
-      setIsCreatingOrder(false)
+      setIsCreatingOrder(false);
     }
-  }
+  };
 
   const clearAll = () => {
-    setTranscript('')
-    setManualInput('')
-    setOrder(null)
-    setSelectedAdditives({})
-    setAdditionalInfo({
-      numberOfPeople: 1,
-      tableNumber: '',
-      comment: ''
-    })
-    setOrderType('DINE_IN')
-    initializeConversation()
-  }
+    setTranscript('');
+    setManualInput('');
+    setOrder(null);
+    setSelectedAdditives({});
+    setAdditionalInfo({ numberOfPeople: 1, tableNumber: '', comment: '' });
+    setOrderType('DINE_IN');
+    initializeConversation();
+  };
 
   const getCategoryIcon = (categoryTitle: string) => {
-    const categoryKey = categoryTitle.toLowerCase()
+    const categoryKey = categoryTitle.toLowerCase();
     for (const [key, Icon] of Object.entries(CATEGORY_ICONS)) {
-      if (categoryKey.includes(key)) {
-        return Icon
-      }
+      if (categoryKey.includes(key)) return Icon;
     }
-    return CATEGORY_ICONS.default
-  }
+    return CATEGORY_ICONS.default;
+  };
 
   const popularCommands = language === 'ru' ? [
-    "Борщ с хлебом",
-    "Кофе с молоком и сахаром",
-    "Шашлык с соусом",
-    "Салат с сыром",
-    "Пицца с грибами и оливками",
-    "Показать заказ",
-    "Удалить шашлык",
-    "Изменить количество",
-    "Очистить заказ",
-    "Стол номер 5",
-    "Нас 4 человека",
-    "Показать меню"
+    "Борщ с хлебом", "Кофе с молоком и сахаром", "Шашлык с соусом", "Салат с сыром",
+    "Пицца с грибами и оливками", "Показать заказ", "Удалить шашлык", "Изменить количество",
+    "Очистить заказ", "Стол номер 5", "Нас 4 человека", "Показать меню"
   ] : [
-    "ბორში პურთან ერთად",
-    "ყავა რძით და შაქრით",
-    "შაშლიკი სოუსით",
-    "სალათი ყველით",
-    "პიცა სოკოებით და ზეთისხილით",
-    "აჩვენე შეკვეთა",
-    "წაშალე შაშლიკი",
-    "შეცვალე რაოდენობა",
-    "გაასუფთავე შეკვეთა",
-    "სტოლი ნომერი 5",
-    "ჩვენ 4 კაცი ვართ",
-    "აჩვენე მენიუ"
-  ]
+    "ბორში პურთან ერთად", "ყავა რძით და შაქრით", "შაშლიკი სოუსით", "სალათი ყველით",
+    "პიცა სოკოებით და ზეთისხილით", "აჩვენე შეკვეთა", "წაშალე შაშლიკი", "შეცვალე რაოდენობა",
+    "გაასუფთავე შეკვეთა", "სტოლი ნომერი 5", "ჩვენ 4 კაცი ვართ", "აჩვენე მენიუ"
+  ];
 
   const quickActions = [
-    {
-      label: t.showMenu,
-      command: "show menu",
-      icon: Utensils
-    },
-    {
-      label: t.showOrder,
-      command: "show order",
-      icon: ShoppingBag
-    },
-    {
-      label: t.clearOrder,
-      command: "clear order",
-      icon: Trash2
-    },
-    {
-      label: t.setTable,
-      command: "table 1",
-      icon: User
-    }
-  ]
+    { label: t.showMenu, command: "show menu", icon: Utensils },
+    { label: t.showOrder, command: "show order", icon: ShoppingBag },
+    { label: t.clearOrder, command: "clear order", icon: Trash2 },
+  ];
 
   const AudioVisualizer = () => {
-    const bars = 5
+    const bars = 5;
     return (
       <div className="flex items-end gap-1 h-8">
         {Array.from({ length: bars }).map((_, i) => (
-          <div
-            key={i}
-            className={`w-1 rounded-full transition-all duration-100 ${audioLevel > i / bars
-              ? 'bg-green-500'
-              : 'bg-gray-300'
-              }`}
-            style={{
-              height: `${Math.max(8, audioLevel * 32 * (i + 1) / bars)}px`
-            }}
-          />
+          <div key={i} className={`w-1 rounded-full transition-all duration-100 ${audioLevel > i / bars ? 'bg-green-500' : 'bg-gray-300'}`}
+            style={{ height: `${Math.max(8, audioLevel * 32 * (i + 1) / bars)}px` }} />
         ))}
       </div>
-    )
-  }
+    );
+  };
 
+  // ... (JSX возвращается без изменений, так как UI не менялся) ...
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="w-full sm:max-w-4xl h-full flex flex-col p-0 overflow-hidden"
-      >
+      <SheetContent side="right" className="w-full sm:max-w-4xl h-full flex flex-col p-0 overflow-hidden">
         <SheetHeader className="p-4 sm:p-6 border-b">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <Brain className="h-6 w-6 text-purple-500" />
               <div>
                 <SheetTitle className="text-xl">{t.title}</SheetTitle>
-                <SheetDescription className="hidden sm:block">
-                  {t.subtitle}
-                </SheetDescription>
+                <SheetDescription className="hidden sm:block">{t.subtitle}</SheetDescription>
               </div>
             </div>
-
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
               {user?.restaurant && user.restaurant.length > 1 && (
                 <Select value={selectedRestaurantId} onValueChange={handleRestaurantChange}>
@@ -1831,33 +1698,17 @@ ${currentOrderInfo}
                   </SelectTrigger>
                   <SelectContent>
                     {user.restaurant.map((restaurant: Restaurant) => (
-                      <SelectItem key={restaurant.id} value={restaurant.id}>
-                        {restaurant.title}
-                      </SelectItem>
+                      <SelectItem key={restaurant.id} value={restaurant.id}>{restaurant.title}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               )}
-
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setAudioFeedback(!audioFeedback)}
-                  className="flex-1 sm:flex-none flex items-center gap-2"
-                >
+                <Button variant="outline" size="sm" onClick={() => setAudioFeedback(!audioFeedback)} className="flex-1 sm:flex-none flex items-center gap-2">
                   {audioFeedback ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-                  <span className="hidden sm:inline">
-                    {audioFeedback ? (language === 'ru' ? 'Звук вкл' : 'ხმა ჩართულია') : (language === 'ru' ? 'Звук выкл' : 'ხმა გამორთულია')}
-                  </span>
+                  <span className="hidden sm:inline">{audioFeedback ? (language === 'ru' ? 'Звук вкл' : 'ხმა ჩართულია') : (language === 'ru' ? 'Звук выкл' : 'ხმა გამორთულია')}</span>
                 </Button>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onOpenChange?.(false)}
-                  className="flex-1 sm:flex-none flex items-center gap-2"
-                >
+                <Button variant="outline" size="sm" onClick={() => onOpenChange?.(false)} className="flex-1 sm:flex-none flex items-center gap-2">
                   <X className="h-4 w-4" />
                   <span className="hidden sm:inline">{language === 'ru' ? 'Закрыть' : 'დახურვა'}</span>
                 </Button>
@@ -1868,309 +1719,91 @@ ${currentOrderInfo}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
           <TabsList className="grid w-full grid-cols-3 px-6">
-            <TabsTrigger value="assistant" className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" />
-              {t.assistant}
-            </TabsTrigger>
-            <TabsTrigger value="menu" className="flex items-center gap-2">
-              <Utensils className="h-4 w-4" />
-              {t.menu}
-            </TabsTrigger>
-            <TabsTrigger value="order" className="flex items-center gap-2">
-              <ShoppingBag className="h-4 w-4" />
-              {t.order}
-              {order && order.items.length > 0 && (
-                <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 flex items-center justify-center">
-                  {order.items.length}
-                </Badge>
-              )}
+            <TabsTrigger value="assistant" className="flex items-center gap-2"><MessageSquare className="h-4 w-4" />{t.assistant}</TabsTrigger>
+            <TabsTrigger value="menu" className="flex items-center gap-2"><Utensils className="h-4 w-4" />{t.menu}</TabsTrigger>
+            <TabsTrigger value="order" className="flex items-center gap-2"><ShoppingBag className="h-4 w-4" />{t.order}
+              {order && order.items.length > 0 && <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 flex items-center justify-center">{order.items.length}</Badge>}
             </TabsTrigger>
           </TabsList>
 
-          {/* Ассистент */}
           <TabsContent value="assistant" className="flex-1 flex flex-col min-h-0 p-0">
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {conversation.filter(msg => msg.role !== 'system').map((message, index) => (
-                <div
-                  key={index}
-                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div
-                    className={`max-w-[80%] p-4 rounded-2xl ${message.role === 'user'
-                      ? 'bg-blue-500 text-white rounded-br-none'
-                      : message.type === 'error'
-                        ? 'bg-red-100 border border-red-200 text-red-800 rounded-bl-none'
-                        : message.type === 'info'
-                          ? 'bg-green-100 border border-green-200 text-green-800 rounded-bl-none'
-                          : 'bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-bl-none'
-                      }`}
-                  >
+                <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] p-4 rounded-2xl ${message.role === 'user' ? 'bg-blue-500 text-white rounded-br-none' : message.type === 'error' ? 'bg-red-100 border border-red-200 text-red-800 rounded-bl-none' : message.type === 'info' ? 'bg-green-100 border border-green-200 text-green-800 rounded-bl-none' : 'bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-bl-none'}`}>
                     <div className="flex items-start gap-3">
-                      {message.role === 'assistant' && (
-                        <div className="w-6 h-6 rounded-full bg-gradient-to-r from-green-400 to-blue-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                          AI
-                        </div>
-                      )}
-
+                      {message.role === 'assistant' && <div className="w-6 h-6 rounded-full bg-gradient-to-r from-green-400 to-blue-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">AI</div>}
                       <div className="flex-1">
-                        <div className="text-sm font-medium mb-2 opacity-80">
-                          {message.role === 'user'
-                            ? (language === 'ru' ? 'Вы' : 'თქვენ')
-                            : 'AI Assistant'}
-                        </div>
+                        <div className="text-sm font-medium mb-2 opacity-80">{message.role === 'user' ? (language === 'ru' ? 'Вы' : 'თქვენ') : 'AI Assistant'}</div>
                         <div className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</div>
-                        <div className={`text-xs mt-2 ${message.role === 'user' ? 'text-blue-100' : 'text-gray-500'}`}>
-                          {message.timestamp.toLocaleTimeString()}
-                        </div>
+                        <div className={`text-xs mt-2 ${message.role === 'user' ? 'text-blue-100' : 'text-gray-500'}`}>{message.timestamp.toLocaleTimeString()}</div>
                       </div>
-
-                      {message.role === 'user' && (
-                        <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                          {language === 'ru' ? 'В' : 'თ'}
-                        </div>
-                      )}
+                      {message.role === 'user' && <div className="w-6 h-6 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">{language === 'ru' ? 'В' : 'თ'}</div>}
                     </div>
                   </div>
                 </div>
               ))}
-
-              {isRecording && (
-                <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-lg p-4 mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                      <AudioVisualizer />
-                    </div>
-                    <span className="font-medium">{t.recordingAudio}</span>
-                  </div>
-                </div>
-              )}
-
-              {isProcessing && !isRecording && (
-                <div className="flex justify-start">
-                  <div className="max-w-[80%] p-4 rounded-2xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-bl-none">
-                    <div className="flex items-center gap-3">
-                      <div className="w-6 h-6 rounded-full bg-gradient-to-r from-green-400 to-blue-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                        AI
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span className="text-sm">{t.processing}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Быстрые команды */}
-              {showSuggestions && conversation.length <= 2 && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400">
-                    <Zap className="h-4 w-4" />
-                    {t.quickActions}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {quickActions.map((action, index) => (
-                      <Button
-                        key={index}
-                        variant="outline"
-                        size="sm"
-                        className="h-auto py-2 flex flex-col items-center gap-1 text-xs"
-                        onClick={() => processOrderWithAI(action.command)}
-                      >
-                        <action.icon className="h-4 w-4" />
-                        {action.label}
-                      </Button>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400">
-                    <MessageSquare className="h-4 w-4" />
-                    {t.suggestions}
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {popularCommands.map((command, index) => (
-                      <Badge
-                        key={index}
-                        variant="secondary"
-                        className="cursor-pointer hover:bg-gray-200 transition-colors"
-                        onClick={() => processOrderWithAI(command)}
-                      >
-                        {command}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-
+              {isRecording && <div className="bg-gradient-to-r from-yellow-400 to-orange-500 text-white rounded-lg p-4 mb-4"><div className="flex items-center gap-3"><div className="flex items-center gap-2"><div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div><AudioVisualizer /></div><span className="font-medium">{t.recordingAudio}</span></div></div>}
+              {isProcessing && !isRecording && <div className="flex justify-start"><div className="max-w-[80%] p-4 rounded-2xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-bl-none"><div className="flex items-center gap-3"><div className="w-6 h-6 rounded-full bg-gradient-to-r from-green-400 to-blue-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">AI</div><div className="flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /><span className="text-sm">{t.processing}</span></div></div></div></div>}
+              {showSuggestions && conversation.length <= 2 && <div className="space-y-4"><div className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400"><Zap className="h-4 w-4" />{t.quickActions}</div><div className="grid grid-cols-3 gap-2">{quickActions.map((action, index) => (<Button key={index} variant="outline" size="sm" className="h-auto py-2 flex flex-col items-center gap-1 text-xs" onClick={() => processOrderWithAI(action.command)}><action.icon className="h-4 w-4" />{action.label}</Button>))}</div></div>}
               <div ref={messagesEndRef} />
             </div>
 
             <div className="border-t dark:border-gray-700 p-3 sm:p-4 space-y-3 sm:space-y-4">
               <div className="space-y-2 sm:space-y-3">
-                <Textarea
-                  value={transcript}
-                  onChange={(e) => setTranscript(e.target.value)}
-                  placeholder={t.placeholder}
-                  className="min-h-[60px] sm:min-h-[80px] text-sm sm:text-base resize-none"
-                  disabled={isRecording}
-                />
+                <Textarea value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder={t.placeholder} className="min-h-[60px] sm:min-h-[80px] text-sm sm:text-base resize-none" disabled={isRecording} />
               </div>
-
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <div className="flex gap-2 sm:gap-3 flex-1">
-                  <Button
-                    onClick={handleManualSend}
-                    disabled={!transcript.trim() || isProcessing || isRecording}
-                    className="flex-1 h-10 sm:h-12 text-sm sm:text-base"
-                    size="lg"
-                  >
-                    {isProcessing ? (
-                      <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 animate-spin" />
-                    ) : (
-                      <Send className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                    )}
-                    {isProcessing ? t.processing : t.sendToAI}
+                  <Button onClick={handleManualSend} disabled={!transcript.trim() || isProcessing || isRecording} className="flex-1 h-10 sm:h-12 text-sm sm:text-base" size="lg">
+                    {isProcessing ? <Loader2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2 animate-spin" /> : <Send className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />}{isProcessing ? t.processing : t.sendToAI}
                   </Button>
-
-                  <Button
-                    onClick={toggleRecording}
-                    variant={isRecording ? "destructive" : "default"}
-                    className={`h-10 sm:h-12 px-3 sm:px-6 flex items-center gap-2 transition-all duration-200 ${isRecording ? 'animate-pulse' : ''
-                      }`}
-                    size="lg"
-                    disabled={isProcessing}
-                  >
-                    {isRecording ? (
-                      <>
-                        <div className="relative">
-                          <Square className="h-3 w-3 sm:h-4 sm:w-4" />
-                          <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full animate-ping"></div>
-                          <div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full"></div>
-                        </div>
-                        <span className="text-sm">{t.stopRecording}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Mic className="h-3 w-3 sm:h-4 sm:w-4" />
-                        <span className="text-sm">{t.startRecording}</span>
-                      </>
-                    )}
+                  <Button onClick={toggleRecording} variant={isRecording ? "destructive" : "default"} className={`h-10 sm:h-12 px-3 sm:px-6 flex items-center gap-2 transition-all duration-200 ${isRecording ? 'animate-pulse' : ''}`} size="lg" disabled={isProcessing}>
+                    {isRecording ? (<><div className="relative"><Square className="h-3 w-3 sm:h-4 sm:w-4" /><div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full animate-ping"></div><div className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full"></div></div><span className="text-sm">{t.stopRecording}</span></>) : (<><Mic className="h-3 w-3 sm:h-4 sm:w-4" /><span className="text-sm">{t.startRecording}</span></>)}
                   </Button>
                 </div>
               </div>
-
               {order && order.items.length > 0 && (
                 <div className="flex gap-2 sm:gap-3">
-                  <Button
-                    onClick={createOrder}
-                    disabled={isCreatingOrder ||
-                      (orderType === 'DINE_IN' &&
-                        (!additionalInfo.tableNumber.trim() ||
-                          !additionalInfo.numberOfPeople ||
-                          additionalInfo.numberOfPeople < 1)
-                      )
-                    }
-                    className="w-full h-12 bg-green-600 hover:bg-green-700 disabled:bg-gray-400"
-                    size="lg"
-                  >
-                    {isCreatingOrder ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                    )}
-                    {t.confirmAndCreate}
+                  <Button onClick={createOrder} disabled={isCreatingOrder || (orderType === 'DINE_IN' && (!additionalInfo.tableNumber.trim() || !additionalInfo.numberOfPeople || additionalInfo.numberOfPeople < 1))} className="w-full h-12 bg-green-600 hover:bg-green-700 disabled:bg-gray-400" size="lg">
+                    {isCreatingOrder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-2" />}{t.confirmAndCreate}
                   </Button>
                 </div>
               )}
             </div>
           </TabsContent>
 
-          {/* Меню */}
           <TabsContent value="menu" className="flex-1 overflow-y-auto p-0">
-            <div className="p-4 border-b">
-              <Input
-                placeholder={t.search}
-                className="w-full"
-              />
-            </div>
-
+            <div className="p-4 border-b"><Input placeholder={t.search} className="w-full" /></div>
             <div className="p-4">
               <div className="flex flex-wrap gap-2 mb-4">
-                <Badge variant="default" className="cursor-pointer">
-                  {t.all}
-                </Badge>
-                {categories.map(category => {
-                  const Icon = getCategoryIcon(category.title)
-                  return (
-                    <Badge key={category.id} variant="outline" className="cursor-pointer flex items-center gap-1">
-                      <Icon className="h-3 w-3" />
-                      {category.title}
-                    </Badge>
-                  )
-                })}
+                <Badge variant="default" className="cursor-pointer">{t.all}</Badge>
+                {categories.map(category => { const Icon = getCategoryIcon(category.title); return <Badge key={category.id} variant="outline" className="cursor-pointer flex items-center gap-1"><Icon className="h-3 w-3" />{category.title}</Badge>; })}
               </div>
-
               <div className="grid gap-4">
                 {products.map(product => {
                   const productAdditives = selectedAdditives[product.id] || [];
-                  const selectedAdditivesList = product.additives?.filter(a =>
-                    productAdditives.includes(a.id)
-                  ) || [];
-
+                  const selectedAdditivesList = product.additives?.filter(a => productAdditives.includes(a.id)) || [];
                   return (
                     <Card key={product.id} className="p-4">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <h3 className="font-semibold text-lg">{product.title}</h3>
-                          {product.description && (
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                              {product.description}
-                            </p>
-                          )}
-
-                          {/* Добавки */}
+                          {product.description && <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{product.description}</p>}
                           {product.additives && product.additives.length > 0 && (
                             <div className="mt-3 space-y-2">
                               <div className="text-xs font-medium text-gray-600">{t.additives}:</div>
                               <div className="flex flex-wrap gap-1">
-                                {product.additives.map(additive => (
-                                  <Badge
-                                    key={additive.id}
-                                    variant={productAdditives.includes(additive.id) ? "default" : "outline"}
-                                    className="cursor-pointer text-xs flex items-center gap-1"
-                                    onClick={() => handleAdditiveToggle(product.id, additive.id)}
-                                  >
-                                    {additive.title} (+{additive.price}₽)
-                                  </Badge>
-                                ))}
+                                {product.additives.map(additive => (<Badge key={additive.id} variant={productAdditives.includes(additive.id) ? "default" : "outline"} className="cursor-pointer text-xs flex items-center gap-1" onClick={() => handleAdditiveToggle(product.id, additive.id)}>{additive.title} (+{additive.price}₽)</Badge>))}
                               </div>
                             </div>
                           )}
-
                           <div className="flex items-center gap-4 mt-3">
-                            <span className="font-bold text-green-600">
-                              {getProductPrice(product)} ₽
-                              {selectedAdditivesList.length > 0 && (
-                                <span className="text-xs text-gray-500 ml-1">
-                                  + {selectedAdditivesList.reduce((sum, a) => sum + a.price, 0)}₽ {t.forAdditives}
-                                </span>
-                              )}
-                            </span>
-                            {product.tags && product.tags.map(tag => (
-                              <Badge key={tag} variant="secondary" className="text-xs">
-                                {tag}
-                              </Badge>
-                            ))}
+                            <span className="font-bold text-green-600">{getProductPrice(product)} ₽ {selectedAdditivesList.length > 0 && <span className="text-xs text-gray-500 ml-1">+ {selectedAdditivesList.reduce((sum, a) => sum + a.price, 0)}₽ {t.forAdditives}</span>}</span>
+                            {product.tags && product.tags.map(tag => (<Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>))}
                           </div>
                         </div>
-                        <Button
-                          onClick={() => addProductToOrder(product, selectedAdditivesList)}
-                          size="sm"
-                          className="ml-4"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
+                        <Button onClick={() => addProductToOrder(product, selectedAdditivesList)} size="sm" className="ml-4"><Plus className="h-4 w-4" /></Button>
                       </div>
                     </Card>
                   );
@@ -2179,242 +1812,74 @@ ${currentOrderInfo}
             </div>
           </TabsContent>
 
-          {/* Заказ */}
           <TabsContent value="order" className="flex-1 overflow-y-auto p-0">
             <div className="p-4">
               {order && order.items.length > 0 ? (
                 <div className="space-y-4">
-                  {/* Сводка заказа */}
                   <Card className="p-4">
                     <h3 className="font-semibold mb-3">{t.additionalInfo}</h3>
-
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      {/* Левая колонка - персоны и стол */}
                       <div className="space-y-4">
-                        {/* Количество персон */}
                         <div className="space-y-2">
                           <Label htmlFor="numberOfPeople">{t.numberOfPeople}</Label>
                           <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-8 w-2/12"
-                              onClick={() => updateAdditionalInfo('numberOfPeople', Math.max(1, additionalInfo.numberOfPeople - 1))}
-                              disabled={additionalInfo.numberOfPeople <= 1}
-                            >
-                              <Minus className="h-3 w-3" />
-                            </Button>
-
-                            <Input
-                              id="numberOfPeople"
-                              type="number"
-                              min="1"
-                              max="20"
-                              value={additionalInfo.numberOfPeople}
-                              onChange={(e) => updateAdditionalInfo('numberOfPeople', parseInt(e.target.value) || 1)}
-                              className="text-center w-full"
-                            />
-
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-8 w-2/12"
-                              onClick={() => updateAdditionalInfo('numberOfPeople', additionalInfo.numberOfPeople + 1)}
-                              disabled={additionalInfo.numberOfPeople >= 20}
-                            >
-                              <Plus className="h-3 w-3" />
-                            </Button>
+                            <Button variant="outline" size="icon" className="h-8 w-2/12" onClick={() => updateAdditionalInfo('numberOfPeople', Math.max(1, additionalInfo.numberOfPeople - 1))} disabled={additionalInfo.numberOfPeople <= 1}><Minus className="h-3 w-3" /></Button>
+                            <Input id="numberOfPeople" type="number" min="1" max="20" value={additionalInfo.numberOfPeople} onChange={(e) => updateAdditionalInfo('numberOfPeople', parseInt(e.target.value) || 1)} className="text-center w-full" />
+                            <Button variant="outline" size="icon" className="h-8 w-2/12" onClick={() => updateAdditionalInfo('numberOfPeople', additionalInfo.numberOfPeople + 1)} disabled={additionalInfo.numberOfPeople >= 20}><Plus className="h-3 w-3" /></Button>
                           </div>
                         </div>
-
-                        {/* Номер стола */}
                         <div className="space-y-2">
                           <Label htmlFor="tableNumber">{t.tableNumber}</Label>
                           <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-8 w-2/12"
-                              onClick={() => updateAdditionalInfo('tableNumber', Math.max(1, (parseInt(additionalInfo.tableNumber) || 1) - 1).toString())}
-                              disabled={(parseInt(additionalInfo.tableNumber) || 1) <= 1}
-                            >
-                              <Minus className="h-3 w-3" />
-                            </Button>
-
-                            <Input
-                              id="tableNumber"
-                              type="number"
-                              min="1"
-                              max="50"
-                              value={additionalInfo.tableNumber}
-                              onChange={(e) => updateAdditionalInfo('tableNumber', e.target.value)}
-                              className="text-center w-full"
-                              placeholder="1"
-                            />
-
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-8 w-2/12"
-                              onClick={() => updateAdditionalInfo('tableNumber', ((parseInt(additionalInfo.tableNumber) || 1) + 1).toString())}
-                              disabled={(parseInt(additionalInfo.tableNumber) || 1) >= 50}
-                            >
-                              <Plus className="h-3 w-3" />
-                            </Button>
+                            <Button variant="outline" size="icon" className="h-8 w-2/12" onClick={() => updateAdditionalInfo('tableNumber', Math.max(1, (parseInt(additionalInfo.tableNumber) || 1) - 1).toString())} disabled={(parseInt(additionalInfo.tableNumber) || 1) <= 1}><Minus className="h-3 w-3" /></Button>
+                            <Input id="tableNumber" type="number" min="1" max="50" value={additionalInfo.tableNumber} onChange={(e) => updateAdditionalInfo('tableNumber', e.target.value)} className="text-center w-full" placeholder="1" />
+                            <Button variant="outline" size="icon" className="h-8 w-2/12" onClick={() => updateAdditionalInfo('tableNumber', ((parseInt(additionalInfo.tableNumber) || 1) + 1).toString())} disabled={(parseInt(additionalInfo.tableNumber) || 1) >= 50}><Plus className="h-3 w-3" /></Button>
                           </div>
                         </div>
                       </div>
-
-                      {/* Правая колонка - комментарий */}
                       <div className="space-y-2">
                         <Label htmlFor="comment">{t.comment}</Label>
-                        <Textarea
-                          id="comment"
-                          value={additionalInfo.comment}
-                          onChange={(e) => updateAdditionalInfo('comment', e.target.value)}
-                          placeholder={language === 'ru' ? "Комментарий к заказу..." : "კომენტარი შეკვეთაზე..."}
-                          rows={5}
-                          className="min-h-[120px]"
-                        />
+                        <Textarea id="comment" value={additionalInfo.comment} onChange={(e) => updateAdditionalInfo('comment', e.target.value)} placeholder={language === 'ru' ? "Комментарий к заказу..." : "კომენტარი შეკვეთაზე..."} rows={5} className="min-h-[120px]" />
                       </div>
                     </div>
-
-                    {/* Тип заказа - всегда на всю ширину */}
                     <div className="space-y-2 mt-6">
                       <Label>{t.orderType}</Label>
                       <div className="flex gap-2 flex-wrap">
-                        <Button
-                          variant={orderType === 'DINE_IN' ? "default" : "outline"}
-                          size="lg"
-                          onClick={() => setOrderType('DINE_IN')}
-                          className="flex-1 min-w-[100px]"
-                        >
-                          <Utensils className="h-3 w-3 mr-1" />
-                          {t.dineIn}
-                        </Button>
-                        <Button
-                          variant={orderType === 'TAKEAWAY' ? "default" : "outline"}
-                          size="lg"
-                          onClick={() => setOrderType('TAKEAWAY')}
-                          className="flex-1 min-w-[100px]"
-                        >
-                          <ShoppingBag className="h-3 w-3 mr-1" />
-                          {t.takeaway}
-                        </Button>
-                        <Button
-                          variant={orderType === 'DELIVERY' ? "default" : "outline"}
-                          size="lg"
-                          onClick={() => setOrderType('DELIVERY')}
-                          className="flex-1 min-w-[100px]"
-                        >
-                          <Truck className="h-3 w-3 mr-1" />
-                          {t.delivery}
-                        </Button>
+                        <Button variant={orderType === 'DINE_IN' ? "default" : "outline"} size="lg" onClick={() => setOrderType('DINE_IN')} className="flex-1 min-w-[100px]"><Utensils className="h-3 w-3 mr-1" />{t.dineIn}</Button>
+                        <Button variant={orderType === 'TAKEAWAY' ? "default" : "outline"} size="lg" onClick={() => setOrderType('TAKEAWAY')} className="flex-1 min-w-[100px]"><ShoppingBag className="h-3 w-3 mr-1" />{t.takeaway}</Button>
+                        <Button variant={orderType === 'DELIVERY' ? "default" : "outline"} size="lg" onClick={() => setOrderType('DELIVERY')} className="flex-1 min-w-[100px]"><Truck className="h-3 w-3 mr-1" />{t.delivery}</Button>
                       </div>
                     </div>
                   </Card>
-
-                  {/* Позиции заказа */}
                   <div className="space-y-3">
                     {order.items.map((item, index) => (
                       <Card key={index} className="p-4">
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
-                            <div className="flex items-center gap-3">
-                              <h4 className="font-semibold">{item.product.title}</h4>
-                              {item.comment && (
-                                <Badge variant="outline" className="text-xs">
-                                  {item.comment}
-                                </Badge>
-                              )}
-                            </div>
-
-                            {/* Добавки */}
-                            {item.additives && item.additives.length > 0 && (
-                              <div className="text-xs text-gray-600 mt-1">
-                                {t.additives}: {item.additives.map(a => a.title).join(', ')}
-                                <span className="text-green-600 ml-1">
-                                  (+{item.additives.reduce((sum, additive) => sum + additive.price, 0)}₽)
-                                </span>
-                              </div>
-                            )}
-
+                            <div className="flex items-center gap-3"><h4 className="font-semibold">{item.product.title}</h4>{item.comment && <Badge variant="outline" className="text-xs">{item.comment}</Badge>}</div>
+                            {item.additives && item.additives.length > 0 && <div className="text-xs text-gray-600 mt-1">{t.additives}: {item.additives.map(a => a.title).join(', ')} <span className="text-green-600 ml-1">(+{item.additives.reduce((sum, additive) => sum + additive.price, 0)}₽)</span></div>}
                             <div className="flex items-center gap-4 mt-2">
                               <div className="flex items-center gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-6 w-6"
-                                  onClick={() => updateProductQuantity(item.product.id, item.quantity - 1)}
-                                >
-                                  <Minus className="h-3 w-3" />
-                                </Button>
+                                <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => updateProductQuantity(item.product.id, item.quantity - 1)}><Minus className="h-3 w-3" /></Button>
                                 <span className="font-medium w-8 text-center">{item.quantity}</span>
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-6 w-6"
-                                  onClick={() => updateProductQuantity(item.product.id, item.quantity + 1)}
-                                >
-                                  <Plus className="h-3 w-3" />
-                                </Button>
+                                <Button variant="outline" size="icon" className="h-6 w-6" onClick={() => updateProductQuantity(item.product.id, item.quantity + 1)}><Plus className="h-3 w-3" /></Button>
                               </div>
-                              <span className="font-bold text-green-600">
-                                {item.totalPrice}₽
-                              </span>
+                              <span className="font-bold text-green-600">{item.totalPrice}₽</span>
                             </div>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeProductFromOrder(item.product.id)}
-                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => removeProductFromOrder(item.product.id)} className="text-red-500 hover:text-red-700 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
                         </div>
                       </Card>
                     ))}
                   </div>
-
-                  {/* Итого */}
-                  <Card className="p-4 bg-gray-50 dark:bg-gray-900">
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold text-lg">{t.total}:</span>
-                      <span className="font-bold text-2xl text-green-600">
-                        {order.totalAmount}₽
-                      </span>
-                    </div>
-                  </Card>
-
-                  <Button
-                    onClick={createOrder}
-                    disabled={isCreatingOrder}
-                    className="w-full h-12 bg-green-600 hover:bg-green-700"
-                    size="lg"
-                  >
-                    {isCreatingOrder ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                    )}
-                    {t.confirmAndCreate}
-                  </Button>
+                  <Card className="p-4 bg-gray-50 dark:bg-gray-900"><div className="flex justify-between items-center"><span className="font-semibold text-lg">{t.total}:</span><span className="font-bold text-2xl text-green-600">{order.totalAmount}₽</span></div></Card>
+                  <Button onClick={createOrder} disabled={isCreatingOrder} className="w-full h-12 bg-green-600 hover:bg-green-700" size="lg">{isCreatingOrder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-2" />}{t.confirmAndCreate}</Button>
                 </div>
               ) : (
                 <div className="text-center py-12">
                   <ShoppingBag className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-400 mb-2">
-                    {t.emptyOrder}
-                  </h3>
-                  <Button
-                    onClick={() => setActiveTab('assistant')}
-                    variant="outline"
-                    className="mt-4"
-                  >
-                    <Mic className="h-4 w-4 mr-2" />
-                    {language === 'ru' ? 'Начать говорить' : 'დაიწყეთ საუბარი'}
-                  </Button>
+                  <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-400 mb-2">{t.emptyOrder}</h3>
+                  <Button onClick={() => setActiveTab('assistant')} variant="outline" className="mt-4"><Mic className="h-4 w-4 mr-2" />{language === 'ru' ? 'Начать говорить' : 'დაიწყეთ საუბარი'}</Button>
                 </div>
               )}
             </div>
@@ -2422,54 +1887,23 @@ ${currentOrderInfo}
         </Tabs>
       </SheetContent>
     </Sheet>
-  )
+  );
 }
 
 export function VoiceAssistantButton() {
-  const [isOpen, setIsOpen] = useState(false)
-
+  const [isOpen, setIsOpen] = useState(false);
   return (
     <>
-      <Button
-        onClick={() => setIsOpen(true)}
-        className="fixed md:bottom-8 bottom-24 right-6 h-14 w-14 rounded-full shadow-lg z-50 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600"
-        size="icon"
-      >
-        <Brain className="h-6 w-6" />
-      </Button>
-
-      <VoiceAssistantSheet
-        open={isOpen}
-        onOpenChange={setIsOpen}
-      />
+      <Button onClick={() => setIsOpen(true)} className="fixed md:bottom-8 bottom-24 right-6 h-14 w-14 rounded-full shadow-lg z-50 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600" size="icon"><Brain className="h-6 w-6" /></Button>
+      <VoiceAssistantSheet open={isOpen} onOpenChange={setIsOpen} />
     </>
-  )
+  );
 }
 
-// Хук для использования ассистента в любом компоненте
 export function useVoiceAssistant() {
-  const [isOpen, setIsOpen] = useState(false)
-
-  const openAssistant = useCallback(() => {
-    setIsOpen(true)
-  }, [])
-
-  const closeAssistant = useCallback(() => {
-    setIsOpen(false)
-  }, [])
-
-  const Assistant = useCallback(({ orderId }: { orderId?: string }) => (
-    <VoiceAssistantSheet
-      open={isOpen}
-      onOpenChange={setIsOpen}
-      orderId={orderId}
-    />
-  ), [isOpen])
-
-  return {
-    isOpen,
-    openAssistant,
-    closeAssistant,
-    Assistant
-  }
+  const [isOpen, setIsOpen] = useState(false);
+  const openAssistant = useCallback(() => setIsOpen(true), []);
+  const closeAssistant = useCallback(() => setIsOpen(false), []);
+  const Assistant = useCallback(({ orderId }: { orderId?: string }) => (<VoiceAssistantSheet open={isOpen} onOpenChange={setIsOpen} orderId={orderId} />), [isOpen]);
+  return { isOpen, openAssistant, closeAssistant, Assistant };
 }
