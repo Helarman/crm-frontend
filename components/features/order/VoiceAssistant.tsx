@@ -19,6 +19,7 @@ import { toast } from 'sonner'
 import Fuse from 'fuse.js'
 import {
   Mic,
+  MapPin,
   MicOff,
   Play,
   Square,
@@ -48,8 +49,9 @@ import {
   Coffee,
   Dessert,
   Pizza,
-  Truck
+  Truck, Building, DoorClosed, Smartphone, Home
 } from 'lucide-react'
+import { DeliveryZoneService } from '@/lib/api/delivery-zone.service'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { EnumPaymentMethod, OrderService } from '@/lib/api/order.service'
 import { ProductService } from '@/lib/api/product.service'
@@ -58,7 +60,245 @@ import { useLanguageStore } from '@/lib/stores/language-store'
 import { yandexAIService, YandexChatMessage } from '@/lib/api/yandex-ai.service'
 import { Restaurant } from '@/lib/types/restaurant'
 
-// ... (типы Additive, Product, Category, ParsedOrderItem, ParsedOrder, AIConfig, ConversationMessage остаются без изменений) ...
+const AddressInputWithSuggestions = ({
+  value,
+  onChange,
+  language,
+  restaurantId,
+  onZoneFound,
+  onAddressSelect
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  language: string;
+  restaurantId: string;
+  onZoneFound?: (zone: any) => void;
+  onAddressSelect?: (address: string, details?: any) => void;
+}) => {
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [inputValue, setInputValue] = useState(value);
+  const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
+
+  // Синхронизация с внешним значением
+  useEffect(() => {
+    if (selectedAddress) {
+      setInputValue(selectedAddress);
+    } else {
+      setInputValue(value);
+    }
+  }, [value, selectedAddress]);
+
+  // Геокодирование адреса через DaData
+  const geocodeAddress = async (address: string): Promise<{ lat: number; lng: number; data: any } | null> => {
+    try {
+      const token = 'e7a8d3897b07bb4631312ee1e8b376424c6667ea';
+      const url = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address';
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Token ${token}`,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          query: address,
+          count: 1,
+          locations: [{ country: "*" }]
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to geocode address');
+
+      const data = await response.json();
+      if (data.suggestions && data.suggestions.length > 0) {
+        const suggestion = data.suggestions[0];
+        if (suggestion.data.geo_lat && suggestion.data.geo_lon) {
+          return {
+            lat: parseFloat(suggestion.data.geo_lat),
+            lng: parseFloat(suggestion.data.geo_lon),
+            data: suggestion.data
+          };
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('Geocoding error:', error);
+      return null;
+    }
+  };
+
+  // Поиск зоны доставки
+  const findDeliveryZone = async (lat: number, lng: number) => {
+    if (!restaurantId) return;
+
+    try {
+      const zone = await DeliveryZoneService.findZoneForPoint(restaurantId, lat, lng);
+      if (zone && onZoneFound) {
+        onZoneFound(zone);
+      }
+      return zone;
+    } catch (error) {
+      console.error('Error finding delivery zone:', error);
+      return null;
+    }
+  };
+
+  const handleAddressChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+
+    if (selectedAddress) {
+      setSelectedAddress(null);
+    }
+
+    setInputValue(newValue);
+    onChange(e);
+
+    if (newValue.length < 3) {
+      setSuggestions([]);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const token = 'e7a8d3897b07bb4631312ee1e8b376424c6667ea';
+      const url = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address';
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Token ${token}`,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          query: newValue,
+          count: 5,
+          locations: [{ country: "*" }]
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch suggestions');
+
+      const data = await response.json();
+      setSuggestions(data.suggestions || []);
+    } catch (error) {
+      console.error('Address suggestion error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+
+
+  const handleSuggestionSelect = async (suggestion: any) => {
+    const address = suggestion.value;
+    const addressData = suggestion.data;
+
+    setSelectedAddress(address);
+    setSuggestions([]);
+    setInputValue(address);
+
+    const addressDetails = {
+      address: address,
+      street: addressData.street,
+      house: addressData.house,
+      flat: addressData.flat,
+      postalCode: addressData.postal_code,
+      city: addressData.city,
+    };
+
+    if (onAddressSelect) {
+      onAddressSelect(address, addressDetails);
+    }
+
+    const coordinates = await geocodeAddress(address);
+    if (coordinates && restaurantId) {
+      const zone = await findDeliveryZone(coordinates.lat, coordinates.lng);
+
+      if (zone && zone.price !== undefined && zone.price !== null) {
+        toast.success(
+          language === 'ru'
+            ? `Доставка в этот район: ${zone.price} ₽`
+            : `მიწოდება ამ რაიონში: ${zone.price} ₽`
+        );
+
+        if (onZoneFound) {
+          onZoneFound(zone);
+        }
+      } else {
+        console.log('Zone not found for address:', address);
+
+        toast.error(
+          language === 'ru'
+            ? `Доставка по адресу "${address}" недоступна`
+            : `მიწოდება მისამართზე "${address}" მიუწვდომელია`
+        );
+
+        toast.info(
+          language === 'ru'
+            ? 'Вы можете оформить заказ с самовывозом или выбрать другой адрес'
+            : 'შეგიძლიათ გააფორმოთ შეკვეთა თვითმიტანით ან აირჩიოთ სხვა მისამართი'
+        );
+
+        if (onZoneFound) {
+          onZoneFound(null);
+        }
+      }
+    } else {
+      toast.warning(
+        language === 'ru'
+          ? 'Не удалось определить координаты адреса'
+          : 'მისამართის კოორდინატების განსაზღვრა ვერ მოხერხდა'
+      );
+
+      if (onZoneFound) {
+        onZoneFound(null);
+      }
+    }
+  };
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <Input
+          value={inputValue}
+          onChange={handleAddressChange}
+          placeholder={language === 'ru' ? 'Введите адрес доставки' : 'შეიყვანეთ მისამართი'}
+          className="pl-10 h-12 text-base"
+        />
+        {isLoading && (
+          <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 animate-spin text-gray-400" />
+        )}
+      </div>
+
+      {suggestions.length > 0 && (
+        <div className="absolute z-50 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+          {suggestions.map((suggestion, index) => (
+            <div
+              key={index}
+              className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0 transition-colors"
+              onClick={() => handleSuggestionSelect(suggestion)}
+            >
+              <div className="font-medium text-sm">{suggestion.value}</div>
+              {suggestion.data.city && (
+                <div className="text-xs text-gray-500 mt-1">
+                  {suggestion.data.city}
+                  {suggestion.data.street && `, ${suggestion.data.street}`}
+                  {suggestion.data.house && `, ${suggestion.data.house}`}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 interface Additive {
   id: string
   title: string
@@ -106,6 +346,12 @@ interface ParsedOrder {
   confidence: number
   rawResponse?: any
   totalAmount: number
+  deliveryZone?: {  // 👈 ДОБАВИТЬ
+    id: string
+    title: string
+    price: number
+    minOrder?: number
+  }
 }
 
 interface AIConfig {
@@ -128,6 +374,13 @@ interface ConversationMessage {
 interface AIActionResponse {
   action: 'ADD_ITEMS' | 'UPDATE_ORDER_TYPE' | 'UPDATE_DETAILS' | 'REMOVE_ITEMS' | 'SHOW_ORDER' | 'ANSWER_QUESTION' | 'CLEAR_ORDER' | 'MODIFY_QUANTITY' | 'SHOW_MENU' | 'MODIFY_ADDITIVES'
   // Массив объектов с сырыми данными для поиска
+  deliveryAddress?: {
+    address: string
+    floor?: string
+    entrance?: string
+    intercom?: string
+    apartment?: string
+  }
   itemsToAdd?: Array<{
     productQuery: string       // Название блюда как сказал пользователь
     quantity: number
@@ -186,7 +439,13 @@ export function VoiceAssistantSheet({
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [activeTab, setActiveTab] = useState('assistant')
   const [selectedAdditives, setSelectedAdditives] = useState<{ [key: string]: string[] }>({})
-
+  const [deliveryAddress, setDeliveryAddress] = useState<{
+    address: string
+    floor?: string
+    entrance?: string
+    intercom?: string
+    apartment?: string
+  } | null>(null)
   // Инициализация Fuse.js
   const [fuse, setFuse] = useState<Fuse<Product> | null>(null)
 
@@ -196,7 +455,21 @@ export function VoiceAssistantSheet({
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const animationRef = useRef<number>(0)
-
+  const [deliveryAddressDetails, setDeliveryAddressDetails] = useState<{
+    address: string;
+    floor?: string;
+    entrance?: string;
+    intercom?: string;
+    apartment?: string;
+    street?: string;
+    house?: string;
+  }>({
+    address: '',
+    floor: '',
+    entrance: '',
+    intercom: '',
+    apartment: '',
+  });
   const [orderType, setOrderType] = useState<'DINE_IN' | 'TAKEAWAY' | 'DELIVERY'>('DINE_IN')
   const [additionalInfo, setAdditionalInfo] = useState({
     numberOfPeople: 1,
@@ -468,7 +741,7 @@ export function VoiceAssistantSheet({
   const getRestaurantId = (): string => {
     return selectedRestaurantId || localStorage.getItem('selectedRestaurantId') || ''
   }
-  
+
   const updateAdditionalInfo = (field: keyof typeof additionalInfo, value: number | string) => {
     setAdditionalInfo(prev => ({
       ...prev,
@@ -692,7 +965,7 @@ export function VoiceAssistantSheet({
       });
 
       const result = await yandexAIService.transcribeAudio(file, language === 'ru' ? 'ru-RU' : 'ka-GE');
-      
+
       if (result.success && result.data?.text) {
         const rawTranscribedText = result.data.text.trim();
         const cleanedText = cleanTranscript(rawTranscribedText);
@@ -866,22 +1139,76 @@ export function VoiceAssistantSheet({
   }
 
   // ==================== НОВЫЕ ПРОМПТЫ ДЛЯ AI (БЕЗ МЕНЮ) ====================
+  const getSystemPromptForUpdateOrderType = () => {
+    return `Ты - AI для определения типа заказа.
+ТВОЯ ЗАДАЧА - ТОЛЬКО ИЗВЛЕЧЬ ДАННЫЕ В JSON.
+
+Извлеки тип заказа из текста пользователя:
+- DINE_IN: "в ресторане", "здесь", "у вас", "остаемся", "будем есть"
+- TAKEAWAY: "с собой", "навынос", "заберу", "заберём", "упакуйте"
+- DELIVERY: "доставка", "привезите", "домой"
+
+Примеры:
+- "заказ будет оформлен с собой" → { "newOrderType": "TAKEAWAY", "response": "Переключаю заказ на вынос", "confidence": 0.95 }
+- "сделайте навынос" → { "newOrderType": "TAKEAWAY", "response": "Заказ будет с собой", "confidence": 0.95 }
+- "на доставку" → { "newOrderType": "DELIVERY", "response": "Оформляю доставку", "confidence": 0.95 }
+
+Верни ТОЛЬКО JSON:
+{
+  "newOrderType": "TAKEAWAY",
+  "response": "Короткое подтверждение",
+  "confidence": 0.95
+}`;
+  };
+  const getSystemPromptForUpdateDeliveryAddress = () => {
+    return `Ты - AI для извлечения адреса доставки из текста пользователя.
+ТВОЯ ЗАДАЧА - ТОЛЬКО ИЗВЛЕЧЬ ДАННЫЕ В JSON.
+
+Извлеки из запроса:
+- address: полный адрес доставки (улица, дом, город)
+- floor: этаж (если указан)
+- entrance: подъезд (если указан)
+- intercom: домофон (если указан)
+- apartment: квартира/офис (если указан)
+
+Примеры:
+- "Доставьте по адресу улица Ленина дом 15 квартира 42" → 
+  { "address": "улица Ленина дом 15", "apartment": "42" }
+- "Привезите на Ленина 15, 5 этаж, домофон 42" → 
+  { "address": "Ленина 15", "floor": "5", "intercom": "42" }
+- "Адрес: Тверская 10, подъезд 2, этаж 3" → 
+  { "address": "Тверская 10", "entrance": "2", "floor": "3" }
+
+Верни ТОЛЬКО JSON:
+{
+  "deliveryAddress": {
+    "address": "string (обязательно)",
+    "floor": "string (опционально)",
+    "entrance": "string (опционально)",
+    "intercom": "string (опционально)",
+    "apartment": "string (опционально)"
+  },
+  "response": "string (подтверждение)",
+  "confidence": number
+}`;
+  };
 
   const getSystemPromptForIntentDetection = () => {
     return `Ты - AI для определения намерений пользователя в ресторанном заказе.
     
 Твоя задача - определить, ЧТО ИМЕННО хочет сделать пользователь.
-Если пользователь просит помнять тип заказа на с собой или доставка, то отвечай "Я пока не научилась такому"
 Доступные действия (intent):
 1. ADD_ITEMS - добавить товары в заказ
 2. REMOVE_ITEMS - удалить товары из заказа
 3. MODIFY_QUANTITY - изменить количество товаров
 4. MODIFY_ADDITIVES - изменить добавки у товара
 5. UPDATE_DETAILS - изменить детали заказа (стол, кол-во персон, комментарий)
-6. SHOW_ORDER - показать текущий заказ
-7. SHOW_MENU - показать меню
-8. CLEAR_ORDER - очистить весь заказ
-9. ANSWER_QUESTION - ответить на вопрос
+6. UPDATE_ORDER_TYPE - изменить тип заказа (с собой, навынос, доставка, в ресторане)
+7. UPDATE_DELIVERY_ADDRESS - изменить адрес доставки
+8. SHOW_ORDER - показать текущий заказ
+9. SHOW_MENU - показать меню
+10. CLEAR_ORDER - очистить весь заказ
+11. ANSWER_QUESTION - ответить на вопрос
 
 Верни ТОЛЬКО JSON:
 {
@@ -1116,7 +1443,7 @@ ${currentOrderInfo}
         const parsed = JSON.parse(cleanedContent);
         return { intent: parsed.intent, confidence: parsed.confidence };
       }
-      
+
       return { intent: "ANSWER_QUESTION", confidence: 0.5 };
     } catch (error) {
       console.error("Intent detection error:", error);
@@ -1124,17 +1451,143 @@ ${currentOrderInfo}
     }
   };
 
+
+  const handleDeliveryAddressSelect = async (address: string, details?: any) => {
+    setDeliveryAddressDetails(prev => ({
+      ...prev,
+      address: address,
+      street: details?.street,
+      house: details?.house,
+    }));
+
+    // Автоматически переключаем тип заказа на доставку
+    if (orderType !== 'DELIVERY') {
+      setOrderType('DELIVERY');
+      const switchTypeMessage: ConversationMessage = {
+        role: 'assistant',
+        content: language === 'ru'
+          ? 'Тип заказа автоматически изменён на "Доставка"'
+          : 'შეკვეთის ტიპი ავტომატურად შეიცვალა "მიწოდებაზე"',
+        timestamp: new Date(),
+        type: 'info'
+      };
+      setConversation(prev => [...prev, switchTypeMessage]);
+    }
+
+    // Геокодируем адрес для поиска зоны доставки
+    const coordinates = await geocodeAddress(address);
+    if (coordinates && selectedRestaurantId) {
+      const zone = await findDeliveryZone(coordinates.lat, coordinates.lng);
+      if (zone) {
+        setDeliveryAddress(prev => ({ ...prev, address, deliveryZone: zone }));
+
+        // Сохраняем зону в order
+        setOrder(prev => {
+          const currentOrder = prev || {
+            items: [],
+            confidence: 0.7,
+            totalAmount: 0
+          };
+          return {
+            ...currentOrder,
+            deliveryZone: {
+              id: zone.id,
+              title: zone.title,
+              price: zone.price,
+              minOrder: zone.minOrder
+            }
+          };
+        });
+
+        // Добавляем сообщение в чат о стоимости доставки
+        const deliveryCostMessage: ConversationMessage = {
+          role: 'assistant',
+          content: language === 'ru'
+            ? `Адрес: ${address}\nДоставка доступна! Стоимость: ${zone.price} ₽${zone.minOrder ? `\nМинимальная сумма заказа: ${zone.minOrder} ₽` : ''}`
+            : `მისამართი: ${address}\n მიწოდება ხელმისაწვდომია! ღირებულება: ${zone.price} ₽${zone.minOrder ? `\nშეკვეთის მინიმალური თანხა: ${zone.minOrder} ₽` : ''}`,
+          timestamp: new Date(),
+          type: 'info'
+        };
+        setConversation(prev => [...prev, deliveryCostMessage]);
+
+        if (audioFeedback) {
+          await speakResponseWithYandex(
+            language === 'ru'
+              ? `Адрес ${address} в зоне доставки. Стоимость доставки ${zone.price} рублей.`
+              : `მისამართი ${address} მიწოდების ზონაშია. მიწოდების ღირებულება ${zone.price} ლარი.`
+          );
+        }
+
+        toast.success(
+          language === 'ru'
+            ? `Доставка в этот район: ${zone.price} ₽`
+            : `მიწოდება ამ რაიონში: ${zone.price} ₽`
+        );
+      } else {
+        // ========== ОБРАБОТКА НЕДОСТУПНОЙ ЗОНЫ ==========
+        console.log('Delivery zone not found for address:', address);
+
+        // Очищаем зону доставки в заказе
+        setOrder(prev => {
+          const currentOrder = prev || { items: [], confidence: 0.7, totalAmount: 0 };
+          const { deliveryZone, ...rest } = currentOrder;
+          return rest;
+        });
+
+        setDeliveryAddress(prev => prev ? { ...prev, deliveryZone: null } : null);
+
+        // Добавляем сообщение о недоступности доставки
+        const unavailableMessage: ConversationMessage = {
+          role: 'assistant',
+          content: language === 'ru'
+            ? `К сожалению, доставка по адресу "${address}" недоступна.\n\nВозможные варианты:\n• Выберите другой адрес\n• Оформите заказ с самовывозом\n• Свяжитесь с рестораном для уточнения возможности доставки`
+            : `სამწუხაროდ, მიწოდება მისამართზე "${address}" მიუწვდომელია.\n\nშესაძლო ვარიანტები:\n• აირჩიეთ სხვა მისამართი\n• გააფორმეთ შეკვეთა თვითმიტანით\n• დაუკავშირდით რესტორანს მიწოდების შესაძლებლობის გასარკვევად`,
+          timestamp: new Date(),
+          type: 'error'
+        };
+        setConversation(prev => [...prev, unavailableMessage]);
+
+        if (audioFeedback) {
+          await speakResponseWithYandex(
+            language === 'ru'
+              ? `Извините, доставка по адресу ${address} недоступна. Пожалуйста, выберите другой адрес или оформите заказ с самовывозом.`
+              : `ბოდიში, მიწოდება მისამართზე ${address} მიუწვდომელია. გთხოვთ, აირჩიოთ სხვა მისამართი ან გააფორმოთ შეკვეთა თვითმიტანით.`
+          );
+        }
+
+        toast.error(
+          language === 'ru'
+            ? `Доставка по адресу "${address}" недоступна`
+            : ` მიწოდება მისამართზე "${address}" მიუწვდომელია`
+        );
+
+        // Предлагаем переключиться на самовывоз
+        const suggestionMessage: ConversationMessage = {
+          role: 'assistant',
+          content: language === 'ru'
+            ? `Хотите оформить заказ с самовывозом? Нажмите кнопку "${t.takeaway}" выше.`
+            : `გსურთ გააფორმოთ შეკვეთა თვითმიტანით? დააჭირეთ ღილაკს "${t.takeaway}" ზემოთ.`,
+          timestamp: new Date(),
+          type: 'suggestion'
+        };
+        setConversation(prev => [...prev, suggestionMessage]);
+      }
+    }
+  };
+
   const callYandexAIByIntent = async (userText: string, intent: string): Promise<any> => {
     let systemPrompt = "";
-    
+
     switch (intent) {
       case "ADD_ITEMS": systemPrompt = getSystemPromptForAddItems(); break;
       case "REMOVE_ITEMS": systemPrompt = getSystemPromptForRemoveItems(); break;
       case "MODIFY_QUANTITY": systemPrompt = getSystemPromptForModifyQuantity(); break;
       case "MODIFY_ADDITIVES": systemPrompt = getSystemPromptForModifyAdditives(); break;
       case "UPDATE_DETAILS": systemPrompt = getSystemPromptForUpdateDetails(); break;
+      case "UPDATE_ORDER_TYPE": systemPrompt = getSystemPromptForUpdateOrderType(); break;
       case "SHOW_ORDER": systemPrompt = getSystemPromptForShowOrder(); break;
       case "SHOW_MENU": systemPrompt = getSystemPromptForShowMenu(); break;
+      case "UPDATE_DELIVERY_ADDRESS": systemPrompt = getSystemPromptForUpdateDeliveryAddress(); break;
       case "CLEAR_ORDER": systemPrompt = getSystemPromptForClearOrder(); break;
       default: systemPrompt = getSystemPromptForAnswerQuestion();
     }
@@ -1156,11 +1609,11 @@ ${currentOrderInfo}
 
       let content = result.data.message.trim();
       content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-      
+
       let jsonContent = content;
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) jsonContent = jsonMatch[0];
-      
+
       let parsed;
       try {
         parsed = JSON.parse(jsonContent);
@@ -1171,7 +1624,7 @@ ${currentOrderInfo}
           .replace(/,(\s*[}\]])/g, '$1');
         parsed = JSON.parse(fixedContent);
       }
-      
+
       return { action: intent, ...parsed };
     } catch (error) {
       console.error(`Error in ${intent} handler:`, error);
@@ -1187,7 +1640,7 @@ ${currentOrderInfo}
 
   const findProductByQuery = (query: string): Product | null => {
     if (!fuse || !query) return null;
-    
+
     const results = fuse.search(query);
     if (results.length > 0 && results[0].score !== undefined && results[0].score < 0.6) {
       return results[0].item;
@@ -1197,10 +1650,10 @@ ${currentOrderInfo}
 
   const findAdditivesByQueries = (product: Product, queries: string[]): Additive[] => {
     if (!product.additives || !queries.length) return [];
-    
+
     const additiveFuse = new Fuse(product.additives, { keys: ['title'], threshold: 0.4 });
     const foundAdditives: Additive[] = [];
-    
+
     queries.forEach(query => {
       const results = additiveFuse.search(query);
       if (results.length > 0 && results[0].score !== undefined && results[0].score < 0.6) {
@@ -1210,16 +1663,16 @@ ${currentOrderInfo}
         }
       }
     });
-    
+
     return foundAdditives;
   };
 
   const findProductInOrderByQuery = (query: string): ParsedOrderItem | null => {
     if (!order) return null;
-    
+
     const orderFuse = new Fuse(order.items, { keys: ['product.title'], threshold: 0.4 });
     const results = orderFuse.search(query);
-    
+
     if (results.length > 0 && results[0].score !== undefined && results[0].score < 0.6) {
       return results[0].item;
     }
@@ -1287,7 +1740,66 @@ ${currentOrderInfo}
   const stopSpeech = () => {
     setIsSpeaking(false);
   };
+  const geocodeAddress = async (address: string): Promise<{ lat: number; lng: number; data: any } | null> => {
+    if (!address) return null;
 
+    try {
+      const token = 'e7a8d3897b07bb4631312ee1e8b376424c6667ea';
+      const url = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address';
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Token ${token}`,
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          query: address,
+          count: 1,
+          locations: [{ country: "*" }]
+        })
+      });
+
+      if (!response.ok) throw new Error('Failed to geocode address');
+
+      const data = await response.json();
+      if (data.suggestions && data.suggestions.length > 0) {
+        const suggestion = data.suggestions[0];
+        if (suggestion.data.geo_lat && suggestion.data.geo_lon) {
+          return {
+            lat: parseFloat(suggestion.data.geo_lat),
+            lng: parseFloat(suggestion.data.geo_lon),
+            data: suggestion.data
+          };
+        }
+      }
+      return null;
+    } catch (error) {
+      console.error('Geocoding error:', error);
+      return null;
+    }
+  };
+
+  // Поиск зоны доставки
+  const findDeliveryZone = async (lat: number, lng: number) => {
+    const restaurantId = getRestaurantId();
+    if (!restaurantId) return null;
+
+    try {
+      const zone = await DeliveryZoneService.findZoneForPoint(restaurantId, lat, lng);
+      console.log('Zone check result:', { lat, lng, zone });
+
+      if (zone && zone.id && (zone.price !== undefined && zone.price !== null)) {
+        return zone;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error finding delivery zone:', error);
+      return null;
+    }
+  };
   const handleAIAction = async (parsedData: AIActionResponse, userText: string) => {
     console.log('Handling AI action:', parsedData.action, parsedData);
     let updatedOrder = order ? { ...order } : { items: [], confidence: 0.7, totalAmount: 0 };
@@ -1342,9 +1854,9 @@ ${currentOrderInfo}
               if (orderItem) {
                 const product = orderItem.product;
                 let newAdditives = [...(orderItem.additives || [])];
-                
+
                 const queriedAdditives = findAdditivesByQueries(product, mod.additiveQueries || []);
-                
+
                 if (mod.action === 'add') {
                   queriedAdditives.forEach(a => { if (!newAdditives.find(ex => ex.id === a.id)) newAdditives.push(a); });
                 } else if (mod.action === 'remove') {
@@ -1353,7 +1865,7 @@ ${currentOrderInfo}
                 } else {
                   newAdditives = queriedAdditives;
                 }
-                
+
                 const additivesPrice = newAdditives.reduce((sum, a) => sum + a.price, 0);
                 const itemIndex = updatedOrder.items.findIndex(i => i.product.id === product.id && i === orderItem);
                 if (itemIndex >= 0) {
@@ -1366,6 +1878,104 @@ ${currentOrderInfo}
           }
           break;
 
+        case 'UPDATE_DELIVERY_ADDRESS':
+          if (parsedData.deliveryAddress) {
+            const newAddress = {
+              address: parsedData.deliveryAddress.address || '',
+              floor: parsedData.deliveryAddress.floor || '',
+              entrance: parsedData.deliveryAddress.entrance || '',
+              intercom: parsedData.deliveryAddress.intercom || '',
+              apartment: parsedData.deliveryAddress.apartment || '',
+            };
+
+            setDeliveryAddress(newAddress);
+            setDeliveryAddressDetails(prev => ({
+              ...prev,
+              address: newAddress.address,
+              floor: newAddress.floor,
+              entrance: newAddress.entrance,
+              intercom: newAddress.intercom,
+              apartment: newAddress.apartment,
+            }));
+
+            // Автоматически переключаем тип заказа на доставку
+            if (orderType !== 'DELIVERY') {
+              setOrderType('DELIVERY');
+            }
+
+            // Геокодируем адрес для поиска зоны доставки
+            const coordinates = await geocodeAddress(newAddress.address);
+            if (coordinates && selectedRestaurantId) {
+              const zone = await findDeliveryZone(coordinates.lat, coordinates.lng);
+              if (zone && zone.price !== undefined && zone.price !== null) {
+                // Зона найдена - обновляем заказ с зоной доставки
+                setOrder(prev => {
+                  const currentOrder = prev || {
+                    items: [],
+                    confidence: 0.7,
+                    totalAmount: 0
+                  };
+                  return {
+                    ...currentOrder,
+                    deliveryZone: {
+                      id: zone.id,
+                      title: zone.title || 'Доставка',
+                      price: zone.price,
+                      minOrder: zone.minOrder
+                    }
+                  };
+                });
+
+                toast.success(
+                  language === 'ru'
+                    ? `Доставка доступна. Стоимость: ${zone.price} ₽`
+                    : `მიწოდება ხელმისაწვდომია. ღირებულება: ${zone.price} ₽`
+                );
+
+                // Возвращаем успешный ответ
+                parsedData.response = language === 'ru'
+                  ? `Адрес ${newAddress.address} в зоне доставки. Стоимость доставки ${zone.price} рублей.`
+                  : `მისამართი ${newAddress.address} მიწოდების ზონაშია. მიწოდების ღირებულება ${zone.price} ლარი.`;
+              } else {
+                // Зона НЕ найдена - очищаем зону доставки
+                setOrder(prev => {
+                  const currentOrder = prev || { items: [], confidence: 0.7, totalAmount: 0 };
+                  const { deliveryZone, ...rest } = currentOrder;
+                  return rest;
+                });
+
+                toast.error(
+                  language === 'ru'
+                    ? `Доставка по адресу "${newAddress.address}" недоступна`
+                    : `მიწოდება მისამართზე "${newAddress.address}" მიუწვდომელია`
+                );
+
+                // Переопределяем ответ AI - говорим только о недоступности, НЕ говорим "адрес успешно извлечён"
+                parsedData.response = language === 'ru'
+                  ? `Доставка по адресу "${newAddress.address}" недоступна. Пожалуйста, укажите другой адрес или выберите самовывоз.`
+                  : `მიწოდება მისამართზე "${newAddress.address}" მიუწვდომელია. გთხოვთ, მიუთითოთ სხვა მისამართი ან აირჩიოთ თვითმიტანა.`;
+
+                // Предлагаем переключиться на самовывоз
+                toast.info(
+                  language === 'ru'
+                    ? 'Вы можете оформить заказ с самовывозом'
+                    : 'შეგიძლიათ გააფორმოთ შეკვეთა თვითმიტანით'
+                );
+              }
+            } else {
+              // Не удалось геокодировать адрес
+              toast.warning(
+                language === 'ru'
+                  ? 'Не удалось определить координаты адреса'
+                  : 'მისამართის კოორდინატების განსაზღვრა ვერ მოხერხდა'
+              );
+
+              parsedData.response = language === 'ru'
+                ? `Не удалось определить адрес "${newAddress.address}". Пожалуйста, уточните адрес.`
+                : `მისამართის განსაზღვრა "${newAddress.address}" ვერ მოხერხდა. გთხოვთ, დააზუსტოთ მისამართი.`;
+            }
+          }
+          break;
         case 'MODIFY_QUANTITY':
           if (parsedData.itemsToModify) {
             for (const mod of parsedData.itemsToModify) {
@@ -1376,7 +1986,7 @@ ${currentOrderInfo}
                   let newQuantity = mod.quantity;
                   if (mod.quantity === 'increment') newQuantity = orderItem.quantity + 1;
                   if (mod.quantity === 'decrement') newQuantity = orderItem.quantity - 1;
-                  
+
                   if (newQuantity > 0) {
                     updatedOrder.items[itemIndex].quantity = newQuantity;
                     updatedOrder.items[itemIndex].totalPrice = newQuantity * (orderItem.totalPrice / orderItem.quantity);
@@ -1392,7 +2002,7 @@ ${currentOrderInfo}
 
         case 'REMOVE_ITEMS':
           if (parsedData.itemsToRemove) {
-            updatedOrder.items = updatedOrder.items.filter(item => 
+            updatedOrder.items = updatedOrder.items.filter(item =>
               !parsedData.itemsToRemove!.some(query => {
                 const found = findProductInOrderByQuery(query);
                 return found?.product.id === item.product.id;
@@ -1540,7 +2150,7 @@ ${currentOrderInfo}
     const additiveText = selectedAdditives.length > 0 ? ` ${t.withAdditives}: ${selectedAdditives.map(a => a.title).join(', ')}` : '';
     const message: ConversationMessage = {
       role: 'assistant',
-      content: language === 'ru' ? `✅ Добавлено: ${product.title}${additiveText}` : `✅ დაემატა: ${product.title}${additiveText}`,
+      content: language === 'ru' ? ` Добавлено: ${product.title}${additiveText}` : ` დაემატა: ${product.title}${additiveText}`,
       timestamp: new Date(),
       type: 'order_update'
     };
@@ -1556,6 +2166,17 @@ ${currentOrderInfo}
       return { ...prev, items: newItems, totalAmount };
     });
   };
+  // Добавить эту функцию после других вспомогательных функций
+  const getTotalWithDelivery = useCallback(() => {
+    if (!order) return 0;
+    const itemsTotal = order.totalAmount;
+    const deliveryPrice = order.deliveryZone?.price || 0;
+
+    // Если тип заказа не доставка, то доставка бесплатна
+    if (orderType !== 'DELIVERY') return itemsTotal;
+
+    return itemsTotal + deliveryPrice;
+  }, [order, orderType]);
 
   const updateProductQuantity = (productId: string, newQuantity: number) => {
     if (newQuantity < 1) {
@@ -1615,7 +2236,16 @@ ${currentOrderInfo}
           quantity: item.quantity,
           comment: item.comment,
           additiveIds: item.additives?.map(a => a.id) || []
-        }))
+        })),
+        ...(orderType === 'DELIVERY' && deliveryAddress?.address && {
+          deliveryAddress: deliveryAddress.address,
+          deliveryFloor: deliveryAddress.floor,
+          deliveryEntrance: deliveryAddress.entrance,
+          deliveryIntercom: deliveryAddress.intercom,
+          deliveryApartment: deliveryAddress.apartment,
+          deliveryZoneId: order.deliveryZone?.id,
+          deliveryPrice: order.deliveryZone?.price
+        })
       };
 
       const createdOrder = orderId ? await OrderService.updateOrder(orderId, orderData) : await OrderService.create(orderData);
@@ -1850,6 +2480,189 @@ ${currentOrderInfo}
                         <Button variant={orderType === 'DELIVERY' ? "default" : "outline"} size="lg" onClick={() => setOrderType('DELIVERY')} className="flex-1 min-w-[100px]"><Truck className="h-3 w-3 mr-1" />{t.delivery}</Button>
                       </div>
                     </div>
+
+                    {orderType === 'DELIVERY' && (
+                      <div className="space-y-4 mt-4 pt-4 border-t">
+                        <h3 className="font-semibold text-lg flex items-center gap-2">
+                          <MapPin className="h-5 w-5 text-orange-500" />
+                          {language === 'ru' ? 'Адрес доставки' : 'მიწოდების მისამართი'}
+                        </h3>
+
+                        <AddressInputWithSuggestions
+                          value={deliveryAddressDetails.address || ''}
+                          onChange={(e) => {
+                            setDeliveryAddressDetails(prev => ({ ...prev, address: e.target.value }));
+                            setDeliveryAddress(prev => ({ ...prev, address: e.target.value }));
+                          }}
+                          language={language}
+                          restaurantId={selectedRestaurantId}
+                          onZoneFound={(zone) => {
+                            console.log('Zone found:', zone);
+
+                            //  СОХРАНЯЕМ ЗОНУ С ПРАВИЛЬНОЙ СТРУКТУРОЙ
+                            setOrder(prev => {
+                              const currentOrder = prev || {
+                                items: [],
+                                confidence: 0.7,
+                                totalAmount: 0
+                              };
+
+                              if (zone) {
+                                toast.success(
+                                  language === 'ru'
+                                    ? ` Доставка в этот район: ${zone.price} ₽`
+                                    : ` მიწოდება ამ რაიონში: ${zone.price} ₽`
+                                );
+
+                                return {
+                                  ...currentOrder,
+                                  deliveryZone: {
+                                    id: zone.id,
+                                    title: zone.title,
+                                    price: zone.price,
+                                    minOrder: zone.minOrder
+                                  }
+                                };
+                              } else {
+                                toast.warning(
+                                  language === 'ru'
+                                    ? ' Доставка по этому адресу недоступна'
+                                    : ' მიწოდება ამ მისამართზე მიუწვდომელია'
+                                );
+
+                                //  ОЧИЩАЕМ ЗОНУ
+                                const { deliveryZone, ...rest } = currentOrder;
+                                return rest;
+                              }
+                            });
+                          }}
+                          onAddressSelect={(address, details) => {
+                            setDeliveryAddressDetails(prev => ({
+                              ...prev,
+                              address: address,
+                              street: details?.street,
+                              house: details?.house,
+                            }));
+                            setDeliveryAddress(prev => ({ ...prev, address: address }));
+                          }}
+                        />
+
+                        {/* Дополнительные поля адреса - сетка 2x2 */}
+                        <div className="grid grid-cols-2 gap-3">
+                          {/* Этаж */}
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium flex items-center gap-2">
+                              <Building className="h-4 w-4 text-gray-500" />
+                              {language === 'ru' ? 'Этаж' : 'სართული'}
+                            </Label>
+                            <Input
+                              value={deliveryAddressDetails.floor || ''}
+                              onChange={(e) => {
+                                setDeliveryAddressDetails(prev => ({ ...prev, floor: e.target.value }));
+                                setDeliveryAddress(prev => ({ ...prev, floor: e.target.value }));
+                              }}
+                              placeholder={language === 'ru' ? 'Например: 5' : 'მაგ: 5'}
+                              className="h-10"
+                            />
+                          </div>
+
+                          {/* Подъезд */}
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium flex items-center gap-2">
+                              <DoorClosed className="h-4 w-4 text-gray-500" />
+                              {language === 'ru' ? 'Подъезд' : 'შესასვლელი'}
+                            </Label>
+                            <Input
+                              value={deliveryAddressDetails.entrance || ''}
+                              onChange={(e) => {
+                                setDeliveryAddressDetails(prev => ({ ...prev, entrance: e.target.value }));
+                                setDeliveryAddress(prev => ({ ...prev, entrance: e.target.value }));
+                              }}
+                              placeholder={language === 'ru' ? 'Например: 2' : 'მაგ: 2'}
+                              className="h-10"
+                            />
+                          </div>
+
+                          {/* Домофон */}
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium flex items-center gap-2">
+                              <Smartphone className="h-4 w-4 text-gray-500" />
+                              {language === 'ru' ? 'Домофон' : 'დომოფონი'}
+                            </Label>
+                            <Input
+                              value={deliveryAddressDetails.intercom || ''}
+                              onChange={(e) => {
+                                setDeliveryAddressDetails(prev => ({ ...prev, intercom: e.target.value }));
+                                setDeliveryAddress(prev => ({ ...prev, intercom: e.target.value }));
+                              }}
+                              placeholder={language === 'ru' ? 'Код домофона' : 'დომოფონის კოდი'}
+                              className="h-10"
+                            />
+                          </div>
+
+                          {/* Квартира/Офис */}
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium flex items-center gap-2">
+                              <Home className="h-4 w-4 text-gray-500" />
+                              {language === 'ru' ? 'Квартира/Офис' : 'ბინა/ოფისი'}
+                            </Label>
+                            <Input
+                              value={deliveryAddressDetails.apartment || ''}
+                              onChange={(e) => {
+                                setDeliveryAddressDetails(prev => ({ ...prev, apartment: e.target.value }));
+                                setDeliveryAddress(prev => ({ ...prev, apartment: e.target.value }));
+                              }}
+                              placeholder={language === 'ru' ? 'Например: 42' : 'მაგ: 42'}
+                              className="h-10"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Отображение выбранной зоны доставки */}
+                        {order.deliveryZone && (
+                          <div className="bg-green-50 border border-green-200 rounded-lg p-3 mt-2">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <span className="text-sm font-medium text-green-800">
+                                  {order.deliveryZone.title}
+                                </span>
+                                {order.deliveryZone.minOrder && order.deliveryZone.minOrder > 0 && (
+                                  <p className="text-xs text-green-600 mt-1">
+                                    {language === 'ru' ? 'Мин. заказ:' : 'მინ. შეკვეთა:'} {order.deliveryZone.minOrder} ₽
+                                  </p>
+                                )}
+                              </div>
+                              <Badge variant="secondary" className="bg-white">
+                                {order.deliveryZone.price} ₽
+                              </Badge>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Кнопка очистки адреса */}
+                        {deliveryAddressDetails.address && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setDeliveryAddressDetails({
+                                address: '',
+                                floor: '',
+                                entrance: '',
+                                intercom: '',
+                                apartment: '',
+                              });
+                              setDeliveryAddress(null);
+                              setOrder(prev => ({ ...prev, deliveryZone: null }));
+                            }}
+                            className="w-full text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            {language === 'ru' ? 'Очистить адрес' : 'მისამართის გასუფთავება'}
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </Card>
                   <div className="space-y-3">
                     {order.items.map((item, index) => (
@@ -1872,7 +2685,37 @@ ${currentOrderInfo}
                       </Card>
                     ))}
                   </div>
-                  <Card className="p-4 bg-gray-50 dark:bg-gray-900"><div className="flex justify-between items-center"><span className="font-semibold text-lg">{t.total}:</span><span className="font-bold text-2xl text-green-600">{order.totalAmount}₽</span></div></Card>
+                  {/* ИТОГОВАЯ СУММА С ДОСТАВКОЙ */}
+                  <Card className="p-4 bg-gray-50 dark:bg-gray-900">
+                    <div className="space-y-2">
+                      {/* Сумма блюд */}
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600">{language === 'ru' ? 'Сумма заказа:' : 'შეკვეთის თანხა:'}</span>
+                        <span className="font-semibold">{order.totalAmount} ₽</span>
+                      </div>
+
+                      {/* Стоимость доставки (если есть) */}
+                      {orderType === 'DELIVERY' && order.deliveryZone && order.deliveryZone.price > 0 && (
+                        <div className="flex justify-between items-center border-t pt-2">
+                          <div>
+                            <span className="text-gray-600">{language === 'ru' ? 'Доставка:' : 'მიტანა:'}</span>
+                            {order.deliveryZone.title && (
+                              <div className="text-xs text-gray-500">{order.deliveryZone.title}</div>
+                            )}
+                          </div>
+                          <span className="font-semibold text-green-600">+ {order.deliveryZone.price} ₽</span>
+                        </div>
+                      )}
+
+                      {/* ИТОГО */}
+                      <div className="flex justify-between items-center border-t pt-2 mt-2">
+                        <span className="font-semibold text-lg">{language === 'ru' ? 'Итого:' : 'სულ:'}</span>
+                        <span className="font-bold text-2xl text-green-600">
+                          {getTotalWithDelivery()} ₽
+                        </span>
+                      </div>
+                    </div>
+                  </Card>
                   <Button onClick={createOrder} disabled={isCreatingOrder} className="w-full h-12 bg-green-600 hover:bg-green-700" size="lg">{isCreatingOrder ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-2" />}{t.confirmAndCreate}</Button>
                 </div>
               ) : (
