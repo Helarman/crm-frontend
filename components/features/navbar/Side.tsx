@@ -49,7 +49,8 @@ import {
   BookText,
   ClockFading,
   CircleCheck,
-  User
+  User,
+  Bot
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -171,15 +172,15 @@ function Logo({ collapsed, toggleCollapse }: { collapsed: boolean; toggleCollaps
   return (
     <div className="h-16 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between bg-white dark:bg-gray-900 px-4 relative">
       <div className={`flex items-center gap-3 transition-all duration-300 ${collapsed ? 'justify-center w-full' : ''}`}>
-        <div className="flex items-center min-w-0">
+        <div className="flex items-center min-w-0 justify-center">
           {!collapsed &&
             <div className="flex items-center justify-center mr-1">
-              <CircleCheck className="h-5 w-5 text-red-400" />
+              <Bot className="h-8 w-8 text-blue-400" />
             </div>
           }
           {!collapsed && (
             <div className="flex items-top min-w-0">
-              <h1 className="text-xl font-semibold uppercase text-red-400 truncate">Cyberchef</h1>
+              <h1 className="text-xl font-semibold text-blue-400 truncate">RestoPosBot</h1>
             </div>
           )}
         </div>
