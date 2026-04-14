@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { OrderCard } from '@/components/features/order/OrderCard'
-import { OrderResponse } from '@/lib/api/order.service'
+import { OrderItemStatus, OrderResponse } from '@/lib/api/order.service'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useRestaurantArchive, useRestaurantOrders } from '@/lib/hooks/useOrders'
@@ -608,12 +608,39 @@ export default function KitchenOrdersList() {
               const hasRefundedItems = order.items?.some(item => item.status === 'REFUNDED')
               const isHighlighted = ordersWithRefunded.has(order.id)
 
+              // Функция для проверки, есть ли блюда для приготовления в этом заказе
+              const hasItemsForKitchen = () => {
+                // Получаем ID workshop-ов текущего пользователя
+                const userWorkshopIds = user?.workshops?.map((workshop: any) => workshop.workshopId) || [];
+
+                // Фильтруем блюда аналогично тому, как это делается в OrderCard
+                const kitchenItems = order.items.filter(item => {
+                  // Исключаем возвращенные и завершенные блюда
+                  if (item.status === OrderItemStatus.REFUNDED) return false;
+                  if (item.status === OrderItemStatus.COMPLETED) return false;
+                  if (item.status === OrderItemStatus.CREATED) return false;
+
+                  // Если у пользователя нет workshop-ов, показываем все блюда
+                  if (userWorkshopIds.length === 0) return true;
+
+                  // Проверяем, относится ли блюдо к workshop-ам пользователя
+                  const itemWorkshopIds = item.product.workshops?.map((w: any) => w.workshop.id) || [];
+                  return itemWorkshopIds.some((id: string) => userWorkshopIds.includes(id));
+                });
+
+                return kitchenItems.length > 0;
+              };
+
+              // Пропускаем заказы без блюд для приготовления
+              if (!showArchive && !hasItemsForKitchen()) {
+                return null;
+              }
+
               return (
                 <div
                   key={order.id}
                   className={`cursor-pointer relative transition-all duration-300`}
                 >
-
                   <OrderCard
                     kitchenArchive={showArchive}
                     selectedRestaurantId={selectedRestaurantId}

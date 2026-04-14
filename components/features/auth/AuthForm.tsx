@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
-import { Loader2, LogIn, UserPlus, Bitcoin, CircleCheck } from 'lucide-react'
+import { Loader2, LogIn, UserPlus, Bitcoin, CircleCheck, Bot } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -165,12 +165,12 @@ export const AuthForm = () => {
   return (
     <div className=" relative min-h-screen flex-col items-center justify-center grid lg:grid-cols-2 lg:px-0">
       <div className="relative hidden h-full flex-col bg-muted p-10 text-white lg:flex dark:border-r">
-        <div className="absolute inset-0 bg-gradient-to-br from-red-400 to-white" />
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-400 to-white" />
         
         <div className="relative z-20 flex items-center justify-center h-full">
-          <div className='flex gap-4'>
-            <CircleCheck className='h-24 w-24 text-red-400'/>
-            <h1 className='text-8xl uppercase text-red-400'>Appetit</h1>
+          <div className='flex gap-4 items-center'>
+            <Bot className='h-24 w-24 text-blue-400'/>
+            <h1 className='text-6xl  text-blue-400 uppercase'>RestoPosBot</h1>
           </div>
         </div>
         <div className="relative z-20 mt-auto">
