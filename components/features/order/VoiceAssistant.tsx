@@ -439,6 +439,8 @@ export function VoiceAssistantSheet({
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [activeTab, setActiveTab] = useState('assistant')
   const [selectedAdditives, setSelectedAdditives] = useState<{ [key: string]: string[] }>({})
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
   const [deliveryAddress, setDeliveryAddress] = useState<{
     address: string
     floor?: string
@@ -476,6 +478,44 @@ export function VoiceAssistantSheet({
     tableNumber: '',
     comment: ''
   })
+
+  const getNonEmptyCategories = useCallback(() => {
+    return categories.filter(category =>
+      products.some(product => product.categoryId === category.id)
+    )
+  }, [categories, products])
+
+  // Функция для подсчета количества продуктов в категории
+  const getProductCountByCategory = useCallback((categoryId: string) => {
+    return products.filter(product => product.categoryId === categoryId).length
+  }, [products])
+
+  const getFilteredProducts = useCallback(() => {
+    let filtered = products
+
+    // Фильтр по категории
+    if (selectedCategoryId) {
+      filtered = filtered.filter(product => product.categoryId === selectedCategoryId)
+    }
+
+    // Фильтр по поисковому запросу
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(product =>
+        product.title.toLowerCase().includes(query) ||
+        product.description?.toLowerCase().includes(query) ||
+        product.tags?.some(tag => tag.toLowerCase().includes(query))
+      )
+    }
+
+    return filtered
+  }, [products, selectedCategoryId, searchQuery])
+
+  // Функция для сброса фильтров
+  const clearFilters = () => {
+    setSelectedCategoryId(null)
+    setSearchQuery('')
+  }
 
   const [aiConfig, setAiConfig] = useState<AIConfig>({
     temperature: 0.1,
@@ -2404,43 +2444,178 @@ ${currentOrderInfo}
           </TabsContent>
 
           <TabsContent value="menu" className="flex-1 overflow-y-auto p-0">
-            <div className="p-4 border-b"><Input placeholder={t.search} className="w-full" /></div>
-            <div className="p-4">
-              <div className="flex flex-wrap gap-2 mb-4">
-                <Badge variant="default" className="cursor-pointer">{t.all}</Badge>
-                {categories.map(category => { const Icon = getCategoryIcon(category.title); return <Badge key={category.id} variant="outline" className="cursor-pointer flex items-center gap-1"><Icon className="h-3 w-3" />{category.title}</Badge>; })}
-              </div>
-              <div className="grid gap-4">
-                {products.map(product => {
-                  const productAdditives = selectedAdditives[product.id] || [];
-                  const selectedAdditivesList = product.additives?.filter(a => productAdditives.includes(a.id)) || [];
-                  return (
-                    <Card key={product.id} className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-lg">{product.title}</h3>
-                          {product.description && <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{product.description}</p>}
-                          {product.additives && product.additives.length > 0 && (
-                            <div className="mt-3 space-y-2">
-                              <div className="text-xs font-medium text-gray-600">{t.additives}:</div>
-                              <div className="flex flex-wrap gap-1">
-                                {product.additives.map(additive => (<Badge key={additive.id} variant={productAdditives.includes(additive.id) ? "default" : "outline"} className="cursor-pointer text-xs flex items-center gap-1" onClick={() => handleAdditiveToggle(product.id, additive.id)}>{additive.title} (+{additive.price}₽)</Badge>))}
-                              </div>
-                            </div>
-                          )}
-                          <div className="flex items-center gap-4 mt-3">
-                            <span className="font-bold text-green-600">{getProductPrice(product)} ₽ {selectedAdditivesList.length > 0 && <span className="text-xs text-gray-500 ml-1">+ {selectedAdditivesList.reduce((sum, a) => sum + a.price, 0)}₽ {t.forAdditives}</span>}</span>
-                            {product.tags && product.tags.map(tag => (<Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>))}
-                          </div>
-                        </div>
-                        <Button onClick={() => addProductToOrder(product, selectedAdditivesList)} size="sm" className="ml-4"><Plus className="h-4 w-4" /></Button>
+  <div className="p-4 border-b">
+    <Input 
+      placeholder={t.search} 
+      value={searchQuery}
+      onChange={(e) => setSearchQuery(e.target.value)}
+      className="w-full"
+    />
+  </div>
+  <div className="p-4">
+    <div className="flex flex-wrap gap-2 mb-4">
+      {/* Кнопка "Все" - показываем только если есть хотя бы один продукт */}
+      {products.length > 0 && (
+        <Badge 
+          variant={selectedCategoryId === null ? "default" : "outline"} 
+          className="cursor-pointer"
+          onClick={() => setSelectedCategoryId(null)}
+        >
+          {t.all} ({products.length})
+        </Badge>
+      )}
+      
+      {/* Только категории, в которых есть продукты */}
+      {getNonEmptyCategories().map(category => {
+        const Icon = getCategoryIcon(category.title)
+        const productCount = getProductCountByCategory(category.id)
+        return (
+          <Badge 
+            key={category.id} 
+            variant={selectedCategoryId === category.id ? "default" : "outline"} 
+            className="cursor-pointer flex items-center gap-1"
+            onClick={() => setSelectedCategoryId(category.id)}
+          >
+            <Icon className="h-3 w-3" />
+            {category.title}
+          </Badge>
+        )
+      })}
+    </div>
+
+    {/* Если нет ни одной категории с продуктами */}
+    {getNonEmptyCategories().length === 0 && products.length === 0 && (
+      <div className="text-center py-12">
+        <Utensils className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+        <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-400">
+          {language === 'ru' ? 'Меню пусто' : 'მენიუ ცარიელია'}
+        </h3>
+        <p className="text-sm text-gray-500 mt-2">
+          {language === 'ru' 
+            ? 'В ресторане пока нет добавленных блюд'
+            : 'რესტორანში ჯერ არ არის დამატებული კერძები'
+          }
+        </p>
+      </div>
+    )}
+
+    {/* Отображение количества найденных товаров */}
+    {selectedCategoryId && getFilteredProducts().length > 0 && (
+      <div className="flex justify-between items-center mb-3">
+        <span className="text-sm text-gray-500">
+          {language === 'ru' 
+            ? `Категория: ${categories.find(c => c.id === selectedCategoryId)?.title}`
+            : `კატეგორია: ${categories.find(c => c.id === selectedCategoryId)?.title}`
+          }
+        </span>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={clearFilters}
+          className="text-xs"
+        >
+          <X className="h-3 w-3 mr-1" />
+          {language === 'ru' ? 'Сбросить' : 'გასუფთავება'}
+        </Button>
+      </div>
+    )}
+
+    {searchQuery && getFilteredProducts().length > 0 && (
+      <div className="flex justify-between items-center mb-3">
+        <span className="text-sm text-gray-500">
+          {language === 'ru' 
+            ? `Результаты поиска: "${searchQuery}"`
+            : `ძიების შედეგები: "${searchQuery}"`
+          }
+        </span>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={() => setSearchQuery('')}
+          className="text-xs"
+        >
+          <X className="h-3 w-3 mr-1" />
+          {language === 'ru' ? 'Очистить' : 'გასუფთავება'}
+        </Button>
+      </div>
+    )}
+
+    <div className="grid gap-4">
+      {getFilteredProducts().length === 0 && products.length > 0 ? (
+        <div className="text-center py-12">
+          <Utensils className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-400">
+            {language === 'ru' ? 'Ничего не найдено' : 'ვერაფერი მოიძებნა'}
+          </h3>
+          <p className="text-sm text-gray-500 mt-2">
+            {language === 'ru' 
+              ? 'Попробуйте изменить категорию или поисковый запрос'
+              : 'სცადეთ შეცვალოთ კატეგორია ან საძიებო მოთხოვნა'
+            }
+          </p>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={clearFilters}
+            className="mt-4"
+          >
+            {language === 'ru' ? 'Показать всё меню' : 'მთელი მენიუს ჩვენება'}
+          </Button>
+        </div>
+      ) : (
+        getFilteredProducts().map(product => {
+          const productAdditives = selectedAdditives[product.id] || [];
+          const selectedAdditivesList = product.additives?.filter(a => productAdditives.includes(a.id)) || [];
+          return (
+            <Card key={product.id} className="p-4">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <h3 className="font-semibold text-lg">{product.title}</h3>
+                  {product.description && (
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{product.description}</p>
+                  )}
+                  {product.additives && product.additives.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      <div className="text-xs font-medium text-gray-600">{t.additives}:</div>
+                      <div className="flex flex-wrap gap-1">
+                        {product.additives.map(additive => (
+                          <Badge 
+                            key={additive.id} 
+                            variant={productAdditives.includes(additive.id) ? "default" : "outline"} 
+                            className="cursor-pointer text-xs flex items-center gap-1" 
+                            onClick={() => handleAdditiveToggle(product.id, additive.id)}
+                          >
+                            {additive.title} (+{additive.price}₽)
+                          </Badge>
+                        ))}
                       </div>
-                    </Card>
-                  );
-                })}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-4 mt-3">
+                    <span className="font-bold text-green-600">
+                      {getProductPrice(product)} ₽ 
+                      {selectedAdditivesList.length > 0 && (
+                        <span className="text-xs text-gray-500 ml-1">
+                          + {selectedAdditivesList.reduce((sum, a) => sum + a.price, 0)}₽ {t.forAdditives}
+                        </span>
+                      )}
+                    </span>
+                    {product.tags && product.tags.map(tag => (
+                      <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
+                    ))}
+                  </div>
+                </div>
+                <Button onClick={() => addProductToOrder(product, selectedAdditivesList)} size="sm" className="ml-4">
+                  <Plus className="h-4 w-4" />
+                </Button>
               </div>
-            </div>
-          </TabsContent>
+            </Card>
+          )
+        })
+      )}
+    </div>
+  </div>
+</TabsContent>
 
           <TabsContent value="order" className="flex-1 overflow-y-auto p-0">
             <div className="p-4">
