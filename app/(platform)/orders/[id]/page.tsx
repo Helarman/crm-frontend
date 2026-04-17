@@ -2825,7 +2825,7 @@ export default function WaiterOrderPage() {
             <div className="mb-3 flex flex-col gap-2">
               <h3
                 ref={titleRef}
-                className="text-xl font-bold text-gray-800 leading-tight break-words"
+                className="text-base 2xl:text-xl font-bold text-gray-800 leading-tight break-words"
                 title={isOverflowing ? product.title : undefined}
               >
                 {product.title}
@@ -2835,32 +2835,32 @@ export default function WaiterOrderPage() {
 
             <div className="mt-auto pt-3 border-t border-gray-100">
               {quantity > 0 ? (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-0.5 sm:gap-2">
                   <Button
                     variant="outline"
                     size="default"
-                    className="flex-1 h-11 text-base font-medium"
+                    className="flex-1 h-7 sm:h-9 2xl:h-11 text-xs sm:text-sm 2xl:text-base font-medium px-0 sm:px-2"
                     onClick={() => {
                       const newQuantity = Math.max(0, quantity - 1);
                       onQuantityChange(newQuantity);
                     }}
                     disabled={quantity === 0 || !isOrderEditable}
                   >
-                    <Minus className="h-5 w-5 mr-1" />
+                    <Minus className="h-3 w-3 sm:h-4 sm:w-4 2xl:h-5 2xl:w-5" />
                   </Button>
 
-                  <div className="flex-1 text-center font-bold text-lg">
+                  <div className="flex-1 text-center font-bold text-xs sm:text-sm 2xl:text-base">
                     {quantity}
                   </div>
 
                   <Button
                     variant="outline"
                     size="default"
-                    className="flex-1 h-11 text-base font-medium"
+                    className="flex-1 h-7 sm:h-9 2xl:h-11 text-xs sm:text-sm 2xl:text-base font-medium px-0 sm:px-2"
                     onClick={() => onQuantityChange(quantity + 1)}
                     disabled={!isOrderEditable}
                   >
-                    <Plus className="h-5 w-5 mr-1" />
+                    <Plus className="h-3 w-3 sm:h-4 sm:w-4 2xl:h-5 2xl:w-5" />
                   </Button>
                 </div>
               ) : (
@@ -2872,7 +2872,7 @@ export default function WaiterOrderPage() {
                   disabled={!isOrderEditable}
                 >
                   <Plus className="h-5 w-5 mr-1" />
-                  Добавить
+                  <span className='hidden 2xl:flex'>Добавить</span>
                 </Button>
               )}
             </div>
@@ -2921,9 +2921,29 @@ export default function WaiterOrderPage() {
     const hasChildren = childItems.length > 0;
     const hasRefundedChildren = refundedChildItems.length > 0;
 
-    // Подсчет общего количества блюд в комбо
-    const totalComboItems = childItems.length + refundedChildItems.length;
-    const activeComboItems = childItems.length;
+    // Логика отображения кнопки возврата
+    const shouldShowRefundButton = (): boolean => {
+      if (!isOrderEditable) return false;
+      if (item.isRefund) return false;
+      if (isParentCombo) return false;
+
+      // Блюдо в статусе "готовится" или "готово"
+      const isInProgressOrCompleted =
+        item.status === OrderItemStatus.IN_PROGRESS ||
+        item.status === OrderItemStatus.COMPLETED;
+
+      if (!isInProgressOrCompleted) return false;
+
+      const hasPrecheck = order?.attentionFlags?.isPrecheck;
+
+      // 1. Пречека нет - можно возвращать
+      if (!hasPrecheck) return true;
+
+      // 2. Пречек есть - только менеджер/супервизор
+      if (hasPrecheck && ['MANAGER', 'SUPERVISOR'].includes(user.role)) return true;
+
+      return false;
+    };
 
     // Если это дочерний элемент комбо (не возвращенный), скрываем его
     if (isChildItem && !item.isRefund) {
@@ -3108,7 +3128,7 @@ export default function WaiterOrderPage() {
           </div>
         </details>
 
-        {/* Кнопки действий - outline как в compact */}
+        {/* Кнопки действий */}
         <div className="mt-3 flex items-center justify-end gap-2 border-t pt-3">
           {canEditQuantity ? (
             <div className="flex items-center gap-2">
@@ -3138,6 +3158,7 @@ export default function WaiterOrderPage() {
               {item.quantity} шт.
             </span>
           )}
+
           <Button
             variant="outline"
             size="sm"
@@ -3167,48 +3188,43 @@ export default function WaiterOrderPage() {
                 <RefreshCw className="h-4 w-4" />
               </Button>
             )}
-          {/* Возврат - показываем для комбо через отдельный диалог */}
-          {['COMPLETED', 'DELIVERING', 'PREPARING', 'READY'].includes(order?.status || '') && !item.isRefund &&  ['COMPLETED', 'IN_PROGRESS'].includes(item.status || '') &&(
+
+          {/* Кнопка возврата - новая логика */}
+          {shouldShowRefundButton() && (
             (() => {
-              const isBeforeKitchen = order?.status === 'CREATED';
+              // Для комбо показываем диалог выбора блюд
+              if (isParentCombo && hasChildren) {
+                return (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                    onClick={() => {
+                      prepareComboItemsForRefund(item);
+                      setShowComboRefundDialog(true);
+                    }}
+                    disabled={isUpdating}
+                    title="Вернуть блюда из комбо"
+                  >
+                    <Undo className="h-4 w-4" />
+                  </Button>
+                );
+              }
 
-              const isAfterKitchenButBeforePrecheck =
-                order?.status === 'PREPARING' &&
-                item.status === OrderItemStatus.COMPLETED;
-
-              const canKitchenStaffReturn =
-                isAfterKitchenButBeforePrecheck &&
-                ['WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR'].includes(user.role);
-
-              const isAfterPrecheck = order?.attentionFlags?.isPrecheck;
-              const canManagerReturn =
-                isAfterPrecheck &&
-                ['MANAGER', 'SUPERVISOR'].includes(user.role);
-
-              const shouldShow =
-                isBeforeKitchen ||
-                canKitchenStaffReturn ||
-                canManagerReturn;
-
-              return shouldShow && (
+              // Для обычных блюд
+              return (
                 <Button
                   variant="outline"
                   size="sm"
                   className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
                   onClick={() => {
-                    if (isParentCombo && hasChildren) {
-                      // Открываем диалог выбора блюд для возврата из комбо
-                      prepareComboItemsForRefund(item);
-                      setShowComboRefundDialog(true);
-                    } else {
-                      setSelectedItemForRefund(item);
-                      setMaxRefundQuantity(item.quantity);
-                      setRefundQuantity(1);
-                      setShowRefundDialog(true);
-                    }
+                    setSelectedItemForRefund(item);
+                    setMaxRefundQuantity(item.quantity);
+                    setRefundQuantity(1);
+                    setShowRefundDialog(true);
                   }}
-                  disabled={isUpdating || (!canManagerReturn && !isParentCombo)}
-                  title={isParentCombo ? 'Вернуть блюда из комбо' : 'Возврат'}
+                  disabled={isUpdating}
+                  title="Возврат"
                 >
                   <Undo className="h-4 w-4" />
                 </Button>
@@ -3216,8 +3232,8 @@ export default function WaiterOrderPage() {
             })()
           )}
 
-          {/* Удаление - для CREATED позиций, включая комбо */}
-          {item.status === OrderItemStatus.CREATED && isOrderEditable && !item.isRefund && (
+          {/* Кнопка удаления - только для созданных блюд */}
+          {item.status === OrderItemStatus.CREATED && isOrderEditable && !item.isRefund && !isParentCombo && (
             <Button
               variant="outline"
               size="sm"
@@ -3440,18 +3456,6 @@ export default function WaiterOrderPage() {
 
     const cookingTime = getCookingTime();
     const canEditQuantity = item.status === OrderItemStatus.CREATED && isOrderEditable;
-    const canReorder = [
-      OrderItemStatus.COMPLETED,
-      OrderItemStatus.IN_PROGRESS,
-      OrderItemStatus.CREATED,
-    ].includes(item.status) && isOrderEditable && !item.isRefund;
-
-    const canRefund = ['COMPLETED', 'DELIVERING', 'PREPARING', 'READY'].includes(order?.status || '') && !item.isRefund;
-    const canRefundItem = [
-      OrderItemStatus.COMPLETED, OrderItemStatus.IN_PROGRESS,
-    ].includes(item.status) && isOrderEditable && !item.isRefund;
-
-    const isCooking = item.status === OrderItemStatus.IN_PROGRESS && item.timestamps.startedAt && !item.timestamps.completedAt;
 
     const isParentCombo = item.isComboParent || false;
     const isChildItem = !!item.parentOrderItemId;
@@ -3466,9 +3470,30 @@ export default function WaiterOrderPage() {
 
     const hasChildren = childItems.length > 0;
     const hasRefundedChildren = refundedChildItems.length > 0;
-    const allChildrenRefunded = isParentCombo &&
-      childItems.length === 0 &&
-      hasRefundedChildren;
+
+    // Логика отображения кнопки возврата
+    const shouldShowRefundButton = (): boolean => {
+      if (!isOrderEditable) return false;
+      if (item.isRefund) return false;
+      if (isParentCombo) return false;
+
+      // Блюдо в статусе "готовится" или "готово"
+      const isInProgressOrCompleted =
+        item.status === OrderItemStatus.IN_PROGRESS ||
+        item.status === OrderItemStatus.COMPLETED;
+
+      if (!isInProgressOrCompleted) return false;
+
+      const hasPrecheck = order?.attentionFlags?.isPrecheck;
+
+      // 1. Пречека нет - можно возвращать
+      if (!hasPrecheck) return true;
+
+      // 2. Пречек есть - только менеджер/супервизор
+      if (hasPrecheck && ['MANAGER', 'SUPERVISOR'].includes(user.role)) return true;
+
+      return false;
+    };
 
     if (isChildItem && !item.isRefund) {
       return null;
@@ -3480,13 +3505,13 @@ export default function WaiterOrderPage() {
         className={`bg-white rounded-xl p-3 2xl:p-4 shadow-sm transition-all duration-300 relative
         ${item.isReordered ? 'border-l-4 border-blue-500' : ''} 
         ${item.isRefund ? 'border-l-4 border-red-500' : ''}
-        ${isCooking ? 'shimmer-border' : 'border border-transparent'}
-        ${isParentCombo ? 'border-2 border-purple-200 bg-purple-50/30' : ''}
-        ${allChildrenRefunded ? 'opacity-60' : ''}
+        ${isParentCombo ? 'border-2 border-purple-200 bg-purple-50/30' : 'border border-gray-100'}
       `}
       >
-        <div className="flex items-start gap-3 2xl:gap-4">
-          <div className="flex-shrink-0 w-12 h-12 2xl:w-16 2xl:h-16 relative bg-gray-100 rounded-lg overflow-hidden">
+        {/* Основной ряд: фото, информация, цена */}
+        <div className="flex gap-3 2xl:gap-4">
+          {/* Фото - фиксированный размер */}
+          <div className="flex-shrink-0 w-12 h-12 2xl:w-16 2xl:h-16 bg-gray-100 rounded-lg overflow-hidden">
             {item.product.images?.[0] ? (
               <img
                 src={item.product.images[0]}
@@ -3499,244 +3524,193 @@ export default function WaiterOrderPage() {
               </div>
             )}
             {isParentCombo && (
-              <div className="absolute top-0 right-0 bg-purple-500 text-white text-xs px-1 rounded-bl-lg">
+              <div className="absolute top-0 left-0 bg-purple-500 text-white text-xs px-1 rounded-br-lg">
                 Комбо
               </div>
             )}
           </div>
 
+          {/* Информация о блюде - занимает оставшееся место */}
           <div className="flex-1 min-w-0">
-            <div className="flex flex-col">
-              <div className="flex justify-between items-start gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    {isParentCombo && hasChildren && (
-                      <button
-                        onClick={() => setIsComboExpanded(!isComboExpanded)}
-                        className="flex-shrink-0 p-1 hover:bg-purple-100 rounded-md transition-colors flex"
-                        title={isComboExpanded ? "Свернуть состав" : "Развернуть состав"}
-                      >
-                        {isComboExpanded ? (
-                          <ChevronDown className="h-4 w-4 2xl:h-5 2xl:w-5 text-purple-600" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 2xl:h-5 2xl:w-5 text-purple-600" />
-                        )}
-                        <h3 className="font-bold text-sm 2xl:text-md xl:text-md truncate">
-                          {item.product.title}
-                        </h3>
-                      </button>
+            {/* Название и цена в одной строке */}
+            <div className="flex justify-between items-start gap-2 mb-1">
+              <div className="flex items-center gap-1 flex-1 min-w-0">
+                {isParentCombo && hasChildren && (
+                  <button
+                    onClick={() => setIsComboExpanded(!isComboExpanded)}
+                    className="flex-shrink-0 p-1 hover:bg-purple-100 rounded-md transition-colors"
+                  >
+                    {isComboExpanded ? (
+                      <ChevronDown className="h-4 w-4 text-purple-600" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-purple-600" />
                     )}
-                    {!isParentCombo && <h3 className="font-bold text-sm 2xl:text-md xl:text-md truncate">
-                      {item.product.title}
-                    </h3>}
-                  </div>
-                  {!canEditQuantity && (
-                    <span className="text-xs text-gray-500">x {item.quantity}</span>
-                  )}
+                  </button>
+                )}
+                <h3 className="font-bold text-sm 2xl:text-base truncate">
+                  {item.product.title}
+                </h3>
+              </div>
+              <p className="font-bold text-sm 2xl:text-base whitespace-nowrap flex-shrink-0">
+                {calculateItemPrice(item)} ₽
+              </p>
+            </div>
+
+            {/* Модификаторы и комментарий */}
+            <div className="space-y-0.5 mb-2">
+              {item.additives.length > 0 && (
+                <div className="text-xs text-gray-600 flex items-start">
+                  <Plus className="h-3 w-3 mr-1 mt-0.5 flex-shrink-0" />
+                  <span className="truncate">{item.additives.map(a => a.title).join(', ')}</span>
                 </div>
-                <p className="text-md 2xl:text-lg font-bold whitespace-nowrap ml-2">
-                  {calculateItemPrice(item)} ₽
-                </p>
+              )}
+              {item.comment && !item.comment.startsWith('combo-') && (
+                <div className="text-xs text-gray-600 flex items-start">
+                  <MessageSquare className="h-3 w-3 mr-1 mt-0.5 flex-shrink-0" />
+                  <span className="truncate">{item.comment}</span>
+                </div>
+              )}
+              {item.isRefund && item.refundReason && (
+                <div className="text-xs text-red-500 flex items-start">
+                  <AlertCircle className="h-3 w-3 mr-1 mt-0.5 flex-shrink-0" />
+                  <span className="truncate">{item.refundReason}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Дочерние элементы комбо */}
+            {hasChildren && (
+              <div className={`mt-2 pl-3 border-l-2 border-purple-200 space-y-1 overflow-hidden transition-all duration-300 ${isComboExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'
+                }`}>
+                {childItems.map(childItem => (
+                  <div key={childItem.id} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <Package className="h-3 w-3 text-gray-500 flex-shrink-0" />
+                      <span className="text-gray-700 truncate">{childItem.product.title}</span>
+                    </div>
+                    <span className="text-gray-500 flex-shrink-0 ml-2">x{childItem.quantity}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Возвращенные дочерние элементы */}
+            {hasRefundedChildren && (
+              <div className="mt-2 pl-3 border-l-2 border-red-200 space-y-1">
+                <p className="text-xs font-semibold text-red-500">Возвращенные:</p>
+                {refundedChildItems.map(childItem => (
+                  <div key={childItem.id} className="flex items-center justify-between text-xs opacity-70">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <Undo className="h-3 w-3 text-red-500 flex-shrink-0" />
+                      <span className="text-gray-700 line-through truncate">{childItem.product.title}</span>
+                    </div>
+                    <span className="text-red-500 flex-shrink-0 ml-2">x{childItem.quantity}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Нижняя строка: время готовки + кнопки действий */}
+            <div className="flex items-center justify-between gap-2 mt-3">
+              {/* Время приготовления - слева */}
+              <div className="flex-1 min-w-0">
+                {cookingTime !== null && (
+                  <p className="text-xs text-gray-500">
+                    {item.timestamps.completedAt
+                      ? `${t.cookedIn} ${getCookingTimeText(cookingTime)}`
+                      : `${t.cookingFor} ${getCookingTimeText(cookingTime)}`}
+                  </p>
+                )}
               </div>
 
-              <div className="space-y-1 2xl:space-y-2">
-                {item.additives.length > 0 && (
-                  <div className="text-xs 2xl:text-sm text-gray-600 flex items-start">
-                    <Plus className="h-3 w-3 2xl:h-4 2xl:w-4 mr-1 2xl:mr-2 mt-0.5 flex-shrink-0" />
-                    <span className="truncate">{item.additives.map(a => a.title).join(', ')}</span>
+              {/* Кнопки действий - справа, фиксированная ширина */}
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {/* Кнопка редактирования количества (для CREATED блюд) */}
+                {canEditQuantity && !isParentCombo ? (
+                  <div className="flex items-center gap-1 mr-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 2xl:h-9 2xl:w-9 p-0"
+                      onClick={() => handleQuantitItemChange(item, item.quantity - 1)}
+                      disabled={item.quantity <= 1}
+                    >
+                      <Minus className="h-3 w-3" />
+                    </Button>
+                    <span className="text-sm font-bold w-6 text-center">
+                      {item.quantity}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-7 2xl:h-9 2xl:w-9 p-0"
+                      onClick={() => handleQuantitItemChange(item, item.quantity + 1)}
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
                   </div>
+                ) : !isParentCombo && (
+                  <span className="text-xs text-gray-500 mr-2">
+                    x{item.quantity}
+                  </span>
                 )}
-                {item.comment && !item.comment.startsWith('combo-') && (
-                  <div className="text-xs 2xl:text-sm text-gray-600 flex items-start">
-                    <MessageSquare className="h-3 w-3 2xl:h-4 2xl:w-4 mr-1 2xl:mr-2 mt-0.5 flex-shrink-0" />
-                    <span className="truncate">{item.comment}</span>
-                  </div>
-                )}
-                {item.isRefund && item.refundReason && (
-                  <div className="text-xs 2xl:text-sm text-red-500 flex items-start">
-                    <AlertCircle className="h-3 w-3 2xl:h-4 2xl:w-4 mr-1 2xl:mr-2 mt-0.5 flex-shrink-0" />
-                    <span className="truncate">{item.refundReason}</span>
-                  </div>
-                )}
-              </div>
 
-              {hasChildren && (
-                <div
-                  className={`mt-3 pl-3 border-l-2 border-purple-200 space-y-2 overflow-hidden transition-all duration-300 ${isComboExpanded ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'
-                    }`}
+                {/* История */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 w-7 2xl:h-9 2xl:w-9 p-0"
+                  onClick={() => {
+                    setSelectedItemForHistory(item);
+                    setShowItemHistoryDialog(true);
+                  }}
                 >
-                  {childItems.map(childItem => (
-                    <div key={childItem.id} className="flex items-center gap-2 text-sm">
-                      <div className="w-6 h-6 bg-gray-200 rounded flex items-center justify-center flex-shrink-0">
-                        <Package className="h-3 w-3 text-gray-500" />
-                      </div>
-                      <span className="text-gray-700 flex-1">{childItem.product.title}</span>
-                      <span className="text-gray-500 text-xs">x{childItem.quantity}</span>
-                      {canRefund && canRefundItem && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 w-6 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-                          onClick={() => {
-                            setSelectedItemForRefund(childItem as any);
-                            setMaxRefundQuantity(childItem.quantity);
-                            setRefundQuantity(1);
-                            setShowRefundDialog(true);
-                          }}
-                          disabled={isUpdating}
-                          title="Вернуть это блюдо"
-                        >
-                          <Undo className="h-3 w-3" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+                  <History className="h-3 w-3" />
+                </Button>
 
-              {hasRefundedChildren && (
-                <div className="mt-3 pl-3 border-l-2 border-red-200 space-y-2">
-                  <p className="text-xs font-semibold text-red-500 mb-1">Возвращенные блюда:</p>
-                  {refundedChildItems.map(childItem => (
-                    <div key={childItem.id} className="flex items-center gap-2 text-sm opacity-70">
-                      <div className="w-6 h-6 bg-red-100 rounded flex items-center justify-center flex-shrink-0">
-                        <Undo className="h-3 w-3 text-red-500" />
-                      </div>
-                      <span className="text-gray-700 flex-1 line-through">{childItem.product.title}</span>
-                      <span className="text-red-500 text-xs">x{childItem.quantity}</span>
-                      {childItem.refundReason && (
-                        <span className="text-xs text-red-400 truncate max-w-[100px]" title={childItem.refundReason}>
-                          ({childItem.refundReason})
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex items-center justify-between gap-2 mt-3">
-                <div className="flex min-w-0">
-                  {canEditQuantity && !isParentCombo ? (
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-9 w-9 2xl:h-11 2xl:w-11 p-0"
-                        onClick={() => handleQuantitItemChange(item, item.quantity - 1)}
-                        disabled={item.quantity <= 1}
-                      >
-                        <Minus className="h-4 w-4 2xl:h-5 2xl:w-5" />
-                      </Button>
-                      <span className="text-lg 2xl:text-xl font-bold w-6 2xl:w-10 text-center">
-                        {item.quantity}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-9 w-9 2xl:h-11 2xl:w-11 p-0"
-                        onClick={() => handleQuantitItemChange(item, item.quantity + 1)}
-                      >
-                        <Plus className="h-4 w-4 2xl:h-5 2xl:w-5" />
-                      </Button>
-                    </div>
-                  ) : (
-                    item.timestamps.startedAt && cookingTime !== null && (
-                      <p className="text-xs 2xl:text-sm text-gray-600 text-right whitespace-nowrap">
-                        {item.timestamps.completedAt
-                          ? `${t.cookedIn} ${getCookingTimeText(cookingTime)}`
-                          : `${t.cookingFor} ${getCookingTimeText(cookingTime)}`}
-                      </p>
-                    )
-                  )}
-                </div>
-
-                <div className="flex items-center gap-1 2xl:gap-3 flex-shrink-0">
+                {/* Повтор */}
+                {!item.isRefund && !isParentCombo && (
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-gray-500 hover:text-gray-600 hover:bg-gray-50"
-                    onClick={() => {
-                      setSelectedItemForHistory(item);
-                      setShowItemHistoryDialog(true);
-                    }}
+                    className="h-7 w-7 2xl:h-9 2xl:w-9 p-0 text-blue-500 hover:text-blue-600"
+                    onClick={() => handleReorderItem(item)}
+                    disabled={isUpdating}
                   >
-                    <History className="h-4 w-4 2xl:h-5 2xl:w-5" />
+                    <RefreshCw className="h-3 w-3" />
                   </Button>
+                )}
 
-                  {canReorder && !isParentCombo && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
-                      onClick={() => handleReorderItem(item)}
-                      disabled={isUpdating}
-                      title="Повторить"
-                    >
-                      <RefreshCw className="h-4 w-4 2xl:h-5 2xl:w-5" />
-                    </Button>
-                  )}
+                {/* Возврат - новая логика */}
+                {shouldShowRefundButton() && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 w-7 2xl:h-9 2xl:w-9 p-0 text-red-500 hover:text-red-600"
+                    onClick={() => {
+                      setSelectedItemForRefund(item);
+                      setMaxRefundQuantity(item.quantity);
+                      setRefundQuantity(1);
+                      setShowRefundDialog(true);
+                    }}
+                    disabled={isUpdating}
+                  >
+                    <Undo className="h-3 w-3" />
+                  </Button>
+                )}
 
-                  {!item.isRefund && !isParentCombo && (
-                    (() => {
-                      const isBeforeKitchen = order?.status === 'CREATED' &&
-                        item.status === OrderItemStatus.CREATED;
-
-                      const isDuringCooking =
-                        order?.status === 'PREPARING' &&
-                        !order?.attentionFlags?.isPrecheck &&
-                        (item.status === OrderItemStatus.IN_PROGRESS ||
-                          item.status === OrderItemStatus.COMPLETED);
-
-                      const isAfterPrecheck =
-                        order?.attentionFlags?.isPrecheck &&
-                        item.status === OrderItemStatus.COMPLETED &&
-                        ['MANAGER', 'SUPERVISOR'].includes(user.role);
-
-                      const canWaiterReturn = (isBeforeKitchen || isDuringCooking) &&
-                        ['WAITER', 'CASHIER', 'MANAGER', 'SUPERVISOR'].includes(user.role);
-
-                      const canManagerReturn = isAfterPrecheck;
-
-                      const shouldShow = canWaiterReturn || canManagerReturn;
-
-                      return shouldShow && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-                          onClick={() => {
-                            if (isParentCombo && hasChildren) {
-                              setSelectedItemForRefund(item);
-                              setShowComboRefundDialog(true);
-                            } else {
-                              setSelectedItemForRefund(item);
-                              setMaxRefundQuantity(item.quantity);
-                              setRefundQuantity(1);
-                              setShowRefundDialog(true);
-                            }
-                          }}
-                          disabled={isUpdating}
-                          title="Возврат"
-                        >
-                          <Undo className="h-4 w-4 2xl:h-5 2xl:w-5" />
-                        </Button>
-                      );
-                    })()
-                  )}
-
-                  {canEditQuantity && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-9 w-9 2xl:h-11 2xl:w-11 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
-                      onClick={() => handleQuantitItemChange(item, 0)}
-                      disabled={isUpdating}
-                      title="Удалить"
-                    >
-                      <X className="h-4 w-4 2xl:h-5 2xl:w-5" />
-                    </Button>
-                  )}
-                </div>
+                {/* Удаление - только для CREATED */}
+                {item.status === OrderItemStatus.CREATED && isOrderEditable && !item.isRefund && !isParentCombo && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 w-7 2xl:h-9 2xl:w-9 p-0 text-red-500 hover:text-red-600"
+                    onClick={() => handleQuantitItemChange(item, 0)}
+                    disabled={isUpdating}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -4108,7 +4082,7 @@ export default function WaiterOrderPage() {
                 Продукты не найдены
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-3">
                 {searchResults.map((product) => {
                   const additives = productAdditives[product.id] || [];
                   const comment = productComments[product.id] || '';
@@ -4149,7 +4123,7 @@ export default function WaiterOrderPage() {
         {!searchQuery && (
           <>
             {(categoryNavigation.parentCategory || categoryNavigation.breadcrumbs.length > 0) && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 mb-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-3 mb-6">
                 <button
                   onClick={handleBackToRoot}
                   className="flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium rounded-xl border-2 border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 transition-all"
@@ -4161,7 +4135,7 @@ export default function WaiterOrderPage() {
             )}
 
             {displayCategories.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-3">
                 {displayCategories.map((category) => {
                   const isSelected = categoryNavigation.currentCategory?.id === category.id;
                   const isParent = categoryNavigation.parentCategory?.id === category.id;
@@ -4205,7 +4179,7 @@ export default function WaiterOrderPage() {
                   </h4>
                 )}
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6 gap-3">
                   {displayProducts.map((product) => {
                     const additives = productAdditives[product.id] || [];
                     const comment = productComments[product.id] || '';
@@ -4576,7 +4550,12 @@ export default function WaiterOrderPage() {
       <div className='absolute top-0'>
         <div className={`grid ${isRightColCollapsed ? 'grid-cols-1 lg:grid-cols-12' : 'grid-cols-1 lg:grid-cols-3'} gap-8 h-[100vh] mt-0 pt-0`}>
           {/* Левая колонка - Меню */}
-          <div className={isRightColCollapsed ? 'lg:col-span-11' : 'lg:col-span-2'}>
+          <div className={`
+  ${isRightColCollapsed
+              ? 'xl:col-span-11 col-span-12'
+              : 'xl:col-span-2 col-span-12'
+            }
+`}>
             <div className="bg-white rounded-2xl shadow-lg sticky h-[100vh] flex flex-col">
               <div className="sticky top-0 z-10 bg-white border-b pb-4 flex flex-col md:flex-row pt-4 md:pt-0 items-center justify-between">
                 <div className='flex flex-col justify-center items-start gap-2'>
@@ -4801,7 +4780,7 @@ export default function WaiterOrderPage() {
           </div>
 
           {/* Правая колонка - Информация о заказе */}
-          <div className={`h-[100vh] hidden lg:flex lg:flex-col w-full`}>
+          <div className={`h-[100vh] hidden xl:flex xl:flex-col w-full`}>
             <div className="bg-white rounded-2xl pb-4 shadow-lg flex-1 flex flex-col min-h-0 justify-between px-6">
               {!isRightColCollapsed && <h1 className={`text-xl md:text-2xl font-bold text-gray-900 py-4 ${isRightColCollapsed ? 'text-center' : 'text-left'}`}>
                 {getOrderHeader()}
@@ -5009,7 +4988,7 @@ export default function WaiterOrderPage() {
 
                         <div>
                           <h2 className="text-2xl font-bold mb-6">Детали заказа</h2>
-
+                            {JSON.stringify(order)}
                           <div className="flex flex-col 2xl:flex-row gap-6 mb-6">
                             <div className="flex-1 min-w-0">
                               <div className="space-y-3">
@@ -5059,8 +5038,7 @@ export default function WaiterOrderPage() {
                               </div>
                             </div>
                           </div>
-
-                          {order.customerName}
+                                    
                           <div className="space-y-3">
                             <Label className="text-xl font-semibold flex items-center gap-3">
                               <MessageSquare className="h-6 w-6 text-gray-600" />
@@ -5115,7 +5093,7 @@ export default function WaiterOrderPage() {
             </div>
           </div>
 
-          <div className="fixed bottom-20 right-6 z-50 lg:hidden">
+          <div className="fixed bottom-25 right-6 z-50 xl:hidden">
             <Button
               onClick={() => setIsMobileSheetOpen(true)}
               className="h-14 w-14 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 text-white"
