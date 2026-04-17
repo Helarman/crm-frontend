@@ -27,7 +27,7 @@ api.interceptors.response.use(
   response => response,
   async (error) => {
     const originalRequest = error.config;
-    
+
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
@@ -46,11 +46,11 @@ api.interceptors.response.use(
       try {
         const { data } = await api.post('/auth/refresh');
         setNewAccessToken(data.accessToken);
-        
+
         originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
-        
+
         failedRequestsQueue.forEach(pending => pending.resolve(data.accessToken));
-        
+
         return api(originalRequest);
       } catch (refreshError) {
         failedRequestsQueue.forEach(pending => pending.reject(refreshError));
@@ -62,7 +62,7 @@ api.interceptors.response.use(
         failedRequestsQueue = [];
       }
     }
-    
+
     return Promise.reject(error);
   }
 );
@@ -132,6 +132,7 @@ export enum EnumOrderType {
 export enum EnumPaymentMethod {
   CASH = 'CASH',
   CARD = 'CARD',
+  CASH_TO_COURIER = 'CASH_TO_COURIER'
 }
 
 export interface UpdateOrderItemStatusDto {
@@ -143,7 +144,7 @@ export interface UpdateOrderItemStatusDto {
 export enum OrderItemStatus {
   CREATED = 'CREATED',
   IN_PROGRESS = 'IN_PROGRESS',
-  CONFIRMED='CONFIRMED',
+  CONFIRMED = 'CONFIRMED',
   PARTIALLY_DONE = 'PARTIALLY_DONE',
   PAUSED = 'PAUSED',
   COMPLETED = 'COMPLETED',
@@ -163,7 +164,7 @@ export interface OrderItemDto {
   status: any;
   workshops: any;
   createdAt: Date;
-  user?: { 
+  user?: {
     id: string;
     name: string;
   };
@@ -273,6 +274,7 @@ export interface CreateOrderDto {
   };
   numberOfPeople?: string;
   source?: any;
+  deliveryPrice?: number;
   orderAdditives?: Array<{
     orderAdditiveId: string;
     quantity?: number;
@@ -289,8 +291,8 @@ export interface AddItemToOrderDto {
   quantity: number;
   additiveIds?: string[];
   comment?: string;
-  parentComboId?: string; 
-   price?: number;
+  parentComboId?: string;
+  price?: number;
   parentOrderItemId?: string;
 }
 
@@ -336,8 +338,8 @@ export interface OrderResponse {
   restaurant: RestaurantDto;
   items: OrderItem[];
   payment?: PaymentDto;
-  delivery?: DeliveryInfoExtendedDto; 
-  
+  delivery?: DeliveryInfoExtendedDto;
+
   totalPrice: number;
   totalItems: number;
   surcharges?: {
@@ -357,6 +359,7 @@ export interface OrderResponse {
   deliveryFloor?: string;
   deliveryApartment?: string;
   deliveryCourierComment?: string;
+  deliveryPrice?: number;
 }
 
 export interface OrderListResponse {
@@ -379,7 +382,7 @@ export interface OrderFilterParams {
 
 export interface GetOrdersParams {
   restaurantId: string;
-  status?: string; 
+  status?: string;
 }
 
 export interface OrderArchiveFilterParams {
@@ -426,7 +429,7 @@ export interface OrderLogResponseDto {
   updatedAt: Date;
 }
 
-export interface OrderArchiveResponse extends PaginatedResponse<OrderResponse> {}
+export interface OrderArchiveResponse extends PaginatedResponse<OrderResponse> { }
 
 export interface Customer {
   id: string;
@@ -476,14 +479,14 @@ export const OrderService = {
       console.error('Invalid status format:', dto);
       throw new Error('Status must be a string value');
     }
-  
+
     const normalizedStatus = String(dto.status).toUpperCase();
-    
+
     const { data } = await api.patch<OrderResponse>(
       `/orders/${id}/status`,
       { status: normalizedStatus }
     );
-    
+
     return data;
   },
 
@@ -499,8 +502,8 @@ export const OrderService = {
    * Получение заказов пользователя
    */
   getUserOrders: async (userId: string, params?: Omit<OrderFilterParams, 'customerId'>): Promise<OrderListResponse> => {
-    const { data } = await api.get<OrderListResponse>(`/orders/user/${userId}`, { 
-      params: { ...params, customerId: userId } 
+    const { data } = await api.get<OrderListResponse>(`/orders/user/${userId}`, {
+      params: { ...params, customerId: userId }
     });
     return data;
   },
@@ -588,7 +591,7 @@ export const OrderService = {
       throw error;
     }
   },
-  
+
   removeItemFromOrder: async (orderId: string, itemId: string): Promise<OrderResponse> => {
     try {
       const { data } = await api.delete<OrderResponse>(
@@ -610,8 +613,8 @@ export const OrderService = {
       if (dto.delivery) {
         requestData.delivery = {
           ...dto.delivery,
-          deliveryTime: dto.delivery.deliveryTime 
-            ? new Date(dto.delivery.deliveryTime).toISOString() 
+          deliveryTime: dto.delivery.deliveryTime
+            ? new Date(dto.delivery.deliveryTime).toISOString()
             : undefined,
         };
       }
@@ -994,7 +997,7 @@ export const OrderService = {
   ): Promise<OrderResponse> => {
     const order = await OrderService.getById(orderId);
     const item = order.items.find(i => i.id === itemId);
-    
+
     if (!item) {
       throw new Error('Item not found');
     }
@@ -1019,7 +1022,7 @@ export const OrderService = {
   ): Promise<OrderResponse> => {
     const order = await OrderService.getById(orderId);
     const item = order.items.find(i => i.id === itemId);
-    
+
     if (!item) {
       throw new Error('Item not found');
     }

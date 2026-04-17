@@ -88,7 +88,9 @@ import {
   PlusSquare,
   Info,
   WandSparkles,
-  ArrowRight
+  ArrowRight,
+  DoorClosed,
+  Phone
 } from 'lucide-react'
 import { Category, OrderItem, OrderState } from '@/lib/types/order'
 import { Product } from '@/lib/types/product'
@@ -138,6 +140,7 @@ import {
 } from "@/components/ui/dialog"
 import { motion, useAnimationControls } from 'framer-motion'
 import { TablesService, TableStatus } from '@/lib/api/tables.service'
+import { AddressInput } from '@/components/features/order/AddressInput'
 
 type OptimisticOrderItem = Pick<OrderItem,
   'id' |
@@ -513,6 +516,15 @@ export default function WaiterOrderPage() {
     numberOfPeople: 1,
     tableNumber: '',
     comment: '',
+    deliveryAddress: '',
+    deliveryPrice: 0,
+    deliveryFloor: '',
+    deliveryEntrance: '',
+    deliveryIntercom: '',
+    deliveryApartment: '',
+    deliveryNotes: '',
+    phone: '',
+    customerName: '',
   });
   const [showCompleteDialog, setShowCompleteDialog] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -577,15 +589,16 @@ export default function WaiterOrderPage() {
     quantity: number;
     selected: boolean;
   }>>([]);
-  const [orderItemsScrollRef, setOrderItemsScrollRef] = useState<HTMLDivElement | null>(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [refundReasonType, setRefundReasonType] = useState<'chef_error' | 'waiter_error' | 'long_wait' | 'other' | ''>('');
   const [refundMode, setRefundMode] = useState<'refund' | 'replace'>('refund');
   const [pendingComboSelection, setPendingComboSelection] = useState<ComboSelection | null>(null);
   const pendingComboSelectionRef = useRef<ComboSelection | null>(null);
   const comboItemsMapRef = useRef<Record<string, ComboItem>>({});
+  const infoScrollRef = useRef<HTMLDivElement | null>(null);
+  const orderItemsScrollRef = useRef<HTMLDivElement | null>(null);
 
-  // Оптимистичное обновление UI
+
   const {
     optimisticItems,
     pendingOperations,
@@ -602,18 +615,32 @@ export default function WaiterOrderPage() {
     { value: 'other', label: 'Другое' }
   ];
 
-  const checkScrollPosition = useCallback(() => {
-    if (orderItemsScrollRef) {
-      const { scrollTop, scrollHeight, clientHeight } = orderItemsScrollRef;
+  const checkScrollPosition = useCallback((scrollRef: React.RefObject<HTMLDivElement | null>) => {
+    if (scrollRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
       setShowScrollDown(!isNearBottom);
     }
-  }, [orderItemsScrollRef]);
+  }, []);
+  const handleScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget;
+    const { scrollTop, scrollHeight, clientHeight } = target;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    setShowScrollDown(!isNearBottom);
+  }, []);
 
+  const scrollInfoToBottom = useCallback(() => {
+    if (infoScrollRef.current) {
+      infoScrollRef.current.scrollTo({
+        top: infoScrollRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  }, []);
   const scrollToBottom = useCallback(() => {
-    if (orderItemsScrollRef) {
-      orderItemsScrollRef.scrollTo({
-        top: orderItemsScrollRef.scrollHeight,
+    if (orderItemsScrollRef.current) {
+      orderItemsScrollRef.current.scrollTo({
+        top: orderItemsScrollRef.current.scrollHeight,
         behavior: 'smooth'
       });
     }
@@ -622,10 +649,18 @@ export default function WaiterOrderPage() {
   useEffect(() => {
     if (orderItemsScrollRef) {
       setTimeout(() => {
-        checkScrollPosition();
+        checkScrollPosition(orderItemsScrollRef);
       }, 100);
     }
   }, [order?.items, orderItemsScrollRef, checkScrollPosition, optimisticItems]);
+
+  useEffect(() => {
+    if (infoScrollRef.current && activeTab === 'info') {
+      setTimeout(() => {
+        checkScrollPosition(infoScrollRef);
+      }, 100);
+    }
+  }, [editFormData, activeTab, checkScrollPosition])
 
   const {
     isConnected: isWebSocketConnected,
@@ -2115,7 +2150,7 @@ export default function WaiterOrderPage() {
     try {
       setIsUpdating(true);
 
-      await OrderService.updateOrder(orderId as string, {
+      const updateData: any = {
         type: editFormData.type,
         payment: {
           method: editFormData.paymentMethod,
@@ -2123,12 +2158,21 @@ export default function WaiterOrderPage() {
         numberOfPeople: editFormData.numberOfPeople,
         tableNumber: editFormData.tableNumber,
         comment: editFormData.comment,
-      });
+        // Передаем поля доставки напрямую
+        deliveryAddress: editFormData.deliveryAddress,
+        deliveryPrice: editFormData.deliveryPrice,
+        deliveryFloor: editFormData.deliveryFloor,
+        deliveryEntrance: editFormData.deliveryEntrance,
+        deliveryIntercom: editFormData.deliveryIntercom,
+        deliveryApartment: editFormData.deliveryApartment,
+        deliveryNotes: editFormData.deliveryNotes,
+        phone: editFormData.phone,
+        customerName: editFormData.customerName,
+      };
 
+      await OrderService.updateOrder(orderId as string, updateData);
       await fetchOrder();
-
       await createOrderLog(t.logs.orderEdited);
-
       toast.success('Заказ обновлен');
       setShowEditForm(false);
     } catch (err) {
@@ -2386,6 +2430,16 @@ export default function WaiterOrderPage() {
         numberOfPeople: Number(data.numberOfPeople) || 1,
         tableNumber: data.tableNumber || '',
         comment: data.comment || '',
+        // Данные доставки - берем напрямую из order
+        deliveryAddress: data.deliveryAddress || '',
+        deliveryPrice: data.deliveryPrice || 0,
+        deliveryFloor: data.deliveryFloor || '',
+        deliveryEntrance: data.deliveryEntrance || '',
+        deliveryIntercom: data.deliveryIntercom || '',
+        deliveryApartment: data.deliveryApartment || '',
+        deliveryNotes: data.deliveryNotes || '',
+        phone: data.phone || '',
+        customerName: data.customerName || '',
       }));
 
       if (data.restaurant?.id) {
@@ -2416,7 +2470,27 @@ export default function WaiterOrderPage() {
       setLoading(false);
     }
   };
-
+  useEffect(() => {
+    if (order) {
+      setEditFormData(prev => ({
+        ...prev,
+        type: order.type || 'DINE_IN',
+        paymentMethod: order.payment?.method || EnumPaymentMethod.CASH,
+        numberOfPeople: Number(order.numberOfPeople) || 1,
+        tableNumber: order.tableNumber || '',
+        comment: order.comment || '',
+        deliveryAddress: order.deliveryAddress || '',
+        deliveryPrice: order.deliveryPrice || 0,
+        deliveryFloor: order.deliveryFloor || '',
+        deliveryEntrance: order.deliveryEntrance || '',
+        deliveryIntercom: order.deliveryIntercom || '',
+        deliveryApartment: order.deliveryApartment || '',
+        deliveryNotes: order.deliveryNotes || '',
+        phone: order.phone || '',
+        customerName: order.customerName || '',
+      }));
+    }
+  }, [order]);
   const handlePrecheck = async () => {
     if (!order) return;
 
@@ -4894,8 +4968,8 @@ export default function WaiterOrderPage() {
                     {activeTab === 'order' && (
                       <div className="h-full relative">
                         <div
-                          ref={setOrderItemsScrollRef}
-                          onScroll={checkScrollPosition}
+                          ref={orderItemsScrollRef}
+                          onScroll={handleScroll}
                           className="h-full overflow-y-auto space-y-4 pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400"
                           style={{
                             scrollbarWidth: 'thin',
@@ -4949,134 +5023,329 @@ export default function WaiterOrderPage() {
                     )}
 
                     {activeTab === 'info' && (
-                      <div className="space-y-8">
-                        <div>
-                          <h2 className="text-xl font-bold mb-6 flex items-center gap-3">
-                            {getOrderType(editFormData.type)}
-                          </h2>
+                      <div className="h-full relative">
+                        <div
+                          ref={infoScrollRef}
+                          onScroll={() => checkScrollPosition(infoScrollRef)}
+                          className="h-full overflow-y-auto space-y-8 pr-2 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400"
+                          style={{
+                            scrollbarWidth: 'thin',
+                            scrollbarColor: '#cbd5e1 #f1f5f9'
+                          }}
+                        >
+                          <div className="space-y-8">
+                            {/* Тип заказа */}
+                            <div>
+                              <h2 className="text-xl font-bold mb-6 flex items-center gap-3">
+                                {getOrderType(order.type)}
+                              </h2>
 
-                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                            {[
-                              { value: 'DINE_IN', icon: <Utensils className="h-8 w-8" />, label: 'В ресторане' },
-                              { value: 'TAKEAWAY', icon: <ShoppingBag className="h-8 w-8" />, label: 'Самовывоз' },
-                              { value: 'DELIVERY', icon: <Truck className="h-8 w-8" />, label: 'Доставка' },
-                              { value: 'BANQUET', icon: <Calendar className="h-8 w-8" />, label: 'Банкет' }
-                            ].map((type) => (
-                              <button
-                                key={type.value}
-                                onClick={() => setEditFormData({
-                                  ...editFormData,
-                                  type: type.value as OrderType,
-                                  tableNumber: (type.value === 'TAKEAWAY' || type.value === 'DELIVERY') ? '0' : editFormData.tableNumber
-                                })}
-                                disabled={!isOrderEditable}
-                                className={`flex flex-col items-center justify-center rounded-xl border-2 ${editFormData.type === type.value
-                                  ? 'border-blue-600 bg-blue-50 text-blue-700'
-                                  : 'border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50'
-                                  } ${!isOrderEditable ? 'opacity-60 cursor-not-allowed' : ''}`}
-                              >
-                                <div className={`p-3 rounded-full items-center ${editFormData.type === type.value
-                                  ? ' text-blue-600'
-                                  : ' text-gray-600'
-                                  }`}>
-                                  {type.icon}
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
+                              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                {[
+                                  { value: 'DINE_IN', icon: <Utensils className="h-8 w-8" />, label: 'В ресторане' },
+                                  { value: 'TAKEAWAY', icon: <ShoppingBag className="h-8 w-8" />, label: 'Самовывоз' },
+                                  { value: 'DELIVERY', icon: <Truck className="h-8 w-8" />, label: 'Доставка' },
+                                  { value: 'BANQUET', icon: <Calendar className="h-8 w-8" />, label: 'Банкет' }
+                                ].map((type) => (
+                                  <button
+                                    key={type.value}
+                                    onClick={async () => {
+                                      if (!isOrderEditable) return;
+                                      const newType = type.value as OrderType;
+                                      const newPaymentMethod = newType === 'DELIVERY'
+                                        ? EnumPaymentMethod.CASH_TO_COURIER
+                                        : EnumPaymentMethod.CASH;
 
-                        <div>
-                          <h2 className="text-2xl font-bold mb-6">Детали заказа</h2>
-                            {JSON.stringify(order)}
-                          <div className="flex flex-col 2xl:flex-row gap-6 mb-6">
-                            <div className="flex-1 min-w-0">
-                              <div className="space-y-3">
-                                <Label className="text-xl font-semibold flex items-center gap-3">
-                                  <Users className="h-6 w-6 text-gray-600" />
-                                  {t.persons}
-                                </Label>
-                                <div className="flex items-center">
-                                  <Button
-                                    variant="outline"
-                                    size="lg"
-                                    className="h-14 w-14 flex-shrink-0 text-2xl"
-                                    onClick={() => setEditFormData({
-                                      ...editFormData,
-                                      numberOfPeople: Math.max(1, editFormData.numberOfPeople - 1)
-                                    })}
+                                      try {
+                                        setIsUpdating(true);
+                                        await OrderService.updateOrder(order.id, {
+                                          type: newType,
+                                          payment: { method: newPaymentMethod },
+                                          tableNumber: (newType === 'TAKEAWAY' || newType === 'DELIVERY') ? '0' : order.tableNumber
+                                        });
+                                        await fetchOrder();
+                                        toast.success('Тип заказа обновлен');
+                                      } catch (error) {
+                                        toast.error('Ошибка обновления типа заказа');
+                                      } finally {
+                                        setIsUpdating(false);
+                                      }
+                                    }}
                                     disabled={!isOrderEditable}
+                                    className={`flex flex-col items-center justify-center rounded-xl border-2 p-4 ${order.type === type.value
+                                      ? 'border-blue-600 bg-blue-50 text-blue-700'
+                                      : 'border-gray-200 bg-white hover:border-blue-400 hover:bg-blue-50'
+                                      } ${!isOrderEditable ? 'opacity-60 cursor-not-allowed' : ''}`}
                                   >
-                                    <Minus className='h-8 w-8' />
-                                  </Button>
-                                  <div className="flex-1 mx-2">
-                                    <Input
-                                      type="number"
-                                      min="1"
-                                      value={editFormData.numberOfPeople}
-                                      onChange={(e) => setEditFormData({
-                                        ...editFormData,
-                                        numberOfPeople: parseInt(e.target.value) || 1
-                                      })}
-                                      disabled={!isOrderEditable}
-                                      className="h-14 text-2xl text-center font-bold"
-                                    />
-                                  </div>
-                                  <Button
-                                    variant="outline"
-                                    size="lg"
-                                    className="h-14 w-14 flex-shrink-0 text-2xl"
-                                    onClick={() => setEditFormData({
-                                      ...editFormData,
-                                      numberOfPeople: editFormData.numberOfPeople + 1
-                                    })}
-                                    disabled={!isOrderEditable}
-                                  >
-                                    <Plus className='h-8 w-8' />
-                                  </Button>
-                                </div>
+                                    <div className={`p-3 rounded-full items-center ${order.type === type.value ? 'text-blue-600' : 'text-gray-600'
+                                      }`}>
+                                      {type.icon}
+                                    </div>
+                                  </button>
+                                ))}
                               </div>
                             </div>
-                          </div>
-                                    
-                          <div className="space-y-3">
-                            <Label className="text-xl font-semibold flex items-center gap-3">
-                              <MessageSquare className="h-6 w-6 text-gray-600" />
-                              {t.comment}
-                            </Label>
-                            <Textarea
-                              value={editFormData.comment}
-                              onChange={(e) => setEditFormData({
-                                ...editFormData,
-                                comment: e.target.value
-                              })}
-                              placeholder={t.comment}
-                              disabled={!isOrderEditable}
-                              className="min-h-[100px] text-lg"
-                            />
-                          </div>
-                        </div>
 
-                        {isOrderEditable && (
-                          <div className="flex justify-end gap-4 pt-4 border-t">
+                            {/* Для типа DELIVERY */}
+                            {order.type === 'DELIVERY' && (
+                              <div className="space-y-6">
+                                {/* Поле адреса доставки */}
+                                <div className="space-y-3">
+                                  <Label className="text-xl font-semibold flex items-center gap-3">
+                                    <MapPin className="h-6 w-6 text-gray-600" />
+                                    Адрес доставки
+                                  </Label>
+                                  <AddressInput
+                                    value={editFormData.deliveryAddress}
+                                    onChange={(e) => setEditFormData(prev => ({ ...prev, deliveryAddress: e.target.value }))}
+                                    language={language}
+                                    restaurantId={order?.restaurant?.id || ''}
+                                    onZoneFound={async (zone) => {
+                                      if (!isOrderEditable) return;
+                                      if (zone) {
+                                        setEditFormData(prev => ({ ...prev, deliveryPrice: zone.price || 0 }));
+                                      }
+                                    }}
+                                    onAddressSelect={(address) => {
+                                      setEditFormData(prev => ({ ...prev, deliveryAddress: address }));
+                                    }}
+                                  />
+                                </div>
+
+                                {/* Отображение цены доставки */}
+                                {(editFormData.deliveryPrice || 0) > 0 && (
+                                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4">
+                                    <div className="flex items-start justify-between">
+                                      <div className="space-y-1">
+                                        <span className="text-lg font-semibold text-green-800">
+                                          Цена доставки
+                                        </span>
+                                      </div>
+                                      <Badge variant="secondary" className="text-base px-4 py-1.5 bg-white shadow-sm">
+                                        {editFormData.deliveryPrice} ₽
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Дополнительные поля адреса */}
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <Label className="text-sm font-semibold flex items-center gap-2">
+                                      <Building className="h-4 w-4" />
+                                      Этаж
+                                    </Label>
+                                    <Input
+                                      value={editFormData.deliveryFloor}
+                                      onChange={(e) => setEditFormData(prev => ({ ...prev, deliveryFloor: e.target.value }))}
+                                      placeholder="Этаж"
+                                      disabled={!isOrderEditable}
+                                      className="h-10"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label className="text-sm font-semibold flex items-center gap-2">
+                                      <DoorClosed className="h-4 w-4" />
+                                      Подъезд
+                                    </Label>
+                                    <Input
+                                      value={editFormData.deliveryEntrance}
+                                      onChange={(e) => setEditFormData(prev => ({ ...prev, deliveryEntrance: e.target.value }))}
+                                      placeholder="Подъезд"
+                                      disabled={!isOrderEditable}
+                                      className="h-10"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label className="text-sm font-semibold flex items-center gap-2">
+                                      <Smartphone className="h-4 w-4" />
+                                      Домофон
+                                    </Label>
+                                    <Input
+                                      value={editFormData.deliveryIntercom}
+                                      onChange={(e) => setEditFormData(prev => ({ ...prev, deliveryIntercom: e.target.value }))}
+                                      placeholder="Домофон"
+                                      disabled={!isOrderEditable}
+                                      className="h-10"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label className="text-sm font-semibold flex items-center gap-2">
+                                      <Home className="h-4 w-4" />
+                                      Квартира/Офис
+                                    </Label>
+                                    <Input
+                                      value={editFormData.deliveryApartment}
+                                      onChange={(e) => setEditFormData(prev => ({ ...prev, deliveryApartment: e.target.value }))}
+                                      placeholder="Квартира"
+                                      disabled={!isOrderEditable}
+                                      className="h-10"
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Имя клиента */}
+                                <div className="space-y-3">
+                                  <Label className="text-xl font-semibold flex items-center gap-3">
+                                    <User className="h-6 w-6 text-gray-600" />
+                                    Имя клиента
+                                  </Label>
+                                  <Input
+                                    value={editFormData.customerName}
+                                    onChange={(e) => setEditFormData(prev => ({ ...prev, customerName: e.target.value }))}
+                                    placeholder="Введите имя клиента"
+                                    disabled={!isOrderEditable}
+                                    className="h-14 text-lg"
+                                  />
+                                </div>
+
+                                {/* Телефон клиента */}
+                                <div className="space-y-3">
+                                  <Label className="text-xl font-semibold flex items-center gap-3">
+                                    <Phone className="h-6 w-6 text-gray-600" />
+                                    Телефон клиента
+                                  </Label>
+                                  <Input
+                                    value={editFormData.phone}
+                                    onChange={(e) => setEditFormData(prev => ({ ...prev, phone: e.target.value }))}
+                                    placeholder="+7 (999) 999-99-99"
+                                    disabled={!isOrderEditable}
+                                    className="h-14 text-lg"
+                                  />
+                                </div>
+
+                                {/* Заметки для курьера */}
+                                <div className="space-y-3">
+                                  <Label className="text-xl font-semibold flex items-center gap-3">
+                                    <MessageSquare className="h-6 w-6 text-gray-600" />
+                                    Комментарий для курьера
+                                  </Label>
+                                  <Textarea
+                                    value={editFormData.deliveryNotes}
+                                    onChange={(e) => setEditFormData(prev => ({ ...prev, deliveryNotes: e.target.value }))}
+                                    placeholder="Дополнительная информация об адресе..."
+                                    disabled={!isOrderEditable}
+                                    className="min-h-[80px] text-lg"
+                                  />
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Для типа DINE_IN - показываем количество персон */}
+                            {order.type === 'DINE_IN' && (
+                              <div className="flex flex-col 2xl:flex-row gap-6 mb-6">
+                                <div className="flex-1 min-w-0">
+                                  <div className="space-y-3">
+                                    <Label className="text-xl font-semibold flex items-center gap-3">
+                                      <Users className="h-6 w-6 text-gray-600" />
+                                      {t.persons}
+                                    </Label>
+                                    <div className="flex items-center">
+                                      <Button
+                                        variant="outline"
+                                        size="lg"
+                                        className="h-14 w-14 flex-shrink-0 text-2xl"
+                                        onClick={() => setEditFormData(prev => ({
+                                          ...prev,
+                                          numberOfPeople: Math.max(1, Number(prev.numberOfPeople) - 1)
+                                        }))}
+                                        disabled={!isOrderEditable}
+                                      >
+                                        <Minus className='h-8 w-8' />
+                                      </Button>
+                                      <div className="flex-1 mx-2">
+                                        <Input
+                                          type="number"
+                                          min="1"
+                                          value={editFormData.numberOfPeople}
+                                          onChange={(e) => setEditFormData(prev => ({
+                                            ...prev,
+                                            numberOfPeople: parseInt(e.target.value) || 1
+                                          }))}
+                                          disabled={!isOrderEditable}
+                                          className="h-14 text-2xl text-center font-bold"
+                                        />
+                                      </div>
+                                      <Button
+                                        variant="outline"
+                                        size="lg"
+                                        className="h-14 w-14 flex-shrink-0 text-2xl"
+                                        onClick={() => setEditFormData(prev => ({
+                                          ...prev,
+                                          numberOfPeople: Number(prev.numberOfPeople) + 1
+                                        }))}
+                                        disabled={!isOrderEditable}
+                                      >
+                                        <Plus className='h-8 w-8' />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Номер стола для DINE_IN */}
+                            {order.type === 'DINE_IN' && (
+                              <div className="space-y-3">
+                                <Label className="text-xl font-semibold flex items-center gap-3">
+                                  <Table className="h-6 w-6 text-gray-600" />
+                                  Номер стола
+                                </Label>
+                                <Input
+                                  value={editFormData.tableNumber}
+                                  onChange={(e) => setEditFormData(prev => ({ ...prev, tableNumber: e.target.value }))}
+                                  placeholder="Номер стола"
+                                  disabled={!isOrderEditable}
+                                  className="h-14 text-lg"
+                                />
+                              </div>
+                            )}
+
+                            {/* Общий комментарий */}
+                            <div className="space-y-3">
+                              <Label className="text-xl font-semibold flex items-center gap-3">
+                                <MessageSquare className="h-6 w-6 text-gray-600" />
+                                {t.comment}
+                              </Label>
+                              <Textarea
+                                value={editFormData.comment}
+                                onChange={(e) => setEditFormData(prev => ({ ...prev, comment: e.target.value }))}
+                                placeholder={t.comment}
+                                disabled={!isOrderEditable}
+                                className="min-h-[100px] text-lg"
+                              />
+                            </div>
+
+                            {/* Кнопка сохранения вместо обновления */}
                             <Button
                               onClick={handleEditOrderSubmit}
                               disabled={isUpdating}
-                              className="h-14 text-lg px-8 shadow-lg hover:shadow-xl transition-shadow"
+                              variant="default"
+                              className="h-14 text-lg px-8 shadow-lg hover:shadow-xl transition-shadow w-full "
                             >
                               {isUpdating ? (
                                 <span className="flex items-center gap-3">
                                   <Loader2 className="h-5 w-5 animate-spin" />
-                                  {t.saving}
+                                  Сохранение...
                                 </span>
                               ) : (
                                 <span className="flex items-center gap-3">
-                                  <Check className="h-5 w-5" />
-                                  {t.saveChanges}
+                                  Сохранить изменения
                                 </span>
                               )}
                             </Button>
                           </div>
+                        </div>
+
+                        {/* Кнопка прокрутки вниз для info */}
+                        {showScrollDown && activeTab === 'info' && (
+                          <button
+                            onClick={scrollInfoToBottom}
+                            className="absolute bottom-4 right-4 bg-blue-600 text-white rounded-full p-2 shadow-lg hover:bg-blue-700 transition-all z-10"
+                            title="Прокрутить вниз"
+                          >
+                            <ChevronDown className="h-5 w-5" />
+                          </button>
                         )}
                       </div>
                     )}
@@ -5276,10 +5545,11 @@ export default function WaiterOrderPage() {
                   )}
 
                   {activeTab === 'info' && (
-                    <div className="space-y-6 max-h-[60vh] overflow-y-auto">
+                    <div className="space-y-6 overflow-y-auto">
+                      {/* Тип заказа */}
                       <div>
                         <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
-                          {getOrderType(editFormData.type)}
+                          Тип заказа
                         </h2>
 
                         <div className="grid grid-cols-2 gap-2">
@@ -5291,13 +5561,30 @@ export default function WaiterOrderPage() {
                           ].map((type) => (
                             <button
                               key={type.value}
-                              onClick={() => setEditFormData({
-                                ...editFormData,
-                                type: type.value as OrderType,
-                                tableNumber: (type.value === 'TAKEAWAY' || type.value === 'DELIVERY') ? '0' : editFormData.tableNumber
-                              })}
+                              onClick={async () => {
+                                if (!isOrderEditable) return;
+                                const newType = type.value as OrderType;
+                                const newPaymentMethod = newType === 'DELIVERY'
+                                  ? EnumPaymentMethod.CASH_TO_COURIER
+                                  : EnumPaymentMethod.CASH;
+
+                                try {
+                                  setIsUpdating(true);
+                                  await OrderService.updateOrder(order.id, {
+                                    type: newType,
+                                    payment: { method: newPaymentMethod },
+                                    tableNumber: (newType === 'TAKEAWAY' || newType === 'DELIVERY') ? '0' : order.tableNumber
+                                  });
+                                  await fetchOrder();
+                                  toast.success('Тип заказа обновлен');
+                                } catch (error) {
+                                  toast.error('Ошибка обновления типа заказа');
+                                } finally {
+                                  setIsUpdating(false);
+                                }
+                              }}
                               disabled={!isOrderEditable}
-                              className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 ${editFormData.type === type.value
+                              className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 ${order.type === type.value
                                 ? 'border-blue-600 bg-blue-50 text-blue-700'
                                 : 'border-gray-200 bg-white'
                                 } ${!isOrderEditable ? 'opacity-60' : ''}`}
@@ -5309,81 +5596,233 @@ export default function WaiterOrderPage() {
                         </div>
                       </div>
 
-                      <div>
-                        <Label className="text-sm font-semibold flex items-center gap-2 mb-2">
-                          <Users className="h-4 w-4" />
-                          {t.persons}
-                        </Label>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-10 w-10"
-                            onClick={() => setEditFormData({
-                              ...editFormData,
-                              numberOfPeople: Math.max(1, editFormData.numberOfPeople - 1)
-                            })}
-                            disabled={!isOrderEditable}
-                          >
-                            <Minus className="h-4 w-4" />
-                          </Button>
-                          <Input
-                            type="number"
-                            min="1"
-                            value={editFormData.numberOfPeople}
-                            onChange={(e) => setEditFormData({
-                              ...editFormData,
-                              numberOfPeople: parseInt(e.target.value) || 1
-                            })}
-                            disabled={!isOrderEditable}
-                            className="h-10 text-center font-bold flex-1"
-                          />
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-10 w-10"
-                            onClick={() => setEditFormData({
-                              ...editFormData,
-                              numberOfPeople: editFormData.numberOfPeople + 1
-                            })}
-                            disabled={!isOrderEditable}
-                          >
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
+                      {/* Для типа DELIVERY */}
+                      {order.type === 'DELIVERY' && (
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <Label className="text-sm font-semibold flex items-center gap-2">
+                              <MapPin className="h-4 w-4" />
+                              Адрес доставки
+                            </Label>
+                            <AddressInput
+                              value={editFormData.deliveryAddress}
+                              onChange={(e) => setEditFormData(prev => ({ ...prev, deliveryAddress: e.target.value }))}
+                              language={language}
+                              restaurantId={order?.restaurant?.id || ''}
+                              onZoneFound={async (zone) => {
+                                if (!isOrderEditable) return;
+                                if (zone) {
+                                  setEditFormData(prev => ({ ...prev, deliveryPrice: zone.price || 0 }));
+                                }
+                              }}
+                              onAddressSelect={(address) => {
+                                setEditFormData(prev => ({ ...prev, deliveryAddress: address }));
+                              }}
+                            />
+                          </div>
 
-                      <div>
-                        <Label className="text-sm font-semibold flex items-center gap-2 mb-2">
+                          {(editFormData.deliveryPrice || 0) > 0 && (
+                            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                              <div className="flex justify-between items-center">
+                                <span className="font-semibold text-green-800">Цена доставки</span>
+                                <Badge variant="secondary" className="bg-white">
+                                  {editFormData.deliveryPrice} ₽
+                                </Badge>
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <Label className="text-xs font-semibold flex items-center gap-1">
+                                <Building className="h-3 w-3" />
+                                Этаж
+                              </Label>
+                              <Input
+                                value={editFormData.deliveryFloor}
+                                onChange={(e) => setEditFormData(prev => ({ ...prev, deliveryFloor: e.target.value }))}
+                                placeholder="Этаж"
+                                disabled={!isOrderEditable}
+                                className="h-9 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs font-semibold flex items-center gap-1">
+                                <DoorClosed className="h-3 w-3" />
+                                Подъезд
+                              </Label>
+                              <Input
+                                value={editFormData.deliveryEntrance}
+                                onChange={(e) => setEditFormData(prev => ({ ...prev, deliveryEntrance: e.target.value }))}
+                                placeholder="Подъезд"
+                                disabled={!isOrderEditable}
+                                className="h-9 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs font-semibold flex items-center gap-1">
+                                <Smartphone className="h-3 w-3" />
+                                Домофон
+                              </Label>
+                              <Input
+                                value={editFormData.deliveryIntercom}
+                                onChange={(e) => setEditFormData(prev => ({ ...prev, deliveryIntercom: e.target.value }))}
+                                placeholder="Домофон"
+                                disabled={!isOrderEditable}
+                                className="h-9 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs font-semibold flex items-center gap-1">
+                                <Home className="h-3 w-3" />
+                                Квартира
+                              </Label>
+                              <Input
+                                value={editFormData.deliveryApartment}
+                                onChange={(e) => setEditFormData(prev => ({ ...prev, deliveryApartment: e.target.value }))}
+                                placeholder="Квартира"
+                                disabled={!isOrderEditable}
+                                className="h-9 text-sm"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label className="text-sm font-semibold flex items-center gap-2">
+                              <User className="h-4 w-4" />
+                              Имя клиента
+                            </Label>
+                            <Input
+                              value={editFormData.customerName}
+                              onChange={(e) => setEditFormData(prev => ({ ...prev, customerName: e.target.value }))}
+                              placeholder="Введите имя клиента"
+                              disabled={!isOrderEditable}
+                              className="h-10 text-sm"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label className="text-sm font-semibold flex items-center gap-2">
+                              <Phone className="h-4 w-4" />
+                              Телефон клиента
+                            </Label>
+                            <Input
+                              value={editFormData.phone}
+                              onChange={(e) => setEditFormData(prev => ({ ...prev, phone: e.target.value }))}
+                              placeholder="+7 (999) 999-99-99"
+                              disabled={!isOrderEditable}
+                              className="h-10 text-sm"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label className="text-sm font-semibold flex items-center gap-2">
+                              <MessageSquare className="h-4 w-4" />
+                              Комментарий для курьера
+                            </Label>
+                            <Textarea
+                              value={editFormData.deliveryNotes}
+                              onChange={(e) => setEditFormData(prev => ({ ...prev, deliveryNotes: e.target.value }))}
+                              placeholder="Дополнительная информация об адресе..."
+                              disabled={!isOrderEditable}
+                              className="min-h-[60px] text-sm"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Для типа DINE_IN - количество персон */}
+                      {order.type === 'DINE_IN' && (
+                        <div>
+                          <Label className="text-sm font-semibold flex items-center gap-2 mb-2">
+                            <Users className="h-4 w-4" />
+                            {t.persons}
+                          </Label>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-10 w-10"
+                              onClick={() => setEditFormData(prev => ({
+                                ...prev,
+                                numberOfPeople: Math.max(1, Number(prev.numberOfPeople) - 1)
+                              }))}
+                              disabled={!isOrderEditable}
+                            >
+                              <Minus className="h-4 w-4" />
+                            </Button>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={editFormData.numberOfPeople}
+                              onChange={(e) => setEditFormData(prev => ({
+                                ...prev,
+                                numberOfPeople: parseInt(e.target.value) || 1
+                              }))}
+                              disabled={!isOrderEditable}
+                              className="h-10 text-center font-bold flex-1"
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-10 w-10"
+                              onClick={() => setEditFormData(prev => ({
+                                ...prev,
+                                numberOfPeople: Number(prev.numberOfPeople) + 1
+                              }))}
+                              disabled={!isOrderEditable}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Номер стола для DINE_IN */}
+                      {order.type === 'DINE_IN' && (
+                        <div className="space-y-2">
+                          <Label className="text-sm font-semibold flex items-center gap-2">
+                            <Table className="h-4 w-4" />
+                            Номер стола
+                          </Label>
+                          <Input
+                            value={editFormData.tableNumber}
+                            onChange={(e) => setEditFormData(prev => ({ ...prev, tableNumber: e.target.value }))}
+                            placeholder="Номер стола"
+                            disabled={!isOrderEditable}
+                            className="h-10 text-sm"
+                          />
+                        </div>
+                      )}
+
+                      {/* Общий комментарий */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-semibold flex items-center gap-2">
                           <MessageSquare className="h-4 w-4" />
                           {t.comment}
                         </Label>
                         <Textarea
                           value={editFormData.comment}
-                          onChange={(e) => setEditFormData({
-                            ...editFormData,
-                            comment: e.target.value
-                          })}
+                          onChange={(e) => setEditFormData(prev => ({ ...prev, comment: e.target.value }))}
                           placeholder={t.comment}
                           disabled={!isOrderEditable}
                           className="min-h-[80px] text-sm"
                         />
                       </div>
 
-                      {isOrderEditable && (
-                        <Button
-                          onClick={handleEditOrderSubmit}
-                          disabled={isUpdating}
-                          className="w-full h-10 text-sm"
-                        >
-                          {isUpdating ? (
-                            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                          ) : (
-                            <Check className="h-4 w-4 mr-2" />
-                          )}
-                          {t.saveChanges}
-                        </Button>
-                      )}
+                      {/* Кнопка сохранения */}
+                      <Button
+                        onClick={handleEditOrderSubmit}
+                        disabled={isUpdating}
+                        className="w-full h-11 text-sm"
+                      >
+                        {isUpdating ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        ) : (
+                          <Check className="h-4 w-4 mr-2" />
+                        )}
+                        {t.saveChanges}
+                      </Button>
                     </div>
                   )}
                 </div>

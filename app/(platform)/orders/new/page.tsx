@@ -45,13 +45,14 @@ export default function NewOrderPage() {
     deliveryZone: null,
     surcharges: [],
     discounts: [],
-    isScheduled: false, 
+    isScheduled: false,
     scheduledAt: undefined,
-      customerName: '',           
-  deliveryFloor: '',         
-  deliveryEntrance: '',     
-  deliveryDoorCode: '',       
-  deliveryIntercom: ''  
+    customerName: '',
+    deliveryFloor: '',
+    deliveryEntrance: '',
+    deliveryDoorCode: '',
+    deliveryIntercom: '',
+    deliveryPrice: 0
   })
   const [loading, setLoading] = useState(false)
   const [restaurantUsesReservation, setRestaurantUsesReservation] = useState(false)
@@ -59,14 +60,14 @@ export default function NewOrderPage() {
   // Добавляем хуки для проверки расписания
   const { isRestaurantOpen } = useRestaurantSchedule();
   const { restaurant: currentRestaurant, isLoading: restaurantLoading } = useRestaurantById(selectedRestaurant?.id || null);
-  
+
   // Состояние для статуса ресторана с автообновлением
-  const [restaurantStatus, setRestaurantStatus] = useState<{ 
-    isOpen: boolean; 
+  const [restaurantStatus, setRestaurantStatus] = useState<{
+    isOpen: boolean;
     message: string;
     nextOpenTime?: string;
   } | null>(null);
-  
+
   useEffect(() => {
     if (order.restaurantId) {
       RestaurantService.getById(order.restaurantId).then(restaurant => {
@@ -118,11 +119,11 @@ export default function NewOrderPage() {
     // Получаем сохраненный ресторан из localStorage или используем первый доступный
     const savedRestaurantId = localStorage.getItem(RESTAURANT_STORAGE_KEY)
     const defaultRestaurant = user.restaurant[0]
-    
-    const isValidSavedRestaurant = savedRestaurantId && 
+
+    const isValidSavedRestaurant = savedRestaurantId &&
       user.restaurant.some((r: Restaurant) => r.id === savedRestaurantId)
 
-    const initialRestaurant = isValidSavedRestaurant 
+    const initialRestaurant = isValidSavedRestaurant
       ? user.restaurant.find((r: Restaurant) => r.id === savedRestaurantId)!
       : defaultRestaurant
 
@@ -139,11 +140,11 @@ export default function NewOrderPage() {
 
     // Сохраняем выбор в localStorage
     localStorage.setItem(RESTAURANT_STORAGE_KEY, restaurantId)
-    
+
     // Обновляем состояние
     setSelectedRestaurant(restaurant)
-    setOrder(prev => ({ 
-      ...prev, 
+    setOrder(prev => ({
+      ...prev,
       restaurantId: restaurant.id,
       items: [],
       deliveryZone: null,
@@ -151,18 +152,19 @@ export default function NewOrderPage() {
     }))
   }
 
-  // Функция для проверки зоны доставки
   const checkDeliveryZone = async (address: string, restaurantId: string) => {
     if (!address) {
-      return { success: false, error: language === 'ka' 
-        ? 'შეიყვანეთ მისამართი' 
-        : 'Введите адрес доставки' }
+      return {
+        success: false, error: language === 'ka'
+          ? 'შეიყვანეთ მისამართი'
+          : 'Введите адрес доставки'
+      }
     }
 
     try {
       const token = 'e7a8d3897b07bb4631312ee1e8b376424c6667ea'
       const url = 'https://suggestions.dadata.ru/suggestions/api/4_1/rs/suggest/address'
-      
+
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -170,32 +172,38 @@ export default function NewOrderPage() {
           'Authorization': `Token ${token}`,
           'Accept': 'application/json'
         },
-        body: JSON.stringify({ 
-          query: address, 
+        body: JSON.stringify({
+          query: address,
           count: 1,
           locations: [{ country: "*" }]
         })
       })
 
       if (!response.ok) {
-        return { success: false, error: language === 'ka' 
-          ? 'მისამართის გეოკოდირების შეცდომა' 
-          : 'Ошибка геокодирования адреса' }
+        return {
+          success: false, error: language === 'ka'
+            ? 'მისამართის გეოკოდირების შეცდომა'
+            : 'Ошибка геокодирования адреса'
+        }
       }
 
       const data = await response.json()
       const firstSuggestion = data.suggestions?.[0]
       if (!firstSuggestion) {
-        return { success: false, error: language === 'ka' 
-          ? 'მისამართი არ მოიძებნა' 
-          : 'Адрес не найден' }
+        return {
+          success: false, error: language === 'ka'
+            ? 'მისამართი არ მოიძებნა'
+            : 'Адрес не найден'
+        }
       }
 
       const { geo_lat: lat, geo_lon: lng } = firstSuggestion.data
       if (!lat || !lng) {
-        return { success: false, error: language === 'ka' 
-          ? 'მისამართის კოორდინატები არ მოიძებნა' 
-          : 'Координаты адреса не найдены' }
+        return {
+          success: false, error: language === 'ka'
+            ? 'მისამართის კოორდინატები არ მოიძებნა'
+            : 'Координаты адреса не найдены'
+        }
       }
 
       const deliveryZone = await DeliveryZoneService.findZoneForPoint(
@@ -205,10 +213,10 @@ export default function NewOrderPage() {
       )
 
       if (!deliveryZone) {
-        return { 
-          success: false, 
-          error: language === 'ka' 
-            ? 'მისამართი არ არის მიტანის ზონაში' 
+        return {
+          success: false,
+          error: language === 'ka'
+            ? 'მისამართი არ არის მიტანის ზონაში'
             : 'Адрес не входит в зону доставки',
           zone: null
         }
@@ -219,17 +227,17 @@ export default function NewOrderPage() {
         zone: {
           id: deliveryZone.id,
           title: deliveryZone.title,
-          price: deliveryZone.price,
+          price: deliveryZone.price, // <-- Убедитесь что price передается
           minOrder: deliveryZone.minOrder
         }
       }
     } catch (error) {
       console.error('Delivery zone check error:', error)
-      return { 
-        success: false, 
-        error: language === 'ka' 
-          ? 'მიტანის ზონის განსაზღვრის შეცდომა' 
-          : 'Ошибка определения зоны доставки' 
+      return {
+        success: false,
+        error: language === 'ka'
+          ? 'მიტანის ზონის განსაზღვრის შეცდომა'
+          : 'Ошибка определения зоны доставки'
       }
     }
   }
@@ -239,7 +247,7 @@ export default function NewOrderPage() {
     if (order.type === 'DELIVERY' && order.deliveryAddress && !order.deliveryZone) {
       setLoading(true)
       const zoneCheck = await checkDeliveryZone(order.deliveryAddress, order.restaurantId)
-      
+
       if (!zoneCheck.success) {
         toast.error(zoneCheck.error)
         setLoading(false)
@@ -254,8 +262,8 @@ export default function NewOrderPage() {
 
       // Показываем информацию о зоне доставки
       if (zoneCheck.zone) {
-        toast.success(language === 'ka' 
-          ? `მიტანის ღირებულება: ${zoneCheck.zone.price} ₽` 
+        toast.success(language === 'ka'
+          ? `მიტანის ღირებულება: ${zoneCheck.zone.price} ₽`
           : `Стоимость доставки: ${zoneCheck.zone.price} ₽`)
       }
     }
@@ -271,13 +279,16 @@ export default function NewOrderPage() {
         })
         customerId = newCustomer.id
       }
-
+      const deliveryPrice = order.type === 'DELIVERY'
+        ? (order.deliveryZone?.price || order.deliveryPrice || 0)
+        : 0
       const orderData = {
         ...order,
         customerId,
         items: [],
         scheduledAt: order.scheduledAt,
-        deliveryNotes: order.type === 'DELIVERY' 
+        deliveryPrice: deliveryPrice,
+        deliveryNotes: order.type === 'DELIVERY'
           ? `${order.comment || ''}\n${order.deliveryNotes || ''}`.trim()
           : undefined,
         surcharges: order.surcharges.map(s => ({
@@ -291,18 +302,18 @@ export default function NewOrderPage() {
           description: d.title
         })) || []
       }
-      
+
       console.log('Sending order data:', orderData)
       const createdOrder = await OrderService.create(orderData)
       await OrderService.createLog({
-        orderId: createdOrder.id as string, 
-        action: language === 'ka' ? 'შეკვეთა შეიქმნა' : 'Заказ создан', 
+        orderId: createdOrder.id as string,
+        action: language === 'ka' ? 'შეკვეთა შეიქმნა' : 'Заказ создан',
         userId: user.id
       })
-      
+
       toast.success(language === 'ka' ? 'შეკვეთა წარმატებით შეიქმნა!' : 'Заказ успешно создан!')
       router.push(`/orders/${createdOrder.id}`)
-    } catch (error) { 
+    } catch (error) {
       console.error('Order creation error:', error)
       toast.error(language === 'ka' ? 'შეკვეთის შექმნის შეცდომა' : 'Ошибка при создании заказа')
     } finally {
@@ -323,7 +334,7 @@ export default function NewOrderPage() {
       <div className="py-6">
 
         <OrderInfoStep
-         restaurantUsesReservation={restaurantUsesReservation}
+          restaurantUsesReservation={restaurantUsesReservation}
           order={order}
           setOrder={setOrder}
           user={user}

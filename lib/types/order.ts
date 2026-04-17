@@ -29,6 +29,7 @@ export interface OrderState {
   tableNumber: number
   deliveryAddress: string
   deliveryTime: string
+  deliveryPrice?: number; 
   deliveryNotes: string
     deliveryEntrance?: string;    
   deliveryIntercom?: string;      
