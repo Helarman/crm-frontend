@@ -1632,30 +1632,33 @@ export const OrderInfoStep = ({
             {language === 'ka' ? 'მისამართი' : 'Адрес доставки'}
           </Label>
     <AddressInput
-  value={order.deliveryAddress}
-  onChange={(e: any) => {
-    console.log('AddressInput onChange:', e.target.value) // Добавьте эту отладку
+  value={order.deliveryAddress || ''}
+  onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('AddressInput onChange:', e.target.value)
     setOrder({
       ...order,
       deliveryAddress: e.target.value,
-      deliveryZone: null
+      deliveryZone: null // Сбрасываем зону при ручном изменении
     })
   }}
   language={language as any}
   restaurantId={order.restaurantId}
   onZoneFound={(zone) => {
-    console.log('Zone found:', zone) // Добавьте эту отладку
-    setOrder({
-      ...order,
+    console.log('Zone found:', zone)
+    // ВАЖНО: Используем функциональное обновление, чтобы не потерять другие поля
+    setOrder((prevOrder) => ({
+      ...prevOrder,
       deliveryZone: zone
-    })
+    }))
   }}
   onAddressSelect={(address) => {
-    console.log('AddressInput onAddressSelect:', address) // Добавьте эту отладку
-    setOrder({
-      ...order,
-      deliveryAddress: address
-    })
+    console.log('AddressInput onAddressSelect:', address)
+    // ВАЖНО: Здесь тоже обновляем адрес, чтобы синхронизировать
+    setOrder((prevOrder) => ({
+      ...prevOrder,
+      deliveryAddress: address,
+      // Не сбрасываем deliveryZone, так как onZoneFound уже установит её
+    }))
   }}
   className="w-full"
 />
