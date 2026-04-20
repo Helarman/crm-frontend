@@ -1,6 +1,6 @@
 'use client'
 
-import { Clock, Utensils, MapPin, Truck, GlassWater, User, Globe, Smartphone, ShoppingBag } from 'lucide-react'
+import { Clock, MapPin, User, ShoppingBag, Smartphone, Globe } from 'lucide-react'
 import { format } from 'date-fns'
 import { EnumOrderType, OrderResponse } from '@/lib/api/order.service'
 import { Badge } from '@/components/ui/badge'
@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { useLanguageStore } from '@/lib/stores/language-store'
 import { JSX } from 'react'
 import { OrderItem } from '@/lib/types/order'
+import Image from 'next/image'
 
 const statusTranslations = {
   CREATED: {
@@ -70,8 +71,13 @@ function getOrderItemCounts(items: OrderItem[]) {
   return counts;
 }
 
-export function OrderHeader({ order, compact = false, variant }: { order: OrderResponse, compact?: boolean, variant?: 'default' | 'kitchen' | 'delivery' }) {
+export function OrderHeader({ order, compact = false, variant = 'default' }: { order: OrderResponse, compact?: boolean, variant?: 'default' | 'kitchen' | 'delivery' }) {
   const { language } = useLanguageStore()
+  
+  // Для kitchen и delivery используем такие же размеры как в default
+  const isKitchenOrDelivery = variant === 'kitchen' || variant === 'delivery'
+  const effectiveCompact = compact && !isKitchenOrDelivery
+  
   const statusColors = {
     CREATED: 'border-amber-500 bg-amber-50 text-amber-800',
     CONFIRMED: 'border-blue-500 bg-blue-50 text-blue-800',
@@ -83,35 +89,65 @@ export function OrderHeader({ order, compact = false, variant }: { order: OrderR
   }
 
   const typeIcons = {
-    DELIVERY: <Truck className={cn(
-      "text-gray-900 dark:text-white",
-      compact ? "h-4 w-4" : "w-7 h-7"
-    )} />,
-    DINE_IN: <Utensils className={cn(
-      "text-gray-900 dark:text-white",
-      compact ? "h-4 w-4" : "w-7 h-7"
-    )} />,
-    TAKEAWAY: <ShoppingBag className={cn(
-      "text-gray-900 dark:text-white",
-      compact ? "h-4 w-4" : "w-7 h-7"
-    )} />,
-    BANQUET: <GlassWater className={cn(
-      "text-gray-900 dark:text-white",
-      compact ? "h-4 w-4" : "w-7 h-7"
-    )} />,
+    DELIVERY: (
+      <div className="flex items-center justify-center w-16 h-16">
+        <Image 
+          src="/icons/delivery.svg" 
+          alt="Delivery" 
+          width={50} 
+          height={50} 
+          className="text-gray-900 dark:text-white"
+        />
+      </div>
+    ),
+    DINE_IN: (
+      <div className="flex items-center justify-center w-16 h-16">
+        <Image 
+          src="/icons/hall.svg" 
+          alt="Dine In" 
+          width={50} 
+          height={50} 
+          className="text-gray-900 dark:text-white"
+        />
+      </div>
+    ),
+    TAKEAWAY: (
+      <div className="flex items-center justify-center w-16 h-16">
+        <Image 
+          src="/icons/takeaway.svg" 
+          alt="Takeaway" 
+          width={50} 
+          height={50} 
+          className="text-gray-900 dark:text-white"
+        />
+      </div>
+    ),
+    BANQUET: (
+      <div className="flex items-center justify-center w-16 h-16">
+        <Image 
+          src="/icons/banquet.svg" 
+          alt="Banquet" 
+          width={50} 
+          height={50} 
+          className="text-gray-900 dark:text-white"
+        />
+      </div>
+    ),
   }
 
   type SourceKeys = 'MOBILE' | 'SITE' | 'PANEL';
 
   const sourceIcons: Record<SourceKeys, JSX.Element | string> = {
-    MOBILE: <Smartphone className={cn(
-      "text-gray-900",
-      compact ? "h-4 w-4" : "w-7 h-7"
-    )} />,
-    SITE: <Globe className={cn(
-      "text-gray-900",
-      compact ? "h-4 w-4" : "w-7 h-7"
-    )} />,
+    MOBILE: (
+      <div className="flex items-center justify-center w-8 h-8">
+        <Smartphone className="w-6 h-16 text-gray-900" />
+      </div>
+    ),
+    SITE: (
+      <div className="flex items-center justify-center w-8 h-8">
+        <Globe className="w-6 h-16 text-gray-900" />
+      </div>
+    ),
     PANEL: ''
   }
 
@@ -143,8 +179,8 @@ export function OrderHeader({ order, compact = false, variant }: { order: OrderR
   const itemCounts = getOrderItemCounts(order?.items || []);
 
   return (
-    <div className={cn("p-3", compact ? "space-y-1 pb-1" : "space-y-2")}>
-      <div className="flex justify-between items-start gap-2">
+    <div className={cn("p-3", effectiveCompact ? "space-y-1 pb-1" : "space-y-2")}>
+      <div className="flex justify-between items-center gap-2">
         <div className="flex items-center gap-2">
           <span className={cn(
             "font-semibold",
@@ -156,37 +192,42 @@ export function OrderHeader({ order, compact = false, variant }: { order: OrderR
           </span>
         </div>
         
-        <span className={cn(
-          "font-semibold",
-          compact ? "text-sm" : "text-base"
-        )}>
-          {`${itemCounts.total}/${itemCounts.inProgress}/${itemCounts.completed}`}
-        </span>
-        
-        {order?.numberOfPeople && (
+        <div className="flex items-center gap-3">
           <span className={cn(
-            "font-semibold flex",
-            compact ? "text-sm" : "text-2xl"
+            "font-semibold",
+            effectiveCompact ? "text-sm" : "text-base"
           )}>
-            {order.numberOfPeople}  
-            <User className={cn(
-              "text-gray-900 dark:text-white ml-1", 
-              compact ? "h-4 w-4" : "w-7 h-7"
-            )}/>
+            {`${itemCounts.total}/${itemCounts.inProgress}/${itemCounts.completed}`}
           </span>
-        )}
+          
+          {order?.numberOfPeople && (
+            <div className="flex items-center">
+              <span className={cn(
+                "font-semibold",
+                effectiveCompact ? "text-sm" : "text-2xl"
+              )}>
+                {order.numberOfPeople}
+              </span>
+              <User className={cn(
+                "text-gray-900 dark:text-white ml-1", 
+                "w-6 h-16"
+              )}/>
+            </div>
+          )}
+          
+          {order?.source && sourceIcons[order.source as SourceKeys]}
+        </div>
         
-        {order?.source && sourceIcons[order.source as SourceKeys]}
         {order?.type && typeIcons[order.type]}
       </div>
       
-      <div className="flex justify-between items-start gap-2">
+      <div className="flex justify-between items-center gap-2">
         {order?.status && (
           <Badge 
             className={cn(
               "flex items-center gap-1 px-2 py-1 rounded-md border",
               statusColors[order.status],
-              compact ? "text-xs" : "text-sm",
+              effectiveCompact ? "text-xs" : "text-sm",
               "font-medium"
             )}
           >
@@ -196,8 +237,8 @@ export function OrderHeader({ order, compact = false, variant }: { order: OrderR
         
         {order?.createdAt && (
           <div className="flex items-center gap-1 text-muted-foreground">
-            <Clock className={compact ? "h-3 w-3" : "h-4 w-4"} />
-            <span className={compact ? "text-xs" : "text-sm"}>
+            <Clock className={effectiveCompact ? "h-3 w-3" : "h-4 w-4"} />
+            <span className={effectiveCompact ? "text-xs" : "text-sm"}>
               {format(new Date(order.createdAt), 'HH:mm')}
             </span>
           </div>
@@ -207,16 +248,16 @@ export function OrderHeader({ order, compact = false, variant }: { order: OrderR
       {order?.type === 'DELIVERY' && order?.delivery?.address && (
         <button 
           disabled={variant !== 'delivery'}
-          className='cursor-pointer'
+          className='cursor-pointer w-full'
           onClick={(e) => {
             e.stopPropagation();
             const address = encodeURIComponent(order.delivery!.address);
             window.open(`https://yandex.ru/maps/?text=${address}`, '_blank');
           }}
         >
-          <Badge variant="outline" className={cn("gap-1", compact ? "px-2 py-0.5 text-sm" : "text-sm")}>
-            <MapPin className={compact ? "h-3 w-3" : "h-4 w-4"} />
-            {order.delivery.address}
+          <Badge variant="outline" className={cn("gap-1 w-full justify-start", effectiveCompact ? "px-2 py-0.5 text-sm" : "text-sm")}>
+            <MapPin className={effectiveCompact ? "h-3 w-3" : "h-4 w-4"} />
+            <span className="truncate">{order.delivery.address}</span>
           </Badge>
         </button>
       )}
