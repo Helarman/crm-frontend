@@ -142,6 +142,21 @@ import { motion, useAnimationControls } from 'framer-motion'
 import { TablesService, TableStatus } from '@/lib/api/tables.service'
 import { AddressInput } from '@/components/features/order/AddressInput'
 
+// Типы для локального хранилища
+interface LocalOrderItem {
+  id: string;
+  productId: string;
+  product: Product;
+  quantity: number;
+  additiveIds: string[];
+  comment: string;
+  parentComboId?: string;
+  createdAt: string;
+}
+
+// Ключ для localStorage
+const LOCAL_ORDER_ITEMS_KEY = (orderId: string) => `order_${orderId}_pending_items`;
+
 type OptimisticOrderItem = Pick<OrderItem,
   'id' |
   'product' |
@@ -154,12 +169,92 @@ type OptimisticOrderItem = Pick<OrderItem,
   'isRefund' |
   'createdAt'
 > & {
-  timestamps?: { createdAt: string };
+  timestamps?: { 
+    createdAt: string;
+    startedAt?: string;     
+    completedAt?: string;  
+    pausedAt?: string;      
+    refundedAt?: string;   
+  };
   isReordered?: boolean;
   parentOrderItemId?: string | null;
   additiveIds?: string[];
   refundReason?: string | null;
   ingredients?: any[];
+  isComboParent?: boolean;
+  isLocal?: boolean;
+};
+
+// Хук для работы с localStorage
+const useLocalOrderItems = (orderId: string) => {
+  const [localItems, setLocalItems] = useState<LocalOrderItem[]>([]);
+
+  // Загрузка из localStorage при монтировании или изменении orderId
+  useEffect(() => {
+    if (!orderId) return;
+
+    const stored = localStorage.getItem(LOCAL_ORDER_ITEMS_KEY(orderId));
+    if (stored) {
+      try {
+        const items = JSON.parse(stored);
+        setLocalItems(items);
+      } catch (e) {
+        console.error('Failed to parse local items:', e);
+      }
+    }
+  }, [orderId]);
+
+  // Сохранение в localStorage при изменении
+  const saveLocalItems = useCallback((items: LocalOrderItem[]) => {
+    if (!orderId) return;
+    localStorage.setItem(LOCAL_ORDER_ITEMS_KEY(orderId), JSON.stringify(items));
+    setLocalItems(items);
+  }, [orderId]);
+
+  // Добавление локального блюда (только для не-комбо)
+  const addLocalItem = useCallback((product: Product, quantity: number, additiveIds: string[], comment: string) => {
+    const newItem: LocalOrderItem = {
+      id: `local-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      productId: product.id,
+      product: product,
+      quantity: quantity,
+      additiveIds: additiveIds,
+      comment: comment,
+      createdAt: new Date().toISOString(),
+    };
+
+    saveLocalItems([...localItems, newItem]);
+    return newItem.id;
+  }, [localItems, saveLocalItems]);
+
+  // Обновление количества локального блюда
+  const updateLocalItemQuantity = useCallback((itemId: string, quantity: number) => {
+    const updated = localItems.map(item =>
+      item.id === itemId ? { ...item, quantity } : item
+    );
+    saveLocalItems(updated);
+  }, [localItems, saveLocalItems]);
+
+  // Удаление локального блюда
+  const removeLocalItem = useCallback((itemId: string) => {
+    const updated = localItems.filter(item => item.id !== itemId);
+    saveLocalItems(updated);
+  }, [localItems, saveLocalItems]);
+
+  // Очистка всех локальных блюд
+  const clearLocalItems = useCallback(() => {
+    if (!orderId) return;
+    localStorage.removeItem(LOCAL_ORDER_ITEMS_KEY(orderId));
+    setLocalItems([]);
+  }, [orderId]);
+
+  return {
+    localItems,
+    addLocalItem,
+    updateLocalItemQuantity,
+    removeLocalItem,
+    clearLocalItems,
+  };
 };
 
 // Хук для оптимистичного обновления UI
@@ -173,7 +268,7 @@ const useOptimisticOrderUpdate = (initialOrder: OrderResponse | null) => {
     }
   }, [initialOrder?.items]);
 
-  const addOptimisticItem = (product: Product, quantity: number, additives: string[], comment: string, parentComboId?: string) => {
+  const addOptimisticItem = (product: Product, quantity: number, additives: string[], comment: string, parentComboId?: string, isLocal: boolean = false) => {
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     const newItem: OptimisticOrderItem = {
@@ -191,6 +286,7 @@ const useOptimisticOrderUpdate = (initialOrder: OrderResponse | null) => {
       additiveIds: additives,
       isReordered: false,
       parentOrderItemId: null,
+      isLocal: isLocal,
     };
 
     setOptimisticItems(prev => [...prev, newItem]);
@@ -234,13 +330,21 @@ const useOptimisticOrderUpdate = (initialOrder: OrderResponse | null) => {
     });
   };
 
+  const addServerItems = (items: OrderItem[]) => {
+    setOptimisticItems(prev => {
+      const filtered = prev.filter(item => !item.isLocal);
+      return [...filtered, ...items as any];
+    });
+  };
+
   return {
     optimisticItems,
     pendingOperations,
     addOptimisticItem,
     updateOptimisticItem,
     removeOptimisticItem,
-    clearPendingOperation
+    clearPendingOperation,
+    addServerItems,
   };
 };
 
@@ -598,6 +702,14 @@ export default function WaiterOrderPage() {
   const infoScrollRef = useRef<HTMLDivElement | null>(null);
   const orderItemsScrollRef = useRef<HTMLDivElement | null>(null);
 
+  // Хук для localStorage
+  const {
+    localItems,
+    addLocalItem,
+    updateLocalItemQuantity,
+    removeLocalItem,
+    clearLocalItems,
+  } = useLocalOrderItems(orderId as string);
 
   const {
     optimisticItems,
@@ -605,8 +717,37 @@ export default function WaiterOrderPage() {
     addOptimisticItem,
     updateOptimisticItem,
     removeOptimisticItem,
-    clearPendingOperation
+    clearPendingOperation,
+    addServerItems,
   } = useOptimisticOrderUpdate(order);
+
+  // Функция для получения всех отображаемых блюд (сначала локальные, потом серверные)
+  const getDisplayItems = useCallback((): OptimisticOrderItem[] => {
+    // Преобразуем локальные блюда в формат OptimisticOrderItem
+    const localOptimisticItems: OptimisticOrderItem[] = localItems.map(item => ({
+      id: item.id,
+      productId: item.productId,
+      product: item.product,
+      quantity: item.quantity,
+      additives: item.additiveIds.map(id => ({ id, title: '', price: 0 })),
+      comment: item.comment,
+      parentComboId: item.parentComboId,
+      status: OrderItemStatus.CREATED,
+      isRefund: false,
+      createdAt: new Date(item.createdAt),
+      timestamps: { createdAt: item.createdAt },
+      additiveIds: item.additiveIds,
+      isReordered: false,
+      parentOrderItemId: null,
+      isLocal: true,
+    }));
+
+    // Серверные блюда из optimisticItems (исключая локальные флаги)
+    const serverItems = optimisticItems.filter(item => !item.isLocal);
+
+    // Сначала локальные, потом серверные
+    return [...localOptimisticItems, ...serverItems];
+  }, [localItems, optimisticItems]);
 
   const refundReasons = [
     { value: 'chef_error', label: 'Ошибка повара' },
@@ -652,7 +793,7 @@ export default function WaiterOrderPage() {
         checkScrollPosition(orderItemsScrollRef);
       }, 100);
     }
-  }, [order?.items, orderItemsScrollRef, checkScrollPosition, optimisticItems]);
+  }, [getDisplayItems(), orderItemsScrollRef, checkScrollPosition]);
 
   useEffect(() => {
     if (infoScrollRef.current && activeTab === 'info') {
@@ -832,11 +973,8 @@ export default function WaiterOrderPage() {
   };
 
   const getOrderItems = () => {
-    // Используем оптимистичные items, если они есть, иначе реальные
-    if (optimisticItems.length > 0 && pendingOperations.size > 0) {
-      return optimisticItems;
-    }
-    return order?.items || [];
+    // Используем getDisplayItems для получения всех блюд (локальные + серверные)
+    return getDisplayItems();
   };
 
   const prepareComboItemsForRefund = (comboItem: OrderItem) => {
@@ -1302,7 +1440,7 @@ export default function WaiterOrderPage() {
         if (timer) clearTimeout(timer);
       });
     };
-  }, [order?.items, t.exitConfirmMessage]);
+  }, [getOrderItems(), t.exitConfirmMessage]);
 
   const handleUpdateQuantity = async (item: OrderItem, newQuantity: number) => {
     if (!order || !isOrderEditable) return;
@@ -1381,6 +1519,7 @@ export default function WaiterOrderPage() {
     return total;
   };
 
+  // ОБНОВЛЕННАЯ ФУНКЦИЯ handleQuantityChange - теперь для не-комбо использует localStorage
   const handleQuantityChange = useCallback(async (
     product: Product,
     newQuantity: number,
@@ -1392,129 +1531,53 @@ export default function WaiterOrderPage() {
     if (newQuantity < 0) return;
 
     const key = `${product.id}-${JSON.stringify(additives.sort())}-${comment || ''}-${parentComboId || ''}`;
-    let tempId: string | null = null;
 
     // Отменяем предыдущий таймер для этого продукта
     if (pendingAdditions[key]?.timer) {
       clearTimeout(pendingAdditions[key].timer!);
     }
 
-    // Поиск существующего item в реальном заказе (не оптимистичном)
-    const existingRealItem = order?.items?.find(item =>
-      item.product.id === product.id &&
-      JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
-      (item.parentComboId || null) === (parentComboId || null) &&
-      item.status === OrderItemStatus.CREATED
-    );
-
-    // Проверяем, есть ли оптимистичный item (с temp- id)
-    const optimisticItem = optimisticItems.find(item =>
-      item.product.id === product.id &&
-      JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
-      (item.parentComboId || null) === (parentComboId || null) &&
-      item.id?.startsWith('temp-')
-    );
-
-    // Если есть реальный item на сервере - используем update
-    if (existingRealItem) {
+    // Для комбо - старая логика (сразу на сервер)
+    if (product.isCombo) {
       if (newQuantity === 0) {
-        // Удаление существующего
-        removeOptimisticItem(existingRealItem.id);
+        // Поиск существующего item в реальном заказе
+        const existingRealItem = order?.items?.find(item =>
+          item.product.id === product.id &&
+          JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
+          (item.parentComboId || null) === (parentComboId || null) &&
+          item.status === OrderItemStatus.CREATED
+        );
 
-        const timer = setTimeout(async () => {
-          try {
-            setIsUpdating(true);
-            await OrderService.removeItemFromOrder(orderId as string, existingRealItem.id);
-            await createOrderLog(`${t.logs.itemRemoved}: ${product.title}`);
-            clearPendingOperation(existingRealItem.id);
-          } catch (err) {
-            console.error('Ошибка при удалении:', err);
-            toast.error('Ошибка при удалении позиции');
-            await fetchOrder();
-          } finally {
-            setIsUpdating(false);
-            setPendingAdditions(prev => {
-              const newState = { ...prev };
-              delete newState[key];
-              return newState;
-            });
-          }
-        }, 300);
-
-        setPendingAdditions(prev => ({
-          ...prev,
-          [key]: { quantity: newQuantity, additives, comment, parentComboId, timer }
-        }));
-      } else {
-        // Обновление существующего
-        updateOptimisticItem(existingRealItem.id, newQuantity);
-
-        const timer = setTimeout(async () => {
-          try {
-            setIsUpdating(true);
-            const updatedOrder = await OrderService.updateOrderItemQuantity(
-              orderId as string,
-              existingRealItem.id,
-              newQuantity,
-              user?.id
-            );
-
-            if (updatedOrder) {
-              setOrder(updatedOrder);
+        if (existingRealItem) {
+          removeOptimisticItem(existingRealItem.id);
+          const timer = setTimeout(async () => {
+            try {
+              setIsUpdating(true);
+              await OrderService.removeItemFromOrder(orderId as string, existingRealItem.id);
+              await createOrderLog(`${t.logs.itemRemoved}: ${product.title}`);
+              clearPendingOperation(existingRealItem.id);
+            } catch (err) {
+              console.error('Ошибка при удалении:', err);
+              toast.error('Ошибка при удалении позиции');
+              await fetchOrder();
+            } finally {
+              setIsUpdating(false);
+              setPendingAdditions(prev => {
+                const newState = { ...prev };
+                delete newState[key];
+                return newState;
+              });
             }
-
-            clearPendingOperation(existingRealItem.id);
-            await createOrderLog(`Изменено количество: ${product.title} → ${newQuantity}`);
-          } catch (err) {
-            console.error('Ошибка при обновлении:', err);
-            toast.error('Ошибка при обновлении количества');
-            await fetchOrder();
-          } finally {
-            setIsUpdating(false);
-            setPendingAdditions(prev => {
-              const newState = { ...prev };
-              delete newState[key];
-              return newState;
-            });
-          }
-        }, 500);
-
-        setPendingAdditions(prev => ({
-          ...prev,
-          [key]: { quantity: newQuantity, additives, comment, parentComboId, timer }
-        }));
-      }
-      return;
-    }
-
-    // Если есть оптимистичный item (еще не на сервере) - обновляем его количество локально
-    if (optimisticItem) {
-      if (newQuantity === 0) {
-        // Удаляем оптимистичный item
-        removeOptimisticItem(optimisticItem.id);
-        clearPendingOperation(optimisticItem.id);
-
-        setPendingAdditions(prev => {
-          const newState = { ...prev };
-          delete newState[key];
-          return newState;
-        });
-      } else {
-        // Обновляем количество оптимистичного item'a
-        updateOptimisticItem(optimisticItem.id, newQuantity);
-
-        // Отменяем предыдущий таймер для этого ключа
-        if (pendingAdditions[key]?.timer) {
-          clearTimeout(pendingAdditions[key].timer);
+          }, 300);
+          setPendingAdditions(prev => ({ ...prev, [key]: { quantity: newQuantity, additives, comment, parentComboId, timer } }));
         }
-
-        // Устанавливаем новый таймер для отправки на сервер
+      } else {
+        // Обработка добавления комбо
         const timer = setTimeout(async () => {
           try {
             setIsUpdating(true);
 
-            if (product.isCombo && pendingComboSelectionRef.current) {
-              // Обработка комбо...
+            if (pendingComboSelectionRef.current) {
               const comboSelection = pendingComboSelectionRef.current;
               const comboGroupId = `combo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
               const comboTotalPrice = calculateComboTotalPrice(product, comboSelection, (product as any).comboItems);
@@ -1523,7 +1586,6 @@ export default function WaiterOrderPage() {
                 productId: product.id,
                 quantity: newQuantity,
                 additiveIds: [],
-                comment: comboGroupId,
                 price: comboTotalPrice
               });
 
@@ -1556,7 +1618,6 @@ export default function WaiterOrderPage() {
               setPendingComboSelection(null);
               pendingComboSelectionRef.current = null;
             } else {
-              // Добавляем новый item на сервер
               await OrderService.addItemToOrder(orderId as string, {
                 productId: product.id,
                 quantity: newQuantity,
@@ -1568,21 +1629,12 @@ export default function WaiterOrderPage() {
 
             const finalUpdatedOrder = await OrderService.getById(orderId as string);
             setOrder(finalUpdatedOrder);
-
-            // Очищаем оптимистичный item (он заменится реальным)
-            if (optimisticItem.id) {
-              clearPendingOperation(optimisticItem.id);
-            }
-
             await createOrderLog(`${t.logs.itemAdded}: ${product.title} x ${newQuantity}`);
             scrollToBottom();
           } catch (err) {
-            console.error('Ошибка при добавлении:', err);
+            console.error('Ошибка при добавлении комбо:', err);
             toast.error('Ошибка при добавлении позиции');
             await fetchOrder();
-            if (optimisticItem.id) {
-              clearPendingOperation(optimisticItem.id);
-            }
           } finally {
             setIsUpdating(false);
             setPendingAdditions(prev => {
@@ -1593,131 +1645,116 @@ export default function WaiterOrderPage() {
           }
         }, 500);
 
-        setPendingAdditions(prev => ({
-          ...prev,
-          [key]: { quantity: newQuantity, additives, comment, parentComboId, timer }
-        }));
+        setPendingAdditions(prev => ({ ...prev, [key]: { quantity: newQuantity, additives, comment, parentComboId, timer } }));
       }
       return;
     }
 
-    // Совсем новый продукт - добавляем оптимистично
-    if (newQuantity > 0) {
-      tempId = addOptimisticItem(product, newQuantity, additives, comment, parentComboId);
+    // Для НЕ-комбо - используем localStorage
+    // Поиск существующего локального блюда
+    const existingLocalItem = localItems.find(item =>
+      item.productId === product.id &&
+      JSON.stringify(item.additiveIds.sort()) === JSON.stringify(additives.sort()) &&
+      item.comment === comment
+    );
 
-      const timer = setTimeout(async () => {
-        try {
-          setIsUpdating(true);
-
-          if (product.isCombo && pendingComboSelectionRef.current) {
-            // Обработка комбо...
-            const comboSelection = pendingComboSelectionRef.current;
-            const comboGroupId = `combo-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            const comboTotalPrice = calculateComboTotalPrice(product, comboSelection, (product as any).comboItems);
-
-            const mainOrderItem = await OrderService.addItemToOrder(orderId as string, {
-              productId: product.id,
-              quantity: newQuantity,
-              additiveIds: [],
-              comment: comboGroupId,
-              price: comboTotalPrice
-            });
-
-            await new Promise(resolve => setTimeout(resolve, 300));
-            const currentOrder = await OrderService.getById(orderId as string);
-            const parentItem = currentOrder.items.find(item =>
-              item.comment === comboGroupId && item.product.id === product.id
-            );
-
-            if (parentItem) {
-              const childPromises = [];
-              for (const [comboItemId, selection] of Object.entries(comboSelection.selections)) {
-                for (const selectedProduct of selection.selectedProducts) {
-                  childPromises.push(
-                    OrderService.addItemToOrder(orderId as string, {
-                      productId: selectedProduct.productId,
-                      quantity: selectedProduct.quantity * newQuantity,
-                      additiveIds: [],
-                      parentComboId: product.id,
-                      parentOrderItemId: parentItem.id,
-                      comment: comboGroupId,
-                      price: 0
-                    })
-                  );
-                }
-              }
-              await Promise.all(childPromises);
-            }
-
-            setPendingComboSelection(null);
-            pendingComboSelectionRef.current = null;
-          } else {
-            await OrderService.addItemToOrder(orderId as string, {
-              productId: product.id,
-              quantity: newQuantity,
-              additiveIds: additives,
-              comment,
-              parentComboId
-            });
-          }
-
-          const finalUpdatedOrder = await OrderService.getById(orderId as string);
-          setOrder(finalUpdatedOrder);
-
-          if (tempId) {
-            clearPendingOperation(tempId);
-          }
-
-          await createOrderLog(`${t.logs.itemAdded}: ${product.title} x ${newQuantity}`);
-          scrollToBottom();
-        } catch (err) {
-          console.error('Ошибка при добавлении:', err);
-          toast.error('Ошибка при добавлении позиции');
-          await fetchOrder();
-          if (tempId) {
-            clearPendingOperation(tempId);
-          }
-        } finally {
-          setIsUpdating(false);
-          setPendingAdditions(prev => {
-            const newState = { ...prev };
-            delete newState[key];
-            return newState;
-          });
-        }
-      }, 500);
-
-      setPendingAdditions(prev => ({
-        ...prev,
-        [key]: { quantity: newQuantity, additives, comment, parentComboId, timer }
-      }));
-    }
-  }, [orderId, isOrderEditable, order, optimisticItems, order?.items, user, scrollToBottom]);
-
-  // Очистка pending операций при получении WebSocket обновлений
-  useEffect(() => {
-    if (!order) return;
-
-    const cleanupPendingOperations = () => {
-      for (const [tempId, op] of pendingOperations) {
-        const matchingRealItem = order.items?.find(item =>
-          item.product.id === op.item.product?.id &&
-          JSON.stringify(item.additives.map(a => a.id).sort()) ===
-          JSON.stringify(op.item.additives?.map((a: any) => a.id).sort())
-        );
-
-        if (matchingRealItem) {
-          clearPendingOperation(tempId);
-        }
+    if (newQuantity === 0) {
+      // Удаление
+      if (existingLocalItem) {
+        removeLocalItem(existingLocalItem.id);
       }
-    };
+      setPendingAdditions(prev => {
+        const newState = { ...prev };
+        delete newState[key];
+        return newState;
+      });
+    } else if (existingLocalItem) {
+      // Обновление существующего локального блюда
+      updateLocalItemQuantity(existingLocalItem.id, newQuantity);
 
-    cleanupPendingOperations();
-  }, [order, pendingOperations, clearPendingOperation]);
+      // Отменяем предыдущий таймер
+      if (pendingAdditions[key]?.timer) {
+        clearTimeout(pendingAdditions[key].timer);
+      }
 
-  const handleQuantitItemChange = async (item: OrderItem, newQuantity: number) => {
+      // Таймер для debounce (можно не использовать для локального, но оставим для единообразия)
+      const timer = setTimeout(() => {
+        setPendingAdditions(prev => {
+          const newState = { ...prev };
+          delete newState[key];
+          return newState;
+        });
+      }, 300);
+
+      setPendingAdditions(prev => ({ ...prev, [key]: { quantity: newQuantity, additives, comment, parentComboId, timer } }));
+    } else if (newQuantity > 0) {
+      // Новое локальное блюдо
+      addLocalItem(product, newQuantity, additives, comment);
+
+      const timer = setTimeout(() => {
+        setPendingAdditions(prev => {
+          const newState = { ...prev };
+          delete newState[key];
+          return newState;
+        });
+      }, 300);
+
+      setPendingAdditions(prev => ({ ...prev, [key]: { quantity: newQuantity, additives, comment, parentComboId, timer } }));
+    }
+  }, [orderId, isOrderEditable, order, localItems, addLocalItem, updateLocalItemQuantity, removeLocalItem, pendingAdditions, user, scrollToBottom]);
+
+  // Функция для отправки всех локальных блюд на сервер при нажатии "Готовить"
+  const syncLocalItemsToServer = async () => {
+    if (!orderId || localItems.length === 0) return;
+
+    try {
+      setIsUpdating(true);
+
+      // Подготовка данных для bulk-запроса
+      const bulkItems = localItems.map(item => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        additiveIds: item.additiveIds,
+        comment: item.comment,
+        parentComboId: item.parentComboId,
+      }));
+
+      // Отправляем все локальные блюда одним запросом
+      await OrderService.bulkAddItemsToOrder(orderId as string, bulkItems);
+
+      // Очищаем localStorage
+      clearLocalItems();
+
+      // Обновляем заказ с сервера
+      const updatedOrder = await OrderService.getById(orderId as string);
+      setOrder(updatedOrder);
+
+      await createOrderLog(`Добавлено ${bulkItems.length} блюд в заказ`);
+      toast.success(`Добавлено ${bulkItems.length} блюд`);
+
+      scrollToBottom();
+    } catch (error) {
+      console.error('Error syncing local items:', error);
+      toast.error('Ошибка при добавлении блюд');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleQuantitItemChange = async (item: OrderItem | OptimisticOrderItem, newQuantity: number) => {
     if (!order || newQuantity < 0 || !isOrderEditable) return;
 
+    // Если это локальное блюдо
+    if ('isLocal' in item && item.isLocal) {
+      if (newQuantity === 0) {
+        removeLocalItem(item.id);
+      } else {
+        updateLocalItemQuantity(item.id, newQuantity);
+      }
+      return;
+    }
+
+    // Серверное блюдо
     if (item.status !== OrderItemStatus.CREATED) {
       toast.error('Можно изменять только неподтвержденные позиции');
       return;
@@ -1823,6 +1860,9 @@ export default function WaiterOrderPage() {
 
     try {
       setIsUpdating(true);
+
+      // Сначала синхронизируем локальные блюда
+      await syncLocalItemsToServer();
 
       const targetStatus = order.scheduledAt ? 'CONFIRMED' : 'PREPARING';
 
@@ -2158,7 +2198,6 @@ export default function WaiterOrderPage() {
         numberOfPeople: editFormData.numberOfPeople,
         tableNumber: editFormData.tableNumber,
         comment: editFormData.comment,
-        // Передаем поля доставки напрямую
         deliveryAddress: editFormData.deliveryAddress,
         deliveryPrice: editFormData.deliveryPrice,
         deliveryFloor: editFormData.deliveryFloor,
@@ -2300,9 +2339,22 @@ export default function WaiterOrderPage() {
   };
 
   const calculateOrderTotal = () => {
-    if (!order || !getOrderItems()) return 0;
+    if (!order) return 0;
     const items = getOrderItems();
+
+    // Для локальных блюд считаем цену по продукту
     const itemsTotal = items.reduce((sum, item) => {
+      if ('isLocal' in item && item.isLocal) {
+        const restaurantPrice = item.product.restaurantPrices?.find(
+          p => p.restaurantId === order.restaurant?.id
+        );
+        let basePrice = restaurantPrice?.price ?? item.product.price;
+        if (order.customer?.discountApplied) {
+          basePrice = basePrice * (1 - order.customer.personalDiscount / 100);
+        }
+        // Для локальных блюд аддитивы не учитываем в цене (они будут добавлены при отправке)
+        return sum + (basePrice * item.quantity);
+      }
       return sum + calculateItemPrice(item as any);
     }, 0);
 
@@ -2328,6 +2380,7 @@ export default function WaiterOrderPage() {
 
     return total;
   };
+
   const getOrderHeader = () => {
     if (!order) return '';
 
@@ -2340,6 +2393,7 @@ export default function WaiterOrderPage() {
         return `Заказ ${order.number}`;
     }
   };
+
   const handleReorderItem = async (item: OrderItem) => {
     if (!order) return;
 
@@ -2379,28 +2433,27 @@ export default function WaiterOrderPage() {
       return pendingAdditions[key].quantity;
     }
 
-    // Затем проверяем оптимистичные items
-    const optimisticItem = optimisticItems.find(item =>
-      item.product.id === product.id &&
-      JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
-      item.comment === comment &&
-      item.status === OrderItemStatus.CREATED
+    // Проверяем локальные блюда
+    const localItem = localItems.find(item =>
+      item.productId === product.id &&
+      JSON.stringify(item.additiveIds.sort()) === JSON.stringify(additives.sort()) &&
+      item.comment === comment
     );
 
-    if (optimisticItem) {
-      return optimisticItem.quantity;
+    if (localItem) {
+      return localItem.quantity;
     }
 
-    // Затем проверяем существующие items из заказа
-    const existingItem = order?.items?.find(item =>
+    // Затем проверяем серверные блюда
+    const serverItem = order?.items?.find(item =>
       item.product.id === product.id &&
       JSON.stringify(item.additives.map(a => a.id).sort()) === JSON.stringify(additives.sort()) &&
       item.comment === comment &&
       item.status === OrderItemStatus.CREATED
     );
 
-    return existingItem ? existingItem.quantity : 0;
-  }, [pendingAdditions, optimisticItems, order?.items]);
+    return serverItem ? serverItem.quantity : 0;
+  }, [pendingAdditions, localItems, order?.items]);
 
   const handleAdditivesChange = (productId: string, newAdditives: string[]) => {
     setProductAdditives(prev => ({
@@ -2430,7 +2483,6 @@ export default function WaiterOrderPage() {
         numberOfPeople: Number(data.numberOfPeople) || 1,
         tableNumber: data.tableNumber || '',
         comment: data.comment || '',
-        // Данные доставки - берем напрямую из order
         deliveryAddress: data.deliveryAddress || '',
         deliveryPrice: data.deliveryPrice || 0,
         deliveryFloor: data.deliveryFloor || '',
@@ -2470,6 +2522,7 @@ export default function WaiterOrderPage() {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     if (order) {
       setEditFormData(prev => ({
@@ -2491,6 +2544,7 @@ export default function WaiterOrderPage() {
       }));
     }
   }, [order]);
+
   const handlePrecheck = async () => {
     if (!order) return;
 
@@ -2978,12 +3032,10 @@ export default function WaiterOrderPage() {
 
     const cookingTime = getCookingTime();
 
-    // Определяем, является ли элемент родительским комбо
     const isParentCombo = item.isComboParent || false;
     const isChildItem = !!item.parentOrderItemId;
     const canEditQuantity = item.status === OrderItemStatus.CREATED && isOrderEditable && !isParentCombo;
 
-    // Находим дочерние элементы для родительского комбо
     const childItems = isParentCombo
       ? getOrderItems().filter(childItem => childItem.parentOrderItemId === item.id && !childItem.isRefund)
       : [];
@@ -2995,13 +3047,11 @@ export default function WaiterOrderPage() {
     const hasChildren = childItems.length > 0;
     const hasRefundedChildren = refundedChildItems.length > 0;
 
-    // Логика отображения кнопки возврата
     const shouldShowRefundButton = (): boolean => {
       if (!isOrderEditable) return false;
       if (item.isRefund) return false;
       if (isParentCombo) return false;
 
-      // Блюдо в статусе "готовится" или "готово"
       const isInProgressOrCompleted =
         item.status === OrderItemStatus.IN_PROGRESS ||
         item.status === OrderItemStatus.COMPLETED;
@@ -3010,16 +3060,13 @@ export default function WaiterOrderPage() {
 
       const hasPrecheck = order?.attentionFlags?.isPrecheck;
 
-      // 1. Пречека нет - можно возвращать
       if (!hasPrecheck) return true;
 
-      // 2. Пречек есть - только менеджер/супервизор
       if (hasPrecheck && ['MANAGER', 'SUPERVISOR'].includes(user.role)) return true;
 
       return false;
     };
 
-    // Если это дочерний элемент комбо (не возвращенный), скрываем его
     if (isChildItem && !item.isRefund) {
       return null;
     }
@@ -3033,7 +3080,6 @@ export default function WaiterOrderPage() {
         <div className="flex justify-between items-start gap-4">
           <div className="flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Кнопка сворачивания для комбо */}
               {isParentCombo && hasChildren && (
                 <button
                   onClick={() => setIsComboExpanded(!isComboExpanded)}
@@ -3058,7 +3104,6 @@ export default function WaiterOrderPage() {
               )}
             </div>
 
-            {/* Количество и цена */}
             <div className="flex items-center justify-between mt-2">
               <p className="text-sm font-bold text-green-600">
                 {calculateItemPrice(item)} ₽
@@ -3100,7 +3145,6 @@ export default function WaiterOrderPage() {
               )}
             </div>
 
-            {/* Дочерние элементы комбо - с анимацией сворачивания */}
             {hasChildren && (
               <div
                 className={`mt-3 pl-4 border-l-2 border-purple-200 space-y-2 overflow-hidden transition-all duration-300 ${isComboExpanded ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'
@@ -3119,7 +3163,6 @@ export default function WaiterOrderPage() {
               </div>
             )}
 
-            {/* Возвращенные дочерние элементы комбо - всегда видны */}
             {hasRefundedChildren && (
               <div className="mt-3 pl-4 border-l-2 border-red-200 space-y-2">
                 <p className="text-xs font-semibold text-red-500 mb-1">Возвращенные блюда:</p>
@@ -3202,7 +3245,6 @@ export default function WaiterOrderPage() {
           </div>
         </details>
 
-        {/* Кнопки действий */}
         <div className="mt-3 flex items-center justify-end gap-2 border-t pt-3">
           {canEditQuantity ? (
             <div className="flex items-center gap-2">
@@ -3245,8 +3287,7 @@ export default function WaiterOrderPage() {
           >
             <History className="h-4 w-4" />
           </Button>
-
-          {/* Повтор (дозаказ) - не показываем для комбо */}
+          
           {[
             OrderItemStatus.COMPLETED,
             OrderItemStatus.IN_PROGRESS,
@@ -3263,10 +3304,8 @@ export default function WaiterOrderPage() {
               </Button>
             )}
 
-          {/* Кнопка возврата - новая логика */}
           {shouldShowRefundButton() && (
             (() => {
-              // Для комбо показываем диалог выбора блюд
               if (isParentCombo && hasChildren) {
                 return (
                   <Button
@@ -3285,7 +3324,6 @@ export default function WaiterOrderPage() {
                 );
               }
 
-              // Для обычных блюд
               return (
                 <Button
                   variant="outline"
@@ -3306,8 +3344,7 @@ export default function WaiterOrderPage() {
             })()
           )}
 
-          {/* Кнопка удаления - только для созданных блюд */}
-          {item.status === OrderItemStatus.CREATED && isOrderEditable && !item.isRefund && !isParentCombo && (
+          {item.status === OrderItemStatus.CREATED && isOrderEditable && !item.isRefund && !isParentCombo &&( 
             <Button
               variant="outline"
               size="sm"
@@ -3513,11 +3550,12 @@ export default function WaiterOrderPage() {
     );
   };
 
-  const CompactItemCard = ({ item }: { item: OrderItem }) => {
+  const CompactItemCard = ({ item }: { item: OptimisticOrderItem }) => {
     const [isComboExpanded, setIsComboExpanded] = useState(false);
+    const isLocal = item.isLocal === true;
 
     const getCookingTime = () => {
-      if (!item.timestamps.startedAt) return null;
+      if (!item.timestamps?.startedAt) return null;
 
       const startTime = new Date(item.timestamps.startedAt).getTime();
       let endTime = item.timestamps.completedAt
@@ -3529,7 +3567,7 @@ export default function WaiterOrderPage() {
     };
 
     const cookingTime = getCookingTime();
-    const canEditQuantity = item.status === OrderItemStatus.CREATED && isOrderEditable;
+    const canEditQuantity = (item.status === OrderItemStatus.CREATED && isOrderEditable) || isLocal;
 
     const isParentCombo = item.isComboParent || false;
     const isChildItem = !!item.parentOrderItemId;
@@ -3545,13 +3583,12 @@ export default function WaiterOrderPage() {
     const hasChildren = childItems.length > 0;
     const hasRefundedChildren = refundedChildItems.length > 0;
 
-    // Логика отображения кнопки возврата
     const shouldShowRefundButton = (): boolean => {
       if (!isOrderEditable) return false;
       if (item.isRefund) return false;
       if (isParentCombo) return false;
+      if (isLocal) return false;
 
-      // Блюдо в статусе "готовится" или "готово"
       const isInProgressOrCompleted =
         item.status === OrderItemStatus.IN_PROGRESS ||
         item.status === OrderItemStatus.COMPLETED;
@@ -3560,10 +3597,8 @@ export default function WaiterOrderPage() {
 
       const hasPrecheck = order?.attentionFlags?.isPrecheck;
 
-      // 1. Пречека нет - можно возвращать
       if (!hasPrecheck) return true;
 
-      // 2. Пречек есть - только менеджер/супервизор
       if (hasPrecheck && ['MANAGER', 'SUPERVISOR'].includes(user.role)) return true;
 
       return false;
@@ -3573,18 +3608,31 @@ export default function WaiterOrderPage() {
       return null;
     }
 
+    const itemPrice = isLocal
+      ? (() => {
+        const restaurantPrice = item.product.restaurantPrices?.find(
+          p => p.restaurantId === order?.restaurant?.id
+        );
+        let basePrice = restaurantPrice?.price ?? item.product.price;
+        if (order?.customer?.discountApplied) {
+          basePrice = basePrice * (1 - order.customer.personalDiscount / 100);
+        }
+        return basePrice * item.quantity;
+      })()
+      : calculateItemPrice(item as any);
+
     return (
       <div
-        key={item.id}
         className={`bg-white rounded-xl p-3 2xl:p-4 shadow-sm transition-all duration-300 relative
         ${item.isReordered ? 'border-l-4 border-blue-500' : ''} 
         ${item.isRefund ? 'border-l-4 border-red-500' : ''}
+        ${isLocal ? 'border-l-4 border-yellow-500 bg-yellow-50/30' : ''}
         ${isParentCombo ? 'border-2 border-purple-200 bg-purple-50/30' : 'border border-gray-100'}
       `}
       >
-        {/* Основной ряд: фото, информация, цена */}
+
+
         <div className="flex gap-3 2xl:gap-4">
-          {/* Фото - фиксированный размер */}
           <div className="flex-shrink-0 w-12 h-12 2xl:w-16 2xl:h-16 bg-gray-100 rounded-lg overflow-hidden">
             {item.product.images?.[0] ? (
               <img
@@ -3604,9 +3652,7 @@ export default function WaiterOrderPage() {
             )}
           </div>
 
-          {/* Информация о блюде - занимает оставшееся место */}
           <div className="flex-1 min-w-0">
-            {/* Название и цена в одной строке */}
             <div className="flex justify-between items-start gap-2 mb-1">
               <div className="flex items-center gap-1 flex-1 min-w-0">
                 {isParentCombo && hasChildren && (
@@ -3626,16 +3672,15 @@ export default function WaiterOrderPage() {
                 </h3>
               </div>
               <p className="font-bold text-sm 2xl:text-base whitespace-nowrap flex-shrink-0">
-                {calculateItemPrice(item)} ₽
+                {itemPrice.toFixed(0)} ₽
               </p>
             </div>
 
-            {/* Модификаторы и комментарий */}
             <div className="space-y-0.5 mb-2">
-              {item.additives.length > 0 && (
+              {item.additives && item.additives.length > 0 && (
                 <div className="text-xs text-gray-600 flex items-start">
                   <Plus className="h-3 w-3 mr-1 mt-0.5 flex-shrink-0" />
-                  <span className="truncate">{item.additives.map(a => a.title).join(', ')}</span>
+                  <span className="truncate">{item.additives.map((a: any) => a.title || a.id).join(', ')}</span>
                 </div>
               )}
               {item.comment && !item.comment.startsWith('combo-') && (
@@ -3652,7 +3697,6 @@ export default function WaiterOrderPage() {
               )}
             </div>
 
-            {/* Дочерние элементы комбо */}
             {hasChildren && (
               <div className={`mt-2 pl-3 border-l-2 border-purple-200 space-y-1 overflow-hidden transition-all duration-300 ${isComboExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'
                 }`}>
@@ -3668,7 +3712,6 @@ export default function WaiterOrderPage() {
               </div>
             )}
 
-            {/* Возвращенные дочерние элементы */}
             {hasRefundedChildren && (
               <div className="mt-2 pl-3 border-l-2 border-red-200 space-y-1">
                 <p className="text-xs font-semibold text-red-500">Возвращенные:</p>
@@ -3684,22 +3727,18 @@ export default function WaiterOrderPage() {
               </div>
             )}
 
-            {/* Нижняя строка: время готовки + кнопки действий */}
             <div className="flex items-center justify-between gap-2 mt-3">
-              {/* Время приготовления - слева */}
               <div className="flex-1 min-w-0">
-                {cookingTime !== null && (
+                {cookingTime !== null && !isLocal && (
                   <p className="text-xs text-gray-500">
-                    {item.timestamps.completedAt
+                    {item.timestamps?.completedAt
                       ? `${t.cookedIn} ${getCookingTimeText(cookingTime)}`
                       : `${t.cookingFor} ${getCookingTimeText(cookingTime)}`}
                   </p>
                 )}
               </div>
 
-              {/* Кнопки действий - справа, фиксированная ширина */}
               <div className="flex items-center gap-1 flex-shrink-0">
-                {/* Кнопка редактирования количества (для CREATED блюд) */}
                 {canEditQuantity && !isParentCombo ? (
                   <div className="flex items-center gap-1 mr-1">
                     <Button
@@ -3729,40 +3768,49 @@ export default function WaiterOrderPage() {
                   </span>
                 )}
 
-                {/* История */}
                 <Button
                   variant="outline"
                   size="sm"
                   className="h-7 w-7 2xl:h-9 2xl:w-9 p-0"
                   onClick={() => {
-                    setSelectedItemForHistory(item);
+                    setSelectedItemForHistory(item as any);
                     setShowItemHistoryDialog(true);
                   }}
                 >
                   <History className="h-3 w-3" />
                 </Button>
 
-                {/* Повтор */}
-                {!item.isRefund && !isParentCombo && (
+                {isLocal && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 w-7 2xl:h-9 2xl:w-9 p-0 text-red-500 hover:text-red-600 hover:bg-red-50"
+                    onClick={() => removeLocalItem(item.id)}
+                    disabled={isUpdating}
+                    title="Удалить"
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                )}
+                {!item.isRefund && !isParentCombo && !isLocal && (
                   <Button
                     variant="outline"
                     size="sm"
                     className="h-7 w-7 2xl:h-9 2xl:w-9 p-0 text-blue-500 hover:text-blue-600"
-                    onClick={() => handleReorderItem(item)}
+                    onClick={() => handleReorderItem(item as any)}
                     disabled={isUpdating}
                   >
                     <RefreshCw className="h-3 w-3" />
                   </Button>
                 )}
 
-                {/* Возврат - новая логика */}
                 {shouldShowRefundButton() && (
                   <Button
                     variant="outline"
                     size="sm"
                     className="h-7 w-7 2xl:h-9 2xl:w-9 p-0 text-red-500 hover:text-red-600"
                     onClick={() => {
-                      setSelectedItemForRefund(item);
+                      setSelectedItemForRefund(item as any);
                       setMaxRefundQuantity(item.quantity);
                       setRefundQuantity(1);
                       setShowRefundDialog(true);
@@ -3773,8 +3821,7 @@ export default function WaiterOrderPage() {
                   </Button>
                 )}
 
-                {/* Удаление - только для CREATED */}
-                {item.status === OrderItemStatus.CREATED && isOrderEditable && !item.isRefund && !isParentCombo && (
+                {item.status === OrderItemStatus.CREATED && isOrderEditable && !item.isRefund && !isParentCombo && !isLocal && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -4303,6 +4350,8 @@ export default function WaiterOrderPage() {
 
   const renderTotalWithButtons = () => {
     if (!order) return;
+    const hasLocalItems = localItems.length > 0;
+
     if (isRightColCollapsed) {
       return (
         <div className="bg-white rounded-xl shadow-md p-3 flex items-center justify-between gap-2">
@@ -4329,10 +4378,10 @@ export default function WaiterOrderPage() {
               </Button>
             )}
 
-            {getOrderItems().some(item => item.status === OrderItemStatus.CREATED) && (
+            {(getOrderItems().some(item => item.status === OrderItemStatus.CREATED) || hasLocalItems) && (
               <Button
                 size="sm"
-                disabled={isUpdating || getOrderItems().length === 0}
+                disabled={isUpdating || (getOrderItems().filter(item => !item.isLocal).length === 0 && localItems.length === 0)}
                 onClick={handleConfirmOrder}
                 className="bg-emerald-500 hover:bg-emerald-400 text-white px-3 py-1 h-9 text-xs"
               >
@@ -4342,6 +4391,11 @@ export default function WaiterOrderPage() {
                   <Check className="h-3 w-3 mr-1" />
                 )}
                 {order.scheduledAt ? 'Подтв.' : t.confirm}
+                {hasLocalItems && localItems.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 bg-white/20 text-white text-xs">
+                    {localItems.length}
+                  </Badge>
+                )}
               </Button>
             )}
 
@@ -4495,9 +4549,9 @@ export default function WaiterOrderPage() {
             </Button>
           )}
 
-          {getOrderItems().some(item => item.status === OrderItemStatus.CREATED) && (
+          {(getOrderItems().some(item => item.status === OrderItemStatus.CREATED) || localItems.length > 0) && (
             <Button
-              disabled={isUpdating || getOrderItems().length === 0}
+              disabled={isUpdating || (getOrderItems().filter(item => !item.isLocal).length === 0 && localItems.length === 0)}
               onClick={handleConfirmOrder}
               variant="default"
               className="bg-emerald-500 hover:bg-emerald-400 text-white gap-3 w-full h-16 text-2xl font-bold shadow-lg hover:shadow-xl transition-shadow"
@@ -4508,6 +4562,11 @@ export default function WaiterOrderPage() {
                 <Check className="h-6 w-6 mr-1" />
               )}
               {order.scheduledAt ? 'Подтвердить' : t.confirm}
+              {localItems.length > 0 && (
+                <Badge variant="secondary" className="ml-2 bg-white/20 text-white text-sm">
+                  +{localItems.length}
+                </Badge>
+              )}
             </Button>
           )}
 
@@ -4818,7 +4877,7 @@ export default function WaiterOrderPage() {
                 ) : (
                   <div className="space-y-4 ">
 
-                    {order?.items?.length === 0 ? (
+                    {getOrderItems().length === 0 ? (
                       <div className="text-center py-8 text-muted-foreground flex flex-col items-center">
                         <Package className="h-8 w-8 mb-2" />
                         {t.emptyOrder}
@@ -4907,9 +4966,9 @@ export default function WaiterOrderPage() {
                   </button>
                   }
 
-                  {getOrderItems().some(item => item.status === OrderItemStatus.CREATED) && isRightColCollapsed && (
+                  {(getOrderItems().some(item => item.status === OrderItemStatus.CREATED) || localItems.length > 0) && isRightColCollapsed && (
                     <button
-                      disabled={isUpdating || getOrderItems().length === 0}
+                      disabled={isUpdating || (getOrderItems().filter(item => !item.isLocal).length === 0 && localItems.length === 0)}
                       onClick={handleConfirmOrder}
                       className="aspect-square text-lg font-semibold flex flex-col items-center justify-center p-2 sm:p-3 md:p-4 rounded-lg border-2 transition-all bg-emerald-500 hover:bg-emerald-400 text-white"
                       title={order.scheduledAt ? 'Подтвердить' : t.confirm}
@@ -4918,6 +4977,11 @@ export default function WaiterOrderPage() {
                         <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 animate-spin" />
                       ) : (
                         <Check className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
+                      )}
+                      {localItems.length > 0 && (
+                        <Badge variant="secondary" className="absolute -top-1 -right-1 bg-white text-emerald-600 text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                          {localItems.length}
+                        </Badge>
                       )}
                     </button>
                   )}
@@ -5369,6 +5433,11 @@ export default function WaiterOrderPage() {
               size="icon"
             >
               <ShoppingCart className="h-6 w-6" />
+              {localItems.length > 0 && (
+                <Badge className="absolute -top-1 -right-1 bg-yellow-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  {localItems.length}
+                </Badge>
+              )}
             </Button>
           </div>
 
@@ -5457,10 +5526,10 @@ export default function WaiterOrderPage() {
                             </Button>
                           )}
 
-                          {getOrderItems().some(item => item.status === OrderItemStatus.CREATED) && (
+                          {(getOrderItems().some(item => item.status === OrderItemStatus.CREATED) || localItems.length > 0) && (
                             <Button
                               size="sm"
-                              disabled={isUpdating || getOrderItems().length === 0}
+                              disabled={isUpdating || (getOrderItems().filter(item => !item.isLocal).length === 0 && localItems.length === 0)}
                               onClick={handleConfirmOrder}
                               className="bg-emerald-500 hover:bg-emerald-400 text-white flex-1 h-9 text-xs"
                             >
@@ -5469,7 +5538,7 @@ export default function WaiterOrderPage() {
                               ) : (
                                 <Check className="h-3 w-3 mr-1" />
                               )}
-                              {order.scheduledAt ? 'Подтв.' : t.confirm}({getOrderItems().filter(item => item.status === OrderItemStatus.CREATED).length})
+                              {order.scheduledAt ? 'Подтв.' : t.confirm}
                             </Button>
                           )}
 

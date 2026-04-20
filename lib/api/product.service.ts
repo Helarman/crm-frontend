@@ -130,7 +130,7 @@ export interface CreateComboDto {
   additives?: string[];
 }
 
-export interface UpdateComboDto extends Partial<CreateComboDto> {}
+export interface UpdateComboDto extends Partial<CreateComboDto> { }
 
 export interface ComboSelectionDto {
   comboItemId: string;
@@ -330,7 +330,7 @@ export const ProductService = {
     const { data } = await api.get(`/products/${productId}/can-delete`);
     return data;
   },
-  
+
   getAll: async (searchTerm?: string) => {
     const { data } = await api.get('/products', { params: { searchTerm } });
     return data;
@@ -367,64 +367,64 @@ export const ProductService = {
   },
 
   updateCategoryForMultiple: async (productIds: string[], categoryId?: string) => {
-    const { data } = await api.post('/products/update-category-multiple', { 
-      productIds, 
-      categoryId 
+    const { data } = await api.post('/products/update-category-multiple', {
+      productIds,
+      categoryId
     });
     return data;
   },
 
   assignWorkshopsToMultiple: async (productIds: string[], workshopIds: string[]) => {
-    const { data } = await api.post('/products/assign-workshops-multiple', { 
-      productIds, 
-      workshopIds 
+    const { data } = await api.post('/products/assign-workshops-multiple', {
+      productIds,
+      workshopIds
     });
     return data;
   },
 
   assignAdditivesToMultiple: async (productIds: string[], additiveIds?: string[]) => {
-    const { data } = await api.post('/products/assign-additives-multiple', { 
-      productIds, 
-      additiveIds 
+    const { data } = await api.post('/products/assign-additives-multiple', {
+      productIds,
+      additiveIds
     });
     return data;
   },
 
   togglePrintLabelsForMultiple: async (productIds: string[], enable: boolean) => {
-    const { data } = await api.post('/products/toggle-print-labels-multiple', { 
-      productIds, 
-      enable 
+    const { data } = await api.post('/products/toggle-print-labels-multiple', {
+      productIds,
+      enable
     });
     return data;
   },
 
   togglePublishedOnWebsiteForMultiple: async (productIds: string[], enable: boolean) => {
-    const { data } = await api.post('/products/toggle-published-website-multiple', { 
-      productIds, 
-      enable 
+    const { data } = await api.post('/products/toggle-published-website-multiple', {
+      productIds,
+      enable
     });
     return data;
   },
 
   togglePublishedInAppForMultiple: async (productIds: string[], enable: boolean) => {
-    const { data } = await api.post('/products/toggle-published-app-multiple', { 
-      productIds, 
-      enable 
+    const { data } = await api.post('/products/toggle-published-app-multiple', {
+      productIds,
+      enable
     });
     return data;
   },
 
   toggleStopListForMultiple: async (productIds: string[], enable: boolean) => {
-    const { data } = await api.post('/products/toggle-stop-list-multiple', { 
-      productIds, 
-      enable 
+    const { data } = await api.post('/products/toggle-stop-list-multiple', {
+      productIds,
+      enable
     });
     return data;
   },
 
   getDeletedProducts: async (searchTerm?: string) => {
-    const { data } = await api.get('/products/deleted', { 
-      params: { searchTerm } 
+    const { data } = await api.get('/products/deleted', {
+      params: { searchTerm }
     });
     return data;
   },
@@ -437,12 +437,12 @@ export const ProductService = {
     const { data } = await api.get(`/restaurants/${restaurantId}/products`);
     return data;
   },
-  
+
   getRestaurants: async (productId: string) => {
     const { data } = await api.get(`/products/${productId}/restaurants`);
     return data;
   },
-  
+
   updateRestaurants: async (productId: string, restaurantIds: string[]) => {
     const { data } = await api.put(`/products/${productId}/restaurants`, { restaurantIds });
     return data;
@@ -475,13 +475,15 @@ export const ProductService = {
     const { data } = await api.get(`/categories/${categoryId}/products`);
     return data;
   },
-  
+
+ 
+
   async getIngredients(productId: string): Promise<{ inventoryItemId: string, quantity: number }[]> {
     const { data } = await api.get(`/products/${productId}/ingredients`);
     console.log(data)
     return data;
   },
-  
+
   togglePrintLabels: async (id: string) => {
     const { data } = await api.put(`/products/${id}/toggle-print-labels`);
     return data;
@@ -501,7 +503,7 @@ export const ProductService = {
     const { data } = await api.put(`/products/${id}/toggle-stop-list`);
     return data;
   },
-  
+
   updateSortOrder: async (id: string, sortOrder: number) => {
     const { data } = await api.post(`/products/${id}/sort-order`, { sortOrder });
     return data;
@@ -519,7 +521,7 @@ export const ProductService = {
     const { data } = await api.get(`/products/category/${categoryId}/order-stats`);
     return data;
   },
-  
+
   async updateProductOrder(productId: string, newOrder: number, categoryId: string) {
     const response = await api.patch(`/products/order/admin/${productId}`, {
       newOrder,
@@ -578,7 +580,7 @@ export const ProductService = {
     const response = await api.post(`/products/order/client/normalize/${categoryId}`);
     return response.data;
   },
-  
+
   getByNetwork: async (networkId: string) => {
     const { data } = await api.get(`/products/by-network/${networkId}`);
     return data;

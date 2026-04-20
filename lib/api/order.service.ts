@@ -591,7 +591,18 @@ export const OrderService = {
       throw error;
     }
   },
-
+  bulkAddItemsToOrder: async (orderId: string, items: Array<{
+    productId: string;
+    quantity: number;
+    price?: number;
+    additiveIds?: string[];
+    comment?: string;
+    parentComboId?: string;
+    parentOrderItemId?: string;
+  }>) => {
+    const { data } = await api.post(`/orders/${orderId}/items/bulk`, { items });
+    return data;
+  },
   removeItemFromOrder: async (orderId: string, itemId: string): Promise<OrderResponse> => {
     try {
       const { data } = await api.delete<OrderResponse>(
